@@ -1,0 +1,25 @@
+# Python
+runsheet_env/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Temp files
+neris_temp/
+neris_codes.zip
+test_data.zip
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Misc
+raw_adi_log_samples.txt
+test_cad_samples.txt
+*.sql
