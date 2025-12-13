@@ -6,7 +6,6 @@ import MunicipalitiesPage from './pages/MunicipalitiesPage';
 import AdminPage from './pages/AdminPage';
 import ReportsPage from './pages/ReportsPage';
 import './App.css';
-import NerisCodesPage from './components/NerisCodesPage';
 
 function App() {
   return (
@@ -58,7 +57,6 @@ function App() {
             <Route path="/apparatus" element={<ApparatusPage />} />
             <Route path="/municipalities" element={<MunicipalitiesPage />} />
             <Route path="/admin" element={<AdminPage />} />
-            <Route path="/admin/neris" element={<NerisCodesPage />} />
           </Routes>
         </main>
       </div>

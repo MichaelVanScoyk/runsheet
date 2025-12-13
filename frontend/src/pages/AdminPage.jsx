@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './AdminPage.css';
 
 const API_BASE = 'http://192.168.1.189:8001';
@@ -375,6 +375,482 @@ function IncidentSequenceTab() {
 
 
 // ============================================================================
+// NERIS CODES TAB COMPONENT
+// ============================================================================
+
+function NerisCodesTab() {
+  const [activeSubTab, setActiveSubTab] = useState('browse');
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [codes, setCodes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  
+  // Import state
+  const [importCategory, setImportCategory] = useState('');
+  const [importResult, setImportResult] = useState(null);
+  const [importMode, setImportMode] = useState('merge');
+  const fileInputRef = useRef(null);
+  
+  // Validation state
+  const [validationYear, setValidationYear] = useState(new Date().getFullYear());
+  const [validationResults, setValidationResults] = useState(null);
+  const [apparatusIssues, setApparatusIssues] = useState(null);
+  
+  // Update state
+  const [updateField, setUpdateField] = useState('incident_type');
+  const [oldCode, setOldCode] = useState('');
+  const [newCode, setNewCode] = useState('');
+  const [updateYear, setUpdateYear] = useState('');
+  const [updateResult, setUpdateResult] = useState(null);
+
+  const priorityCategories = ['type_unit', 'type_incident', 'type_location_use', 'type_action_tactic'];
+
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  const loadCategories = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/neris-codes/categories`);
+      if (res.ok) setCategories(await res.json());
+    } catch (err) {
+      console.error('Failed to load categories:', err);
+    }
+  };
+
+  const loadCodes = async (category) => {
+    setLoading(true);
+    setSelectedCategory(category);
+    try {
+      const res = await fetch(`${API_BASE}/api/neris-codes/categories/${category}?include_inactive=true`);
+      if (res.ok) setCodes(await res.json());
+    } catch (err) {
+      console.error('Failed to load codes:', err);
+    }
+    setLoading(false);
+  };
+
+  const handleImport = async (e) => {
+    e.preventDefault();
+    const file = fileInputRef.current?.files[0];
+    if (!file || !importCategory) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setLoading(true);
+    setImportResult(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/neris-codes/import?category=${importCategory}&mode=${importMode}`,
+        { method: 'POST', body: formData }
+      );
+      const result = await res.json();
+      setImportResult(result);
+      if (res.ok) {
+        loadCategories();
+      }
+    } catch (err) {
+      setImportResult({ error: err.message });
+    }
+    setLoading(false);
+  };
+
+  const handleValidate = async () => {
+    setLoading(true);
+    setValidationResults(null);
+    setApparatusIssues(null);
+    try {
+      const [incidents, apparatus] = await Promise.all([
+        fetch(`${API_BASE}/api/neris-codes/validate?year=${validationYear}`).then(r => r.json()),
+        fetch(`${API_BASE}/api/neris-codes/validate/apparatus`).then(r => r.json())
+      ]);
+      setValidationResults(incidents);
+      setApparatusIssues(apparatus);
+    } catch (err) {
+      console.error('Validation failed:', err);
+    }
+    setLoading(false);
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    if (!oldCode || !newCode) return;
+
+    setLoading(true);
+    setUpdateResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/neris-codes/update-incidents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          field: updateField,
+          old_code: oldCode,
+          new_code: newCode,
+          year: updateYear ? parseInt(updateYear) : null
+        })
+      });
+      setUpdateResult(await res.json());
+      if (res.ok) {
+        setOldCode('');
+        setNewCode('');
+      }
+    } catch (err) {
+      setUpdateResult({ error: err.message });
+    }
+    setLoading(false);
+  };
+
+  const toggleCodeActive = async (codeId, currentActive) => {
+    try {
+      await fetch(`${API_BASE}/api/neris-codes/codes/${codeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: !currentActive })
+      });
+      loadCodes(selectedCategory);
+    } catch (err) {
+      console.error('Failed to update code:', err);
+    }
+  };
+
+  const getCategoryName = (cat) => {
+    const names = {
+      'type_unit': 'Apparatus Types',
+      'type_incident': 'Incident Types',
+      'type_location_use': 'Property Use',
+      'type_action_tactic': 'Actions Taken'
+    };
+    return names[cat] || cat.replace('type_', '').replace(/_/g, ' ');
+  };
+
+  const years = [];
+  const currentYear = new Date().getFullYear();
+  for (let y = currentYear; y >= currentYear - 5; y--) years.push(y);
+
+  return (
+    <div className="neris-content">
+      <div className="neris-subtabs">
+        <button className={activeSubTab === 'browse' ? 'active' : ''} onClick={() => setActiveSubTab('browse')}>
+          Browse
+        </button>
+        <button className={activeSubTab === 'import' ? 'active' : ''} onClick={() => setActiveSubTab('import')}>
+          Import
+        </button>
+        <button className={activeSubTab === 'validate' ? 'active' : ''} onClick={() => setActiveSubTab('validate')}>
+          Validate
+        </button>
+        <button className={activeSubTab === 'update' ? 'active' : ''} onClick={() => setActiveSubTab('update')}>
+          Update Incidents
+        </button>
+      </div>
+
+      {/* BROWSE */}
+      {activeSubTab === 'browse' && (
+        <div className="neris-browse">
+          <div className="neris-sidebar">
+            <h4>Categories</h4>
+            {priorityCategories.map(cat => {
+              const catData = categories.find(c => c.category === cat);
+              return (
+                <button
+                  key={cat}
+                  className={`neris-cat-btn ${selectedCategory === cat ? 'selected' : ''}`}
+                  onClick={() => loadCodes(cat)}
+                >
+                  <span>{getCategoryName(cat)}</span>
+                  <span className="neris-count">{catData ? `${catData.active}/${catData.total}` : '0'}</span>
+                </button>
+              );
+            })}
+            {categories.filter(c => !priorityCategories.includes(c.category)).length > 0 && (
+              <>
+                <h4 style={{marginTop: '1rem'}}>Other</h4>
+                {categories.filter(c => !priorityCategories.includes(c.category)).map(cat => (
+                  <button
+                    key={cat.category}
+                    className={`neris-cat-btn ${selectedCategory === cat.category ? 'selected' : ''}`}
+                    onClick={() => loadCodes(cat.category)}
+                  >
+                    <span>{getCategoryName(cat.category)}</span>
+                    <span className="neris-count">{cat.active}</span>
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+          <div className="neris-codes-list">
+            {selectedCategory ? (
+              <>
+                <h4>{getCategoryName(selectedCategory)} <span style={{color:'#888', fontWeight:'normal'}}>({codes.filter(c=>c.active).length} active / {codes.length} total)</span></h4>
+                {loading ? <p className="loading">Loading...</p> : (
+                  <div className="table-container" style={{maxHeight:'400px', overflowY:'auto'}}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Code</th>
+                          <th>Description</th>
+                          <th style={{width:'80px'}}>Active</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {codes.map(code => (
+                          <tr key={code.id} className={!code.active ? 'inactive-row' : ''}>
+                            <td><code>{code.value}</code></td>
+                            <td>{code.display_text}</td>
+                            <td>
+                              <button
+                                className={`btn btn-sm ${code.active ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => toggleCodeActive(code.id, code.active)}
+                              >
+                                {code.active ? '✓' : '✗'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p style={{color:'#666'}}>Select a category to view codes</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* IMPORT */}
+      {activeSubTab === 'import' && (
+        <div className="neris-import">
+          <p className="tab-intro">
+            Import NERIS codes from official CSV files. Download from{' '}
+            <a href="https://github.com/ulfsri/neris-framework/tree/main/core_schemas/value_sets/csv" target="_blank" rel="noreferrer" style={{color:'#4ecdc4'}}>
+              github.com/ulfsri/neris-framework
+            </a>
+          </p>
+          
+          <form onSubmit={handleImport} className="neris-import-form">
+            <div className="form-group">
+              <label>Category</label>
+              <select value={importCategory} onChange={(e) => setImportCategory(e.target.value)} required>
+                <option value="">Select category...</option>
+                <option value="type_unit">Apparatus Types (type_unit)</option>
+                <option value="type_incident">Incident Types (type_incident)</option>
+                <option value="type_location_use">Property Use (type_location_use)</option>
+                <option value="type_action_tactic">Actions Taken (type_action_tactic)</option>
+              </select>
+            </div>
+            
+            <div className="form-group">
+              <label>Import Mode</label>
+              <select value={importMode} onChange={(e) => setImportMode(e.target.value)}>
+                <option value="merge">Merge (add new, update existing)</option>
+                <option value="replace">Replace (delete all, import fresh)</option>
+              </select>
+            </div>
+            
+            <div className="form-group">
+              <label>CSV File</label>
+              <input type="file" ref={fileInputRef} accept=".csv" required />
+            </div>
+            
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Importing...' : 'Import'}
+            </button>
+          </form>
+
+          {importResult && (
+            <div className={`neris-result ${importResult.error ? 'error' : 'success'}`}>
+              {importResult.error ? (
+                <p>Error: {importResult.error}</p>
+              ) : (
+                <>
+                  <p>✓ Imported: {importResult.rows_imported}</p>
+                  <p>✓ Updated: {importResult.rows_updated}</p>
+                  {importResult.rows_removed > 0 && <p>✓ Removed: {importResult.rows_removed}</p>}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* VALIDATE */}
+      {activeSubTab === 'validate' && (
+        <div className="neris-validate">
+          <p className="tab-intro">Find incidents using codes that don't exist in the current NERIS code set.</p>
+          
+          <div className="neris-validate-controls">
+            <div className="form-group" style={{display:'inline-block', marginRight:'1rem'}}>
+              <label>Year</label>
+              <select value={validationYear} onChange={(e) => setValidationYear(e.target.value)}>
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <button className="btn btn-primary" onClick={handleValidate} disabled={loading}>
+              {loading ? 'Validating...' : 'Run Validation'}
+            </button>
+          </div>
+
+          {validationResults && (
+            <div className="neris-validation-results">
+              {validationResults.total_issues === 0 ? (
+                <div className="sequence-banner success">✓ All incidents have valid codes</div>
+              ) : (
+                <>
+                  {validationResults.issues.incident_type.length > 0 && (
+                    <div className="neris-issue-group">
+                      <h5>Invalid Incident Types ({validationResults.issues.incident_type.length})</h5>
+                      <div className="table-container">
+                        <table>
+                          <thead><tr><th>Incident</th><th>Invalid Code</th></tr></thead>
+                          <tbody>
+                            {validationResults.issues.incident_type.map((i, idx) => (
+                              <tr key={idx}>
+                                <td>{i.incident_number}</td>
+                                <td><code>{i.code}</code></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {validationResults.issues.location_use.length > 0 && (
+                    <div className="neris-issue-group">
+                      <h5>Invalid Property Use ({validationResults.issues.location_use.length})</h5>
+                      <div className="table-container">
+                        <table>
+                          <thead><tr><th>Incident</th><th>Invalid Code</th></tr></thead>
+                          <tbody>
+                            {validationResults.issues.location_use.map((i, idx) => (
+                              <tr key={idx}>
+                                <td>{i.incident_number}</td>
+                                <td><code>{i.code}</code></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {validationResults.issues.action.length > 0 && (
+                    <div className="neris-issue-group">
+                      <h5>Invalid Actions ({validationResults.issues.action.length})</h5>
+                      <div className="table-container">
+                        <table>
+                          <thead><tr><th>Incident</th><th>Invalid Code</th></tr></thead>
+                          <tbody>
+                            {validationResults.issues.action.map((i, idx) => (
+                              <tr key={idx}>
+                                <td>{i.incident_number}</td>
+                                <td><code>{i.code}</code></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {apparatusIssues && apparatusIssues.length > 0 && (
+            <div className="neris-issue-group">
+              <h5>Invalid Apparatus Types ({apparatusIssues.length})</h5>
+              <div className="table-container">
+                <table>
+                  <thead><tr><th>Unit</th><th>Name</th><th>Invalid Type</th></tr></thead>
+                  <tbody>
+                    {apparatusIssues.map(a => (
+                      <tr key={a.apparatus_id}>
+                        <td>{a.unit_designator}</td>
+                        <td>{a.name}</td>
+                        <td><code>{a.neris_unit_type}</code></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* UPDATE */}
+      {activeSubTab === 'update' && (
+        <div className="neris-update">
+          <p className="tab-intro">Replace an old/invalid code with a new valid code across multiple incidents.</p>
+          
+          <form onSubmit={handleUpdate} className="neris-update-form">
+            <div className="form-group">
+              <label>Field</label>
+              <select value={updateField} onChange={(e) => setUpdateField(e.target.value)}>
+                <option value="incident_type">Incident Type</option>
+                <option value="location_use">Property Use</option>
+                <option value="action">Action Taken</option>
+              </select>
+            </div>
+            
+            <div className="form-row">
+              <div className="form-group">
+                <label>Old Code</label>
+                <input 
+                  type="text" 
+                  value={oldCode} 
+                  onChange={(e) => setOldCode(e.target.value)}
+                  placeholder="Code to replace"
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>New Code</label>
+                <input 
+                  type="text" 
+                  value={newCode} 
+                  onChange={(e) => setNewCode(e.target.value)}
+                  placeholder="New valid code"
+                  required
+                />
+              </div>
+            </div>
+            
+            <div className="form-group">
+              <label>Year (optional)</label>
+              <select value={updateYear} onChange={(e) => setUpdateYear(e.target.value)}>
+                <option value="">All years</option>
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Updating...' : 'Update Incidents'}
+            </button>
+          </form>
+
+          {updateResult && (
+            <div className={`neris-result ${updateResult.error ? 'error' : 'success'}`}>
+              {updateResult.error ? (
+                <p>Error: {updateResult.error}</p>
+              ) : (
+                <p>✓ Updated {updateResult.incidents_updated} incident(s)</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ============================================================================
 // MAIN ADMIN PAGE COMPONENT
 // ============================================================================
 
@@ -398,11 +874,18 @@ function AdminPage() {
         >
           🔢 Incident Sequence
         </button>
+        <button 
+          className={activeTab === 'neris' ? 'active' : ''} 
+          onClick={() => setActiveTab('neris')}
+        >
+          📋 NERIS Codes
+        </button>
       </div>
 
       <div className="admin-content">
         {activeTab === 'settings' && <SettingsTab />}
         {activeTab === 'sequence' && <IncidentSequenceTab />}
+        {activeTab === 'neris' && <NerisCodesTab />}
       </div>
     </div>
   );

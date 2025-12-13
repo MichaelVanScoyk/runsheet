@@ -52,7 +52,7 @@
 }
 
 /* ============================================================================
-   SETTINGS TAB STYLES (from SettingsPage.css)
+   SETTINGS TAB STYLES
    ============================================================================ */
 
 .settings-content {
@@ -388,7 +388,160 @@
   color: #f39c12;
 }
 
-/* Buttons */
+/* ============================================================================
+   NERIS CODES TAB STYLES
+   ============================================================================ */
+
+.neris-content {
+  width: 100%;
+}
+
+.neris-subtabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+  background: #1a1a2e;
+  padding: 0.25rem;
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.neris-subtabs button {
+  background: transparent;
+  border: none;
+  color: #888;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.neris-subtabs button:hover {
+  color: #fff;
+}
+
+.neris-subtabs button.active {
+  background: #e94560;
+  color: #fff;
+}
+
+/* Browse layout */
+.neris-browse {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 1.5rem;
+}
+
+.neris-sidebar {
+  background: #1a1a2e;
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+.neris-sidebar h4 {
+  color: #e94560;
+  font-size: 0.85rem;
+  margin: 0 0 0.75rem 0;
+  text-transform: uppercase;
+}
+
+.neris-cat-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 4px;
+  border: none;
+  background: #0f3460;
+  color: #ccc;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  text-align: left;
+  transition: all 0.2s;
+}
+
+.neris-cat-btn:hover {
+  background: #1a4a7a;
+}
+
+.neris-cat-btn.selected {
+  background: #e94560;
+  color: white;
+}
+
+.neris-count {
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+.neris-codes-list {
+  background: #1a1a2e;
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+.neris-codes-list h4 {
+  color: #e94560;
+  margin: 0 0 1rem 0;
+}
+
+/* Import section */
+.neris-import,
+.neris-validate,
+.neris-update {
+  max-width: 600px;
+}
+
+.neris-import-form,
+.neris-update-form {
+  background: #1a1a2e;
+  border-radius: 6px;
+  padding: 1.5rem;
+}
+
+.neris-validate-controls {
+  margin-bottom: 1.5rem;
+}
+
+.neris-validation-results {
+  margin-top: 1rem;
+}
+
+.neris-issue-group {
+  margin-bottom: 1.5rem;
+}
+
+.neris-issue-group h5 {
+  color: #f39c12;
+  margin-bottom: 0.5rem;
+}
+
+/* Result boxes */
+.neris-result {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 6px;
+}
+
+.neris-result.success {
+  background: rgba(39, 174, 96, 0.15);
+  border: 1px solid #27ae60;
+  color: #27ae60;
+}
+
+.neris-result.error {
+  background: rgba(231, 76, 60, 0.15);
+  border: 1px solid #e74c3c;
+  color: #e74c3c;
+}
+
+/* ============================================================================
+   SHARED BUTTON STYLES
+   ============================================================================ */
+
 .btn {
   padding: 0.5rem 1rem;
   border: none;
@@ -401,6 +554,15 @@
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #e94560;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #d63850;
 }
 
 .btn-fix {
@@ -429,6 +591,11 @@
 
 .btn-danger:hover:not(:disabled) {
   background: #c0392b;
+}
+
+.btn-sm {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
 }
 
 /* Modal */
@@ -535,5 +702,13 @@
   
   .admin-tabs {
     flex-wrap: wrap;
+  }
+  
+  .neris-browse {
+    grid-template-columns: 1fr;
+  }
+  
+  .neris-sidebar {
+    order: -1;
   }
 }
