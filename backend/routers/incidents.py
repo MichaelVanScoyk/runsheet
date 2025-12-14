@@ -1,26 +1,33 @@
 """
 Incidents router - CRUD operations for incidents
+NERIS-Compliant - December 2025
+
+All NERIS fields use TEXT codes (not integers).
+What you store is what you send to NERIS API.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import Optional, List, Dict
-from datetime import datetime, timezone
-from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timezone, date
+from pydantic import BaseModel, Field
 import logging
 
 from database import get_db
-from models import Incident, IncidentUnit, IncidentPersonnel, Municipality, Apparatus, Personnel, Rank
+from models import (
+    Incident, IncidentUnit, IncidentPersonnel, 
+    Municipality, Apparatus, Personnel, Rank
+)
 
-# Try to import weather service
+# Weather service (optional)
 try:
     from weather_service import get_weather_for_incident
     WEATHER_AVAILABLE = True
 except ImportError:
     WEATHER_AVAILABLE = False
 
-# Import settings helper functions
+# Settings helper
 try:
     from routers.settings import get_setting_value, get_station_coords
     SETTINGS_AVAILABLE = True
@@ -28,41 +35,103 @@ except ImportError:
     SETTINGS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
 
 
-# ============================================================================
-# PYDANTIC SCHEMAS
-# ============================================================================
+# =============================================================================
+# PYDANTIC SCHEMAS - NERIS Compatible
+# =============================================================================
+
+class NerisLocationUse(BaseModel):
+    """NERIS mod_location_use structure"""
+    use_type: str                           # "RESIDENTIAL"
+    use_subtype: str                        # "SINGLE_FAMILY"
+    use_status: bool = True                 # Building in use?
+    use_intended: bool = True               # Used as intended?
+    use_vacancy: str = "OCCUPIED"           # OCCUPIED, VACANT, UNKNOWN
+    use_secondary: bool = False
+    use_type_secondary: Optional[str] = None
+    use_subtype_secondary: Optional[str] = None
+
+
+class NerisLocation(BaseModel):
+    """NERIS mod_civic_location structure (partial)"""
+    an_number: Optional[int] = None         # Address number: 123
+    sn_street_name: Optional[str] = None    # Street name: Main
+    sn_post_type: Optional[str] = None      # Street type: St, Ave, Blvd
+    csop_incorporated_muni: Optional[str] = None  # Municipality
+    csop_county: Optional[str] = None
+    csop_state: Optional[str] = None
+    csop_postal_code: Optional[str] = None
+
+
+class CadUnit(BaseModel):
+    """CAD unit data structure"""
+    unit_id: str
+    station: Optional[str] = None
+    agency: Optional[str] = None
+    is_mutual_aid: bool = False
+    time_dispatched: Optional[str] = None
+    time_enroute: Optional[str] = None
+    time_arrived: Optional[str] = None
+    time_available: Optional[str] = None
+    time_cleared: Optional[str] = None
+
 
 class IncidentCreate(BaseModel):
+    """Create new incident"""
     cad_event_number: str
     cad_event_type: Optional[str] = None
     address: Optional[str] = None
     municipality_code: Optional[str] = None
     internal_incident_number: Optional[int] = None
-    incident_date: Optional[str] = None  # Allow setting date on creation (for manual entry)
+    incident_date: Optional[str] = None  # YYYY-MM-DD
+
 
 class IncidentUpdate(BaseModel):
-    internal_incident_number: Optional[int] = None
+    """Update incident - all NERIS fields use TEXT codes"""
+    
+    # CAD fields (informational, not sent to NERIS)
     cad_event_type: Optional[str] = None
-    incident_date: Optional[str] = None
+    
+    # Location - display
     address: Optional[str] = None
     municipality_code: Optional[str] = None
     cross_streets: Optional[str] = None
     esz_box: Optional[str] = None
+    latitude: Optional[str] = None
+    longitude: Optional[str] = None
+    
+    # Location - NERIS structured
+    neris_location: Optional[Dict[str, Any]] = None
+    
+    # Core times
     time_dispatched: Optional[datetime] = None
     time_first_enroute: Optional[datetime] = None
     time_first_on_scene: Optional[datetime] = None
-    time_fire_under_control: Optional[datetime] = None
-    time_extrication_complete: Optional[datetime] = None
     time_last_cleared: Optional[datetime] = None
     time_in_service: Optional[datetime] = None
+    
+    # Tactic timestamps (fire incidents)
+    time_command_established: Optional[datetime] = None
+    time_sizeup_completed: Optional[datetime] = None
+    time_primary_search_begin: Optional[datetime] = None
+    time_primary_search_complete: Optional[datetime] = None
+    time_water_on_fire: Optional[datetime] = None
+    time_fire_under_control: Optional[datetime] = None
+    time_fire_knocked_down: Optional[datetime] = None
+    time_suppression_complete: Optional[datetime] = None
+    time_extrication_complete: Optional[datetime] = None
+    
+    # Caller
     caller_name: Optional[str] = None
     caller_phone: Optional[str] = None
     caller_source: Optional[str] = None
+    
+    # Weather
     weather_conditions: Optional[str] = None
+    
+    # Narrative fields
     companies_called: Optional[str] = None
     situation_found: Optional[str] = None
     extent_of_damage: Optional[str] = None
@@ -70,21 +139,91 @@ class IncidentUpdate(BaseModel):
     narrative: Optional[str] = None
     equipment_used: Optional[List[str]] = None
     problems_issues: Optional[str] = None
-    neris_incident_types: Optional[List[int]] = None
-    neris_property_use: Optional[int] = None
-    neris_actions_taken: Optional[List[int]] = None
+    
+    # ==========================================================================
+    # NERIS CLASSIFICATION - TEXT CODES (not integers!)
+    # ==========================================================================
+    
+    # Incident types - TEXT array
+    # Example: ["FIRE: STRUCTURE_FIRE: RESIDENTIAL_SINGLE"]
+    neris_incident_type_codes: Optional[List[str]] = None
+    
+    # Primary type flags (parallel to above)
+    neris_incident_type_primary: Optional[List[bool]] = None
+    
+    # Location use - full module as dict/JSON
+    neris_location_use: Optional[Dict[str, Any]] = None
+    
+    # Actions taken - TEXT array
+    # Example: ["EXTINGUISHMENT: FIRE_CONTROL", "SEARCH: PRIMARY_SEARCH"]
+    neris_action_codes: Optional[List[str]] = None
+    
+    # No action reason
+    neris_noaction_code: Optional[str] = None
+    
+    # Mutual aid
+    neris_aid_direction: Optional[str] = None  # GIVEN, RECEIVED, NONE
+    neris_aid_type: Optional[str] = None       # AUTOMATIC, MUTUAL, OTHER
+    neris_aid_departments: Optional[List[str]] = None
+    
+    # People present
+    neris_people_present: Optional[bool] = None
+    
+    # Audit
     officer_in_charge: Optional[int] = None
     completed_by: Optional[int] = None
-    cad_units: Optional[List[Dict]] = None  # CAD responding units with times
+    
+    # CAD units
+    cad_units: Optional[List[Dict[str, Any]]] = None
+
 
 class AssignmentsUpdate(BaseModel):
+    """Personnel assignments by unit"""
     # Format: { "ENG481": [person_id, person_id, null, null, null, null], ... }
     assignments: Dict[str, List[Optional[int]]]
 
 
-# ============================================================================
+# =============================================================================
+# NERIS ID GENERATION
+# =============================================================================
+
+def generate_neris_id(fd_neris_id: str, incident_time: datetime) -> Optional[str]:
+    """
+    Generate NERIS-format incident ID.
+    Format: {fd_neris_id}:{epoch_milliseconds}
+    Example: "FD24027000:1714762619000"
+    """
+    if not fd_neris_id:
+        return None
+    epoch_ms = int(incident_time.timestamp() * 1000)
+    return f"{fd_neris_id}:{epoch_ms}"
+
+
+def maybe_generate_neris_id(db: Session, incident: Incident) -> Optional[str]:
+    """Generate NERIS ID if we have fd_neris_id configured and incident has time"""
+    if incident.neris_id:
+        return incident.neris_id  # Already has one
+    
+    if not SETTINGS_AVAILABLE:
+        return None
+    
+    fd_neris_id = get_setting_value(db, 'neris', 'fd_neris_id', '')
+    auto_generate = get_setting_value(db, 'neris', 'auto_generate_neris_id', True)
+    
+    if not fd_neris_id or not auto_generate:
+        return None
+    
+    # Use dispatch time or created_at
+    incident_time = incident.time_dispatched or incident.created_at
+    if not incident_time:
+        return None
+    
+    return generate_neris_id(fd_neris_id, incident_time)
+
+
+# =============================================================================
 # INCIDENT NUMBER HELPERS
-# ============================================================================
+# =============================================================================
 
 @router.get("/suggest-number")
 async def suggest_incident_number(
@@ -99,9 +238,9 @@ async def suggest_incident_number(
     return {"suggested_number": result}
 
 
-# ============================================================================
-# INCIDENT CRUD
-# ============================================================================
+# =============================================================================
+# INCIDENT LIST
+# =============================================================================
 
 @router.get("")
 async def list_incidents(
@@ -131,13 +270,16 @@ async def list_incidents(
             {
                 "id": i.id,
                 "internal_incident_number": i.internal_incident_number,
+                "neris_id": i.neris_id,
                 "cad_event_number": i.cad_event_number,
                 "cad_event_type": i.cad_event_type,
                 "status": i.status,
+                "review_status": getattr(i, 'review_status', None),
                 "incident_date": i.incident_date.isoformat() if i.incident_date else None,
                 "address": i.address,
                 "municipality_code": i.municipality_code,
                 "time_dispatched": i.time_dispatched.isoformat() if i.time_dispatched else None,
+                "neris_incident_type_codes": i.neris_incident_type_codes,
             }
             for i in incidents
         ]
@@ -158,42 +300,34 @@ async def get_incident_by_cad(
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     
-    # Get cad_units from JSONB column
-    cad_units = []
-    if hasattr(incident, 'cad_units') and incident.cad_units:
-        cad_units = incident.cad_units
-    
     return {
         "id": incident.id,
         "internal_incident_number": incident.internal_incident_number,
+        "neris_id": incident.neris_id,
         "cad_event_number": incident.cad_event_number,
         "cad_event_type": incident.cad_event_type,
         "status": incident.status,
         "incident_date": incident.incident_date.isoformat() if incident.incident_date else None,
         "address": incident.address,
         "municipality_code": incident.municipality_code,
-        "cad_units": cad_units,
+        "time_dispatched": incident.time_dispatched.isoformat() if incident.time_dispatched else None,
+        "cad_units": incident.cad_units or [],
     }
 
 
-# ============================================================================
-# INCIDENT SEQUENCE ADMIN FUNCTIONS
-# These must be defined BEFORE /{incident_id} to avoid route conflicts
-# ============================================================================
+# =============================================================================
+# INCIDENT SEQUENCE ADMIN
+# =============================================================================
 
 @router.get("/admin/sequence")
 async def get_incident_sequence(
     year: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
-    """
-    Get incident sequence for admin review.
-    Returns incidents sorted by number with out_of_sequence flags.
-    """
+    """Get incident sequence for admin review"""
     if year is None:
         year = datetime.now().year
     
-    # Get all incidents ordered by internal number
     incidents = db.execute(text("""
         SELECT 
             id, 
@@ -207,7 +341,6 @@ async def get_incident_sequence(
         ORDER BY internal_incident_number ASC
     """), {"year": year}).fetchall()
     
-    # Also get what the correct order should be (by date)
     by_date = db.execute(text("""
         SELECT id, internal_incident_number, incident_date
         FROM incidents
@@ -215,16 +348,11 @@ async def get_incident_sequence(
         ORDER BY incident_date ASC, created_at ASC
     """), {"year": year}).fetchall()
     
-    # Build the correct number assignment
     correct_order = {}
     base_number = year * 1000 + 1
     for i, row in enumerate(by_date):
-        correct_order[row[0]] = base_number + i  # incident_id -> should-be number
+        correct_order[row[0]] = base_number + i
     
-    # Count out of sequence
-    out_of_sequence_count = sum(1 for i in incidents if i[5])
-    
-    # Build response with what each incident's number should be
     incident_list = []
     for inc in incidents:
         should_be = correct_order.get(inc[0], inc[1])
@@ -239,7 +367,6 @@ async def get_incident_sequence(
             "needs_fix": inc[1] != should_be
         })
     
-    # Calculate what changes would be needed
     changes_needed = [i for i in incident_list if i["needs_fix"]]
     
     return {
@@ -265,11 +392,7 @@ async def fix_incident_sequence(
     year: int = Query(..., description="Year to fix"),
     db: Session = Depends(get_db)
 ):
-    """
-    Fix all out-of-sequence incidents for a year.
-    Renumbers incidents so internal_incident_number matches chronological date order.
-    """
-    # Get incidents ordered by date (the correct order)
+    """Fix all out-of-sequence incidents for a year"""
     by_date = db.execute(text("""
         SELECT id, internal_incident_number, incident_date, cad_event_number
         FROM incidents
@@ -280,7 +403,6 @@ async def fix_incident_sequence(
     if not by_date:
         return {"status": "ok", "message": f"No incidents found for year {year}", "changes": []}
     
-    # Calculate what changes are needed
     base_number = year * 1000 + 1
     changes = []
     
@@ -300,8 +422,7 @@ async def fix_incident_sequence(
     
     logger.warning(f"ADMIN: Fixing sequence for {len(changes)} incidents in year {year}")
     
-    # Step 1: Set all affected incidents to negative temporary numbers
-    # This avoids unique constraint violations during the swap
+    # Temporary negative numbers to avoid unique constraint
     for change in changes:
         db.execute(text("""
             UPDATE incidents 
@@ -311,7 +432,7 @@ async def fix_incident_sequence(
     
     db.flush()
     
-    # Step 2: Set to final correct numbers
+    # Final numbers
     for change in changes:
         db.execute(text("""
             UPDATE incidents 
@@ -323,8 +444,6 @@ async def fix_incident_sequence(
     
     db.commit()
     
-    logger.warning(f"ADMIN: Fixed {len(changes)} incidents for year {year}")
-    
     return {
         "status": "ok",
         "year": year,
@@ -333,16 +452,16 @@ async def fix_incident_sequence(
     }
 
 
-# ============================================================================
-# INCIDENT DETAIL ROUTES
-# ============================================================================
+# =============================================================================
+# GET SINGLE INCIDENT
+# =============================================================================
 
 @router.get("/{incident_id}")
 async def get_incident(
     incident_id: int,
     db: Session = Depends(get_db)
 ):
-    """Get full incident details including personnel assignments"""
+    """Get full incident details"""
     incident = db.query(Incident).filter(
         Incident.id == incident_id,
         Incident.deleted_at.is_(None)
@@ -351,12 +470,9 @@ async def get_incident(
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     
-    # Build personnel_assignments in simple format
-    # { "ENG481": [person_id, person_id, null, null, null, null], ... }
+    # Build personnel assignments
     personnel_assignments = {}
-    
     for unit in incident.units:
-        # Get apparatus info
         apparatus = db.query(Apparatus).filter(Apparatus.id == unit.apparatus_id).first()
         if not apparatus:
             continue
@@ -364,17 +480,12 @@ async def get_incident(
         unit_key = apparatus.unit_designator
         
         if apparatus.is_virtual:
-            # Virtual units: dynamic list, just personnel IDs in order
-            slots = []
-            for p in sorted(unit.personnel, key=lambda x: x.slot_index or 0):
-                slots.append(p.personnel_id)
+            slots = [p.personnel_id for p in sorted(unit.personnel, key=lambda x: x.slot_index or 0)]
         else:
-            # Real trucks: fixed 6 slots
-            slots = [None, None, None, None, None, None]
+            slots = [None] * 6
             for p in unit.personnel:
-                slot_idx = p.slot_index
-                if slot_idx is not None and 0 <= slot_idx < 6:
-                    slots[slot_idx] = p.personnel_id
+                if p.slot_index is not None and 0 <= p.slot_index < 6:
+                    slots[p.slot_index] = p.personnel_id
         
         personnel_assignments[unit_key] = slots
     
@@ -382,24 +493,49 @@ async def get_incident(
         "id": incident.id,
         "internal_incident_number": incident.internal_incident_number,
         "year_prefix": incident.year_prefix,
+        "neris_id": incident.neris_id,
         "cad_event_number": incident.cad_event_number,
         "cad_event_type": incident.cad_event_type,
         "status": incident.status,
+        "review_status": getattr(incident, 'review_status', None),
         "incident_date": incident.incident_date.isoformat() if incident.incident_date else None,
+        
+        # Location
         "address": incident.address,
         "municipality_code": incident.municipality_code,
         "cross_streets": incident.cross_streets,
         "esz_box": incident.esz_box,
+        "latitude": getattr(incident, 'latitude', None),
+        "longitude": getattr(incident, 'longitude', None),
+        "neris_location": incident.neris_location,
+        
+        # Core times
         "time_dispatched": incident.time_dispatched.isoformat() if incident.time_dispatched else None,
         "time_first_enroute": incident.time_first_enroute.isoformat() if incident.time_first_enroute else None,
         "time_first_on_scene": incident.time_first_on_scene.isoformat() if incident.time_first_on_scene else None,
-        "time_fire_under_control": incident.time_fire_under_control.isoformat() if incident.time_fire_under_control else None,
-        "time_extrication_complete": incident.time_extrication_complete.isoformat() if incident.time_extrication_complete else None,
         "time_last_cleared": incident.time_last_cleared.isoformat() if incident.time_last_cleared else None,
         "time_in_service": incident.time_in_service.isoformat() if incident.time_in_service else None,
+        
+        # Tactic timestamps
+        "time_command_established": _iso_or_none(incident, 'time_command_established'),
+        "time_sizeup_completed": _iso_or_none(incident, 'time_sizeup_completed'),
+        "time_primary_search_begin": _iso_or_none(incident, 'time_primary_search_begin'),
+        "time_primary_search_complete": _iso_or_none(incident, 'time_primary_search_complete'),
+        "time_water_on_fire": _iso_or_none(incident, 'time_water_on_fire'),
+        "time_fire_under_control": incident.time_fire_under_control.isoformat() if incident.time_fire_under_control else None,
+        "time_fire_knocked_down": _iso_or_none(incident, 'time_fire_knocked_down'),
+        "time_suppression_complete": _iso_or_none(incident, 'time_suppression_complete'),
+        "time_extrication_complete": incident.time_extrication_complete.isoformat() if incident.time_extrication_complete else None,
+        
+        # Caller
         "caller_name": incident.caller_name,
         "caller_phone": incident.caller_phone,
+        "caller_source": getattr(incident, 'caller_source', None),
+        
+        # Weather
         "weather_conditions": incident.weather_conditions,
+        
+        # Narrative
         "companies_called": incident.companies_called,
         "situation_found": incident.situation_found,
         "extent_of_damage": incident.extent_of_damage,
@@ -407,19 +543,48 @@ async def get_incident(
         "narrative": incident.narrative,
         "equipment_used": incident.equipment_used,
         "problems_issues": incident.problems_issues,
-        "neris_incident_types": incident.neris_incident_types,
-        "neris_property_use": incident.neris_property_use,
-        "neris_actions_taken": incident.neris_actions_taken,
+        
+        # NERIS Classification - TEXT codes
+        "neris_incident_type_codes": incident.neris_incident_type_codes,
+        "neris_incident_type_primary": getattr(incident, 'neris_incident_type_primary', None),
+        "neris_location_use": incident.neris_location_use,
+        "neris_action_codes": incident.neris_action_codes,
+        "neris_noaction_code": getattr(incident, 'neris_noaction_code', None),
+        "neris_aid_direction": getattr(incident, 'neris_aid_direction', None),
+        "neris_aid_type": getattr(incident, 'neris_aid_type', None),
+        "neris_aid_departments": getattr(incident, 'neris_aid_departments', None),
+        "neris_people_present": getattr(incident, 'neris_people_present', None),
+        
+        # Submission status
+        "neris_submitted_at": _iso_or_none(incident, 'neris_submitted_at'),
+        "neris_submission_id": getattr(incident, 'neris_submission_id', None),
+        "neris_validation_errors": getattr(incident, 'neris_validation_errors', None),
+        
+        # Audit
         "officer_in_charge": incident.officer_in_charge,
         "completed_by": incident.completed_by,
+        "reviewed_by": getattr(incident, 'reviewed_by', None),
+        "reviewed_at": _iso_or_none(incident, 'reviewed_at'),
+        
+        # Assignments
         "personnel_assignments": personnel_assignments,
-        "cad_units": incident.cad_units if hasattr(incident, 'cad_units') and incident.cad_units else [],
+        "cad_units": incident.cad_units or [],
+        
+        # Timestamps
         "created_at": incident.created_at.isoformat() if incident.created_at else None,
         "updated_at": incident.updated_at.isoformat() if incident.updated_at else None,
-        "closed_at": getattr(incident, 'closed_at', None),
-        "neris_submitted_at": getattr(incident, 'neris_submitted_at', None),
     }
 
+
+def _iso_or_none(obj, attr):
+    """Helper to get ISO format datetime or None"""
+    val = getattr(obj, attr, None)
+    return val.isoformat() if val else None
+
+
+# =============================================================================
+# CREATE INCIDENT
+# =============================================================================
 
 @router.post("")
 async def create_incident(
@@ -427,6 +592,8 @@ async def create_incident(
     db: Session = Depends(get_db)
 ):
     """Create new incident"""
+    
+    # Check for existing
     existing = db.query(Incident).filter(
         Incident.cad_event_number == data.cad_event_number,
         Incident.deleted_at.is_(None)
@@ -434,14 +601,16 @@ async def create_incident(
     
     if existing:
         if existing.status == 'CLOSED':
+            # Reopen closed incident
             existing.status = 'OPEN'
-            existing.cad_reopen_count += 1
+            existing.cad_reopen_count = (existing.cad_reopen_count or 0) + 1
             existing.updated_at = datetime.now(timezone.utc)
             db.commit()
             return {"id": existing.id, "reopened": True}
         else:
             raise HTTPException(status_code=400, detail="Incident already exists")
     
+    # Get incident number
     if data.internal_incident_number:
         incident_number = data.internal_incident_number
     else:
@@ -449,16 +618,17 @@ async def create_incident(
     
     year_prefix = incident_number // 1000
     
+    # Handle municipality
     municipality_id = None
     if data.municipality_code:
         muni = db.query(Municipality).filter(Municipality.code == data.municipality_code).first()
         if not muni:
-            muni = Municipality(code=data.municipality_code, name=data.municipality_code)
+            muni = Municipality(code=data.municipality_code, name=data.municipality_code, auto_created=True)
             db.add(muni)
             db.flush()
         municipality_id = muni.id
     
-    # Determine incident_date: use provided date, or default to today
+    # Determine incident date
     if data.incident_date:
         try:
             incident_date = datetime.strptime(data.incident_date, "%Y-%m-%d").date()
@@ -467,8 +637,7 @@ async def create_incident(
     else:
         incident_date = datetime.now(timezone.utc).date()
     
-    # Check if this incident will be out of sequence
-    # (its date is earlier than any incident with a lower internal number)
+    # Check sequence
     out_of_sequence = False
     check_result = db.execute(text("""
         SELECT COUNT(*) FROM incidents 
@@ -480,10 +649,6 @@ async def create_incident(
     
     if check_result and check_result > 0:
         out_of_sequence = True
-        logger.warning(
-            f"Incident {incident_number} ({incident_date}) is out of sequence - "
-            f"{check_result} earlier incidents have later dates"
-        )
     
     incident = Incident(
         internal_incident_number=incident_number,
@@ -504,13 +669,24 @@ async def create_incident(
     db.commit()
     db.refresh(incident)
     
+    # Try to generate NERIS ID
+    neris_id = maybe_generate_neris_id(db, incident)
+    if neris_id:
+        incident.neris_id = neris_id
+        db.commit()
+    
     return {
         "id": incident.id, 
-        "internal_incident_number": incident_number, 
+        "internal_incident_number": incident_number,
+        "neris_id": incident.neris_id,
         "reopened": False,
         "out_of_sequence": out_of_sequence
     }
 
+
+# =============================================================================
+# UPDATE INCIDENT
+# =============================================================================
 
 @router.put("/{incident_id}")
 async def update_incident(
@@ -529,18 +705,12 @@ async def update_incident(
     
     update_data = data.model_dump(exclude_unset=True)
     
-    # IMMUTABLE FIELDS - these cannot be changed after creation
-    # incident_date: when the emergency occurred (set at creation, never changes)
-    # internal_incident_number: assigned at creation
-    # cad_event_number: from CAD system
-    # created_at: record creation timestamp
-    IMMUTABLE_FIELDS = ['incident_date', 'internal_incident_number', 'cad_event_number', 'created_at']
-    
+    # IMMUTABLE FIELDS - cannot change after creation
+    IMMUTABLE_FIELDS = ['incident_date', 'internal_incident_number', 'cad_event_number', 'created_at', 'neris_id']
     for field in IMMUTABLE_FIELDS:
-        if field in update_data:
-            del update_data[field]
+        update_data.pop(field, None)
     
-    # Auto-fetch weather if enabled and dispatch time is set
+    # Auto-fetch weather if enabled
     weather_auto_fetch = True
     if SETTINGS_AVAILABLE:
         weather_auto_fetch = get_setting_value(db, 'weather', 'auto_fetch', True)
@@ -549,13 +719,11 @@ async def update_incident(
         dispatch_time = update_data.get('time_dispatched') or incident.time_dispatched
         current_weather = update_data.get('weather_conditions') or incident.weather_conditions
         
-        # Only fetch if we have dispatch time and no weather yet
         if dispatch_time and not current_weather:
             try:
                 if isinstance(dispatch_time, str):
                     dispatch_time = datetime.fromisoformat(dispatch_time.replace('Z', '+00:00'))
                 
-                # Get coords from settings
                 lat, lon = None, None
                 if SETTINGS_AVAILABLE:
                     lat, lon = get_station_coords(db)
@@ -565,19 +733,30 @@ async def update_incident(
                     update_data['weather_conditions'] = weather['description']
                     update_data['weather_api_data'] = weather
                     update_data['weather_fetched_at'] = datetime.now(timezone.utc)
-                    logger.info(f"Auto-fetched weather for incident {incident_id}: {weather['description']}")
             except Exception as e:
                 logger.warning(f"Failed to auto-fetch weather: {e}")
     
+    # Apply updates
     for field, value in update_data.items():
         if hasattr(incident, field):
             setattr(incident, field, value)
     
     incident.updated_at = datetime.now(timezone.utc)
+    
+    # Generate NERIS ID if we now have enough info
+    if not incident.neris_id and incident.time_dispatched:
+        neris_id = maybe_generate_neris_id(db, incident)
+        if neris_id:
+            incident.neris_id = neris_id
+    
     db.commit()
     
-    return {"status": "ok", "id": incident_id}
+    return {"status": "ok", "id": incident_id, "neris_id": incident.neris_id}
 
+
+# =============================================================================
+# CLOSE INCIDENT
+# =============================================================================
 
 @router.post("/{incident_id}/close")
 async def close_incident(
@@ -595,16 +774,14 @@ async def close_incident(
     
     incident.status = 'CLOSED'
     incident.updated_at = datetime.now(timezone.utc)
-    if hasattr(incident, 'closed_at'):
-        incident.closed_at = datetime.now(timezone.utc)
     db.commit()
     
     return {"status": "ok", "id": incident_id}
 
 
-# ============================================================================
-# SIMPLE PERSONNEL ASSIGNMENTS
-# ============================================================================
+# =============================================================================
+# PERSONNEL ASSIGNMENTS
+# =============================================================================
 
 @router.put("/{incident_id}/assignments")
 async def save_assignments(
@@ -612,45 +789,37 @@ async def save_assignments(
     data: AssignmentsUpdate,
     db: Session = Depends(get_db)
 ):
-    """
-    Save all personnel assignments in simple format.
-    Input: { "assignments": { "ENG481": [person_id, null, person_id, null, null, null], ... } }
-    """
+    """Save personnel assignments"""
     incident = db.query(Incident).filter(Incident.id == incident_id).first()
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     
-    # Delete all existing assignments for this incident
+    # Clear existing
     db.query(IncidentPersonnel).filter(IncidentPersonnel.incident_id == incident_id).delete()
     db.query(IncidentUnit).filter(IncidentUnit.incident_id == incident_id).delete()
     db.flush()
     
-    # Process each apparatus
+    # Process each unit
     for unit_designator, slots in data.assignments.items():
-        # Find apparatus by unit_designator
         apparatus = db.query(Apparatus).filter(Apparatus.unit_designator == unit_designator).first()
         if not apparatus:
             continue
         
-        # Check if any slots have personnel
-        has_personnel = any(pid for pid in slots if pid is not None)
-        if not has_personnel:
+        if not any(pid for pid in slots if pid is not None):
             continue
         
-        # Create incident unit
         unit = IncidentUnit(
             incident_id=incident_id,
             apparatus_id=apparatus.id,
+            crew_count=len([p for p in slots if p is not None]),
         )
         db.add(unit)
         db.flush()
         
-        # Add personnel for each slot
         for slot_idx, personnel_id in enumerate(slots):
             if personnel_id is None:
                 continue
             
-            # Get personnel info for snapshot
             person = db.query(Personnel).filter(Personnel.id == personnel_id).first()
             if not person:
                 continue
@@ -679,3 +848,84 @@ async def save_assignments(
     
     return {"status": "ok", "incident_id": incident_id}
 
+
+# =============================================================================
+# NERIS VALIDATION
+# =============================================================================
+
+@router.get("/{incident_id}/validate-neris")
+async def validate_neris(
+    incident_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Validate incident for NERIS submission.
+    Returns list of missing/invalid fields.
+    """
+    incident = db.query(Incident).filter(
+        Incident.id == incident_id,
+        Incident.deleted_at.is_(None)
+    ).first()
+    
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    
+    errors = []
+    warnings = []
+    
+    # Required fields
+    if not incident.neris_id:
+        errors.append({"field": "neris_id", "message": "NERIS ID not generated. Check fd_neris_id setting."})
+    
+    if not incident.neris_incident_type_codes:
+        errors.append({"field": "neris_incident_type_codes", "message": "Incident type required"})
+    
+    if not incident.neris_location_use:
+        errors.append({"field": "neris_location_use", "message": "Location use required"})
+    else:
+        loc_use = incident.neris_location_use
+        if not loc_use.get('use_type'):
+            errors.append({"field": "neris_location_use.use_type", "message": "Location use type required"})
+        if not loc_use.get('use_subtype'):
+            errors.append({"field": "neris_location_use.use_subtype", "message": "Location use subtype required"})
+    
+    if not incident.neris_action_codes and not getattr(incident, 'neris_noaction_code', None):
+        errors.append({"field": "neris_action_codes", "message": "Actions taken or no-action reason required"})
+    
+    if not incident.narrative:
+        errors.append({"field": "narrative", "message": "Narrative/outcome required"})
+    
+    # Times
+    if not incident.time_dispatched:
+        errors.append({"field": "time_dispatched", "message": "Dispatch time required"})
+    
+    # Units
+    if not incident.units and not incident.cad_units:
+        warnings.append({"field": "units", "message": "No unit responses recorded"})
+    
+    # Fire-specific
+    if incident.neris_incident_type_codes:
+        is_fire = any('FIRE' in code for code in incident.neris_incident_type_codes)
+        if is_fire:
+            if not incident.time_fire_under_control:
+                warnings.append({"field": "time_fire_under_control", "message": "Fire under control time recommended for fire incidents"})
+    
+    # Validate codes exist
+    if incident.neris_incident_type_codes:
+        for code in incident.neris_incident_type_codes:
+            exists = db.execute(text("""
+                SELECT 1 FROM neris_codes 
+                WHERE category = 'type_incident' AND value = :code AND active = true
+            """), {"code": code}).fetchone()
+            if not exists:
+                errors.append({"field": "neris_incident_type_codes", "message": f"Invalid code: {code}"})
+    
+    is_valid = len(errors) == 0
+    
+    return {
+        "incident_id": incident_id,
+        "neris_id": incident.neris_id,
+        "is_valid": is_valid,
+        "errors": errors,
+        "warnings": warnings
+    }

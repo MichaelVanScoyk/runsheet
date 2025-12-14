@@ -1,5 +1,6 @@
 """
 Lookups router - NERIS codes and municipalities
+Updated for NERIS TEXT codes - December 2025
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,6 +25,7 @@ class MunicipalityCreate(BaseModel):
     display_name: Optional[str] = None
     subdivision_type: Optional[str] = 'Township'
 
+
 class MunicipalityUpdate(BaseModel):
     name: Optional[str] = None
     display_name: Optional[str] = None
@@ -32,71 +34,303 @@ class MunicipalityUpdate(BaseModel):
 
 
 # ============================================================================
-# NERIS LOOKUPS
+# NERIS CODE LOOKUPS (TEXT values)
+# 
+# All NERIS codes are now TEXT strings in hierarchical format:
+#   "FIRE: STRUCTURE_FIRE: RESIDENTIAL_SINGLE"
+# 
+# Use the neris_codes table for all lookups.
 # ============================================================================
 
 @router.get("/neris/incident-types")
-async def get_incident_types(db: Session = Depends(get_db)):
-    """Get all NERIS incident type codes"""
-    result = db.execute(text("SELECT code, description, category FROM neris_incident_types ORDER BY code"))
-    return [{"code": r[0], "description": r[1], "category": r[2], "display": f"{r[0]} - {r[1]}"} for r in result]
+async def get_incident_types(
+    include_inactive: bool = False,
+    db: Session = Depends(get_db)
+):
+    """
+    Get NERIS incident type codes.
+    Returns TEXT values (not integers) for direct use in incidents.
+    """
+    query = """
+        SELECT id, value, description_1, description_2, description_3, 
+               value_1, value_2, value_3, active
+        FROM neris_codes 
+        WHERE category = 'type_incident'
+    """
+    if not include_inactive:
+        query += " AND active = true"
+    query += " ORDER BY value_1, value_2, value_3"
+    
+    result = db.execute(text(query))
+    
+    codes = []
+    for r in result:
+        # Build display text from descriptions
+        if r[4]:  # description_3
+            display = f"{r[2]} > {r[3]} > {r[4]}"
+        elif r[3]:  # description_2
+            display = f"{r[2]} > {r[3]}"
+        else:
+            display = r[2] or r[1]
+        
+        codes.append({
+            "id": r[0],
+            "value": r[1],           # TEXT code for storage
+            "display": display,       # Human-readable
+            "value_1": r[5],
+            "value_2": r[6],
+            "value_3": r[7],
+            "active": r[8]
+        })
+    
+    return codes
 
 
 @router.get("/neris/incident-types/by-category")
 async def get_incident_types_by_category(db: Session = Depends(get_db)):
-    """Get NERIS incident types grouped by category"""
-    result = db.execute(text("SELECT code, description, category FROM neris_incident_types ORDER BY category, code"))
+    """Get NERIS incident types grouped by top-level category"""
+    result = db.execute(text("""
+        SELECT value, value_1, value_2, value_3, 
+               description_1, description_2, description_3
+        FROM neris_codes 
+        WHERE category = 'type_incident' AND active = true
+        ORDER BY value_1, value_2, value_3
+    """))
+    
     grouped = {}
     for r in result:
-        cat = r[2] or 'Other'
-        if cat not in grouped:
-            grouped[cat] = []
-        grouped[cat].append({"code": r[0], "description": r[1], "display": f"{r[0]} - {r[1]}"})
+        value, v1, v2, v3, d1, d2, d3 = r
+        
+        if v1 not in grouped:
+            grouped[v1] = {
+                "description": d1,
+                "children": {}
+            }
+        
+        if v2 and v2 not in grouped[v1]["children"]:
+            grouped[v1]["children"][v2] = {
+                "description": d2,
+                "codes": []
+            }
+        
+        # Add the code
+        if v3:
+            grouped[v1]["children"][v2]["codes"].append({
+                "value": value,
+                "description": d3
+            })
+        elif v2:
+            grouped[v1]["children"][v2]["codes"].append({
+                "value": value,
+                "description": d2
+            })
+    
     return grouped
 
 
-@router.get("/neris/property-uses")
-async def get_property_uses(db: Session = Depends(get_db)):
-    """Get all NERIS property use codes"""
-    result = db.execute(text("SELECT code, description, category FROM neris_property_uses ORDER BY code"))
-    return [{"code": r[0], "description": r[1], "category": r[2], "display": f"{r[0]} - {r[1]}"} for r in result]
+@router.get("/neris/location-uses")
+async def get_location_uses(
+    include_inactive: bool = False,
+    db: Session = Depends(get_db)
+):
+    """
+    Get NERIS location use codes.
+    These form the use_type and use_subtype fields of the location use module.
+    """
+    query = """
+        SELECT id, value, description_1, description_2, 
+               value_1, value_2, active
+        FROM neris_codes 
+        WHERE category = 'type_location_use'
+    """
+    if not include_inactive:
+        query += " AND active = true"
+    query += " ORDER BY value_1, value_2"
+    
+    result = db.execute(text(query))
+    
+    codes = []
+    for r in result:
+        if r[3]:
+            display = f"{r[2]} > {r[3]}"
+        else:
+            display = r[2] or r[1]
+        
+        codes.append({
+            "id": r[0],
+            "value": r[1],
+            "display": display,
+            "use_type": r[4],      # For building the module
+            "use_subtype": r[5],
+            "active": r[6]
+        })
+    
+    return codes
 
 
-@router.get("/neris/property-uses/by-category")
-async def get_property_uses_by_category(db: Session = Depends(get_db)):
-    """Get NERIS property uses grouped by category"""
-    result = db.execute(text("SELECT code, description, category FROM neris_property_uses ORDER BY category, code"))
+@router.get("/neris/location-uses/by-category")
+async def get_location_uses_by_category(db: Session = Depends(get_db)):
+    """Get location uses grouped by type"""
+    result = db.execute(text("""
+        SELECT value, value_1, value_2, description_1, description_2
+        FROM neris_codes 
+        WHERE category = 'type_location_use' AND active = true
+        ORDER BY value_1, value_2
+    """))
+    
     grouped = {}
     for r in result:
-        cat = r[2] or 'Other'
-        if cat not in grouped:
-            grouped[cat] = []
-        grouped[cat].append({"code": r[0], "description": r[1], "display": f"{r[0]} - {r[1]}"})
+        value, v1, v2, d1, d2 = r
+        
+        if v1 not in grouped:
+            grouped[v1] = {
+                "description": d1,
+                "subtypes": []
+            }
+        
+        if v2:
+            grouped[v1]["subtypes"].append({
+                "value": value,
+                "use_type": v1,
+                "use_subtype": v2,
+                "description": d2
+            })
+    
     return grouped
 
 
 @router.get("/neris/actions-taken")
-async def get_actions_taken(db: Session = Depends(get_db)):
-    """Get all NERIS actions taken codes"""
-    result = db.execute(text("SELECT code, description, category FROM neris_actions_taken ORDER BY code"))
-    return [{"code": r[0], "description": r[1], "category": r[2], "display": f"{r[0]} - {r[1]}"} for r in result]
+async def get_actions_taken(
+    include_inactive: bool = False,
+    db: Session = Depends(get_db)
+):
+    """Get NERIS action/tactic codes"""
+    query = """
+        SELECT id, value, description_1, description_2, description_3,
+               value_1, value_2, value_3, active
+        FROM neris_codes 
+        WHERE category = 'type_action_tactic'
+    """
+    if not include_inactive:
+        query += " AND active = true"
+    query += " ORDER BY value_1, value_2, value_3"
+    
+    result = db.execute(text(query))
+    
+    codes = []
+    for r in result:
+        if r[4]:
+            display = f"{r[2]} > {r[3]} > {r[4]}"
+        elif r[3]:
+            display = f"{r[2]} > {r[3]}"
+        else:
+            display = r[2] or r[1]
+        
+        codes.append({
+            "id": r[0],
+            "value": r[1],
+            "display": display,
+            "value_1": r[5],
+            "value_2": r[6],
+            "value_3": r[7],
+            "active": r[8]
+        })
+    
+    return codes
 
 
 @router.get("/neris/actions-taken/by-category")
 async def get_actions_taken_by_category(db: Session = Depends(get_db)):
-    """Get NERIS actions taken grouped by category"""
-    result = db.execute(text("SELECT code, description, category FROM neris_actions_taken ORDER BY category, code"))
+    """Get actions grouped by category"""
+    result = db.execute(text("""
+        SELECT value, value_1, value_2, value_3,
+               description_1, description_2, description_3
+        FROM neris_codes 
+        WHERE category = 'type_action_tactic' AND active = true
+        ORDER BY value_1, value_2, value_3
+    """))
+    
     grouped = {}
     for r in result:
-        cat = r[2] or 'Other'
-        if cat not in grouped:
-            grouped[cat] = []
-        grouped[cat].append({"code": r[0], "description": r[1], "display": f"{r[0]} - {r[1]}"})
+        value, v1, v2, v3, d1, d2, d3 = r
+        
+        if v1 not in grouped:
+            grouped[v1] = {"description": d1, "children": {}}
+        
+        if v2 and v2 not in grouped[v1]["children"]:
+            grouped[v1]["children"][v2] = {"description": d2, "codes": []}
+        
+        if v3:
+            grouped[v1]["children"][v2]["codes"].append({
+                "value": value,
+                "description": d3
+            })
+        elif v2:
+            grouped[v1]["children"][v2]["codes"].append({
+                "value": value,
+                "description": d2
+            })
+    
     return grouped
 
 
+@router.get("/neris/unit-types")
+async def get_unit_types(db: Session = Depends(get_db)):
+    """Get NERIS unit types for apparatus mapping"""
+    result = db.execute(text("""
+        SELECT id, value, COALESCE(description, value) as description
+        FROM neris_codes 
+        WHERE category = 'type_unit' AND active = true
+        ORDER BY value
+    """))
+    
+    return [
+        {"id": r[0], "value": r[1], "description": r[2]}
+        for r in result
+    ]
+
+
+@router.get("/neris/aid-types")
+async def get_aid_types(db: Session = Depends(get_db)):
+    """Get NERIS mutual aid types"""
+    result = db.execute(text("""
+        SELECT value, COALESCE(description, value) as description
+        FROM neris_codes 
+        WHERE category = 'type_aid' AND active = true
+        ORDER BY value
+    """))
+    
+    return [{"value": r[0], "description": r[1]} for r in result]
+
+
+@router.get("/neris/aid-directions")
+async def get_aid_directions(db: Session = Depends(get_db)):
+    """Get NERIS aid direction codes"""
+    result = db.execute(text("""
+        SELECT value, COALESCE(description, value) as description
+        FROM neris_codes 
+        WHERE category = 'type_aid_direction' AND active = true
+        ORDER BY value
+    """))
+    
+    return [{"value": r[0], "description": r[1]} for r in result]
+
+
+@router.get("/neris/vacancy-types")
+async def get_vacancy_types(db: Session = Depends(get_db)):
+    """Get NERIS vacancy status codes for location use module"""
+    result = db.execute(text("""
+        SELECT value, COALESCE(description, value) as description
+        FROM neris_codes 
+        WHERE category = 'type_vacancy' AND active = true
+        ORDER BY value
+    """))
+    
+    return [{"value": r[0], "description": r[1]} for r in result]
+
+
 # ============================================================================
-# MUNICIPALITIES - Enhanced with display names
+# MUNICIPALITIES
 # ============================================================================
 
 @router.get("/municipalities")
@@ -104,7 +338,7 @@ async def get_municipalities(
     include_inactive: bool = False,
     db: Session = Depends(get_db)
 ):
-    """Get all municipalities with display names"""
+    """Get all municipalities"""
     if include_inactive:
         query = """
             SELECT id, code, name, 
@@ -147,7 +381,7 @@ async def get_municipality_by_code(
     code: str,
     db: Session = Depends(get_db)
 ):
-    """Get a single municipality by CAD code"""
+    """Get municipality by CAD code"""
     result = db.execute(
         text("""
             SELECT id, code, name, 
@@ -180,17 +414,16 @@ async def create_municipality(
     data: MunicipalityCreate,
     db: Session = Depends(get_db)
 ):
-    """Create a new municipality"""
+    """Create municipality"""
     code = data.code.upper().strip()
     
-    # Check if exists
     existing = db.execute(
         text("SELECT id FROM municipalities WHERE code = :code"),
         {"code": code}
     ).fetchone()
     
     if existing:
-        raise HTTPException(status_code=400, detail="Municipality with this code already exists")
+        raise HTTPException(status_code=400, detail="Municipality already exists")
     
     display_name = data.display_name or data.name or code
     name = data.name or display_name
@@ -220,8 +453,7 @@ async def update_municipality(
     data: MunicipalityUpdate,
     db: Session = Depends(get_db)
 ):
-    """Update a municipality"""
-    # Build update query dynamically
+    """Update municipality"""
     updates = []
     params = {"id": municipality_id}
     
@@ -232,7 +464,6 @@ async def update_municipality(
     if data.display_name is not None:
         updates.append("display_name = :display_name")
         params["display_name"] = data.display_name
-        # Also update name to keep in sync
         if data.name is None:
             updates.append("name = :display_name")
     
@@ -244,7 +475,6 @@ async def update_municipality(
         updates.append("active = :active")
         params["active"] = data.active
     
-    # Mark as no longer auto-created once edited
     updates.append("auto_created = false")
     updates.append("updated_at = CURRENT_TIMESTAMP")
     
@@ -266,7 +496,7 @@ async def delete_municipality(
     municipality_id: int,
     db: Session = Depends(get_db)
 ):
-    """Soft delete (deactivate) a municipality"""
+    """Soft delete municipality"""
     result = db.execute(
         text("UPDATE municipalities SET active = false, updated_at = CURRENT_TIMESTAMP WHERE id = :id"),
         {"id": municipality_id}
@@ -284,14 +514,9 @@ async def auto_create_municipality(
     code: str,
     db: Session = Depends(get_db)
 ):
-    """
-    Auto-create a municipality from CAD code if it doesn't exist.
-    Called internally when processing CAD data.
-    Returns the municipality (existing or newly created).
-    """
+    """Auto-create municipality from CAD code if it doesn't exist"""
     code = code.upper().strip()
     
-    # Check if exists
     existing = db.execute(
         text("""
             SELECT id, code, name, 
@@ -312,7 +537,6 @@ async def auto_create_municipality(
             "created": False,
         }
     
-    # Create new with auto_created = true
     result = db.execute(
         text("""
             INSERT INTO municipalities (code, name, display_name, subdivision_type, auto_created, active)
@@ -332,46 +556,3 @@ async def auto_create_municipality(
         "subdivision_type": "Township",
         "created": True,
     }
-
-
-# ============================================================================
-# SETTINGS
-# ============================================================================
-
-@router.get("/settings/{key}")
-async def get_setting(
-    key: str,
-    db: Session = Depends(get_db)
-):
-    """Get a station setting by key"""
-    result = db.execute(
-        text("SELECT setting_value FROM station_settings WHERE setting_key = :key"),
-        {"key": key}
-    ).fetchone()
-    
-    if not result:
-        raise HTTPException(status_code=404, detail="Setting not found")
-    
-    return {"key": key, "value": result[0]}
-
-
-@router.put("/settings/{key}")
-async def update_setting(
-    key: str,
-    value: str,
-    db: Session = Depends(get_db)
-):
-    """Update a station setting"""
-    result = db.execute(
-        text("""
-            INSERT INTO station_settings (setting_key, setting_value, updated_at)
-            VALUES (:key, :value, CURRENT_TIMESTAMP)
-            ON CONFLICT (setting_key) DO UPDATE SET 
-                setting_value = :value,
-                updated_at = CURRENT_TIMESTAMP
-        """),
-        {"key": key, "value": value}
-    )
-    db.commit()
-    
-    return {"key": key, "value": value}

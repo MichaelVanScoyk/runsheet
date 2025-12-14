@@ -1,6 +1,7 @@
 """
 NERIS Code Management Router
 Import, browse, validate, and update NERIS codes.
+Updated for TEXT-based codes - December 2025
 """
 
 import csv
@@ -29,10 +30,11 @@ class CodeUpdate(BaseModel):
 
 
 class IncidentUpdateRequest(BaseModel):
+    """Update incidents from old code to new code"""
     field: str  # 'incident_type', 'location_use', or 'action'
     old_code: str
     new_code: str
-    year: Optional[int] = None  # None = all years
+    year: Optional[int] = None
 
 
 # ============================================================================
@@ -48,7 +50,7 @@ def parse_csv_row(row: Dict[str, str], is_hierarchical: bool) -> Dict[str, Any]:
         v2 = row_lower.get('value_2', '').strip()
         v3 = row_lower.get('value_3', '').strip()
         
-        # Build composite value
+        # Build composite value with ": " separator (NERIS standard)
         if v3:
             value = f"{v1}: {v2}: {v3}"
         elif v2:
@@ -65,7 +67,7 @@ def parse_csv_row(row: Dict[str, str], is_hierarchical: bool) -> Dict[str, Any]:
             'description_1': row_lower.get('description_1', '').strip() or None,
             'description_2': row_lower.get('description_2', '').strip() or None,
             'description_3': row_lower.get('description_3', '').strip() or None,
-            'definition': row_lower.get('definition_1', '').strip() or None,
+            'definition': row_lower.get('definition_1', '').strip() or row_lower.get('definition', '').strip() or None,
             'source': row_lower.get('source', '').strip() or None,
         }
     else:
@@ -164,7 +166,6 @@ async def get_category_codes(
 async def get_category_grouped(category: str, db: Session = Depends(get_db)):
     """Get hierarchical codes grouped for dropdown display."""
     
-    # Check if hierarchical
     check = db.execute(text("""
         SELECT BOOL_OR(value_1 IS NOT NULL) FROM neris_codes WHERE category = :cat
     """), {"cat": category}).fetchone()
@@ -206,7 +207,7 @@ async def get_category_grouped(category: str, db: Session = Depends(get_db)):
 
 @router.post("/import")
 async def import_csv(
-    category: str = Query(..., description="Category (e.g., 'type_unit')"),
+    category: str = Query(..., description="Category (e.g., 'type_incident')"),
     mode: str = Query("merge", description="'merge' keeps existing, 'replace' deletes first"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
@@ -222,7 +223,6 @@ async def import_csv(
     if not rows:
         raise HTTPException(status_code=400, detail="CSV file is empty")
     
-    # Detect structure
     headers = [h.lower() if h else '' for h in reader.fieldnames]
     is_hierarchical = 'value_1' in headers
     
@@ -230,12 +230,10 @@ async def import_csv(
     rows_updated = 0
     rows_removed = 0
     
-    # Replace mode: delete existing first
     if mode == 'replace':
         result = db.execute(text("DELETE FROM neris_codes WHERE category = :cat"), {"cat": category})
         rows_removed = result.rowcount
     
-    # Process rows
     for row in rows:
         parsed = parse_csv_row(row, is_hierarchical)
         if not parsed['value']:
@@ -246,44 +244,50 @@ async def import_csv(
         """), {"cat": category, "val": parsed['value']}).fetchone()
         
         if existing:
-            db.execute(text("""
-                UPDATE neris_codes SET
-                    active = :active, value_1 = :value_1, value_2 = :value_2, value_3 = :value_3,
-                    description = :description, description_1 = :description_1,
-                    description_2 = :description_2, description_3 = :description_3,
-                    definition = :definition, source = :source,
-                    import_source = :import_source, imported_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE category = :category AND value = :value
-            """), {
-                "category": category,
-                "import_source": file.filename,
-                "value_1": parsed.get('value_1'),
-                "value_2": parsed.get('value_2'),
-                "value_3": parsed.get('value_3'),
-                "description": parsed.get('description'),
-                "description_1": parsed.get('description_1'),
-                "description_2": parsed.get('description_2'),
-                "description_3": parsed.get('description_3'),
-                "definition": parsed.get('definition'),
-                "source": parsed.get('source'),
-                **parsed
-            })
-            rows_updated += 1
+            if mode == 'merge':
+                db.execute(text("""
+                    UPDATE neris_codes SET
+                        active = :active,
+                        value_1 = :value_1,
+                        value_2 = :value_2,
+                        value_3 = :value_3,
+                        description = :description,
+                        description_1 = :description_1,
+                        description_2 = :description_2,
+                        description_3 = :description_3,
+                        definition = :definition,
+                        source = :source,
+                        imported_at = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :id
+                """), {
+                    "id": existing[0],
+                    "active": parsed['active'],
+                    "value_1": parsed.get('value_1'),
+                    "value_2": parsed.get('value_2'),
+                    "value_3": parsed.get('value_3'),
+                    "description": parsed.get('description'),
+                    "description_1": parsed.get('description_1'),
+                    "description_2": parsed.get('description_2'),
+                    "description_3": parsed.get('description_3'),
+                    "definition": parsed.get('definition'),
+                    "source": parsed.get('source'),
+                })
+                rows_updated += 1
         else:
             db.execute(text("""
-                INSERT INTO neris_codes (
-                    category, value, active, value_1, value_2, value_3,
-                    description, description_1, description_2, description_3,
-                    definition, source, import_source
-                ) VALUES (
-                    :category, :value, :active, :value_1, :value_2, :value_3,
-                    :description, :description_1, :description_2, :description_3,
-                    :definition, :source, :import_source
-                )
+                INSERT INTO neris_codes 
+                    (category, value, active, value_1, value_2, value_3,
+                     description, description_1, description_2, description_3,
+                     definition, source, imported_at)
+                VALUES 
+                    (:category, :value, :active, :value_1, :value_2, :value_3,
+                     :description, :description_1, :description_2, :description_3,
+                     :definition, :source, CURRENT_TIMESTAMP)
             """), {
                 "category": category,
-                "import_source": file.filename,
+                "value": parsed['value'],
+                "active": parsed['active'],
                 "value_1": parsed.get('value_1'),
                 "value_2": parsed.get('value_2'),
                 "value_3": parsed.get('value_3'),
@@ -293,49 +297,64 @@ async def import_csv(
                 "description_3": parsed.get('description_3'),
                 "definition": parsed.get('definition'),
                 "source": parsed.get('source'),
-                **parsed
             })
             rows_imported += 1
-    
-    # Record history
-    db.execute(text("""
-        INSERT INTO neris_import_history (category, rows_imported, rows_updated, rows_removed, source_filename, import_mode)
-        VALUES (:cat, :imported, :updated, :removed, :filename, :mode)
-    """), {
-        "cat": category, "imported": rows_imported, "updated": rows_updated,
-        "removed": rows_removed, "filename": file.filename, "mode": mode
-    })
     
     db.commit()
     
     return {
         "category": category,
+        "mode": mode,
         "rows_imported": rows_imported,
         "rows_updated": rows_updated,
-        "rows_removed": rows_removed
+        "rows_removed": rows_removed,
+        "is_hierarchical": is_hierarchical
     }
 
 
-@router.get("/import-history")
-async def get_import_history(category: Optional[str] = None, db: Session = Depends(get_db)):
-    """Get import history."""
+# ============================================================================
+# SEARCH ENDPOINTS
+# ============================================================================
+
+@router.get("/search")
+async def search_codes(
+    q: str = Query(..., min_length=2),
+    category: Optional[str] = None,
+    limit: int = Query(50, le=200),
+    db: Session = Depends(get_db)
+):
+    """Search codes across categories"""
+    
     query = """
-        SELECT id, category, rows_imported, rows_updated, rows_removed, 
-               source_filename, import_mode, imported_at
-        FROM neris_import_history
+        SELECT id, category, value, 
+               COALESCE(description, description_1, value) as description,
+               active
+        FROM neris_codes
+        WHERE (
+            value ILIKE :search OR
+            description ILIKE :search OR
+            description_1 ILIKE :search OR
+            description_2 ILIKE :search OR
+            description_3 ILIKE :search
+        )
     """
-    params = {}
+    params = {"search": f"%{q}%", "limit": limit}
+    
     if category:
-        query += " WHERE category = :cat"
-        params["cat"] = category
-    query += " ORDER BY imported_at DESC LIMIT 50"
+        query += " AND category = :category"
+        params["category"] = category
+    
+    query += " ORDER BY category, value LIMIT :limit"
     
     result = db.execute(text(query), params)
+    
     return [
         {
-            "id": r[0], "category": r[1], "rows_imported": r[2], "rows_updated": r[3],
-            "rows_removed": r[4], "source_filename": r[5], "import_mode": r[6],
-            "imported_at": r[7].isoformat() if r[7] else None
+            "id": r[0],
+            "category": r[1],
+            "value": r[2],
+            "description": r[3],
+            "active": r[4]
         }
         for r in result
     ]
@@ -343,6 +362,7 @@ async def get_import_history(category: Optional[str] = None, db: Session = Depen
 
 # ============================================================================
 # VALIDATION ENDPOINTS
+# Uses new TEXT column names: neris_incident_type_codes, neris_action_codes
 # ============================================================================
 
 @router.get("/validate")
@@ -352,7 +372,7 @@ async def validate_incidents(
 ):
     """
     Find incidents with codes that don't exist in current NERIS codes.
-    Returns incidents grouped by issue type.
+    Uses new TEXT-based columns.
     """
     
     issues = {
@@ -361,77 +381,94 @@ async def validate_incidents(
         "action": []
     }
     
-    # Build year filter
     year_filter = ""
     params = {}
     if year:
         year_filter = " AND year_prefix = :year"
         params["year"] = year
     
-    # Check incident types
+    # Check incident types (new column: neris_incident_type_codes TEXT[])
     result = db.execute(text(f"""
         SELECT i.id, i.internal_incident_number, i.year_prefix, 
                unnest(i.neris_incident_type_codes) as code
         FROM incidents i
         WHERE i.deleted_at IS NULL 
         AND i.neris_incident_type_codes IS NOT NULL
+        AND array_length(i.neris_incident_type_codes, 1) > 0
         {year_filter}
     """), params)
     
     for r in result:
         code = r[3]
-        valid = db.execute(text("""
-            SELECT 1 FROM neris_codes WHERE category = 'type_incident' AND value = :code AND active = true
-        """), {"code": code}).fetchone()
-        
-        if not valid:
-            issues["incident_type"].append({
-                "incident_id": r[0],
-                "incident_number": f"{r[2]}-{r[1]:04d}",
-                "code": code
-            })
+        if code:
+            valid = db.execute(text("""
+                SELECT 1 FROM neris_codes 
+                WHERE category = 'type_incident' AND value = :code AND active = true
+            """), {"code": code}).fetchone()
+            
+            if not valid:
+                issues["incident_type"].append({
+                    "incident_id": r[0],
+                    "incident_number": f"{r[2]}-{r[1]:04d}",
+                    "code": code
+                })
     
-    # Check location use
+    # Check location use (from JSONB: neris_location_use->>'use_type')
     result = db.execute(text(f"""
-        SELECT id, internal_incident_number, year_prefix, neris_location_use_code
+        SELECT id, internal_incident_number, year_prefix, 
+               neris_location_use->>'use_type' as use_type,
+               neris_location_use->>'use_subtype' as use_subtype
         FROM incidents
-        WHERE deleted_at IS NULL AND neris_location_use_code IS NOT NULL
+        WHERE deleted_at IS NULL 
+        AND neris_location_use IS NOT NULL
         {year_filter}
     """), params)
     
     for r in result:
-        valid = db.execute(text("""
-            SELECT 1 FROM neris_codes WHERE category = 'type_location_use' AND value = :code AND active = true
-        """), {"code": r[3]}).fetchone()
-        
-        if not valid:
-            issues["location_use"].append({
-                "incident_id": r[0],
-                "incident_number": f"{r[2]}-{r[1]:04d}",
-                "code": r[3]
-            })
+        if r[3]:  # use_type exists
+            # Build the combined value to check
+            if r[4]:  # has subtype
+                code = f"{r[3]}: {r[4]}"
+            else:
+                code = r[3]
+            
+            valid = db.execute(text("""
+                SELECT 1 FROM neris_codes 
+                WHERE category = 'type_location_use' AND value = :code AND active = true
+            """), {"code": code}).fetchone()
+            
+            if not valid:
+                issues["location_use"].append({
+                    "incident_id": r[0],
+                    "incident_number": f"{r[2]}-{r[1]:04d}",
+                    "code": code
+                })
     
-    # Check actions
+    # Check actions (new column: neris_action_codes TEXT[])
     result = db.execute(text(f"""
         SELECT i.id, i.internal_incident_number, i.year_prefix,
                unnest(i.neris_action_codes) as code
         FROM incidents i
-        WHERE i.deleted_at IS NULL AND i.neris_action_codes IS NOT NULL
+        WHERE i.deleted_at IS NULL 
+        AND i.neris_action_codes IS NOT NULL
+        AND array_length(i.neris_action_codes, 1) > 0
         {year_filter}
     """), params)
     
     for r in result:
         code = r[3]
-        valid = db.execute(text("""
-            SELECT 1 FROM neris_codes WHERE category = 'type_action_tactic' AND value = :code AND active = true
-        """), {"code": code}).fetchone()
-        
-        if not valid:
-            issues["action"].append({
-                "incident_id": r[0],
-                "incident_number": f"{r[2]}-{r[1]:04d}",
-                "code": code
-            })
+        if code:
+            valid = db.execute(text("""
+                SELECT 1 FROM neris_codes 
+                WHERE category = 'type_action_tactic' AND value = :code AND active = true
+            """), {"code": code}).fetchone()
+            
+            if not valid:
+                issues["action"].append({
+                    "incident_id": r[0],
+                    "incident_number": f"{r[2]}-{r[1]:04d}",
+                    "code": code
+                })
     
     return {
         "year": year,
@@ -442,7 +479,7 @@ async def validate_incidents(
 
 @router.get("/validate/apparatus")
 async def validate_apparatus(db: Session = Depends(get_db)):
-    """Find apparatus with invalid unit types."""
+    """Find apparatus with invalid NERIS unit types."""
     
     issues = []
     result = db.execute(text("""
@@ -452,7 +489,8 @@ async def validate_apparatus(db: Session = Depends(get_db)):
     
     for r in result:
         valid = db.execute(text("""
-            SELECT 1 FROM neris_codes WHERE category = 'type_unit' AND value = :code AND active = true
+            SELECT 1 FROM neris_codes 
+            WHERE category = 'type_unit' AND value = :code AND active = true
         """), {"code": r[3]}).fetchone()
         
         if not valid:
@@ -476,8 +514,8 @@ async def update_incident_codes(
     db: Session = Depends(get_db)
 ):
     """
-    Update incidents that use an old/invalid code to use a new code.
-    Can filter by year.
+    Update incidents from old code to new code.
+    Uses new TEXT-based columns.
     """
     
     year_filter = ""
@@ -488,7 +526,6 @@ async def update_incident_codes(
         params["year"] = request.year
     
     if request.field == "incident_type":
-        # Update array - replace old_code with new_code
         result = db.execute(text(f"""
             UPDATE incidents
             SET neris_incident_type_codes = array_replace(neris_incident_type_codes, :old_code, :new_code),
@@ -499,12 +536,18 @@ async def update_incident_codes(
         """), params)
         
     elif request.field == "location_use":
+        # More complex - need to update JSONB
+        # This updates use_type or combined value
         result = db.execute(text(f"""
             UPDATE incidents
-            SET neris_location_use_code = :new_code,
-                updated_at = CURRENT_TIMESTAMP
+            SET neris_location_use = jsonb_set(
+                neris_location_use,
+                '{{use_type}}',
+                to_jsonb(:new_code::text)
+            ),
+            updated_at = CURRENT_TIMESTAMP
             WHERE deleted_at IS NULL
-            AND neris_location_use_code = :old_code
+            AND neris_location_use->>'use_type' = :old_code
             {year_filter}
         """), params)
         
