@@ -110,7 +110,7 @@ function DynamicPersonnelList({ label, assignedIds, onUpdate, allPersonnel, getA
   );
 }
 
-// Simple API call to save all assignments at once
+// Save assignments using relative API path
 const saveAllAssignments = async (incidentId, assignments) => {
   const response = await fetch(`/api/incidents/${incidentId}/assignments`, {
     method: 'PUT',
@@ -160,8 +160,9 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
     problems_issues: '',
     officer_in_charge: '',
     completed_by: '',
+    // NERIS fields - TEXT codes
     neris_incident_type_codes: [],
-    neris_location_use: '',
+    neris_location_use: null,  // JSONB: {use_type, use_subtype}
     neris_action_codes: [],
     cad_units: [],
     created_at: null,
@@ -220,7 +221,8 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
       if (incident) {
         const toLocalDatetime = (isoString) => {
           if (!isoString) return '';
-          return new Date(isoString).toISOString().slice(0, 16);
+          const d = new Date(isoString);
+          return d.toISOString().slice(0, 16);
         };
 
         setFormData({
@@ -251,8 +253,9 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
           problems_issues: incident.problems_issues || '',
           officer_in_charge: incident.officer_in_charge || '',
           completed_by: incident.completed_by || '',
+          // NERIS fields from backend
           neris_incident_type_codes: incident.neris_incident_type_codes || [],
-          neris_location_use: incident.neris_location_use || '',
+          neris_location_use: incident.neris_location_use || null,
           neris_action_codes: incident.neris_action_codes || [],
           cad_units: incident.cad_units || [],
           created_at: incident.created_at,
@@ -347,26 +350,54 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
     }
   };
 
-  const handleNerisTypeToggle = (code) => {
+  // NERIS type toggle - uses TEXT value
+  const handleNerisTypeToggle = (value) => {
     setFormData(prev => {
       const types = prev.neris_incident_type_codes || [];
-      if (types.includes(code)) {
-        return { ...prev, neris_incident_type_codes: types.filter(t => t !== code) };
+      if (types.includes(value)) {
+        return { ...prev, neris_incident_type_codes: types.filter(t => t !== value) };
       } else if (types.length < 3) {
-        return { ...prev, neris_incident_type_codes: [...types, code] };
+        return { ...prev, neris_incident_type_codes: [...types, value] };
       }
       return prev;
     });
   };
 
-  const handleActionToggle = (code) => {
+  // NERIS action toggle - uses TEXT value
+  const handleActionToggle = (value) => {
     setFormData(prev => {
       const actions = prev.neris_action_codes || [];
-      if (actions.includes(code)) {
-        return { ...prev, neris_action_codes: actions.filter(a => a !== code) };
+      if (actions.includes(value)) {
+        return { ...prev, neris_action_codes: actions.filter(a => a !== value) };
       }
-      return { ...prev, neris_action_codes: [...actions, code] };
+      return { ...prev, neris_action_codes: [...actions, value] };
     });
+  };
+
+  // Location use change - builds JSONB from selection
+  const handleLocationUseChange = (selectedValue) => {
+    if (!selectedValue) {
+      handleChange('neris_location_use', null);
+      return;
+    }
+    // Find the selected item to get use_type and use_subtype
+    for (const [cat, data] of Object.entries(locationUses)) {
+      const found = data.subtypes?.find(s => s.value === selectedValue);
+      if (found) {
+        handleChange('neris_location_use', {
+          use_type: found.use_type,
+          use_subtype: found.use_subtype
+        });
+        return;
+      }
+    }
+  };
+
+  // Get current location use value for select
+  const getLocationUseValue = () => {
+    const lu = formData.neris_location_use;
+    if (!lu || !lu.use_type) return '';
+    return `${lu.use_type}: ${lu.use_subtype || ''}`.replace(/: $/, '');
   };
 
   const handleSave = async () => {
@@ -445,7 +476,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
   return (
     <div className="runsheet-form">
       <div className="runsheet-header">
-        <h2>Glen Moore Fire Company – Station 48</h2>
+        <h2>Glen Moore Fire Company — Station 48</h2>
         <h3>Incident Report</h3>
         {incident && (
           <span className={`badge badge-${formData.status?.toLowerCase()}`}>{formData.status}</span>
@@ -498,7 +529,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
             />
           </div>
           <div className="form-group">
-            <label>CAD Type</label>
+            <label>Event Type</label>
             <input type="text" value={formData.cad_event_type} onChange={(e) => handleChange('cad_event_type', e.target.value)} />
           </div>
           <div className="form-group">
@@ -511,14 +542,12 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
               <select value={formData.municipality_code} onChange={(e) => handleChange('municipality_code', e.target.value)}>
                 <option value="">--</option>
                 {municipalities.map(m => (
-                  <option key={m.code} value={m.code}>
-                    {m.display_name || m.name}{m.subdivision_type ? ` ${m.subdivision_type}` : ''}
-                  </option>
+                  <option key={m.code} value={m.code}>{m.display_name || m.name || m.code}</option>
                 ))}
               </select>
             </div>
             <div className="form-group">
-              <label>ESZ</label>
+              <label>ESZ/Box</label>
               <input type="text" value={formData.esz_box} onChange={(e) => handleChange('esz_box', e.target.value)} />
             </div>
           </div>
@@ -529,81 +558,77 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         </div>
 
         <div className="runsheet-col">
-          <div className="form-group"><label>Dispatched</label><input type="datetime-local" value={formData.time_dispatched} onChange={(e) => handleChange('time_dispatched', e.target.value)} /></div>
-          <div className="form-group"><label>Enroute</label><input type="datetime-local" value={formData.time_first_enroute} onChange={(e) => handleChange('time_first_enroute', e.target.value)} /></div>
-          <div className="form-group"><label>On Scene</label><input type="datetime-local" value={formData.time_first_on_scene} onChange={(e) => handleChange('time_first_on_scene', e.target.value)} /></div>
-          <div className="form-group"><label>Under Control</label><input type="datetime-local" value={formData.time_fire_under_control} onChange={(e) => handleChange('time_fire_under_control', e.target.value)} /></div>
-          <div className="form-group"><label>Cleared</label><input type="datetime-local" value={formData.time_last_cleared} onChange={(e) => handleChange('time_last_cleared', e.target.value)} /></div>
-          <div className="form-group"><label>In Service</label><input type="datetime-local" value={formData.time_in_service} onChange={(e) => handleChange('time_in_service', e.target.value)} /></div>
-        </div>
-      </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Caller Name</label>
+              <input type="text" value={formData.caller_name} onChange={(e) => handleChange('caller_name', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Caller Phone</label>
+              <input type="text" value={formData.caller_phone} onChange={(e) => handleChange('caller_phone', e.target.value)} />
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Weather</label>
+            <input type="text" value={formData.weather_conditions} onChange={(e) => handleChange('weather_conditions', e.target.value)} placeholder="Auto-filled from dispatch time" />
+          </div>
 
-      {/* Caller */}
-      <div className="runsheet-section">
-        <div className="form-row three-col">
-          <div className="form-group"><label>Caller</label><input type="text" value={formData.caller_name} onChange={(e) => handleChange('caller_name', e.target.value)} /></div>
-          <div className="form-group"><label>Phone</label><input type="text" value={formData.caller_phone} onChange={(e) => handleChange('caller_phone', e.target.value)} /></div>
-          <div className="form-group"><label>Weather</label><input type="text" value={formData.weather_conditions} onChange={(e) => handleChange('weather_conditions', e.target.value)} /></div>
-        </div>
-      </div>
-
-      {/* Narrative */}
-      <div className="runsheet-section">
-        <div className="form-group units-called-group">
-          <label>Units Called</label>
-          <div className="units-called-row">
-            <input 
-              type="text" 
-              value={formData.companies_called} 
-              onChange={(e) => handleChange('companies_called', e.target.value)}
-              placeholder="Station 48: ENG481, CHF48 | Mutual Aid: AMB891"
-            />
-            {formData.cad_units && formData.cad_units.length > 0 && (
-              <button 
-                type="button" 
-                className="auto-fill-btn"
-                onClick={populateUnitsCalled}
-                title="Auto-fill from CAD data"
-              >
-                Auto
-              </button>
-            )}
+          <div className="times-section">
+            <h4>Times</h4>
+            <div className="times-grid">
+              <div className="form-group">
+                <label>Dispatched</label>
+                <input type="datetime-local" value={formData.time_dispatched} onChange={(e) => handleChange('time_dispatched', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>1st Enroute</label>
+                <input type="datetime-local" value={formData.time_first_enroute} onChange={(e) => handleChange('time_first_enroute', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>1st On Scene</label>
+                <input type="datetime-local" value={formData.time_first_on_scene} onChange={(e) => handleChange('time_first_on_scene', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Fire Under Ctrl</label>
+                <input type="datetime-local" value={formData.time_fire_under_control} onChange={(e) => handleChange('time_fire_under_control', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Last Cleared</label>
+                <input type="datetime-local" value={formData.time_last_cleared} onChange={(e) => handleChange('time_last_cleared', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>In Service</label>
+                <input type="datetime-local" value={formData.time_in_service} onChange={(e) => handleChange('time_in_service', e.target.value)} />
+              </div>
+            </div>
           </div>
         </div>
-        <div className="form-group"><label>Situation Found</label><textarea rows={2} value={formData.situation_found} onChange={(e) => handleChange('situation_found', e.target.value)} /></div>
-        <div className="form-group"><label>Damage</label><textarea rows={2} value={formData.extent_of_damage} onChange={(e) => handleChange('extent_of_damage', e.target.value)} /></div>
-        <div className="form-group"><label>Services</label><textarea rows={2} value={formData.services_provided} onChange={(e) => handleChange('services_provided', e.target.value)} /></div>
-        <div className="form-group"><label>Narrative</label><textarea rows={4} value={formData.narrative} onChange={(e) => handleChange('narrative', e.target.value)} /></div>
-        <div className="form-group"><label>Problems</label><textarea rows={2} value={formData.problems_issues} onChange={(e) => handleChange('problems_issues', e.target.value)} /></div>
       </div>
 
-      {/* CAD Responding Units */}
+      {/* CAD Unit Times */}
       {formData.cad_units && formData.cad_units.length > 0 && (
-        <div className="runsheet-section">
-          <h4>CAD Responding Units</h4>
+        <div className="runsheet-section cad-units-section">
+          <h4>CAD Unit Times</h4>
           <table className="cad-units-table">
             <thead>
               <tr>
                 <th>Unit</th>
                 <th>Dispatched</th>
                 <th>Enroute</th>
-                <th>Arrived</th>
+                <th>On Scene</th>
+                <th>Available</th>
                 <th>Cleared</th>
-                <th>Type</th>
               </tr>
             </thead>
             <tbody>
               {formData.cad_units.map((unit, idx) => (
-                <tr key={idx} className={unit.is_mutual_aid ? 'mutual-aid-row' : 'our-unit-row'}>
-                  <td className="unit-id-cell">
-                    <strong>{unit.unit_id}</strong>
-                    {unit.is_mutual_aid && <span className="mutual-aid-badge">MA</span>}
-                  </td>
-                  <td>{unit.time_dispatched || '-'}</td>
-                  <td>{unit.time_enroute || '-'}</td>
-                  <td>{unit.time_arrived || '-'}</td>
-                  <td>{unit.time_cleared || '-'}</td>
-                  <td>{unit.is_mutual_aid ? 'Mutual Aid' : 'Station 48'}</td>
+                <tr key={idx} className={unit.is_mutual_aid ? 'mutual-aid' : ''}>
+                  <td>{unit.unit_id} {unit.is_mutual_aid && <span className="ma-badge">MA</span>}</td>
+                  <td>{unit.time_dispatched ? new Date(unit.time_dispatched).toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit'}) : '-'}</td>
+                  <td>{unit.time_enroute ? new Date(unit.time_enroute).toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit'}) : '-'}</td>
+                  <td>{unit.time_arrived ? new Date(unit.time_arrived).toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit'}) : '-'}</td>
+                  <td>{unit.time_available ? new Date(unit.time_available).toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit'}) : '-'}</td>
+                  <td>{unit.time_cleared ? new Date(unit.time_cleared).toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit'}) : '-'}</td>
                 </tr>
               ))}
             </tbody>
@@ -611,87 +636,54 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         </div>
       )}
 
-      {/* Personnel Grid - Trucks */}
-      <div className="runsheet-section">
-        <h4>Personnel Assignments</h4>
-        <table className="personnel-table">
-          <thead>
-            <tr>
-              <th className="slot-col">#</th>
-              {realTrucks.map(t => {
-                // Only apply dispatched styling if we have actual CAD unit data
-                const hasCadData = Array.isArray(formData.cad_units) && formData.cad_units.length > 0;
-                const wasDispatched = hasCadData && formData.cad_units.some(u => 
-                  u.unit_id === t.unit_designator && !u.is_mutual_aid
-                );
-                // No CAD data = manual incident = no dimming (empty class)
-                const headerClass = hasCadData 
-                  ? (wasDispatched ? 'truck-dispatched' : 'truck-not-dispatched')
-                  : '';
-                return (
-                  <th key={t.id} className={headerClass}>
-                    {t.unit_designator}
-                    {wasDispatched && <span className="dispatched-indicator">●</span>}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {[0, 1, 2, 3, 4, 5].map(slot => (
-              <tr key={slot}>
-                <td className="slot-col">{slot + 1}</td>
-                {realTrucks.map(t => {
-                  const val = assignments[t.unit_designator]?.[slot] || '';
-                  // Only dim cells if we have actual CAD data and this truck wasn't dispatched
-                  // No CAD data = manual incident = all trucks available (no dimming)
-                  const hasCadData = Array.isArray(formData.cad_units) && formData.cad_units.length > 0;
-                  const wasDispatched = hasCadData && formData.cad_units.some(u => 
-                    u.unit_id === t.unit_designator && !u.is_mutual_aid
-                  );
-                  const shouldDim = hasCadData && !wasDispatched;
+      {/* Personnel Assignments */}
+      <div className="runsheet-section personnel-section">
+        <h4>Personnel</h4>
+        <div className="personnel-grid">
+          {/* Real trucks with fixed slots */}
+          {realTrucks.map(app => (
+            <div key={app.id} className="apparatus-card">
+              <div className="apparatus-header">{app.name}</div>
+              <div className="crew-slots">
+                {['Driver', 'Officer', 'FF1', 'FF2', 'FF3', 'FF4'].slice(0, 2 + (app.ff_slots || 4)).map((role, idx) => {
+                  const currentValue = assignments[app.unit_designator]?.[idx] || '';
+                  const available = getAvailablePersonnel(app.unit_designator, idx);
                   return (
-                    <td key={t.id} className={shouldDim ? 'cell-dimmed' : ''}>
-                      <div className="slot-cell">
-                        <select value={val} onChange={(e) => handleAssignment(t.unit_designator, slot, e.target.value)}>
-                          <option value="">-</option>
-                          {getAvailablePersonnel(t.unit_designator, slot).map(p => (
-                            <option key={p.id} value={p.id}>{p.last_name}</option>
-                          ))}
-                        </select>
-                        {val && <button className="clear-btn" onClick={() => clearSlot(t.unit_designator, slot)}>×</button>}
-                      </div>
-                    </td>
+                    <div key={idx} className="crew-slot">
+                      <span className="slot-label">{role}</span>
+                      <select 
+                        value={currentValue} 
+                        onChange={(e) => handleAssignment(app.unit_designator, idx, e.target.value)}
+                      >
+                        <option value="">--</option>
+                        {available.map(p => (
+                          <option key={p.id} value={p.id}>{p.last_name}, {p.first_name}</option>
+                        ))}
+                      </select>
+                      {currentValue && (
+                        <button className="clear-btn" onClick={() => clearSlot(app.unit_designator, idx)}>×</button>
+                      )}
+                    </div>
                   );
                 })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+              </div>
+            </div>
+          ))}
 
-      {/* Virtual Units - Dynamic Growing Lists */}
-      {virtualUnits.length > 0 && (
-        <div className="runsheet-section">
-          <h4>Direct / Station</h4>
-          <div className="virtual-units-row">
-            {virtualUnits.map(t => (
-              <DynamicPersonnelList
-                key={t.id}
-                label={t.unit_designator}
-                assignedIds={assignments[t.unit_designator] || []}
-                onUpdate={(newList) => setAssignments(prev => ({ ...prev, [t.unit_designator]: newList }))}
-                allPersonnel={personnel}
-                getAssignedIds={getAssignedIds}
-              />
-            ))}
-          </div>
+          {/* Virtual units with dynamic lists */}
+          {virtualUnits.map(app => (
+            <DynamicPersonnelList
+              key={app.id}
+              label={app.name}
+              assignedIds={assignments[app.unit_designator] || []}
+              onUpdate={(newList) => setAssignments(prev => ({ ...prev, [app.unit_designator]: newList }))}
+              allPersonnel={personnel}
+              getAssignedIds={getAssignedIds}
+            />
+          ))}
         </div>
-      )}
 
-      {/* Officer */}
-      <div className="runsheet-section">
-        <div className="form-row">
+        <div className="form-row" style={{marginTop: '1rem'}}>
           <div className="form-group">
             <label>Officer in Charge</label>
             <select value={formData.officer_in_charge} onChange={(e) => handleChange('officer_in_charge', e.target.value ? parseInt(e.target.value) : '')}>
@@ -700,7 +692,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
             </select>
           </div>
           <div className="form-group">
-            <label>Completed By</label>
+            <label>Report Completed By</label>
             <select value={formData.completed_by} onChange={(e) => handleChange('completed_by', e.target.value ? parseInt(e.target.value) : '')}>
               <option value="">--</option>
               {personnel.map(p => <option key={p.id} value={p.id}>{p.last_name}, {p.first_name}</option>)}
@@ -709,58 +701,113 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         </div>
       </div>
 
-      {/* NERIS */}
+      {/* Narrative */}
       <div className="runsheet-section">
-        <button className="btn btn-secondary" onClick={() => setShowNeris(!showNeris)}>
+        <h4>Narrative</h4>
+        <div className="form-group">
+          <label>
+            Companies Called
+            <button type="button" className="btn-small" onClick={populateUnitsCalled}>Auto-fill</button>
+          </label>
+          <input type="text" value={formData.companies_called} onChange={(e) => handleChange('companies_called', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label>Situation Found</label>
+          <textarea rows={2} value={formData.situation_found} onChange={(e) => handleChange('situation_found', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label>Extent of Damage</label>
+          <textarea rows={2} value={formData.extent_of_damage} onChange={(e) => handleChange('extent_of_damage', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label>Services Provided</label>
+          <textarea rows={2} value={formData.services_provided} onChange={(e) => handleChange('services_provided', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label>Narrative</label>
+          <textarea rows={4} value={formData.narrative} onChange={(e) => handleChange('narrative', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label>Problems/Issues</label>
+          <textarea rows={2} value={formData.problems_issues} onChange={(e) => handleChange('problems_issues', e.target.value)} />
+        </div>
+      </div>
+
+      {/* NERIS Toggle */}
+      <div className="neris-toggle">
+        <button type="button" className="btn-toggle" onClick={() => setShowNeris(!showNeris)}>
           {showNeris ? '▲ Hide NERIS' : '▼ NERIS Fields'}
         </button>
       </div>
 
       {showNeris && (
         <div className="runsheet-section neris-section">
-          <h4>NERIS</h4>
+          <h4>NERIS Classification</h4>
+          
+          {/* Incident Types - max 3, uses TEXT value */}
           <div className="form-group">
-            <label>Incident Type (max 3)</label>
+            <label>Incident Type (max 3) {formData.neris_incident_type_codes?.length > 0 && <span className="count-badge">{formData.neris_incident_type_codes.length}/3</span>}</label>
             <div className="neris-checkboxes">
-              {Object.entries(incidentTypes).map(([cat, catData]) => (
-                <div key={cat} className="neris-category">
-                  <strong>{catData.description || cat}</strong>
-                  {catData.children && Object.entries(catData.children).map(([subcat, subData]) => (
-                    subData.codes?.map(t => (
-                      <label key={t.value} className="checkbox-label">
-                        <input type="checkbox" checked={formData.neris_incident_type_codes?.includes(t.value)} onChange={() => handleNerisTypeToggle(t.value)} disabled={!formData.neris_incident_type_codes?.includes(t.value) && formData.neris_incident_type_codes?.length >= 3} />
-                        {t.description}
-                      </label>
-                    ))
+              {Object.entries(incidentTypes).map(([category, data]) => (
+                <div key={category} className="neris-category">
+                  <strong>{data.description || category}</strong>
+                  {data.children && Object.entries(data.children).map(([subcat, subdata]) => (
+                    <div key={subcat} className="neris-subcategory">
+                      <em>{subdata.description || subcat}</em>
+                      {subdata.codes?.map(item => (
+                        <label key={item.value} className="checkbox-label">
+                          <input 
+                            type="checkbox" 
+                            checked={formData.neris_incident_type_codes?.includes(item.value)} 
+                            onChange={() => handleNerisTypeToggle(item.value)} 
+                            disabled={!formData.neris_incident_type_codes?.includes(item.value) && formData.neris_incident_type_codes?.length >= 3} 
+                          />
+                          {item.description}
+                        </label>
+                      ))}
+                    </div>
                   ))}
                 </div>
               ))}
             </div>
           </div>
+
+          {/* Location Use - dropdown builds JSONB */}
           <div className="form-group">
-            <label>Location Use</label>
-            <select value={formData.neris_location_use || ''} onChange={(e) => handleChange('neris_location_use', e.target.value || null)}>
+            <label>Property/Location Use</label>
+            <select value={getLocationUseValue()} onChange={(e) => handleLocationUseChange(e.target.value)}>
               <option value="">--</option>
-              {Object.entries(locationUses).map(([cat, catData]) => (
-                <optgroup key={cat} label={catData.description || cat}>
-                  {catData.subtypes?.map(u => <option key={u.value} value={u.value}>{u.description}</option>)}
+              {Object.entries(locationUses).map(([category, data]) => (
+                <optgroup key={category} label={data.description || category}>
+                  {data.subtypes?.map(item => (
+                    <option key={item.value} value={item.value}>{item.description}</option>
+                  ))}
                 </optgroup>
               ))}
             </select>
           </div>
+
+          {/* Actions Taken - uses TEXT value */}
           <div className="form-group">
-            <label>Actions Taken</label>
+            <label>Actions Taken {formData.neris_action_codes?.length > 0 && <span className="count-badge">{formData.neris_action_codes.length}</span>}</label>
             <div className="neris-checkboxes">
-              {Object.entries(actionsTaken).map(([cat, catData]) => (
-                <div key={cat} className="neris-category">
-                  <strong>{catData.description || cat}</strong>
-                  {catData.children && Object.entries(catData.children).map(([subcat, subData]) => (
-                    subData.codes?.map(a => (
-                      <label key={a.value} className="checkbox-label">
-                        <input type="checkbox" checked={formData.neris_action_codes?.includes(a.value)} onChange={() => handleActionToggle(a.value)} />
-                        {a.description}
-                      </label>
-                    ))
+              {Object.entries(actionsTaken).map(([category, data]) => (
+                <div key={category} className="neris-category">
+                  <strong>{data.description || category}</strong>
+                  {data.children && Object.entries(data.children).map(([subcat, subdata]) => (
+                    <div key={subcat} className="neris-subcategory">
+                      <em>{subdata.description || subcat}</em>
+                      {subdata.codes?.map(item => (
+                        <label key={item.value} className="checkbox-label">
+                          <input 
+                            type="checkbox" 
+                            checked={formData.neris_action_codes?.includes(item.value)} 
+                            onChange={() => handleActionToggle(item.value)} 
+                          />
+                          {item.description}
+                        </label>
+                      ))}
+                    </div>
                   ))}
                 </div>
               ))}

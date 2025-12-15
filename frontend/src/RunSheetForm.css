@@ -329,6 +329,29 @@
   accent-color: #e94560;
 }
 
+.neris-subcategory {
+  margin-left: 0.5rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid #0f3460;
+  margin-bottom: 0.5rem;
+}
+
+.neris-subcategory em {
+  display: block;
+  color: #888;
+  font-size: 0.7rem;
+  font-style: normal;
+  margin-bottom: 0.25rem;
+}
+
+.count-badge {
+  background: #0f3460;
+  padding: 0.1rem 0.4rem;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  margin-left: 0.5rem;
+}
+
 /* Buttons */
 .runsheet-actions {
   display: flex;
@@ -361,13 +384,13 @@
 
 .field-locked {
   background: #1a1a2e !important;
-  color: #888 !important;
+  color: #fff !important;  /* Normal text color, not dimmed */
   cursor: not-allowed;
-  border-color: #333 !important;
+  border-color: #0f3460 !important;
 }
 
 .field-locked:disabled {
-  opacity: 0.8;
+  opacity: 1;  /* Full opacity, no dimming */
 }
 
 .btn-primary {
