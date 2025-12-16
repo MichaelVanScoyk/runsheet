@@ -103,27 +103,29 @@ async def get_incident_types_by_category(db: Session = Depends(get_db)):
         
         if v1 not in grouped:
             grouped[v1] = {
-                "description": d1,
-                "children": {}
+                "description": d1
             }
         
-        if v2 and v2 not in grouped[v1]["children"]:
-            grouped[v1]["children"][v2] = {
-                "description": d2,
-                "codes": []
-            }
+        if v2:
+            if "children" not in grouped[v1]:
+                grouped[v1]["children"] = {}
+            if v2 not in grouped[v1]["children"]:
+                grouped[v1]["children"][v2] = {
+                    "description": d2,
+                    "codes": []
+                }
         
-        # Add the code
-        if v3:
-            grouped[v1]["children"][v2]["codes"].append({
-                "value": value,
-                "description": d3
-            })
-        elif v2:
-            grouped[v1]["children"][v2]["codes"].append({
-                "value": value,
-                "description": d2
-            })
+            # Add the code
+            if v3:
+                grouped[v1]["children"][v2]["codes"].append({
+                    "value": value,
+                    "description": d3
+                })
+            else:
+                grouped[v1]["children"][v2]["codes"].append({
+                    "value": value,
+                    "description": d2
+                })
     
     return grouped
 
@@ -255,21 +257,24 @@ async def get_actions_taken_by_category(db: Session = Depends(get_db)):
         value, v1, v2, v3, d1, d2, d3 = r
         
         if v1 not in grouped:
-            grouped[v1] = {"description": d1, "children": {}}
+            grouped[v1] = {"description": d1}
         
-        if v2 and v2 not in grouped[v1]["children"]:
-            grouped[v1]["children"][v2] = {"description": d2, "codes": []}
+        if v2:
+            if "children" not in grouped[v1]:
+                grouped[v1]["children"] = {}
+            if v2 not in grouped[v1]["children"]:
+                grouped[v1]["children"][v2] = {"description": d2, "codes": []}
         
-        if v3:
-            grouped[v1]["children"][v2]["codes"].append({
-                "value": value,
-                "description": d3
-            })
-        elif v2:
-            grouped[v1]["children"][v2]["codes"].append({
-                "value": value,
-                "description": d2
-            })
+            if v3:
+                grouped[v1]["children"][v2]["codes"].append({
+                    "value": value,
+                    "description": d3
+                })
+            else:
+                grouped[v1]["children"][v2]["codes"].append({
+                    "value": value,
+                    "description": d2
+                })
     
     return grouped
 

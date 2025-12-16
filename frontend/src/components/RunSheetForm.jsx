@@ -127,124 +127,163 @@ const getNerisDisplayName = (value) => {
   return parts[parts.length - 1].replace(/_/g, ' ');
 };
 
-// Collapsible NERIS picker (Option 3)
-function CollapsibleNerisPicker({ 
-  label, 
+// NERIS Modal Picker
+function NerisModal({ 
+  isOpen, 
+  onClose, 
+  title,
   data, 
   selected, 
   onToggle, 
   maxSelections = null,
-  dataType = 'children' // 'children' for incident/actions, 'subtypes' for location
+  dataType = 'children'
 }) {
   const [expandedCats, setExpandedCats] = useState({});
 
+  if (!isOpen) return null;
+
   const toggleCategory = (cat) => {
     setExpandedCats(prev => ({ ...prev, [cat]: !prev[cat] }));
-  };
-
-  const handleToggle = (value) => {
-    if (Array.isArray(selected)) {
-      // Multi-select mode
-      if (selected.includes(value)) {
-        onToggle(value);
-      } else if (!maxSelections || selected.length < maxSelections) {
-        onToggle(value);
-      }
-    } else {
-      // Single-select mode
-      onToggle(value);
-    }
   };
 
   const isMulti = Array.isArray(selected);
   const selectedArray = isMulti ? selected : (selected ? [selected] : []);
   const atLimit = maxSelections && selectedArray.length >= maxSelections;
 
+  const handleToggle = (value) => {
+    if (isMulti) {
+      if (selectedArray.includes(value)) {
+        onToggle(value);
+      } else if (!atLimit) {
+        onToggle(value);
+      }
+    } else {
+      onToggle(value);
+    }
+  };
+
   return (
-    <div className="neris-picker">
-      <label className="neris-picker-label">
-        {label}
-        {maxSelections && <span className="neris-limit"> (max {maxSelections})</span>}
-      </label>
+    <div className="neris-modal-overlay" onClick={onClose}>
+      <div className="neris-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="neris-modal-header">
+          <h3>{title}</h3>
+          <button className="neris-modal-close" onClick={onClose}>×</button>
+        </div>
 
-      {/* Selected chips */}
-      <div className="neris-selected-chips">
-        {selectedArray.length === 0 ? (
-          <span className="neris-no-selection">None selected</span>
-        ) : (
-          selectedArray.map(val => (
-            <Chip 
-              key={val} 
-              label={getNerisDisplayName(val)} 
-              onRemove={() => onToggle(val)} 
-            />
-          ))
-        )}
-        {maxSelections && (
-          <span className="neris-counter">{selectedArray.length}/{maxSelections}</span>
-        )}
-      </div>
+        <div className="neris-modal-selected">
+          {selectedArray.length === 0 ? (
+            <span className="neris-no-selection">None selected</span>
+          ) : (
+            selectedArray.map(val => (
+              <span key={val} className="neris-chip">
+                {getNerisDisplayName(val)}
+                <button className="chip-remove" onClick={() => onToggle(val)}>×</button>
+              </span>
+            ))
+          )}
+          {maxSelections && (
+            <span className="neris-counter">{selectedArray.length}/{maxSelections}</span>
+          )}
+        </div>
 
-      {/* Collapsible categories */}
-      <div className="neris-categories">
-        {Object.entries(data).map(([cat, catData]) => (
-          <div key={cat} className="neris-cat-wrapper">
-            <button
-              type="button"
-              className={`neris-cat-header ${expandedCats[cat] ? 'expanded' : ''}`}
-              onClick={() => toggleCategory(cat)}
-            >
-              <span>{catData.description || cat}</span>
-              <span className="neris-cat-arrow">{expandedCats[cat] ? '▲' : '▼'}</span>
-            </button>
+        <div className="neris-modal-content">
+          {Object.entries(data).map(([cat, catData]) => {
+            const isCategorySelectable = dataType === 'children' && !catData.children && !catData.codes;
+            const isSelected = isCategorySelectable && selectedArray.includes(cat);
+            const isDisabled = isCategorySelectable && !isSelected && atLimit;
             
-            {expandedCats[cat] && (
-              <div className="neris-cat-content">
-                {dataType === 'children' && catData.children && 
-                  Object.entries(catData.children).map(([subcat, subData]) => (
-                    <div key={subcat} className="neris-subcat">
-                      <div className="neris-subcat-label">{subData.description || subcat}</div>
-                      <div className="neris-items">
-                        {subData.codes?.map(item => {
-                          const isSelected = selectedArray.includes(item.value);
-                          const isDisabled = !isSelected && atLimit;
-                          return (
-                            <button
-                              key={item.value}
-                              type="button"
-                              className={`neris-item ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`}
-                              onClick={() => !isDisabled && handleToggle(item.value)}
-                              disabled={isDisabled}
-                            >
-                              {item.description}
-                            </button>
-                          );
-                        })}
+            return (
+            <div key={cat} className="neris-modal-category">
+              <button
+                type="button"
+                className={`neris-modal-cat-header ${expandedCats[cat] ? 'expanded' : ''} ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`}
+                onClick={() => {
+                  if (isCategorySelectable) {
+                    if (!isDisabled) handleToggle(cat);
+                  } else {
+                    toggleCategory(cat);
+                  }
+                }}
+                disabled={isDisabled}
+              >
+                <span>{catData.description || cat}</span>
+                {!isCategorySelectable && <span className="neris-cat-arrow">{expandedCats[cat] ? '▲' : '▼'}</span>}
+              </button>
+              
+              {expandedCats[cat] && (catData.children || catData.codes || catData.subtypes) && (
+                <div className="neris-modal-cat-content">
+                  {dataType === 'children' && catData.children && 
+                    Object.entries(catData.children).map(([subcat, subData]) => (
+                      <div key={subcat} className="neris-subcat">
+                        <div className="neris-subcat-label">{subData.description || subcat}</div>
+                        <div className="neris-items">
+                          {subData.codes?.map(item => {
+                            const isSelected = selectedArray.includes(item.value);
+                            const isDisabled = !isSelected && atLimit;
+                            return (
+                              <button
+                                key={item.value}
+                                type="button"
+                                className={`neris-item ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`}
+                                onClick={() => !isDisabled && handleToggle(item.value)}
+                                disabled={isDisabled}
+                              >
+                                {item.description}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
+                    ))
+                  }
+                  {dataType === 'children' && catData.codes && !catData.children && (
+                    <div className="neris-items">
+                      {catData.codes.map(item => {
+                        const isSelected = selectedArray.includes(item.value);
+                        const isDisabled = !isSelected && atLimit;
+                        return (
+                          <button
+                            key={item.value}
+                            type="button"
+                            className={`neris-item ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`}
+                            onClick={() => !isDisabled && handleToggle(item.value)}
+                            disabled={isDisabled}
+                          >
+                            {item.description}
+                          </button>
+                        );
+                      })}
                     </div>
-                  ))
-                }
-                {dataType === 'subtypes' && catData.subtypes && (
-                  <div className="neris-items">
-                    {catData.subtypes.map(item => {
-                      const isSelected = selectedArray.includes(item.value);
-                      return (
-                        <button
-                          key={item.value}
-                          type="button"
-                          className={`neris-item ${isSelected ? 'selected' : ''}`}
-                          onClick={() => handleToggle(item.value)}
-                        >
-                          {item.description}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+                  )}
+                  {dataType === 'subtypes' && catData.subtypes && (
+                    <div className="neris-items">
+                      {catData.subtypes.map(item => {
+                        const isSelected = selectedArray.includes(item.value);
+                        return (
+                          <button
+                            key={item.value}
+                            type="button"
+                            className={`neris-item ${isSelected ? 'selected' : ''}`}
+                            onClick={() => handleToggle(item.value)}
+                          >
+                            {item.description}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );})}
+        </div>
+
+        <div className="neris-modal-footer">
+          <span className="neris-modal-count">
+            {selectedArray.length} selected{maxSelections ? ` of ${maxSelections} max` : ''}
+          </span>
+          <button className="btn btn-primary" onClick={onClose}>Done</button>
+        </div>
       </div>
     </div>
   );
@@ -271,6 +310,9 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
   const [locationUses, setLocationUses] = useState({});
   const [actionsTaken, setActionsTaken] = useState({});
   const [showNeris, setShowNeris] = useState(false);
+  const [showIncidentTypeModal, setShowIncidentTypeModal] = useState(false);
+  const [showLocationUseModal, setShowLocationUseModal] = useState(false);
+  const [showActionsModal, setShowActionsModal] = useState(false);
   
   const [formData, setFormData] = useState({
     internal_incident_number: '',
@@ -301,7 +343,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
     officer_in_charge: '',
     completed_by: '',
     neris_incident_type_codes: [],
-    neris_location_use: '',
+    neris_location_use: null,
     neris_action_codes: [],
     cad_units: [],
     created_at: null,
@@ -392,7 +434,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
           officer_in_charge: incident.officer_in_charge || '',
           completed_by: incident.completed_by || '',
           neris_incident_type_codes: incident.neris_incident_type_codes || [],
-          neris_location_use: incident.neris_location_use || '',
+          neris_location_use: incident.neris_location_use || null,
           neris_action_codes: incident.neris_action_codes || [],
           cad_units: incident.cad_units || [],
           created_at: incident.created_at,
@@ -507,6 +549,43 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
       }
       return { ...prev, neris_action_codes: [...actions, code] };
     });
+  };
+
+  // Location use toggle - stores as object {use_type, use_subtype}
+  const handleLocationUseToggle = (valueString) => {
+    setFormData(prev => {
+      // If clicking same value, deselect
+      const currentValue = prev.neris_location_use;
+      const currentString = currentValue ? `${currentValue.use_type}: ${currentValue.use_subtype}` : null;
+      
+      if (currentString === valueString) {
+        return { ...prev, neris_location_use: null };
+      }
+      
+      // Find the item in locationUses to get use_type and use_subtype
+      for (const catData of Object.values(locationUses)) {
+        if (catData.subtypes) {
+          const item = catData.subtypes.find(s => s.value === valueString);
+          if (item) {
+            return { 
+              ...prev, 
+              neris_location_use: { 
+                use_type: item.use_type, 
+                use_subtype: item.use_subtype 
+              } 
+            };
+          }
+        }
+      }
+      return prev;
+    });
+  };
+
+  // Get value string from location use object for display/comparison
+  const getLocationUseValue = () => {
+    const loc = formData.neris_location_use;
+    if (!loc || !loc.use_type) return '';
+    return loc.use_subtype ? `${loc.use_type}: ${loc.use_subtype}` : loc.use_type;
   };
 
   const handleSave = async () => {
@@ -860,32 +939,88 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         <div className="runsheet-section neris-section">
           <h4>NERIS Classification</h4>
           
-          <CollapsibleNerisPicker
-            label="Incident Type"
-            data={incidentTypes}
-            selected={formData.neris_incident_type_codes || []}
-            onToggle={handleNerisTypeToggle}
-            maxSelections={3}
-            dataType="children"
-          />
+          <div className="neris-field">
+            <label className="neris-field-label">Incident Type (max 3)</label>
+            <button type="button" className="neris-picker-btn" onClick={() => setShowIncidentTypeModal(true)}>
+              <span>{formData.neris_incident_type_codes?.length > 0 ? `${formData.neris_incident_type_codes.length} selected` : 'Select incident type...'}</span>
+              <span className="neris-picker-arrow">▼</span>
+            </button>
+            {formData.neris_incident_type_codes?.length > 0 && (
+              <div className="neris-selected-chips">
+                {formData.neris_incident_type_codes.map(val => (
+                  <span key={val} className="neris-chip">
+                    {getNerisDisplayName(val)}
+                    <button className="chip-remove" type="button" onClick={() => handleNerisTypeToggle(val)}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
 
-          <CollapsibleNerisPicker
-            label="Location Use"
-            data={locationUses}
-            selected={formData.neris_location_use}
-            onToggle={(val) => handleChange('neris_location_use', formData.neris_location_use === val ? null : val)}
-            dataType="subtypes"
-          />
+          <div className="neris-field">
+            <label className="neris-field-label">Location Use</label>
+            <button type="button" className="neris-picker-btn" onClick={() => setShowLocationUseModal(true)}>
+              <span>{getLocationUseValue() ? getNerisDisplayName(getLocationUseValue()) : 'Select location use...'}</span>
+              <span className="neris-picker-arrow">▼</span>
+            </button>
+            {getLocationUseValue() && (
+              <div className="neris-selected-chips">
+                <span className="neris-chip">
+                  {getNerisDisplayName(getLocationUseValue())}
+                  <button className="chip-remove" type="button" onClick={() => handleChange('neris_location_use', null)}>×</button>
+                </span>
+              </div>
+            )}
+          </div>
 
-          <CollapsibleNerisPicker
-            label="Actions Taken"
-            data={actionsTaken}
-            selected={formData.neris_action_codes || []}
-            onToggle={handleActionToggle}
-            dataType="children"
-          />
+          <div className="neris-field">
+            <label className="neris-field-label">Actions Taken</label>
+            <button type="button" className="neris-picker-btn" onClick={() => setShowActionsModal(true)}>
+              <span>{formData.neris_action_codes?.length > 0 ? `${formData.neris_action_codes.length} selected` : 'Select actions taken...'}</span>
+              <span className="neris-picker-arrow">▼</span>
+            </button>
+            {formData.neris_action_codes?.length > 0 && (
+              <div className="neris-selected-chips">
+                {formData.neris_action_codes.map(val => (
+                  <span key={val} className="neris-chip">
+                    {getNerisDisplayName(val)}
+                    <button className="chip-remove" type="button" onClick={() => handleActionToggle(val)}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
+
+      <NerisModal
+        isOpen={showIncidentTypeModal}
+        onClose={() => setShowIncidentTypeModal(false)}
+        title="Select Incident Type"
+        data={incidentTypes}
+        selected={formData.neris_incident_type_codes || []}
+        onToggle={handleNerisTypeToggle}
+        maxSelections={3}
+        dataType="children"
+      />
+      <NerisModal
+        isOpen={showLocationUseModal}
+        onClose={() => setShowLocationUseModal(false)}
+        title="Select Location Use"
+        data={locationUses}
+        selected={getLocationUseValue()}
+        onToggle={handleLocationUseToggle}
+        dataType="subtypes"
+      />
+      <NerisModal
+        isOpen={showActionsModal}
+        onClose={() => setShowActionsModal(false)}
+        title="Select Actions Taken"
+        data={actionsTaken}
+        selected={formData.neris_action_codes || []}
+        onToggle={handleActionToggle}
+        dataType="children"
+      />
 
       {/* Buttons */}
       <div className="runsheet-actions">
