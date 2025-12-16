@@ -1,0 +1,21 @@
+         column_name         |        data_type         
+-----------------------------+--------------------------
+ neris_action_codes          | ARRAY
+ neris_additional_data       | jsonb
+ neris_aid_departments       | ARRAY
+ neris_aid_direction         | text
+ neris_aid_type              | text
+ neris_id                    | text
+ neris_incident_type_codes   | ARRAY
+ neris_incident_type_primary | ARRAY
+ neris_last_validated_at     | timestamp with time zone
+ neris_location              | jsonb
+ neris_location_use          | jsonb
+ neris_location_use_code     | character varying
+ neris_noaction_code         | text
+ neris_people_present        | boolean
+ neris_submission_id         | character varying
+ neris_submitted_at          | timestamp with time zone
+ neris_validation_errors     | jsonb
+(17 rows)
+

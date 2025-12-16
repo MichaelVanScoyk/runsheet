@@ -332,6 +332,21 @@ class Incident(Base):
     # People present at incident
     neris_people_present = Column(Boolean)   # Were people in the structure
     
+    # Displaced (required) - number displaced from residence
+    neris_displaced_number = Column(Integer, default=0)
+    
+    # Risk reduction module (required) - smoke/fire alarms, sprinklers
+    neris_risk_reduction = Column(JSONB)
+    
+    # Rescues/casualties (required - can be empty arrays)
+    neris_rescue_ff = Column(JSONB)          # Firefighter injuries/rescues
+    neris_rescue_nonff = Column(JSONB)       # Civilian injuries/rescues
+    neris_rescue_animal = Column(Integer)    # Animal rescue count
+    
+    # Narrative fields (recommended)
+    neris_narrative_impedance = Column(Text)  # Obstacles that impacted response
+    neris_narrative_outcome = Column(Text)    # Final disposition
+    
     # =========================================================================
     # NERIS SUBMISSION TRACKING
     # =========================================================================

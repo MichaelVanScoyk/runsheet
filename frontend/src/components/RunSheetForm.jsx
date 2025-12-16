@@ -345,6 +345,15 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
     neris_incident_type_codes: [],
     neris_location_use: null,
     neris_action_codes: [],
+    neris_noaction_code: null,
+    neris_people_present: null,
+    neris_aid_direction: null,
+    neris_aid_type: null,
+    neris_aid_departments: [],
+    neris_displaced_number: 0,
+    neris_risk_reduction: null,
+    neris_narrative_impedance: '',
+    neris_narrative_outcome: '',
     cad_units: [],
     created_at: null,
     updated_at: null,
@@ -436,6 +445,15 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
           neris_incident_type_codes: incident.neris_incident_type_codes || [],
           neris_location_use: incident.neris_location_use || null,
           neris_action_codes: incident.neris_action_codes || [],
+          neris_noaction_code: incident.neris_noaction_code || null,
+          neris_people_present: incident.neris_people_present,
+          neris_aid_direction: incident.neris_aid_direction || null,
+          neris_aid_type: incident.neris_aid_type || null,
+          neris_aid_departments: incident.neris_aid_departments || [],
+          neris_displaced_number: incident.neris_displaced_number ?? 0,
+          neris_risk_reduction: incident.neris_risk_reduction || null,
+          neris_narrative_impedance: incident.neris_narrative_impedance || '',
+          neris_narrative_outcome: incident.neris_narrative_outcome || '',
           cad_units: incident.cad_units || [],
           created_at: incident.created_at,
           updated_at: incident.updated_at,
@@ -989,6 +1007,174 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* No Action Reason - show only if no actions selected */}
+          {(!formData.neris_action_codes || formData.neris_action_codes.length === 0) && (
+            <div className="neris-field">
+              <label className="neris-field-label">No Action Reason</label>
+              <select 
+                value={formData.neris_noaction_code || ''} 
+                onChange={(e) => handleChange('neris_noaction_code', e.target.value || null)}
+                className="neris-select"
+              >
+                <option value="">Select if no actions taken...</option>
+                <option value="CANCELLED">Cancelled</option>
+                <option value="STAGED_STANDBY">Staged / Standby</option>
+                <option value="NO_INCIDENT_FOUND">No Incident Found</option>
+              </select>
+            </div>
+          )}
+
+          {/* People Present */}
+          <div className="neris-field">
+            <label className="neris-field-label">People Present at Incident?</label>
+            <div className="neris-radio-group">
+              <label className="neris-radio">
+                <input 
+                  type="radio" 
+                  name="people_present" 
+                  checked={formData.neris_people_present === true}
+                  onChange={() => handleChange('neris_people_present', true)}
+                />
+                Yes
+              </label>
+              <label className="neris-radio">
+                <input 
+                  type="radio" 
+                  name="people_present" 
+                  checked={formData.neris_people_present === false}
+                  onChange={() => handleChange('neris_people_present', false)}
+                />
+                No
+              </label>
+              <label className="neris-radio">
+                <input 
+                  type="radio" 
+                  name="people_present" 
+                  checked={formData.neris_people_present === null}
+                  onChange={() => handleChange('neris_people_present', null)}
+                />
+                Unknown
+              </label>
+            </div>
+          </div>
+
+          {/* Displaced Number */}
+          <div className="neris-field">
+            <label className="neris-field-label">People Displaced</label>
+            <input 
+              type="number" 
+              min="0" 
+              value={formData.neris_displaced_number ?? 0}
+              onChange={(e) => handleChange('neris_displaced_number', parseInt(e.target.value) || 0)}
+              className="neris-number-input"
+              placeholder="0"
+            />
+          </div>
+
+          {/* Mutual Aid */}
+          <div className="neris-field">
+            <label className="neris-field-label">Mutual Aid</label>
+            <div className="neris-row">
+              <select 
+                value={formData.neris_aid_direction || ''} 
+                onChange={(e) => handleChange('neris_aid_direction', e.target.value || null)}
+                className="neris-select"
+              >
+                <option value="">No mutual aid</option>
+                <option value="GIVEN">Aid Given</option>
+                <option value="RECEIVED">Aid Received</option>
+              </select>
+              {formData.neris_aid_direction && (
+                <select 
+                  value={formData.neris_aid_type || ''} 
+                  onChange={(e) => handleChange('neris_aid_type', e.target.value || null)}
+                  className="neris-select"
+                >
+                  <option value="">Select type...</option>
+                  <option value="SUPPORT_AID">Support Aid</option>
+                  <option value="IN_LIEU_AID">In Lieu Aid</option>
+                  <option value="ACTING_AS_AID">Acting As Aid</option>
+                </select>
+              )}
+            </div>
+          </div>
+
+          {/* Risk Reduction - Smoke Alarms, Fire Alarms, Sprinklers */}
+          <div className="neris-field">
+            <label className="neris-field-label">Risk Reduction (Structure Incidents)</label>
+            <div className="neris-risk-grid">
+              <div className="neris-risk-item">
+                <span>Smoke Alarm</span>
+                <select 
+                  value={formData.neris_risk_reduction?.smoke_alarm_presence || ''} 
+                  onChange={(e) => handleChange('neris_risk_reduction', {
+                    ...formData.neris_risk_reduction,
+                    smoke_alarm_presence: e.target.value || null
+                  })}
+                >
+                  <option value="">--</option>
+                  <option value="PRESENT">Present</option>
+                  <option value="NOT_PRESENT">Not Present</option>
+                  <option value="NOT_APPLICABLE">N/A</option>
+                </select>
+              </div>
+              <div className="neris-risk-item">
+                <span>Fire Alarm</span>
+                <select 
+                  value={formData.neris_risk_reduction?.fire_alarm_presence || ''} 
+                  onChange={(e) => handleChange('neris_risk_reduction', {
+                    ...formData.neris_risk_reduction,
+                    fire_alarm_presence: e.target.value || null
+                  })}
+                >
+                  <option value="">--</option>
+                  <option value="PRESENT">Present</option>
+                  <option value="NOT_PRESENT">Not Present</option>
+                  <option value="NOT_APPLICABLE">N/A</option>
+                </select>
+              </div>
+              <div className="neris-risk-item">
+                <span>Sprinklers</span>
+                <select 
+                  value={formData.neris_risk_reduction?.fire_suppression_presence || ''} 
+                  onChange={(e) => handleChange('neris_risk_reduction', {
+                    ...formData.neris_risk_reduction,
+                    fire_suppression_presence: e.target.value || null
+                  })}
+                >
+                  <option value="">--</option>
+                  <option value="PRESENT">Present</option>
+                  <option value="NOT_PRESENT">Not Present</option>
+                  <option value="NOT_APPLICABLE">N/A</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Narrative - Impedance */}
+          <div className="neris-field">
+            <label className="neris-field-label">Impedance (obstacles/issues that impacted response)</label>
+            <textarea 
+              value={formData.neris_narrative_impedance || ''}
+              onChange={(e) => handleChange('neris_narrative_impedance', e.target.value)}
+              rows={2}
+              placeholder="Traffic, access issues, weather, etc."
+              className="neris-textarea"
+            />
+          </div>
+
+          {/* Narrative - Outcome */}
+          <div className="neris-field">
+            <label className="neris-field-label">Outcome (final disposition)</label>
+            <textarea 
+              value={formData.neris_narrative_outcome || ''}
+              onChange={(e) => handleChange('neris_narrative_outcome', e.target.value)}
+              rows={2}
+              placeholder="Brief description of how incident was resolved"
+              className="neris-textarea"
+            />
           </div>
         </div>
       )}

@@ -169,6 +169,22 @@ class IncidentUpdate(BaseModel):
     # People present
     neris_people_present: Optional[bool] = None
     
+    # Displaced (required) - number of people displaced from residence
+    neris_displaced_number: Optional[int] = None
+    
+    # Risk reduction module (required) - smoke alarms, fire alarms, sprinklers
+    # Structure: {smoke_alarm_presence, fire_alarm_presence, fire_suppression_presence, ...}
+    neris_risk_reduction: Optional[Dict[str, Any]] = None
+    
+    # Rescues/casualties (required - can be empty arrays)
+    neris_rescue_ff: Optional[List[Dict[str, Any]]] = None      # Firefighter
+    neris_rescue_nonff: Optional[List[Dict[str, Any]]] = None   # Civilian
+    neris_rescue_animal: Optional[int] = None                   # Animal rescue count
+    
+    # Narrative fields (recommended)
+    neris_narrative_impedance: Optional[str] = None  # Obstacles that impacted incident
+    neris_narrative_outcome: Optional[str] = None    # Final disposition description
+    
     # Audit
     officer_in_charge: Optional[int] = None
     completed_by: Optional[int] = None
@@ -554,6 +570,13 @@ async def get_incident(
         "neris_aid_type": getattr(incident, 'neris_aid_type', None),
         "neris_aid_departments": getattr(incident, 'neris_aid_departments', None),
         "neris_people_present": getattr(incident, 'neris_people_present', None),
+        "neris_displaced_number": getattr(incident, 'neris_displaced_number', None),
+        "neris_risk_reduction": getattr(incident, 'neris_risk_reduction', None),
+        "neris_rescue_ff": getattr(incident, 'neris_rescue_ff', None),
+        "neris_rescue_nonff": getattr(incident, 'neris_rescue_nonff', None),
+        "neris_rescue_animal": getattr(incident, 'neris_rescue_animal', None),
+        "neris_narrative_impedance": getattr(incident, 'neris_narrative_impedance', None),
+        "neris_narrative_outcome": getattr(incident, 'neris_narrative_outcome', None),
         
         # Submission status
         "neris_submitted_at": _iso_or_none(incident, 'neris_submitted_at'),
