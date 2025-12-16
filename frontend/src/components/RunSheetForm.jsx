@@ -10,6 +10,9 @@ import {
   createIncident,
   updateIncident,
   closeIncident,
+  getNerisCategory,
+  getAidTypes,
+  getAidDirections,
 } from '../api';
 import './RunSheetForm.css';
 
@@ -120,12 +123,61 @@ function Chip({ label, onRemove }) {
   );
 }
 
+// InfoTooltip component - displays official NERIS descriptions on hover
+function InfoTooltip({ text }) {
+  if (!text) return null;
+  return (
+    <span className="info-tooltip-wrapper">
+      <span className="info-icon">ⓘ</span>
+      <span className="info-tooltip-text">{text}</span>
+    </span>
+  );
+}
+
+// Official NERIS descriptions from type files
+// Field-level tooltips for UI help text
+const NERIS_DESCRIPTIONS = {
+  fields: {
+    people_present: "Were people present at the incident location when units arrived?",
+    displaced: "Number of people displaced from their residence due to this incident",
+    mutual_aid: "Track mutual/automatic aid given to or received from other entities",
+    risk_reduction: "Record presence of fire safety systems. Required for NERIS structure fire reports.",
+    impedance: "Obstacles or issues that impacted response (traffic, access, weather, etc.)",
+    outcome: "Brief description of incident resolution",
+    fire_investigation: "Assessment of whether formal fire investigation is needed",
+    arrival_conditions: "Fire conditions observed upon arrival at scene",
+    structure_damage: "Extent of damage to structure",
+    patient_care: "Outcome of patient evaluation and care",
+    hazmat_disposition: "Final disposition of hazardous materials incident",
+    hazmat_evacuated: "Number of occupants/businesses evacuated during response",
+  },
+};
+
 // Helper to get display name from NERIS value
 const getNerisDisplayName = (value) => {
   if (!value) return '';
   const parts = value.split(': ');
   return parts[parts.length - 1].replace(/_/g, ' ');
 };
+
+// Helper functions to check incident type categories
+// Incident types are stored as strings like "FIRE: STRUCTURE_FIRE: ROOM_AND_CONTENTS_FIRE"
+const hasIncidentCategory = (types, category) => {
+  if (!types || !Array.isArray(types)) return false;
+  return types.some(t => t && t.startsWith(category));
+};
+
+const hasIncidentSubtype = (types, subtype) => {
+  if (!types || !Array.isArray(types)) return false;
+  return types.some(t => t && t.includes(subtype));
+};
+
+// Specific type checks for conditional modules
+const hasFireType = (types) => hasIncidentCategory(types, 'FIRE');
+const hasMedicalType = (types) => hasIncidentCategory(types, 'MEDICAL');
+const hasHazsitType = (types) => hasIncidentCategory(types, 'HAZSIT');
+const hasStructureFireType = (types) => hasIncidentSubtype(types, 'STRUCTURE_FIRE');
+const hasOutsideFireType = (types) => hasIncidentSubtype(types, 'OUTSIDE_FIRE');
 
 // NERIS Modal Picker
 function NerisModal({ 
@@ -314,6 +366,21 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
   const [showLocationUseModal, setShowLocationUseModal] = useState(false);
   const [showActionsModal, setShowActionsModal] = useState(false);
   
+  // NERIS conditional module dropdown options (loaded from database)
+  const [aidTypes, setAidTypes] = useState([]);
+  const [aidDirections, setAidDirections] = useState([]);
+  const [noActionCodes, setNoActionCodes] = useState([]);
+  const [rrPresenceCodes, setRrPresenceCodes] = useState([]);
+  const [fireInvestNeedCodes, setFireInvestNeedCodes] = useState([]);
+  const [fireConditionArrivalCodes, setFireConditionArrivalCodes] = useState([]);
+  const [fireBldgDamageCodes, setFireBldgDamageCodes] = useState([]);
+  const [fireCauseInCodes, setFireCauseInCodes] = useState([]);
+  const [fireCauseOutCodes, setFireCauseOutCodes] = useState([]);
+  const [roomCodes, setRoomCodes] = useState([]);
+  const [medicalPatientCareCodes, setMedicalPatientCareCodes] = useState([]);
+  const [hazardDispositionCodes, setHazardDispositionCodes] = useState([]);
+  const [hazardDotCodes, setHazardDotCodes] = useState([]);
+  
   const [formData, setFormData] = useState({
     internal_incident_number: '',
     cad_event_number: '',
@@ -354,6 +421,21 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
     neris_risk_reduction: null,
     neris_narrative_impedance: '',
     neris_narrative_outcome: '',
+    // Fire module fields
+    neris_fire_investigation_need: null,
+    neris_fire_investigation_type: [],
+    neris_fire_arrival_conditions: null,
+    neris_fire_structure_damage: null,
+    neris_fire_structure_floor: null,
+    neris_fire_structure_room: null,
+    neris_fire_structure_cause: null,
+    neris_fire_outside_cause: null,
+    // Medical module fields
+    neris_medical_patient_care: null,
+    // Hazmat module fields
+    neris_hazmat_disposition: null,
+    neris_hazmat_evacuated: 0,
+    neris_hazmat_chemicals: [], // Array of {dot_class, name, release_occurred}
     cad_units: [],
     created_at: null,
     updated_at: null,
@@ -377,7 +459,21 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         incidentTypesRes,
         locationUsesRes,
         actionsTakenRes,
-        suggestedNumberRes
+        suggestedNumberRes,
+        // Conditional module codes from database
+        aidTypesRes,
+        aidDirectionsRes,
+        noActionRes,
+        rrPresenceRes,
+        fireInvestNeedRes,
+        fireConditionRes,
+        fireDamageRes,
+        fireCauseInRes,
+        fireCauseOutRes,
+        roomRes,
+        medicalCareRes,
+        hazardDispRes,
+        hazardDotRes,
       ] = await Promise.all([
         getApparatus(),
         getPersonnel(),
@@ -385,7 +481,21 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         getIncidentTypesByCategory(),
         getLocationUsesByCategory(),
         getActionsTakenByCategory(),
-        suggestIncidentNumber()
+        suggestIncidentNumber(),
+        // Load conditional module codes from neris_codes table
+        getAidTypes(),
+        getAidDirections(),
+        getNerisCategory('type_noaction'),
+        getNerisCategory('type_rr_presence'),
+        getNerisCategory('type_fire_invest_need'),
+        getNerisCategory('type_fire_condition_arrival'),
+        getNerisCategory('type_fire_bldg_damage'),
+        getNerisCategory('type_fire_cause_in'),
+        getNerisCategory('type_fire_cause_out'),
+        getNerisCategory('type_room'),
+        getNerisCategory('type_medical_patient_care'),
+        getNerisCategory('type_hazard_disposition'),
+        getNerisCategory('type_hazard_dot'),
       ]);
 
       const activeApparatus = apparatusRes.data.filter(a => a.active);
@@ -395,6 +505,21 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
       setIncidentTypes(incidentTypesRes.data);
       setLocationUses(locationUsesRes.data);
       setActionsTaken(actionsTakenRes.data);
+      
+      // Set conditional module dropdown options
+      setAidTypes(aidTypesRes.data || []);
+      setAidDirections(aidDirectionsRes.data || []);
+      setNoActionCodes(noActionRes.data || []);
+      setRrPresenceCodes(rrPresenceRes.data || []);
+      setFireInvestNeedCodes(fireInvestNeedRes.data || []);
+      setFireConditionArrivalCodes(fireConditionRes.data || []);
+      setFireBldgDamageCodes(fireDamageRes.data || []);
+      setFireCauseInCodes(fireCauseInRes.data || []);
+      setFireCauseOutCodes(fireCauseOutRes.data || []);
+      setRoomCodes(roomRes.data || []);
+      setMedicalPatientCareCodes(medicalCareRes.data || []);
+      setHazardDispositionCodes(hazardDispRes.data || []);
+      setHazardDotCodes(hazardDotRes.data || []);
 
       // Initialize empty assignments for all apparatus
       // Real trucks: 6 fixed slots
@@ -454,6 +579,21 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
           neris_risk_reduction: incident.neris_risk_reduction || null,
           neris_narrative_impedance: incident.neris_narrative_impedance || '',
           neris_narrative_outcome: incident.neris_narrative_outcome || '',
+          // Fire module fields
+          neris_fire_investigation_need: incident.neris_fire_investigation_need || null,
+          neris_fire_investigation_type: incident.neris_fire_investigation_type || [],
+          neris_fire_arrival_conditions: incident.neris_fire_arrival_conditions || null,
+          neris_fire_structure_damage: incident.neris_fire_structure_damage || null,
+          neris_fire_structure_floor: incident.neris_fire_structure_floor || null,
+          neris_fire_structure_room: incident.neris_fire_structure_room || null,
+          neris_fire_structure_cause: incident.neris_fire_structure_cause || null,
+          neris_fire_outside_cause: incident.neris_fire_outside_cause || null,
+          // Medical module fields
+          neris_medical_patient_care: incident.neris_medical_patient_care || null,
+          // Hazmat module fields
+          neris_hazmat_disposition: incident.neris_hazmat_disposition || null,
+          neris_hazmat_evacuated: incident.neris_hazmat_evacuated ?? 0,
+          neris_hazmat_chemicals: incident.neris_hazmat_chemicals || [],
           cad_units: incident.cad_units || [],
           created_at: incident.created_at,
           updated_at: incident.updated_at,
@@ -1019,16 +1159,21 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
                 className="neris-select"
               >
                 <option value="">Select if no actions taken...</option>
-                <option value="CANCELLED">Cancelled</option>
-                <option value="STAGED_STANDBY">Staged / Standby</option>
-                <option value="NO_INCIDENT_FOUND">No Incident Found</option>
+                {noActionCodes.map(code => (
+                  <option key={code.value} value={code.value}>
+                    {code.description || code.display_text || code.value}
+                  </option>
+                ))}
               </select>
             </div>
           )}
 
           {/* People Present */}
           <div className="neris-field">
-            <label className="neris-field-label">People Present at Incident?</label>
+            <label className="neris-field-label">
+              People Present at Incident?
+              <InfoTooltip text={NERIS_DESCRIPTIONS.fields.people_present} />
+            </label>
             <div className="neris-radio-group">
               <label className="neris-radio">
                 <input 
@@ -1062,7 +1207,10 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
 
           {/* Displaced Number */}
           <div className="neris-field">
-            <label className="neris-field-label">People Displaced</label>
+            <label className="neris-field-label">
+              People Displaced
+              <InfoTooltip text={NERIS_DESCRIPTIONS.fields.displaced} />
+            </label>
             <input 
               type="number" 
               min="0" 
@@ -1075,35 +1223,55 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
 
           {/* Mutual Aid */}
           <div className="neris-field">
-            <label className="neris-field-label">Mutual Aid</label>
+            <label className="neris-field-label">
+              Mutual Aid
+              <InfoTooltip text={NERIS_DESCRIPTIONS.fields.mutual_aid} />
+            </label>
             <div className="neris-row">
-              <select 
-                value={formData.neris_aid_direction || ''} 
-                onChange={(e) => handleChange('neris_aid_direction', e.target.value || null)}
-                className="neris-select"
-              >
-                <option value="">No mutual aid</option>
-                <option value="GIVEN">Aid Given</option>
-                <option value="RECEIVED">Aid Received</option>
-              </select>
-              {formData.neris_aid_direction && (
+              <div className="neris-select-with-tooltip">
                 <select 
-                  value={formData.neris_aid_type || ''} 
-                  onChange={(e) => handleChange('neris_aid_type', e.target.value || null)}
+                  value={formData.neris_aid_direction || ''} 
+                  onChange={(e) => handleChange('neris_aid_direction', e.target.value || null)}
                   className="neris-select"
                 >
-                  <option value="">Select type...</option>
-                  <option value="SUPPORT_AID">Support Aid</option>
-                  <option value="IN_LIEU_AID">In Lieu Aid</option>
-                  <option value="ACTING_AS_AID">Acting As Aid</option>
+                  <option value="">No mutual aid</option>
+                  {aidDirections.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.value}
+                    </option>
+                  ))}
                 </select>
+              </div>
+              {formData.neris_aid_direction && (
+                <div className="neris-select-with-tooltip">
+                  <select 
+                    value={formData.neris_aid_type || ''} 
+                    onChange={(e) => handleChange('neris_aid_type', e.target.value || null)}
+                    className="neris-select"
+                  >
+                    <option value="">Select type...</option>
+                    {aidTypes.map(code => (
+                      <option key={code.value} value={code.value}>
+                        {code.description || code.value}
+                      </option>
+                    ))}
+                  </select>
+                  {formData.neris_aid_type && (
+                    <span className="neris-aid-description">
+                      {aidTypes.find(c => c.value === formData.neris_aid_type)?.description || ''}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>
 
           {/* Risk Reduction - Smoke Alarms, Fire Alarms, Sprinklers */}
           <div className="neris-field">
-            <label className="neris-field-label">Risk Reduction (Structure Incidents)</label>
+            <label className="neris-field-label">
+              Risk Reduction (Structure Incidents)
+              <InfoTooltip text={NERIS_DESCRIPTIONS.fields.risk_reduction} />
+            </label>
             <div className="neris-risk-grid">
               <div className="neris-risk-item">
                 <span>Smoke Alarm</span>
@@ -1115,9 +1283,11 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
                   })}
                 >
                   <option value="">--</option>
-                  <option value="PRESENT">Present</option>
-                  <option value="NOT_PRESENT">Not Present</option>
-                  <option value="NOT_APPLICABLE">N/A</option>
+                  {rrPresenceCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="neris-risk-item">
@@ -1130,9 +1300,11 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
                   })}
                 >
                   <option value="">--</option>
-                  <option value="PRESENT">Present</option>
-                  <option value="NOT_PRESENT">Not Present</option>
-                  <option value="NOT_APPLICABLE">N/A</option>
+                  {rrPresenceCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="neris-risk-item">
@@ -1145,9 +1317,11 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
                   })}
                 >
                   <option value="">--</option>
-                  <option value="PRESENT">Present</option>
-                  <option value="NOT_PRESENT">Not Present</option>
-                  <option value="NOT_APPLICABLE">N/A</option>
+                  {rrPresenceCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -1155,7 +1329,10 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
 
           {/* Narrative - Impedance */}
           <div className="neris-field">
-            <label className="neris-field-label">Impedance (obstacles/issues that impacted response)</label>
+            <label className="neris-field-label">
+              Impedance (obstacles/issues that impacted response)
+              <InfoTooltip text={NERIS_DESCRIPTIONS.fields.impedance} />
+            </label>
             <textarea 
               value={formData.neris_narrative_impedance || ''}
               onChange={(e) => handleChange('neris_narrative_impedance', e.target.value)}
@@ -1167,7 +1344,10 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
 
           {/* Narrative - Outcome */}
           <div className="neris-field">
-            <label className="neris-field-label">Outcome (final disposition)</label>
+            <label className="neris-field-label">
+              Outcome (final disposition)
+              <InfoTooltip text={NERIS_DESCRIPTIONS.fields.outcome} />
+            </label>
             <textarea 
               value={formData.neris_narrative_outcome || ''}
               onChange={(e) => handleChange('neris_narrative_outcome', e.target.value)}
@@ -1176,6 +1356,286 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
               className="neris-textarea"
             />
           </div>
+
+          {/* ============================================
+              CONDITIONAL MODULE: FIRE
+              Shown when incident type starts with FIRE:
+              ============================================ */}
+          {hasFireType(formData.neris_incident_type_codes) && (
+            <div className="neris-module neris-module-fire">
+              <h5 className="neris-module-title">Fire Module</h5>
+              
+              {/* Fire Investigation Need - Required for all fire types */}
+              <div className="neris-field">
+                <label className="neris-field-label">
+                  Fire Investigation Needed? <span className="neris-required">*</span>
+                  <InfoTooltip text={NERIS_DESCRIPTIONS.fields.fire_investigation} />
+                </label>
+                <select 
+                  value={formData.neris_fire_investigation_need || ''} 
+                  onChange={(e) => handleChange('neris_fire_investigation_need', e.target.value || null)}
+                  className="neris-select"
+                >
+                  <option value="">Select...</option>
+                  {fireInvestNeedCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Structure Fire Sub-module */}
+              {hasStructureFireType(formData.neris_incident_type_codes) && (
+                <>
+                  <div className="neris-field">
+                    <label className="neris-field-label">
+                      Arrival Conditions <span className="neris-required">*</span>
+                      <InfoTooltip text={NERIS_DESCRIPTIONS.fields.arrival_conditions} />
+                    </label>
+                    <select 
+                      value={formData.neris_fire_arrival_conditions || ''} 
+                      onChange={(e) => handleChange('neris_fire_arrival_conditions', e.target.value || null)}
+                      className="neris-select"
+                    >
+                      <option value="">Select...</option>
+                      {fireConditionArrivalCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="neris-field">
+                    <label className="neris-field-label">
+                      Structure Damage <span className="neris-required">*</span>
+                      <InfoTooltip text={NERIS_DESCRIPTIONS.fields.structure_damage} />
+                    </label>
+                    <select 
+                      value={formData.neris_fire_structure_damage || ''} 
+                      onChange={(e) => handleChange('neris_fire_structure_damage', e.target.value || null)}
+                      className="neris-select"
+                    >
+                      <option value="">Select...</option>
+                      {fireBldgDamageCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="neris-row">
+                    <div className="neris-field" style={{flex: 1}}>
+                      <label className="neris-field-label">Floor of Origin</label>
+                      <input 
+                        type="number" 
+                        min="0" 
+                        value={formData.neris_fire_structure_floor ?? ''}
+                        onChange={(e) => handleChange('neris_fire_structure_floor', e.target.value ? parseInt(e.target.value) : null)}
+                        className="neris-number-input"
+                        placeholder="Floor #"
+                        style={{width: '100%'}}
+                      />
+                    </div>
+                    <div className="neris-field" style={{flex: 2}}>
+                      <label className="neris-field-label">Room of Origin</label>
+                      <select 
+                        value={formData.neris_fire_structure_room || ''} 
+                        onChange={(e) => handleChange('neris_fire_structure_room', e.target.value || null)}
+                        className="neris-select"
+                        style={{width: '100%'}}
+                      >
+                        <option value="">Select...</option>
+                        {roomCodes.map(code => (
+                          <option key={code.value} value={code.value}>
+                            {code.description || code.display_text || code.value}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="neris-field">
+                    <label className="neris-field-label">Fire Cause (Structure)</label>
+                    <select 
+                      value={formData.neris_fire_structure_cause || ''} 
+                      onChange={(e) => handleChange('neris_fire_structure_cause', e.target.value || null)}
+                      className="neris-select"
+                    >
+                      <option value="">Select...</option>
+                      {fireCauseInCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {/* Outside Fire Sub-module */}
+              {hasOutsideFireType(formData.neris_incident_type_codes) && (
+                <div className="neris-field">
+                  <label className="neris-field-label">Fire Cause (Outside) <span className="neris-required">*</span></label>
+                  <select 
+                    value={formData.neris_fire_outside_cause || ''} 
+                    onChange={(e) => handleChange('neris_fire_outside_cause', e.target.value || null)}
+                    className="neris-select"
+                  >
+                    <option value="">Select...</option>
+                    {fireCauseOutCodes.map(code => (
+                      <option key={code.value} value={code.value}>
+                        {code.description || code.display_text || code.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ============================================
+              CONDITIONAL MODULE: MEDICAL
+              Shown when incident type starts with MEDICAL:
+              ============================================ */}
+          {hasMedicalType(formData.neris_incident_type_codes) && (
+            <div className="neris-module neris-module-medical">
+              <h5 className="neris-module-title">Medical Module</h5>
+              
+              <div className="neris-field">
+                <label className="neris-field-label">
+                  Patient Evaluation/Care <span className="neris-required">*</span>
+                  <InfoTooltip text={NERIS_DESCRIPTIONS.fields.patient_care} />
+                </label>
+                <select 
+                  value={formData.neris_medical_patient_care || ''} 
+                  onChange={(e) => handleChange('neris_medical_patient_care', e.target.value || null)}
+                  className="neris-select"
+                >
+                  <option value="">Select...</option>
+                  {medicalPatientCareCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* ============================================
+              CONDITIONAL MODULE: HAZMAT
+              Shown when incident type starts with HAZSIT:
+              ============================================ */}
+          {hasHazsitType(formData.neris_incident_type_codes) && (
+            <div className="neris-module neris-module-hazmat">
+              <h5 className="neris-module-title">Hazmat Module</h5>
+              
+              <div className="neris-field">
+                <label className="neris-field-label">
+                  Hazmat Disposition <span className="neris-required">*</span>
+                  <InfoTooltip text={NERIS_DESCRIPTIONS.fields.hazmat_disposition} />
+                </label>
+                <select 
+                  value={formData.neris_hazmat_disposition || ''} 
+                  onChange={(e) => handleChange('neris_hazmat_disposition', e.target.value || null)}
+                  className="neris-select"
+                >
+                  <option value="">Select...</option>
+                  {hazardDispositionCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="neris-field">
+                <label className="neris-field-label">
+                  People Evacuated <span className="neris-required">*</span>
+                  <InfoTooltip text={NERIS_DESCRIPTIONS.fields.hazmat_evacuated} />
+                </label>
+                <input 
+                  type="number" 
+                  min="0" 
+                  value={formData.neris_hazmat_evacuated ?? 0}
+                  onChange={(e) => handleChange('neris_hazmat_evacuated', parseInt(e.target.value) || 0)}
+                  className="neris-number-input"
+                  placeholder="0"
+                />
+              </div>
+
+              {/* Chemical Entry */}
+              <div className="neris-field">
+                <label className="neris-field-label">Chemicals Involved <span className="neris-required">*</span></label>
+                <div className="neris-chemicals-list">
+                  {(formData.neris_hazmat_chemicals || []).map((chem, idx) => (
+                    <div key={idx} className="neris-chemical-entry">
+                      <select 
+                        value={chem.dot_class || ''} 
+                        onChange={(e) => {
+                          const updated = [...formData.neris_hazmat_chemicals];
+                          updated[idx] = { ...updated[idx], dot_class: e.target.value || null };
+                          handleChange('neris_hazmat_chemicals', updated);
+                        }}
+                        className="neris-select"
+                      >
+                        <option value="">DOT Class...</option>
+                        {hazardDotCodes.map(code => (
+                          <option key={code.value} value={code.value}>
+                            {code.description || code.display_text || code.value}
+                          </option>
+                        ))}
+                      </select>
+                      <input 
+                        type="text"
+                        value={chem.name || ''}
+                        onChange={(e) => {
+                          const updated = [...formData.neris_hazmat_chemicals];
+                          updated[idx] = { ...updated[idx], name: e.target.value };
+                          handleChange('neris_hazmat_chemicals', updated);
+                        }}
+                        placeholder="Chemical name..."
+                        className="neris-text-input"
+                      />
+                      <label className="neris-checkbox-inline">
+                        <input 
+                          type="checkbox"
+                          checked={chem.release_occurred || false}
+                          onChange={(e) => {
+                            const updated = [...formData.neris_hazmat_chemicals];
+                            updated[idx] = { ...updated[idx], release_occurred: e.target.checked };
+                            handleChange('neris_hazmat_chemicals', updated);
+                          }}
+                        />
+                        Released
+                      </label>
+                      <button 
+                        type="button" 
+                        className="clear-btn"
+                        onClick={() => {
+                          const updated = formData.neris_hazmat_chemicals.filter((_, i) => i !== idx);
+                          handleChange('neris_hazmat_chemicals', updated);
+                        }}
+                      >×</button>
+                    </div>
+                  ))}
+                  <button 
+                    type="button" 
+                    className="neris-add-btn"
+                    onClick={() => {
+                      const updated = [...(formData.neris_hazmat_chemicals || []), { dot_class: null, name: '', release_occurred: false }];
+                      handleChange('neris_hazmat_chemicals', updated);
+                    }}
+                  >
+                    + Add Chemical
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

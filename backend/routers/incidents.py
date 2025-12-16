@@ -185,6 +185,24 @@ class IncidentUpdate(BaseModel):
     neris_narrative_impedance: Optional[str] = None  # Obstacles that impacted incident
     neris_narrative_outcome: Optional[str] = None    # Final disposition description
     
+    # NERIS Conditional Module: Fire (shown when incident type starts with FIRE)
+    neris_fire_investigation_need: Optional[str] = None        # YES/NO/NOT_EVALUATED/etc
+    neris_fire_investigation_type: Optional[List[str]] = None  # Types of investigation
+    neris_fire_arrival_conditions: Optional[str] = None        # Structure fire arrival conditions
+    neris_fire_structure_damage: Optional[str] = None          # NO_DAMAGE/MINOR/MODERATE/MAJOR
+    neris_fire_structure_floor: Optional[int] = None           # Floor of origin
+    neris_fire_structure_room: Optional[str] = None            # Room of origin code
+    neris_fire_structure_cause: Optional[str] = None           # Structure fire cause
+    neris_fire_outside_cause: Optional[str] = None             # Outside fire cause
+    
+    # NERIS Conditional Module: Medical (shown when incident type starts with MEDICAL)
+    neris_medical_patient_care: Optional[str] = None           # Patient evaluation/care outcome
+    
+    # NERIS Conditional Module: Hazmat (shown when incident type starts with HAZSIT)
+    neris_hazmat_disposition: Optional[str] = None             # Final disposition
+    neris_hazmat_evacuated: Optional[int] = None               # Number evacuated
+    neris_hazmat_chemicals: Optional[List[Dict[str, Any]]] = None  # [{dot_class, name, release_occurred}]
+    
     # Audit
     officer_in_charge: Optional[int] = None
     completed_by: Optional[int] = None
@@ -577,6 +595,24 @@ async def get_incident(
         "neris_rescue_animal": getattr(incident, 'neris_rescue_animal', None),
         "neris_narrative_impedance": getattr(incident, 'neris_narrative_impedance', None),
         "neris_narrative_outcome": getattr(incident, 'neris_narrative_outcome', None),
+        
+        # NERIS Conditional Module: Fire
+        "neris_fire_investigation_need": getattr(incident, 'neris_fire_investigation_need', None),
+        "neris_fire_investigation_type": getattr(incident, 'neris_fire_investigation_type', []),
+        "neris_fire_arrival_conditions": getattr(incident, 'neris_fire_arrival_conditions', None),
+        "neris_fire_structure_damage": getattr(incident, 'neris_fire_structure_damage', None),
+        "neris_fire_structure_floor": getattr(incident, 'neris_fire_structure_floor', None),
+        "neris_fire_structure_room": getattr(incident, 'neris_fire_structure_room', None),
+        "neris_fire_structure_cause": getattr(incident, 'neris_fire_structure_cause', None),
+        "neris_fire_outside_cause": getattr(incident, 'neris_fire_outside_cause', None),
+        
+        # NERIS Conditional Module: Medical
+        "neris_medical_patient_care": getattr(incident, 'neris_medical_patient_care', None),
+        
+        # NERIS Conditional Module: Hazmat
+        "neris_hazmat_disposition": getattr(incident, 'neris_hazmat_disposition', None),
+        "neris_hazmat_evacuated": getattr(incident, 'neris_hazmat_evacuated', 0),
+        "neris_hazmat_chemicals": getattr(incident, 'neris_hazmat_chemicals', []),
         
         # Submission status
         "neris_submitted_at": _iso_or_none(incident, 'neris_submitted_at'),

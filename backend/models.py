@@ -348,6 +348,33 @@ class Incident(Base):
     neris_narrative_outcome = Column(Text)    # Final disposition
     
     # =========================================================================
+    # NERIS CONDITIONAL MODULE: FIRE
+    # Shown when incident type starts with FIRE:
+    # =========================================================================
+    neris_fire_investigation_need = Column(Text)  # YES/NO/NOT_EVALUATED/etc
+    neris_fire_investigation_type = Column(JSONB, default=[])  # Types of investigation
+    neris_fire_arrival_conditions = Column(Text)  # Structure fire arrival conditions
+    neris_fire_structure_damage = Column(Text)    # NO_DAMAGE/MINOR/MODERATE/MAJOR
+    neris_fire_structure_floor = Column(Integer)  # Floor of origin
+    neris_fire_structure_room = Column(Text)      # Room of origin code
+    neris_fire_structure_cause = Column(Text)     # Structure fire cause
+    neris_fire_outside_cause = Column(Text)       # Outside fire cause
+    
+    # =========================================================================
+    # NERIS CONDITIONAL MODULE: MEDICAL
+    # Shown when incident type starts with MEDICAL:
+    # =========================================================================
+    neris_medical_patient_care = Column(Text)     # Patient evaluation/care outcome
+    
+    # =========================================================================
+    # NERIS CONDITIONAL MODULE: HAZMAT
+    # Shown when incident type starts with HAZSIT:
+    # =========================================================================
+    neris_hazmat_disposition = Column(Text)       # Final disposition
+    neris_hazmat_evacuated = Column(Integer, default=0)  # Number evacuated
+    neris_hazmat_chemicals = Column(JSONB, default=[])   # [{dot_class, name, release_occurred}]
+    
+    # =========================================================================
     # NERIS SUBMISSION TRACKING
     # =========================================================================
     neris_submitted_at = Column(TIMESTAMP(timezone=True))
