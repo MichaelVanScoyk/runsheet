@@ -14,7 +14,7 @@ function ApparatusPage() {
     unit_designator: '',
     name: '',
     apparatus_type: '',
-    nfirs_type_code: '',
+    neris_unit_type: '',
     has_driver: true,
     has_officer: true,
     ff_slots: 4,
@@ -39,28 +39,16 @@ function ApparatusPage() {
 
   const loadApparatusTypes = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/settings/apparatus/types`);
+      const res = await fetch(`${API_BASE}/api/lookups/neris/unit-types`);
       const data = await res.json();
-      if (data.value && Array.isArray(data.value)) {
-        setApparatusTypes(data.value);
+      if (Array.isArray(data)) {
+        setApparatusTypes(data);
       }
     } catch (err) {
-      console.error('Failed to load apparatus types:', err);
-      // Fallback to basic types if settings not available
-      setApparatusTypes([
-        { code: '11', name: 'Engine', group: 'Ground Fire Suppression' },
-        { code: '12', name: 'Truck/Aerial', group: 'Ground Fire Suppression' },
-        { code: '82', name: 'Chief Officer', group: 'Other' },
-      ]);
+      console.error('Failed to load NERIS apparatus types:', err);
+      setApparatusTypes([]);
     }
   };
-
-  // Group types by category for select dropdown
-  const groupedTypes = apparatusTypes.reduce((acc, t) => {
-    if (!acc[t.group]) acc[t.group] = [];
-    acc[t.group].push(t);
-    return acc;
-  }, {});
 
   // Split into real apparatus and auxiliary roles
   const realApparatus = apparatus.filter(a => !a.is_virtual);
@@ -69,12 +57,12 @@ function ApparatusPage() {
   const handleAddTruck = () => {
     setEditing(null);
     setModalType('truck');
-    const defaultType = apparatusTypes.find(t => t.code === '11') || apparatusTypes[0];
+    const defaultType = apparatusTypes.find(t => t.value === 'ENGINE_STRUCT') || apparatusTypes[0];
     setFormData({
       unit_designator: '',
       name: '',
-      apparatus_type: defaultType?.name || 'Engine',
-      nfirs_type_code: defaultType?.code || '11',
+      apparatus_type: defaultType?.description || 'Engine',
+      neris_unit_type: defaultType?.value || '',
       has_driver: true,
       has_officer: true,
       ff_slots: 4,
@@ -90,7 +78,7 @@ function ApparatusPage() {
       unit_designator: '',
       name: '',
       apparatus_type: 'Auxiliary',
-      nfirs_type_code: '',
+      neris_unit_type: '',
       has_driver: false,
       has_officer: false,
       ff_slots: 0,
@@ -106,7 +94,7 @@ function ApparatusPage() {
       unit_designator: item.unit_designator,
       name: item.name,
       apparatus_type: item.apparatus_type,
-      nfirs_type_code: item.nfirs_type_code || '',
+      neris_unit_type: item.neris_unit_type || '',
       has_driver: item.has_driver,
       has_officer: item.has_officer,
       ff_slots: item.ff_slots,
@@ -287,24 +275,20 @@ function ApparatusPage() {
               {modalType === 'truck' && (
                 <>
                   <div className="form-group">
-                    <label>Type (NFIRS)</label>
+                    <label>Type (NERIS)</label>
                     <select
-                      value={formData.nfirs_type_code}
+                      value={formData.neris_unit_type}
                       onChange={(e) => {
-                        const selectedType = apparatusTypes.find(t => t.code === e.target.value);
-                        handleChange('nfirs_type_code', e.target.value);
-                        handleChange('apparatus_type', selectedType?.name || '');
+                        const selectedType = apparatusTypes.find(t => t.value === e.target.value);
+                        handleChange('neris_unit_type', e.target.value);
+                        handleChange('apparatus_type', selectedType?.description || '');
                       }}
                     >
                       <option value="">-- Select Type --</option>
-                      {Object.entries(groupedTypes).map(([group, types]) => (
-                        <optgroup key={group} label={group}>
-                          {types.map(t => (
-                            <option key={t.code} value={t.code}>
-                              {t.name} ({t.code})
-                            </option>
-                          ))}
-                        </optgroup>
+                      {apparatusTypes.map(t => (
+                        <option key={t.value} value={t.value}>
+                          {t.description}
+                        </option>
                       ))}
                     </select>
                   </div>

@@ -18,6 +18,7 @@ class ApparatusCreate(BaseModel):
     unit_designator: str
     name: str
     apparatus_type: Optional[str] = None
+    neris_unit_type: Optional[str] = None
     is_virtual: bool = False
     has_driver: bool = True
     has_officer: bool = True
@@ -26,8 +27,10 @@ class ApparatusCreate(BaseModel):
 
 
 class ApparatusUpdate(BaseModel):
+    unit_designator: Optional[str] = None
     name: Optional[str] = None
     apparatus_type: Optional[str] = None
+    neris_unit_type: Optional[str] = None
     has_driver: Optional[bool] = None
     has_officer: Optional[bool] = None
     ff_slots: Optional[int] = None
@@ -58,6 +61,7 @@ async def list_apparatus(
             "unit_designator": a.unit_designator,
             "name": a.name,
             "apparatus_type": a.apparatus_type,
+            "neris_unit_type": a.neris_unit_type,
             "is_virtual": a.is_virtual,
             "has_driver": a.has_driver,
             "has_officer": a.has_officer,
@@ -82,6 +86,7 @@ async def get_apparatus(id: int, db: Session = Depends(get_db)):
         "unit_designator": apparatus.unit_designator,
         "name": apparatus.name,
         "apparatus_type": apparatus.apparatus_type,
+        "neris_unit_type": apparatus.neris_unit_type,
         "is_virtual": apparatus.is_virtual,
         "has_driver": apparatus.has_driver,
         "has_officer": apparatus.has_officer,
@@ -108,6 +113,7 @@ async def create_apparatus(
         unit_designator=data.unit_designator,
         name=data.name,
         apparatus_type=data.apparatus_type,
+        neris_unit_type=data.neris_unit_type,
         is_virtual=data.is_virtual,
         has_driver=data.has_driver,
         has_officer=data.has_officer,

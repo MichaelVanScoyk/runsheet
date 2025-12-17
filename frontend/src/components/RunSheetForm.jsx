@@ -123,6 +123,137 @@ function Chip({ label, onRemove }) {
   );
 }
 
+// Typeahead component for personnel selection
+function PersonnelTypeahead({ value, availablePersonnel, allPersonnel, onSelect, onClear }) {
+  const [searchText, setSearchText] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1); // -1 = nothing highlighted
+  
+  // Get current person's name for display
+  const currentPerson = value ? allPersonnel.find(p => p.id === parseInt(value)) : null;
+  const displayValue = isOpen ? searchText : (currentPerson ? `${currentPerson.last_name}, ${currentPerson.first_name}` : '');
+  
+  // Filter available personnel by search text
+  const filtered = searchText 
+    ? availablePersonnel.filter(p => {
+        const search = searchText.toLowerCase();
+        return p.last_name.toLowerCase().includes(search) || 
+               p.first_name.toLowerCase().includes(search);
+      })
+    : availablePersonnel;
+  
+  const handleFocus = () => {
+    setIsOpen(true);
+    setSearchText('');
+    setHighlightedIndex(-1); // Nothing highlighted initially
+  };
+  
+  const handleBlur = () => {
+    // Delay to allow click on dropdown
+    setTimeout(() => {
+      setIsOpen(false);
+      setSearchText('');
+      setHighlightedIndex(-1);
+    }, 150);
+  };
+  
+  const handleChange = (e) => {
+    setSearchText(e.target.value);
+    setHighlightedIndex(-1); // Reset highlight when typing
+    if (!isOpen) setIsOpen(true);
+  };
+  
+  const handleSelect = (person) => {
+    onSelect(person.id);
+    setIsOpen(false);
+    setSearchText('');
+    setHighlightedIndex(-1);
+  };
+  
+  const handleKeyDown = (e) => {
+    if (!isOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter') {
+        setIsOpen(true);
+        e.preventDefault();
+      }
+      return;
+    }
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedIndex(prev => Math.min(prev + 1, filtered.length - 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedIndex(prev => Math.max(prev - 1, -1));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        // Only select if something is highlighted, OR if exactly one match
+        if (highlightedIndex >= 0 && filtered[highlightedIndex]) {
+          handleSelect(filtered[highlightedIndex]);
+        } else if (filtered.length === 1) {
+          handleSelect(filtered[0]);
+        }
+        break;
+      case 'Tab':
+        // Only select if user explicitly highlighted something, OR exactly one match after typing
+        if (highlightedIndex >= 0 && filtered[highlightedIndex]) {
+          handleSelect(filtered[highlightedIndex]);
+        } else if (searchText && filtered.length === 1) {
+          handleSelect(filtered[0]);
+        }
+        // Otherwise just let tab move to next field without selecting
+        setIsOpen(false);
+        setSearchText('');
+        break;
+      case 'Escape':
+        setIsOpen(false);
+        setSearchText('');
+        setHighlightedIndex(-1);
+        break;
+    }
+  };
+  
+  return (
+    <div className="personnel-typeahead">
+      <input
+        type="text"
+        value={displayValue}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        placeholder="-"
+        className="typeahead-input"
+      />
+      {value && !isOpen && (
+        <button className="clear-btn" onClick={onClear} type="button">×</button>
+      )}
+      {isOpen && filtered.length > 0 && (
+        <div className="typeahead-dropdown">
+          {filtered.slice(0, 10).map((p, idx) => (
+            <div
+              key={p.id}
+              className={`typeahead-option ${idx === highlightedIndex ? 'highlighted' : ''}`}
+              onMouseDown={() => handleSelect(p)}
+              onMouseEnter={() => setHighlightedIndex(idx)}
+            >
+              {p.last_name}, {p.first_name}
+            </div>
+          ))}
+        </div>
+      )}
+      {isOpen && searchText && filtered.length === 0 && (
+        <div className="typeahead-dropdown">
+          <div className="typeahead-empty">No matches</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // InfoTooltip component - displays official NERIS descriptions on hover
 function InfoTooltip({ text }) {
   if (!text) return null;
@@ -1184,15 +1315,13 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
                     const shouldDim = hasCadData && !wasDispatched;
                     return (
                       <td key={t.id} className={shouldDim ? 'cell-dimmed' : ''}>
-                        <div className="slot-cell">
-                          <select value={val} onChange={(e) => handleAssignment(t.unit_designator, slot, e.target.value)}>
-                            <option value="">-</option>
-                            {getAvailablePersonnel(t.unit_designator, slot).map(p => (
-                              <option key={p.id} value={p.id}>{p.last_name}, {p.first_name}</option>
-                            ))}
-                          </select>
-                          {val && <button className="clear-btn" onClick={() => clearSlot(t.unit_designator, slot)}>×</button>}
-                        </div>
+                        <PersonnelTypeahead
+                          value={val}
+                          availablePersonnel={getAvailablePersonnel(t.unit_designator, slot)}
+                          allPersonnel={personnel}
+                          onSelect={(personId) => handleAssignment(t.unit_designator, slot, personId)}
+                          onClear={() => clearSlot(t.unit_designator, slot)}
+                        />
                       </td>
                     );
                   })}

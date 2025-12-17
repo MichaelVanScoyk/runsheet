@@ -1482,3 +1482,70 @@
 .slot-disabled {
   background: #0a0a15 !important;
 }
+
+/* Personnel Typeahead */
+.personnel-typeahead {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.personnel-typeahead .typeahead-input {
+  flex: 1;
+  min-width: 0;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-radius: 3px;
+  padding: 0.3rem 0.5rem;
+  color: #fff;
+  font-size: 0.8rem;
+  width: 100%;
+}
+
+.personnel-typeahead .typeahead-input:focus {
+  outline: none;
+  border-color: #e94560;
+}
+
+.personnel-typeahead .typeahead-input::placeholder {
+  color: #666;
+}
+
+.personnel-typeahead .clear-btn {
+  flex-shrink: 0;
+}
+
+.personnel-typeahead .typeahead-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.personnel-typeahead .typeahead-option {
+  padding: 0.4rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #ccc;
+}
+
+.personnel-typeahead .typeahead-option:hover,
+.personnel-typeahead .typeahead-option.highlighted {
+  background: #0f3460;
+  color: #fff;
+}
+
+.personnel-typeahead .typeahead-empty {
+  padding: 0.4rem 0.5rem;
+  color: #666;
+  font-size: 0.8rem;
+  font-style: italic;
+}
