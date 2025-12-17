@@ -1234,3 +1234,214 @@
     width: 100%;
   }
 }
+
+/* ============================================
+   RISK REDUCTION DETAIL FIELDS
+   ============================================ */
+.neris-rr-details {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: rgba(15, 52, 96, 0.3);
+  border-radius: 6px;
+  border: 1px solid #0f3460;
+}
+
+.neris-rr-details-header {
+  color: #e94560;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.neris-rr-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.neris-rr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.neris-rr-field label {
+  font-size: 0.7rem;
+  color: #888;
+  text-transform: uppercase;
+}
+
+.neris-rr-field select,
+.neris-rr-field input {
+  background: #1a1a2e;
+  color: #ccc;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.neris-rr-field select:focus,
+.neris-rr-field input:focus {
+  border-color: #e94560;
+  outline: none;
+}
+
+.neris-multi-select {
+  min-height: 80px;
+  background: #1a1a2e;
+  color: #ccc;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  padding: 0.3rem;
+  font-size: 0.8rem;
+}
+
+.neris-multi-select option {
+  padding: 0.3rem 0.5rem;
+}
+
+.neris-multi-select option:checked {
+  background: rgba(233, 69, 96, 0.3);
+}
+
+/* ============================================
+   EMERGING HAZARDS MODULE
+   ============================================ */
+.neris-emerging-hazards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.neris-emerging-item {
+  padding: 0.75rem;
+  background: rgba(15, 52, 96, 0.2);
+  border-radius: 6px;
+  border: 1px solid #0f3460;
+}
+
+.neris-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #ccc;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.neris-checkbox-label input[type="checkbox"] {
+  accent-color: #e94560;
+  width: 16px;
+  height: 16px;
+}
+
+.neris-emerging-details {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #0f3460;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.neris-emerging-details select {
+  background: #1a1a2e;
+  color: #ccc;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8rem;
+  min-width: 150px;
+}
+
+.neris-emerging-details select:focus {
+  border-color: #e94560;
+  outline: none;
+}
+
+/* ============================================
+   EXPOSURES MODULE
+   ============================================ */
+.neris-exposures-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.neris-exposure-item {
+  padding: 0.75rem;
+  background: rgba(15, 52, 96, 0.2);
+  border-radius: 6px;
+  border: 1px solid #0f3460;
+}
+
+.neris-exposure-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.neris-exposure-row select,
+.neris-exposure-row input[type="text"] {
+  background: #1a1a2e;
+  color: #ccc;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8rem;
+  flex: 1;
+  min-width: 120px;
+}
+
+.neris-exposure-row select:focus,
+.neris-exposure-row input:focus {
+  border-color: #e94560;
+  outline: none;
+}
+
+.neris-remove-btn {
+  background: transparent;
+  border: 1px solid #e94560;
+  border-radius: 4px;
+  color: #e94560;
+  width: 28px;
+  height: 28px;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.neris-remove-btn:hover {
+  background: #e94560;
+  color: #fff;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .neris-rr-details-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .neris-exposure-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .neris-exposure-row select,
+  .neris-exposure-row input[type="text"] {
+    width: 100%;
+  }
+  
+  .neris-remove-btn {
+    align-self: flex-end;
+  }
+}

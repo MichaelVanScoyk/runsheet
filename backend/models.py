@@ -231,7 +231,7 @@ class Incident(Base):
     # TIMES - Core (all TIMESTAMP WITH TIME ZONE, stored as UTC)
     # =========================================================================
     incident_date = Column(Date)                            # Date of incident (immutable)
-    time_dispatched = Column(TIMESTAMP(timezone=True))      # → dispatch_time_call_create
+    time_dispatched = Column(TIMESTAMP(timezone=True))      # â†’ dispatch_time_call_create
     time_first_enroute = Column(TIMESTAMP(timezone=True))   # First unit enroute
     time_first_on_scene = Column(TIMESTAMP(timezone=True))  # First unit on scene
     time_last_cleared = Column(TIMESTAMP(timezone=True))    # Last unit cleared
@@ -261,7 +261,7 @@ class Incident(Base):
     # =========================================================================
     # WEATHER (auto-fetched from Open-Meteo)
     # =========================================================================
-    weather_conditions = Column(String(200))    # Display: "Clear, 45°F"
+    weather_conditions = Column(String(200))    # Display: "Clear, 45Â°F"
     weather_fetched_at = Column(TIMESTAMP(timezone=True))
     weather_api_data = Column(JSONB)            # Full API response
     
@@ -272,9 +272,9 @@ class Incident(Base):
     situation_found = Column(Text)              # On-arrival conditions
     extent_of_damage = Column(Text)
     services_provided = Column(Text)
-    narrative = Column(Text)                    # → incident_narrative_outcome
+    narrative = Column(Text)                    # â†’ incident_narrative_outcome
     equipment_used = Column(ARRAY(Text))
-    problems_issues = Column(Text)              # → incident_narrative_impedance
+    problems_issues = Column(Text)              # â†’ incident_narrative_impedance
     
     # =========================================================================
     # NERIS CLASSIFICATION - TEXT CODES (not integers!)
@@ -373,6 +373,62 @@ class Incident(Base):
     neris_hazmat_disposition = Column(Text)       # Final disposition
     neris_hazmat_evacuated = Column(Integer, default=0)  # Number evacuated
     neris_hazmat_chemicals = Column(JSONB, default=[])   # [{dot_class, name, release_occurred}]
+    
+    # =========================================================================
+    # NERIS MODULE: EXPOSURES
+    # Adjacent/other properties affected by incident
+    # =========================================================================
+    neris_exposures = Column(JSONB, default=[])
+    # Structure: [{
+    #   "exposure_type": "...",    # type_exposure_loc
+    #   "exposure_item": "...",    # type_exposure_item
+    #   "address": "...",
+    #   "location_use": "...",     # type_location_use
+    #   "damage": "...",
+    #   "displaced": 0
+    # }]
+    
+    # =========================================================================
+    # NERIS MODULE: EMERGING HAZARDS
+    # EV/batteries, solar PV, CSST gas incidents
+    # =========================================================================
+    neris_emerging_hazard = Column(JSONB)
+    # Structure: {
+    #   "ev_battery": { "present": bool, "type": "...", "crash": bool, ... },
+    #   "solar_pv": { "present": bool, "energized": bool, "ignition": "..." },
+    #   "csst": { "present": bool, "damage": bool }
+    # }
+    
+    # =========================================================================
+    # NERIS MODULE: RISK REDUCTION DETAILS
+    # Conditional detail fields based on presence selections
+    # =========================================================================
+    
+    # Smoke Alarm Details (shown when smoke_alarm_presence != NONE/UNKNOWN)
+    neris_rr_smoke_alarm_type = Column(JSONB, default=[])        # type_alarm_smoke (multi)
+    neris_rr_smoke_alarm_working = Column(Boolean)               # Was it working?
+    neris_rr_smoke_alarm_operation = Column(Text)                # type_alarm_operation
+    neris_rr_smoke_alarm_failure = Column(Text)                  # type_alarm_failure
+    neris_rr_smoke_alarm_action = Column(Text)                   # Occupant action taken
+    
+    # Fire Alarm Details (shown when fire_alarm_presence != NONE/UNKNOWN)
+    neris_rr_fire_alarm_type = Column(JSONB, default=[])         # type_alarm_fire (multi)
+    neris_rr_fire_alarm_operation = Column(Text)                 # type_alarm_operation
+    
+    # Other Alarm Details
+    neris_rr_other_alarm = Column(Text)                          # type_rr_presence
+    neris_rr_other_alarm_type = Column(JSONB, default=[])        # type_alarm_other (multi)
+    
+    # Sprinkler/Suppression Details (shown when fire_suppression_presence != NONE/UNKNOWN)
+    neris_rr_sprinkler_type = Column(JSONB, default=[])          # type_suppress_fire (multi)
+    neris_rr_sprinkler_coverage = Column(Text)                   # type_full_partial
+    neris_rr_sprinkler_operation = Column(Text)                  # type_suppress_operation
+    neris_rr_sprinkler_heads_activated = Column(Integer)         # Number of heads
+    neris_rr_sprinkler_failure = Column(Text)                    # type_alarm_failure
+    
+    # Cooking Suppression Details (shown for confined cooking fires)
+    neris_rr_cooking_suppression = Column(Text)                  # type_rr_presence
+    neris_rr_cooking_suppression_type = Column(JSONB, default=[])# type_suppress_cooking (multi)
     
     # =========================================================================
     # NERIS SUBMISSION TRACKING

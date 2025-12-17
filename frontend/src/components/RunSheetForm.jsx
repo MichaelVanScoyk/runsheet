@@ -128,7 +128,7 @@ function InfoTooltip({ text }) {
   if (!text) return null;
   return (
     <span className="info-tooltip-wrapper">
-      <span className="info-icon">ⓘ</span>
+      <span className="info-icon">ℹ</span>
       <span className="info-tooltip-text">{text}</span>
     </span>
   );
@@ -150,6 +150,33 @@ const NERIS_DESCRIPTIONS = {
     patient_care: "Outcome of patient evaluation and care",
     hazmat_disposition: "Final disposition of hazardous materials incident",
     hazmat_evacuated: "Number of occupants/businesses evacuated during response",
+    smoke_alarm_type: "Type of smoke alarm (battery, hardwired, interconnected, etc.)",
+    smoke_alarm_working: "Was the smoke alarm functional at time of incident?",
+    smoke_alarm_operation: "Did the alarm operate and alert occupants?",
+    smoke_alarm_failure: "If alarm failed, what was the cause?",
+    fire_alarm_type: "Type of fire alarm system (manual, automatic, or both)",
+    fire_alarm_operation: "Did the fire alarm operate and alert occupants?",
+    other_alarm: "Presence of other detection systems (CO, gas, heat)",
+    other_alarm_type: "Type of other detection system present",
+    sprinkler_type: "Type of sprinkler/suppression system installed",
+    sprinkler_coverage: "Full or partial coverage of the structure",
+    sprinkler_operation: "Did the sprinkler system operate during the incident?",
+    sprinkler_heads: "Number of sprinkler heads that activated",
+    sprinkler_failure: "If system failed, what was the cause?",
+    cooking_suppression: "Presence of cooking fire suppression system",
+    cooking_suppression_type: "Type of cooking suppression system",
+    emerging_hazards: "Document modern hazards: EV/batteries, solar PV, CSST gas lines",
+    ev_battery: "Electric vehicle or battery storage system present",
+    ev_battery_type: "Type of electric/battery system involved",
+    ev_crash: "Was this related to a vehicle crash?",
+    solar_pv: "Solar photovoltaic system present at incident",
+    solar_energized: "Did the solar system remain energized during operations?",
+    solar_ignition: "Was the solar system a source of ignition?",
+    csst: "Corrugated Stainless Steel Tubing gas lines present",
+    csst_damage: "Was there damage or gas leak from CSST?",
+    exposures: "Properties affected beyond the origin building",
+    exposure_type: "Location of exposure relative to origin",
+    exposure_item: "Type of property or item exposed",
   },
 };
 
@@ -381,6 +408,22 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
   const [hazardDispositionCodes, setHazardDispositionCodes] = useState([]);
   const [hazardDotCodes, setHazardDotCodes] = useState([]);
   
+  // New NERIS code categories for expanded modules
+  const [smokeAlarmTypeCodes, setSmokeAlarmTypeCodes] = useState([]);
+  const [fireAlarmTypeCodes, setFireAlarmTypeCodes] = useState([]);
+  const [otherAlarmTypeCodes, setOtherAlarmTypeCodes] = useState([]);
+  const [alarmOperationCodes, setAlarmOperationCodes] = useState([]);
+  const [alarmFailureCodes, setAlarmFailureCodes] = useState([]);
+  const [sprinklerTypeCodes, setSprinklerTypeCodes] = useState([]);
+  const [sprinklerOperationCodes, setSprinklerOperationCodes] = useState([]);
+  const [cookingSuppressionCodes, setCookingSuppressionCodes] = useState([]);
+  const [fullPartialCodes, setFullPartialCodes] = useState([]);
+  const [exposureLocCodes, setExposureLocCodes] = useState([]);
+  const [exposureItemCodes, setExposureItemCodes] = useState([]);
+  const [emergHazElecCodes, setEmergHazElecCodes] = useState([]);
+  const [emergHazPvCodes, setEmergHazPvCodes] = useState([]);
+  const [emergHazPvIgnCodes, setEmergHazPvIgnCodes] = useState([]);
+  
   const [formData, setFormData] = useState({
     internal_incident_number: '',
     cad_event_number: '',
@@ -436,6 +479,31 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
     neris_hazmat_disposition: null,
     neris_hazmat_evacuated: 0,
     neris_hazmat_chemicals: [], // Array of {dot_class, name, release_occurred}
+    // Exposures module
+    neris_exposures: [],
+    // Emerging hazard module
+    neris_emerging_hazard: null,
+    // Risk Reduction Details - Smoke Alarm
+    neris_rr_smoke_alarm_type: [],
+    neris_rr_smoke_alarm_working: null,
+    neris_rr_smoke_alarm_operation: null,
+    neris_rr_smoke_alarm_failure: null,
+    neris_rr_smoke_alarm_action: null,
+    // Risk Reduction Details - Fire Alarm
+    neris_rr_fire_alarm_type: [],
+    neris_rr_fire_alarm_operation: null,
+    // Risk Reduction Details - Other Alarm
+    neris_rr_other_alarm: null,
+    neris_rr_other_alarm_type: [],
+    // Risk Reduction Details - Sprinkler
+    neris_rr_sprinkler_type: [],
+    neris_rr_sprinkler_coverage: null,
+    neris_rr_sprinkler_operation: null,
+    neris_rr_sprinkler_heads_activated: null,
+    neris_rr_sprinkler_failure: null,
+    // Risk Reduction Details - Cooking Suppression
+    neris_rr_cooking_suppression: null,
+    neris_rr_cooking_suppression_type: [],
     cad_units: [],
     created_at: null,
     updated_at: null,
@@ -474,6 +542,21 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         medicalCareRes,
         hazardDispRes,
         hazardDotRes,
+        // New expanded module code responses
+        smokeAlarmTypeRes,
+        fireAlarmTypeRes,
+        otherAlarmTypeRes,
+        alarmOperationRes,
+        alarmFailureRes,
+        sprinklerTypeRes,
+        sprinklerOperationRes,
+        cookingSuppressionRes,
+        fullPartialRes,
+        exposureLocRes,
+        exposureItemRes,
+        emergHazElecRes,
+        emergHazPvRes,
+        emergHazPvIgnRes,
       ] = await Promise.all([
         getApparatus(),
         getPersonnel(),
@@ -496,6 +579,21 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         getNerisCategory('type_medical_patient_care'),
         getNerisCategory('type_hazard_disposition'),
         getNerisCategory('type_hazard_dot'),
+        // New expanded module code categories
+        getNerisCategory('type_alarm_smoke'),
+        getNerisCategory('type_alarm_fire'),
+        getNerisCategory('type_alarm_other'),
+        getNerisCategory('type_alarm_operation'),
+        getNerisCategory('type_alarm_failure'),
+        getNerisCategory('type_suppress_fire'),
+        getNerisCategory('type_suppress_operation'),
+        getNerisCategory('type_suppress_cooking'),
+        getNerisCategory('type_full_partial'),
+        getNerisCategory('type_exposure_loc'),
+        getNerisCategory('type_exposure_item'),
+        getNerisCategory('type_emerghaz_elec'),
+        getNerisCategory('type_emerghaz_pv'),
+        getNerisCategory('type_emerghaz_pv_ign'),
       ]);
 
       const activeApparatus = apparatusRes.data.filter(a => a.active);
@@ -520,6 +618,22 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
       setMedicalPatientCareCodes(medicalCareRes.data || []);
       setHazardDispositionCodes(hazardDispRes.data || []);
       setHazardDotCodes(hazardDotRes.data || []);
+      
+      // Set new expanded module dropdown options
+      setSmokeAlarmTypeCodes(smokeAlarmTypeRes.data || []);
+      setFireAlarmTypeCodes(fireAlarmTypeRes.data || []);
+      setOtherAlarmTypeCodes(otherAlarmTypeRes.data || []);
+      setAlarmOperationCodes(alarmOperationRes.data || []);
+      setAlarmFailureCodes(alarmFailureRes.data || []);
+      setSprinklerTypeCodes(sprinklerTypeRes.data || []);
+      setSprinklerOperationCodes(sprinklerOperationRes.data || []);
+      setCookingSuppressionCodes(cookingSuppressionRes.data || []);
+      setFullPartialCodes(fullPartialRes.data || []);
+      setExposureLocCodes(exposureLocRes.data || []);
+      setExposureItemCodes(exposureItemRes.data || []);
+      setEmergHazElecCodes(emergHazElecRes.data || []);
+      setEmergHazPvCodes(emergHazPvRes.data || []);
+      setEmergHazPvIgnCodes(emergHazPvIgnRes.data || []);
 
       // Initialize empty assignments for all apparatus
       // Real trucks: 6 fixed slots
@@ -594,6 +708,31 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
           neris_hazmat_disposition: incident.neris_hazmat_disposition || null,
           neris_hazmat_evacuated: incident.neris_hazmat_evacuated ?? 0,
           neris_hazmat_chemicals: incident.neris_hazmat_chemicals || [],
+          // Exposures module
+          neris_exposures: incident.neris_exposures || [],
+          // Emerging hazard module
+          neris_emerging_hazard: incident.neris_emerging_hazard || null,
+          // Risk Reduction Details - Smoke Alarm
+          neris_rr_smoke_alarm_type: incident.neris_rr_smoke_alarm_type || [],
+          neris_rr_smoke_alarm_working: incident.neris_rr_smoke_alarm_working,
+          neris_rr_smoke_alarm_operation: incident.neris_rr_smoke_alarm_operation || null,
+          neris_rr_smoke_alarm_failure: incident.neris_rr_smoke_alarm_failure || null,
+          neris_rr_smoke_alarm_action: incident.neris_rr_smoke_alarm_action || null,
+          // Risk Reduction Details - Fire Alarm
+          neris_rr_fire_alarm_type: incident.neris_rr_fire_alarm_type || [],
+          neris_rr_fire_alarm_operation: incident.neris_rr_fire_alarm_operation || null,
+          // Risk Reduction Details - Other Alarm
+          neris_rr_other_alarm: incident.neris_rr_other_alarm || null,
+          neris_rr_other_alarm_type: incident.neris_rr_other_alarm_type || [],
+          // Risk Reduction Details - Sprinkler
+          neris_rr_sprinkler_type: incident.neris_rr_sprinkler_type || [],
+          neris_rr_sprinkler_coverage: incident.neris_rr_sprinkler_coverage || null,
+          neris_rr_sprinkler_operation: incident.neris_rr_sprinkler_operation || null,
+          neris_rr_sprinkler_heads_activated: incident.neris_rr_sprinkler_heads_activated,
+          neris_rr_sprinkler_failure: incident.neris_rr_sprinkler_failure || null,
+          // Risk Reduction Details - Cooking Suppression
+          neris_rr_cooking_suppression: incident.neris_rr_cooking_suppression || null,
+          neris_rr_cooking_suppression_type: incident.neris_rr_cooking_suppression_type || [],
           cad_units: incident.cad_units || [],
           created_at: incident.created_at,
           updated_at: incident.updated_at,
@@ -822,7 +961,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
   return (
     <div className="runsheet-form">
       <div className="runsheet-header">
-        <h2>Glen Moore Fire Company – Station 48</h2>
+        <h2>Glen Moore Fire Company — Station 48</h2>
         <h3>Incident Report</h3>
         {incident && (
           <span className={`badge badge-${formData.status?.toLowerCase()}`}>{formData.status}</span>
@@ -1008,7 +1147,6 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
                 return (
                   <th key={t.id} className={headerClass}>
                     {t.unit_designator}
-                    {wasDispatched && <span className="dispatched-indicator">●</span>}
                   </th>
                 );
               })}
@@ -1272,6 +1410,8 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
               Risk Reduction (Structure Incidents)
               <InfoTooltip text={NERIS_DESCRIPTIONS.fields.risk_reduction} />
             </label>
+            
+            {/* Presence Grid */}
             <div className="neris-risk-grid">
               <div className="neris-risk-item">
                 <span>Smoke Alarm</span>
@@ -1324,8 +1464,505 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
                   ))}
                 </select>
               </div>
+              <div className="neris-risk-item">
+                <span>Other Alarm</span>
+                <select 
+                  value={formData.neris_rr_other_alarm || ''} 
+                  onChange={(e) => handleChange('neris_rr_other_alarm', e.target.value || null)}
+                >
+                  <option value="">--</option>
+                  {rrPresenceCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            {/* Smoke Alarm Details - shown when presence is PRESENT */}
+            {formData.neris_risk_reduction?.smoke_alarm_presence === 'PRESENT' && (
+              <div className="neris-rr-details">
+                <div className="neris-rr-details-header">Smoke Alarm Details</div>
+                <div className="neris-rr-details-grid">
+                  <div className="neris-rr-field">
+                    <label>Type(s) <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_type} /></label>
+                    <select 
+                      multiple
+                      value={formData.neris_rr_smoke_alarm_type || []}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => opt.value);
+                        handleChange('neris_rr_smoke_alarm_type', selected);
+                      }}
+                      className="neris-multi-select"
+                    >
+                      {smokeAlarmTypeCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Working?</label>
+                    <select 
+                      value={formData.neris_rr_smoke_alarm_working === null ? '' : formData.neris_rr_smoke_alarm_working.toString()}
+                      onChange={(e) => handleChange('neris_rr_smoke_alarm_working', e.target.value === '' ? null : e.target.value === 'true')}
+                    >
+                      <option value="">--</option>
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Operation <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_operation} /></label>
+                    <select 
+                      value={formData.neris_rr_smoke_alarm_operation || ''}
+                      onChange={(e) => handleChange('neris_rr_smoke_alarm_operation', e.target.value || null)}
+                    >
+                      <option value="">--</option>
+                      {alarmOperationCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Failure Reason <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_failure} /></label>
+                    <select 
+                      value={formData.neris_rr_smoke_alarm_failure || ''}
+                      onChange={(e) => handleChange('neris_rr_smoke_alarm_failure', e.target.value || null)}
+                    >
+                      <option value="">--</option>
+                      {alarmFailureCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Fire Alarm Details - shown when presence is PRESENT */}
+            {formData.neris_risk_reduction?.fire_alarm_presence === 'PRESENT' && (
+              <div className="neris-rr-details">
+                <div className="neris-rr-details-header">Fire Alarm Details</div>
+                <div className="neris-rr-details-grid">
+                  <div className="neris-rr-field">
+                    <label>Type(s) <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_type} /></label>
+                    <select 
+                      multiple
+                      value={formData.neris_rr_fire_alarm_type || []}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => opt.value);
+                        handleChange('neris_rr_fire_alarm_type', selected);
+                      }}
+                      className="neris-multi-select"
+                    >
+                      {fireAlarmTypeCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Operation <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_operation} /></label>
+                    <select 
+                      value={formData.neris_rr_fire_alarm_operation || ''}
+                      onChange={(e) => handleChange('neris_rr_fire_alarm_operation', e.target.value || null)}
+                    >
+                      <option value="">--</option>
+                      {alarmOperationCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Other Alarm Details - shown when presence is PRESENT */}
+            {formData.neris_rr_other_alarm === 'PRESENT' && (
+              <div className="neris-rr-details">
+                <div className="neris-rr-details-header">Other Alarm Details</div>
+                <div className="neris-rr-details-grid">
+                  <div className="neris-rr-field">
+                    <label>Type(s) <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_type} /></label>
+                    <select 
+                      multiple
+                      value={formData.neris_rr_other_alarm_type || []}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => opt.value);
+                        handleChange('neris_rr_other_alarm_type', selected);
+                      }}
+                      className="neris-multi-select"
+                    >
+                      {otherAlarmTypeCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Sprinkler Details - shown when presence is PRESENT */}
+            {formData.neris_risk_reduction?.fire_suppression_presence === 'PRESENT' && (
+              <div className="neris-rr-details">
+                <div className="neris-rr-details-header">Sprinkler/Suppression Details</div>
+                <div className="neris-rr-details-grid">
+                  <div className="neris-rr-field">
+                    <label>Type(s) <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_type} /></label>
+                    <select 
+                      multiple
+                      value={formData.neris_rr_sprinkler_type || []}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => opt.value);
+                        handleChange('neris_rr_sprinkler_type', selected);
+                      }}
+                      className="neris-multi-select"
+                    >
+                      {sprinklerTypeCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Coverage <InfoTooltip text={NERIS_DESCRIPTIONS.fields.sprinkler_coverage} /></label>
+                    <select 
+                      value={formData.neris_rr_sprinkler_coverage || ''}
+                      onChange={(e) => handleChange('neris_rr_sprinkler_coverage', e.target.value || null)}
+                    >
+                      <option value="">--</option>
+                      {fullPartialCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Operation <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_operation} /></label>
+                    <select 
+                      value={formData.neris_rr_sprinkler_operation || ''}
+                      onChange={(e) => handleChange('neris_rr_sprinkler_operation', e.target.value || null)}
+                    >
+                      <option value="">--</option>
+                      {sprinklerOperationCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Heads Activated <InfoTooltip text={NERIS_DESCRIPTIONS.fields.sprinkler_heads} /></label>
+                    <input 
+                      type="number"
+                      min="0"
+                      value={formData.neris_rr_sprinkler_heads_activated ?? ''}
+                      onChange={(e) => handleChange('neris_rr_sprinkler_heads_activated', e.target.value ? parseInt(e.target.value) : null)}
+                      className="neris-number-input"
+                    />
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Failure Reason <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_failure} /></label>
+                    <select 
+                      value={formData.neris_rr_sprinkler_failure || ''}
+                      onChange={(e) => handleChange('neris_rr_sprinkler_failure', e.target.value || null)}
+                    >
+                      <option value="">--</option>
+                      {alarmFailureCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Cooking Suppression - shown for confined cooking fires */}
+          {hasIncidentSubtype(formData.neris_incident_type_codes, 'CONFINED_COOKING') && (
+            <div className="neris-field">
+              <label className="neris-field-label">
+                Cooking Fire Suppression
+                <InfoTooltip text="Required for confined cooking appliance fires per NERIS" />
+              </label>
+              <div className="neris-rr-details-grid">
+                <div className="neris-rr-field">
+                  <label>Presence</label>
+                  <select 
+                    value={formData.neris_rr_cooking_suppression || ''}
+                    onChange={(e) => handleChange('neris_rr_cooking_suppression', e.target.value || null)}
+                  >
+                    <option value="">--</option>
+                    {rrPresenceCodes.map(code => (
+                      <option key={code.value} value={code.value}>
+                        {code.description || code.display_text || code.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {formData.neris_rr_cooking_suppression === 'PRESENT' && (
+                  <div className="neris-rr-field">
+                    <label>Type(s) <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_type} /></label>
+                    <select 
+                      multiple
+                      value={formData.neris_rr_cooking_suppression_type || []}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => opt.value);
+                        handleChange('neris_rr_cooking_suppression_type', selected);
+                      }}
+                      className="neris-multi-select"
+                    >
+                      {cookingSuppressionCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* Emerging Hazards Module */}
+          <div className="neris-field">
+            <label className="neris-field-label">
+              Emerging Hazards
+              <InfoTooltip text="Document presence of EV/batteries, solar PV, or CSST gas lines" />
+            </label>
+            <div className="neris-emerging-hazards">
+              {/* EV/Battery */}
+              <div className="neris-emerging-item">
+                <label className="neris-checkbox-label">
+                  <input 
+                    type="checkbox"
+                    checked={formData.neris_emerging_hazard?.ev_battery?.present || false}
+                    onChange={(e) => handleChange('neris_emerging_hazard', {
+                      ...formData.neris_emerging_hazard,
+                      ev_battery: { 
+                        ...formData.neris_emerging_hazard?.ev_battery, 
+                        present: e.target.checked 
+                      }
+                    })}
+                  />
+                  EV / Battery Storage
+                </label>
+                {formData.neris_emerging_hazard?.ev_battery?.present && (
+                  <div className="neris-emerging-details">
+                    <select 
+                      value={formData.neris_emerging_hazard?.ev_battery?.type || ''}
+                      onChange={(e) => handleChange('neris_emerging_hazard', {
+                        ...formData.neris_emerging_hazard,
+                        ev_battery: { 
+                          ...formData.neris_emerging_hazard?.ev_battery, 
+                          type: e.target.value || null 
+                        }
+                      })}
+                    >
+                      <option value="">Select type...</option>
+                      {emergHazElecCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                    <label className="neris-checkbox-label">
+                      <input 
+                        type="checkbox"
+                        checked={formData.neris_emerging_hazard?.ev_battery?.crash || false}
+                        onChange={(e) => handleChange('neris_emerging_hazard', {
+                          ...formData.neris_emerging_hazard,
+                          ev_battery: { 
+                            ...formData.neris_emerging_hazard?.ev_battery, 
+                            crash: e.target.checked 
+                          }
+                        })}
+                      />
+                      Vehicle Crash
+                    </label>
+                  </div>
+                )}
+              </div>
+              
+              {/* Solar PV */}
+              <div className="neris-emerging-item">
+                <label className="neris-checkbox-label">
+                  <input 
+                    type="checkbox"
+                    checked={formData.neris_emerging_hazard?.solar_pv?.present || false}
+                    onChange={(e) => handleChange('neris_emerging_hazard', {
+                      ...formData.neris_emerging_hazard,
+                      solar_pv: { 
+                        ...formData.neris_emerging_hazard?.solar_pv, 
+                        present: e.target.checked 
+                      }
+                    })}
+                  />
+                  Solar PV System
+                </label>
+                {formData.neris_emerging_hazard?.solar_pv?.present && (
+                  <div className="neris-emerging-details">
+                    <label className="neris-checkbox-label">
+                      <input 
+                        type="checkbox"
+                        checked={formData.neris_emerging_hazard?.solar_pv?.energized || false}
+                        onChange={(e) => handleChange('neris_emerging_hazard', {
+                          ...formData.neris_emerging_hazard,
+                          solar_pv: { 
+                            ...formData.neris_emerging_hazard?.solar_pv, 
+                            energized: e.target.checked 
+                          }
+                        })}
+                      />
+                      Remained Energized
+                    </label>
+                    <select 
+                      value={formData.neris_emerging_hazard?.solar_pv?.ignition || ''}
+                      onChange={(e) => handleChange('neris_emerging_hazard', {
+                        ...formData.neris_emerging_hazard,
+                        solar_pv: { 
+                          ...formData.neris_emerging_hazard?.solar_pv, 
+                          ignition: e.target.value || null 
+                        }
+                      })}
+                    >
+                      <option value="">Ignition source?</option>
+                      {emergHazPvIgnCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              
+              {/* CSST Gas */}
+              <div className="neris-emerging-item">
+                <label className="neris-checkbox-label">
+                  <input 
+                    type="checkbox"
+                    checked={formData.neris_emerging_hazard?.csst?.present || false}
+                    onChange={(e) => handleChange('neris_emerging_hazard', {
+                      ...formData.neris_emerging_hazard,
+                      csst: { 
+                        ...formData.neris_emerging_hazard?.csst, 
+                        present: e.target.checked 
+                      }
+                    })}
+                  />
+                  CSST Gas Lines
+                </label>
+                {formData.neris_emerging_hazard?.csst?.present && (
+                  <div className="neris-emerging-details">
+                    <label className="neris-checkbox-label">
+                      <input 
+                        type="checkbox"
+                        checked={formData.neris_emerging_hazard?.csst?.damage || false}
+                        onChange={(e) => handleChange('neris_emerging_hazard', {
+                          ...formData.neris_emerging_hazard,
+                          csst: { 
+                            ...formData.neris_emerging_hazard?.csst, 
+                            damage: e.target.checked 
+                          }
+                        })}
+                      />
+                      Damage / Gas Leak
+                    </label>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+          
+          {/* Exposures Module - shown for structure fires with extension */}
+          {hasStructureFireType(formData.neris_incident_type_codes) && (
+            <div className="neris-field">
+              <label className="neris-field-label">
+                Exposures (Adjacent Properties Affected)
+                <InfoTooltip text="Document damage to properties beyond the origin building" />
+              </label>
+              <div className="neris-exposures-list">
+                {(formData.neris_exposures || []).map((exp, idx) => (
+                  <div key={idx} className="neris-exposure-item">
+                    <div className="neris-exposure-row">
+                      <select 
+                        value={exp.exposure_type || ''}
+                        onChange={(e) => {
+                          const updated = [...(formData.neris_exposures || [])];
+                          updated[idx] = { ...exp, exposure_type: e.target.value || null };
+                          handleChange('neris_exposures', updated);
+                        }}
+                      >
+                        <option value="">Location type...</option>
+                        {exposureLocCodes.map(code => (
+                          <option key={code.value} value={code.value}>
+                            {code.description || code.display_text || code.value}
+                          </option>
+                        ))}
+                      </select>
+                      <select 
+                        value={exp.exposure_item || ''}
+                        onChange={(e) => {
+                          const updated = [...(formData.neris_exposures || [])];
+                          updated[idx] = { ...exp, exposure_item: e.target.value || null };
+                          handleChange('neris_exposures', updated);
+                        }}
+                      >
+                        <option value="">Item type...</option>
+                        {exposureItemCodes.map(code => (
+                          <option key={code.value} value={code.value}>
+                            {code.description || code.display_text || code.value}
+                          </option>
+                        ))}
+                      </select>
+                      <input 
+                        type="text"
+                        placeholder="Address"
+                        value={exp.address || ''}
+                        onChange={(e) => {
+                          const updated = [...(formData.neris_exposures || [])];
+                          updated[idx] = { ...exp, address: e.target.value };
+                          handleChange('neris_exposures', updated);
+                        }}
+                      />
+                      <button 
+                        type="button"
+                        className="neris-remove-btn"
+                        onClick={() => {
+                          const updated = formData.neris_exposures.filter((_, i) => i !== idx);
+                          handleChange('neris_exposures', updated);
+                        }}
+                      >×</button>
+                    </div>
+                  </div>
+                ))}
+                <button 
+                  type="button"
+                  className="neris-add-btn"
+                  onClick={() => handleChange('neris_exposures', [...(formData.neris_exposures || []), {}])}
+                >
+                  + Add Exposure
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Narrative - Impedance */}
           <div className="neris-field">

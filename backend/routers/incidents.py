@@ -203,6 +203,38 @@ class IncidentUpdate(BaseModel):
     neris_hazmat_evacuated: Optional[int] = None               # Number evacuated
     neris_hazmat_chemicals: Optional[List[Dict[str, Any]]] = None  # [{dot_class, name, release_occurred}]
     
+    # NERIS Module: Exposures (adjacent/other properties affected)
+    neris_exposures: Optional[List[Dict[str, Any]]] = None     # [{exposure_type, exposure_item, address, ...}]
+    
+    # NERIS Module: Emerging Hazards (EV/battery, solar PV, CSST)
+    neris_emerging_hazard: Optional[Dict[str, Any]] = None     # {ev_battery: {...}, solar_pv: {...}, csst: {...}}
+    
+    # NERIS Risk Reduction Details - Smoke Alarm
+    neris_rr_smoke_alarm_type: Optional[List[str]] = None      # type_alarm_smoke (multi)
+    neris_rr_smoke_alarm_working: Optional[bool] = None        # Was it working?
+    neris_rr_smoke_alarm_operation: Optional[str] = None       # type_alarm_operation
+    neris_rr_smoke_alarm_failure: Optional[str] = None         # type_alarm_failure
+    neris_rr_smoke_alarm_action: Optional[str] = None          # Occupant action
+    
+    # NERIS Risk Reduction Details - Fire Alarm
+    neris_rr_fire_alarm_type: Optional[List[str]] = None       # type_alarm_fire (multi)
+    neris_rr_fire_alarm_operation: Optional[str] = None        # type_alarm_operation
+    
+    # NERIS Risk Reduction Details - Other Alarm
+    neris_rr_other_alarm: Optional[str] = None                 # type_rr_presence
+    neris_rr_other_alarm_type: Optional[List[str]] = None      # type_alarm_other (multi)
+    
+    # NERIS Risk Reduction Details - Sprinkler/Suppression
+    neris_rr_sprinkler_type: Optional[List[str]] = None        # type_suppress_fire (multi)
+    neris_rr_sprinkler_coverage: Optional[str] = None          # type_full_partial
+    neris_rr_sprinkler_operation: Optional[str] = None         # type_suppress_operation
+    neris_rr_sprinkler_heads_activated: Optional[int] = None   # Number of heads
+    neris_rr_sprinkler_failure: Optional[str] = None           # type_alarm_failure
+    
+    # NERIS Risk Reduction Details - Cooking Suppression
+    neris_rr_cooking_suppression: Optional[str] = None         # type_rr_presence
+    neris_rr_cooking_suppression_type: Optional[List[str]] = None  # type_suppress_cooking (multi)
+    
     # Audit
     officer_in_charge: Optional[int] = None
     completed_by: Optional[int] = None
@@ -613,6 +645,38 @@ async def get_incident(
         "neris_hazmat_disposition": getattr(incident, 'neris_hazmat_disposition', None),
         "neris_hazmat_evacuated": getattr(incident, 'neris_hazmat_evacuated', 0),
         "neris_hazmat_chemicals": getattr(incident, 'neris_hazmat_chemicals', []),
+        
+        # NERIS Module: Exposures
+        "neris_exposures": getattr(incident, 'neris_exposures', []),
+        
+        # NERIS Module: Emerging Hazards
+        "neris_emerging_hazard": getattr(incident, 'neris_emerging_hazard', None),
+        
+        # NERIS Risk Reduction Details - Smoke Alarm
+        "neris_rr_smoke_alarm_type": getattr(incident, 'neris_rr_smoke_alarm_type', []),
+        "neris_rr_smoke_alarm_working": getattr(incident, 'neris_rr_smoke_alarm_working', None),
+        "neris_rr_smoke_alarm_operation": getattr(incident, 'neris_rr_smoke_alarm_operation', None),
+        "neris_rr_smoke_alarm_failure": getattr(incident, 'neris_rr_smoke_alarm_failure', None),
+        "neris_rr_smoke_alarm_action": getattr(incident, 'neris_rr_smoke_alarm_action', None),
+        
+        # NERIS Risk Reduction Details - Fire Alarm
+        "neris_rr_fire_alarm_type": getattr(incident, 'neris_rr_fire_alarm_type', []),
+        "neris_rr_fire_alarm_operation": getattr(incident, 'neris_rr_fire_alarm_operation', None),
+        
+        # NERIS Risk Reduction Details - Other Alarm
+        "neris_rr_other_alarm": getattr(incident, 'neris_rr_other_alarm', None),
+        "neris_rr_other_alarm_type": getattr(incident, 'neris_rr_other_alarm_type', []),
+        
+        # NERIS Risk Reduction Details - Sprinkler
+        "neris_rr_sprinkler_type": getattr(incident, 'neris_rr_sprinkler_type', []),
+        "neris_rr_sprinkler_coverage": getattr(incident, 'neris_rr_sprinkler_coverage', None),
+        "neris_rr_sprinkler_operation": getattr(incident, 'neris_rr_sprinkler_operation', None),
+        "neris_rr_sprinkler_heads_activated": getattr(incident, 'neris_rr_sprinkler_heads_activated', None),
+        "neris_rr_sprinkler_failure": getattr(incident, 'neris_rr_sprinkler_failure', None),
+        
+        # NERIS Risk Reduction Details - Cooking Suppression
+        "neris_rr_cooking_suppression": getattr(incident, 'neris_rr_cooking_suppression', None),
+        "neris_rr_cooking_suppression_type": getattr(incident, 'neris_rr_cooking_suppression_type', []),
         
         # Submission status
         "neris_submitted_at": _iso_or_none(incident, 'neris_submitted_at'),
