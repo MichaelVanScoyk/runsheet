@@ -1108,6 +1108,12 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         </div>
       )}
 
+      {/* Top Action Buttons */}
+      <div className="runsheet-actions runsheet-actions-top">
+        {onClose && <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>}
+        {incident?.id && formData.status === 'OPEN' && <button className="btn btn-warning" onClick={handleCloseIncident} disabled={saving}>Close Incident</button>}
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+      </div>
       {/* Incident Info */}
       <div className="runsheet-top">
         <div className="runsheet-col">
@@ -1277,7 +1283,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
                   : '';
                 return (
                   <th key={t.id} className={headerClass}>
-                    {t.unit_designator}
+                    {t.name}
                   </th>
                 );
               })}

@@ -1549,3 +1549,14 @@
   font-size: 0.8rem;
   font-style: italic;
 }
+
+/* Top action buttons - sticky */
+.runsheet-actions-top {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #16213e;
+  padding: 0.75rem 1rem;
+  margin: 0 -1rem 1rem -1rem;
+  border-bottom: 1px solid #0f3460;
+}
