@@ -1445,3 +1445,40 @@
     align-self: flex-end;
   }
 }
+/* Fix personnel slot overflow */
+.slot-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow: hidden;
+}
+.slot-cell select {
+  flex: 1;
+  min-width: 0;
+  max-width: calc(100% - 28px);
+  text-overflow: ellipsis;
+}
+.slot-cell .clear-btn {
+  flex-shrink: 0;
+}
+
+/* Make personnel table columns fluid */
+.personnel-table {
+  width: 100%;
+  table-layout: auto;
+}
+.personnel-table th,
+.personnel-table td {
+  min-width: 140px;
+}
+.personnel-table th:first-child,
+.personnel-table td:first-child {
+  min-width: 30px;
+  width: 30px;
+}
+
+/* Disabled slot cells (no position for this truck) */
+.slot-disabled {
+  background: #0a0a15 !important;
+}

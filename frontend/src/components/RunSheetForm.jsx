@@ -66,7 +66,7 @@ function DynamicPersonnelList({ label, assignedIds, onUpdate, allPersonnel, getA
 
   const getPersonName = (id) => {
     const p = allPersonnel.find(x => x.id === id);
-    return p ? p.last_name : '?';
+    return p ? `${p.last_name}, ${p.first_name}` : '?';
   };
 
   return (
@@ -1115,10 +1115,10 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
                     <strong>{unit.unit_id}</strong>
                     {unit.is_mutual_aid && <span className="mutual-aid-badge">MA</span>}
                   </td>
-                  <td>{unit.time_dispatched || '-'}</td>
-                  <td>{unit.time_enroute || '-'}</td>
-                  <td>{unit.time_arrived || '-'}</td>
-                  <td>{unit.time_cleared || '-'}</td>
+                  <td>{unit.time_dispatched ? unit.time_dispatched.split('T')[1]?.substring(0,5) : '-'}</td>
+                  <td>{unit.time_enroute ? unit.time_enroute.split('T')[1]?.substring(0,5) : '-'}</td>
+                  <td>{unit.time_arrived ? unit.time_arrived.split('T')[1]?.substring(0,5) : '-'}</td>
+                  <td>{unit.time_cleared ? unit.time_cleared.split('T')[1]?.substring(0,5) : '-'}</td>
                   <td>{unit.is_mutual_aid ? 'Mutual Aid' : 'Station 48'}</td>
                 </tr>
               ))}
@@ -1153,34 +1153,52 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
             </tr>
           </thead>
           <tbody>
-            {[0, 1, 2, 3, 4, 5].map(slot => (
-              <tr key={slot}>
-                <td className="slot-col">{slot + 1}</td>
-                {realTrucks.map(t => {
-                  const val = assignments[t.unit_designator]?.[slot] || '';
-                  // Only dim cells if we have actual CAD data and this truck wasn't dispatched
-                  // No CAD data = manual incident = all trucks available (no dimming)
-                  const hasCadData = Array.isArray(formData.cad_units) && formData.cad_units.length > 0;
-                  const wasDispatched = hasCadData && formData.cad_units.some(u => 
-                    u.unit_id === t.unit_designator && !u.is_mutual_aid
-                  );
-                  const shouldDim = hasCadData && !wasDispatched;
-                  return (
-                    <td key={t.id} className={shouldDim ? 'cell-dimmed' : ''}>
-                      <div className="slot-cell">
-                        <select value={val} onChange={(e) => handleAssignment(t.unit_designator, slot, e.target.value)}>
-                          <option value="">-</option>
-                          {getAvailablePersonnel(t.unit_designator, slot).map(p => (
-                            <option key={p.id} value={p.id}>{p.last_name}</option>
-                          ))}
-                        </select>
-                        {val && <button className="clear-btn" onClick={() => clearSlot(t.unit_designator, slot)}>×</button>}
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {(() => {
+              // Calculate max slots across all trucks
+              const getSlotCount = (truck) => (truck.has_driver ? 1 : 0) + (truck.has_officer ? 1 : 0) + (truck.ff_slots || 0);
+              const maxSlots = Math.max(...realTrucks.map(getSlotCount), 1);
+              
+              // Generate slot labels: D, O, 3, 4, 5, 6
+              const getSlotLabel = (slot) => {
+                if (slot === 0) return 'D';
+                if (slot === 1) return 'O';
+                return String(slot + 1);
+              };
+              
+              return Array.from({ length: maxSlots }, (_, slot) => (
+                <tr key={slot}>
+                  <td className="slot-col">{getSlotLabel(slot)}</td>
+                  {realTrucks.map(t => {
+                    const slotCount = getSlotCount(t);
+                    // Don't render cell if this slot doesn't exist for this truck
+                    if (slot >= slotCount) {
+                      return <td key={t.id} className="slot-disabled"></td>;
+                    }
+                    
+                    const val = assignments[t.unit_designator]?.[slot] || '';
+                    // Only dim cells if we have actual CAD data and this truck wasn't dispatched
+                    const hasCadData = Array.isArray(formData.cad_units) && formData.cad_units.length > 0;
+                    const wasDispatched = hasCadData && formData.cad_units.some(u => 
+                      u.unit_id === t.unit_designator && !u.is_mutual_aid
+                    );
+                    const shouldDim = hasCadData && !wasDispatched;
+                    return (
+                      <td key={t.id} className={shouldDim ? 'cell-dimmed' : ''}>
+                        <div className="slot-cell">
+                          <select value={val} onChange={(e) => handleAssignment(t.unit_designator, slot, e.target.value)}>
+                            <option value="">-</option>
+                            {getAvailablePersonnel(t.unit_designator, slot).map(p => (
+                              <option key={p.id} value={p.id}>{p.last_name}, {p.first_name}</option>
+                            ))}
+                          </select>
+                          {val && <button className="clear-btn" onClick={() => clearSlot(t.unit_designator, slot)}>×</button>}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ));
+            })()}
           </tbody>
         </table>
       </div>
