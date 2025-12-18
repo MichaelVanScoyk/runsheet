@@ -80,7 +80,7 @@ function SettingsTab() {
       return (
         <div key={setting.key} className="setting-item setting-units">
           <div className="setting-header">
-            <label>{setting.key}</label>
+            <label>{formatLabel(setting.key)}</label>
             <span className="setting-desc">{setting.description}</span>
           </div>
           {editingUnits ? (
@@ -150,7 +150,7 @@ function SettingsTab() {
       return (
         <div key={setting.key} className="setting-item">
           <div className="setting-header">
-            <label>{setting.key}</label>
+            <label>{formatLabel(setting.key)}</label>
             <span className="setting-desc">{setting.description}</span>
           </div>
           <select
@@ -169,7 +169,7 @@ function SettingsTab() {
       return (
         <div key={setting.key} className="setting-item">
           <div className="setting-header">
-            <label>{setting.key}</label>
+            <label>{formatLabel(setting.key)}</label>
             <span className="setting-desc">{setting.description}</span>
           </div>
           <input
@@ -185,7 +185,7 @@ function SettingsTab() {
     return (
       <div key={setting.key} className="setting-item">
         <div className="setting-header">
-          <label>{setting.key}</label>
+          <label>{formatLabel(setting.key)}</label>
           <span className="setting-desc">{setting.description}</span>
         </div>
         <input
