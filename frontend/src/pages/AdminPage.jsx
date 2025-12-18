@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import './AdminPage.css';
+import PersonnelPage from './PersonnelPage';
+import ApparatusPage from './ApparatusPage';
+import MunicipalitiesPage from './MunicipalitiesPage';
 
 const API_BASE = 'http://192.168.1.189:8001';
 
@@ -13,6 +16,7 @@ function SettingsTab() {
   const [saving, setSaving] = useState(null);
   const [editingUnits, setEditingUnits] = useState(false);
   const [unitsText, setUnitsText] = useState('');
+  const [collapsed, setCollapsed] = useState({});
 
   useEffect(() => {
     loadSettings();
@@ -23,6 +27,9 @@ function SettingsTab() {
       const res = await fetch(`${API_BASE}/api/settings`);
       const data = await res.json();
       setSettings(data);
+      // Initialize all categories as collapsed
+      const cats = Object.keys(data);
+      setCollapsed(cats.reduce((acc, cat) => ({ ...acc, [cat]: true }), {}));
       
       if (data.units?.find(s => s.key === 'station_units')) {
         const unitsVal = data.units.find(s => s.key === 'station_units').value;
@@ -33,6 +40,14 @@ function SettingsTab() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleCategory = (cat) => {
+    setCollapsed(prev => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  const formatLabel = (key) => {
+    return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   };
 
   const updateSetting = async (category, key, value) => {
@@ -195,10 +210,19 @@ function SettingsTab() {
       
       {categories.map(category => (
         <div key={category} className="settings-category">
-          <h3>{category.charAt(0).toUpperCase() + category.slice(1)}</h3>
-          <div className="settings-list">
-            {settings[category].map(renderSetting)}
-          </div>
+          <h3 
+            className="settings-category-header" 
+            onClick={() => toggleCategory(category)}
+          >
+            <span className={`collapse-icon ${collapsed[category] ? 'collapsed' : ''}`}>▼</span>
+            {category.charAt(0).toUpperCase() + category.slice(1)}
+            <span className="setting-count">({settings[category].length})</span>
+          </h3>
+          {!collapsed[category] && (
+            <div className="settings-list">
+              {settings[category].map(renderSetting)}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -880,12 +904,33 @@ function AdminPage() {
         >
           📋 NERIS Codes
         </button>
+        <button 
+          className={activeTab === 'personnel' ? 'active' : ''} 
+          onClick={() => setActiveTab('personnel')}
+        >
+          👥 Personnel
+        </button>
+        <button 
+          className={activeTab === 'apparatus' ? 'active' : ''} 
+          onClick={() => setActiveTab('apparatus')}
+        >
+          🚒 Apparatus
+        </button>
+        <button 
+          className={activeTab === 'municipalities' ? 'active' : ''} 
+          onClick={() => setActiveTab('municipalities')}
+        >
+          🏘️ Municipalities
+        </button>
       </div>
 
       <div className="admin-content">
         {activeTab === 'settings' && <SettingsTab />}
         {activeTab === 'sequence' && <IncidentSequenceTab />}
         {activeTab === 'neris' && <NerisCodesTab />}
+        {activeTab === 'personnel' && <PersonnelPage embedded />}
+        {activeTab === 'apparatus' && <ApparatusPage embedded />}
+        {activeTab === 'municipalities' && <MunicipalitiesPage embedded />}
       </div>
     </div>
   );

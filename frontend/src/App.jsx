@@ -28,21 +28,6 @@ function App() {
               </NavLink>
             </li>
             <li>
-              <NavLink to="/personnel" className={({ isActive }) => isActive ? 'active' : ''}>
-                👥 Personnel
-              </NavLink>
-            </li>
-            <li>
-              <NavLink to="/apparatus" className={({ isActive }) => isActive ? 'active' : ''}>
-                🚒 Apparatus
-              </NavLink>
-            </li>
-            <li>
-              <NavLink to="/municipalities" className={({ isActive }) => isActive ? 'active' : ''}>
-                🏘️ Municipalities
-              </NavLink>
-            </li>
-            <li>
               <NavLink to="/admin" className={({ isActive }) => isActive ? 'active' : ''}>
                 🔧 Admin
               </NavLink>

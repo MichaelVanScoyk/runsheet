@@ -11,6 +11,7 @@
 /* Tabs */
 .admin-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
   border-bottom: 2px solid #0f3460;
@@ -72,6 +73,36 @@
   padding-bottom: 0.5rem;
   border-bottom: 1px solid #0f3460;
   text-transform: capitalize;
+}
+
+/* Collapsible Settings Categories */
+.settings-category-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-category-header:hover {
+  opacity: 0.8;
+}
+
+.collapse-icon {
+  font-size: 0.75rem;
+  transition: transform 0.2s;
+  color: #888;
+}
+
+.collapse-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+.setting-count {
+  font-size: 0.8rem;
+  font-weight: normal;
+  color: #666;
+  margin-left: auto;
 }
 
 .settings-list {
