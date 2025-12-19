@@ -21,10 +21,13 @@ function ReportsPage() {
   const [monthlyTrend, setMonthlyTrend] = useState(null);
   const [dayOfWeek, setDayOfWeek] = useState(null);
   const [hourOfDay, setHourOfDay] = useState(null);
+  const [monthlyReport, setMonthlyReport] = useState(null);
   
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('summary');
+  const [activeTab, setActiveTab] = useState('monthly');
   const [generating, setGenerating] = useState(false);
+  const [reportMonth, setReportMonth] = useState(() => new Date().getMonth() + 1);
+  const [reportYear, setReportYear] = useState(() => new Date().getFullYear());
 
   // Quick date range presets
   const setPreset = (preset) => {
@@ -87,8 +90,24 @@ function ReportsPage() {
       const trendRes = await fetch(`${API_BASE}/api/reports/monthly-trend?year=${year}`);
       setMonthlyTrend(await trendRes.json());
       
+      // Load monthly chiefs report
+      const monthlyRes = await fetch(`${API_BASE}/api/reports/monthly?year=${reportYear}&month=${reportMonth}`);
+      setMonthlyReport(await monthlyRes.json());
+      
     } catch (err) {
       console.error('Failed to load reports:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadMonthlyReport = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/reports/monthly?year=${reportYear}&month=${reportMonth}`);
+      setMonthlyReport(await res.json());
+    } catch (err) {
+      console.error('Failed to load monthly report:', err);
     } finally {
       setLoading(false);
     }
@@ -101,9 +120,21 @@ function ReportsPage() {
   const downloadPdf = async () => {
     setGenerating(true);
     try {
-      const response = await fetch(
-        `${API_BASE}/api/reports/pdf?start_date=${startDate}&end_date=${endDate}&report_type=summary`
-      );
+      let url;
+      let filename;
+      
+      if (activeTab === 'monthly') {
+        // Use monthly PDF endpoint
+        url = `${API_BASE}/api/reports/pdf/monthly?year=${reportYear}&month=${reportMonth}`;
+        const monthName = new Date(reportYear, reportMonth - 1, 1).toLocaleString('default', { month: 'long' });
+        filename = `monthly_report_${reportYear}_${String(reportMonth).padStart(2, '0')}_${monthName}.pdf`;
+      } else {
+        // Use generic PDF endpoint
+        url = `${API_BASE}/api/reports/pdf?start_date=${startDate}&end_date=${endDate}&report_type=summary`;
+        filename = `incident_report_${startDate}_${endDate}.pdf`;
+      }
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
         const err = await response.json();
@@ -112,13 +143,13 @@ function ReportsPage() {
       }
       
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `incident_report_${startDate}_${endDate}.pdf`;
+      a.href = blobUrl;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(blobUrl);
       a.remove();
     } catch (err) {
       console.error('Failed to download PDF:', err);
@@ -234,6 +265,12 @@ function ReportsPage() {
       {/* Tabs */}
       <div className="report-tabs">
         <button 
+          className={activeTab === 'monthly' ? 'active' : ''} 
+          onClick={() => setActiveTab('monthly')}
+        >
+          Monthly Report
+        </button>
+        <button 
           className={activeTab === 'summary' ? 'active' : ''} 
           onClick={() => setActiveTab('summary')}
         >
@@ -262,6 +299,209 @@ function ReportsPage() {
 
       {/* Tab Content */}
       <div className="report-content">
+        {activeTab === 'monthly' && (
+          <div className="monthly-tab">
+            {/* Month/Year Selector */}
+            <div className="month-selector">
+              <select value={reportMonth} onChange={(e) => setReportMonth(parseInt(e.target.value))}>
+                {[...Array(12)].map((_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    {new Date(2000, i, 1).toLocaleString('default', { month: 'long' })}
+                  </option>
+                ))}
+              </select>
+              <select value={reportYear} onChange={(e) => setReportYear(parseInt(e.target.value))}>
+                {[...Array(5)].map((_, i) => {
+                  const y = new Date().getFullYear() - i;
+                  return <option key={y} value={y}>{y}</option>;
+                })}
+              </select>
+              <button onClick={loadMonthlyReport} disabled={loading}>
+                {loading ? 'Loading...' : 'Load Report'}
+              </button>
+            </div>
+
+            {monthlyReport && (
+              <div className="chiefs-report">
+                <h3 className="report-title">
+                  GLEN MOORE FIRE CO. MONTHLY REPORT<br/>
+                  <span>{monthlyReport.month_name} {monthlyReport.year}</span>
+                </h3>
+
+                {/* Call Summary */}
+                <div className="report-section">
+                  <h4>CALL SUMMARY</h4>
+                  <table className="summary-table">
+                    <tbody>
+                      <tr>
+                        <td>Number of Calls for Month</td>
+                        <td className="value">{monthlyReport.call_summary.number_of_calls}</td>
+                      </tr>
+                      <tr>
+                        <td>Number of Men</td>
+                        <td className="value">{monthlyReport.call_summary.number_of_men}</td>
+                      </tr>
+                      <tr>
+                        <td>Hours</td>
+                        <td className="value">{monthlyReport.call_summary.hours.toFixed(2)}</td>
+                      </tr>
+                      <tr>
+                        <td>Man Hours</td>
+                        <td className="value">{monthlyReport.call_summary.man_hours.toFixed(2)}</td>
+                      </tr>
+                      <tr className="comparison">
+                        <td>vs. Same Month Last Year</td>
+                        <td className="value">
+                          {monthlyReport.call_summary.change >= 0 ? '+' : ''}{monthlyReport.call_summary.change} 
+                          ({monthlyReport.call_summary.percent_change >= 0 ? '+' : ''}{monthlyReport.call_summary.percent_change}%)
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="report-grid-2col">
+                  {/* Municipality Summary */}
+                  <div className="report-section">
+                    <h4>MUNICIPALITY SUMMARY</h4>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Municipality</th>
+                          <th>Calls</th>
+                          <th>Man Hrs</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthlyReport.municipalities.map((m, i) => (
+                          <tr key={i}>
+                            <td>{m.municipality}</td>
+                            <td className="num">{m.calls}</td>
+                            <td className="num">{m.manhours.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                        {monthlyReport.municipalities.length === 0 && (
+                          <tr><td colSpan="3" className="no-data">No data</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Responses Per Unit */}
+                  <div className="report-section">
+                    <h4>RESPONSES PER UNIT</h4>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Unit</th>
+                          <th>Responses</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthlyReport.responses_per_unit.map((u, i) => (
+                          <tr key={i}>
+                            <td>{u.unit_name || u.unit}</td>
+                            <td className="num">{u.responses}</td>
+                          </tr>
+                        ))}
+                        {monthlyReport.responses_per_unit.length === 0 && (
+                          <tr><td colSpan="2" className="no-data">No data</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="report-grid-2col">
+                  {/* Type of Incident */}
+                  <div className="report-section">
+                    <h4>TYPE OF INCIDENT</h4>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Type</th>
+                          <th>Count</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthlyReport.incident_types.map((t, i) => (
+                          <tr key={i}>
+                            <td>{t.type}</td>
+                            <td className="num">{t.count}</td>
+                          </tr>
+                        ))}
+                        {monthlyReport.incident_types.length === 0 && (
+                          <tr><td colSpan="2" className="no-data">No data</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mutual Aid */}
+                  <div className="report-section">
+                    <h4>MUTUAL AID ASSIST TO</h4>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Station</th>
+                          <th>Count</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthlyReport.mutual_aid.length > 0 ? (
+                          monthlyReport.mutual_aid.map((ma, i) => (
+                            <tr key={i}>
+                              <td>{ma.station}</td>
+                              <td className="num">{ma.count}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr><td colSpan="2" className="no-data">None</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Response Times */}
+                {monthlyReport.response_times && (
+                  <div className="report-section">
+                    <h4>RESPONSE TIMES</h4>
+                    <table className="summary-table">
+                      <tbody>
+                        <tr>
+                          <td>Avg Turnout Time</td>
+                          <td className="value">
+                            {monthlyReport.response_times.avg_turnout_minutes 
+                              ? `${monthlyReport.response_times.avg_turnout_minutes.toFixed(1)} min` 
+                              : '-'}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td>Avg Response Time</td>
+                          <td className="value">
+                            {monthlyReport.response_times.avg_response_minutes 
+                              ? `${monthlyReport.response_times.avg_response_minutes.toFixed(1)} min` 
+                              : '-'}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td>Avg On Scene Time</td>
+                          <td className="value">
+                            {monthlyReport.response_times.avg_on_scene_minutes 
+                              ? `${monthlyReport.response_times.avg_on_scene_minutes.toFixed(1)} min` 
+                              : '-'}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'summary' && (
           <div className="summary-tab">
             <div className="report-grid">

@@ -197,7 +197,7 @@ async def get_municipality_report(
             COUNT(*) AS incident_count,
             COUNT(DISTINCT i.cad_event_type) AS unique_call_types
         FROM incidents i
-        LEFT JOIN municipalities m ON i.municipality_code = m.cad_code
+        LEFT JOIN municipalities m ON i.municipality_code = m.code
         WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
           AND i.deleted_at IS NULL
         GROUP BY COALESCE(m.display_name, i.municipality_code, 'Unknown')
@@ -308,7 +308,7 @@ async def get_personnel_report(
                 p.id,
                 p.first_name,
                 p.last_name,
-                r.name AS rank_name,
+                r.rank_name AS rank_name,
                 COUNT(DISTINCT ip.incident_id) AS incident_count,
                 -- Calculate manhours per person
                 SUM(
@@ -324,7 +324,7 @@ async def get_personnel_report(
                 AND i.deleted_at IS NULL
                 AND i.time_dispatched IS NOT NULL
             WHERE p.active = true
-            GROUP BY p.id, p.first_name, p.last_name, r.name
+            GROUP BY p.id, p.first_name, p.last_name, r.rank_name
         )
         SELECT 
             id,
@@ -462,6 +462,224 @@ async def get_hour_of_day_report(
     return {
         "date_range": {"start": start_date.isoformat(), "end": end_date.isoformat()},
         "hours": hour_data
+    }
+
+
+# =============================================================================
+# MONTHLY CHIEFS REPORT
+# =============================================================================
+
+@router.get("/monthly")
+async def get_monthly_chiefs_report(
+    year: int = Query(...),
+    month: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Comprehensive monthly report matching the paper chiefs report format.
+    
+    Calculates:
+    - Number of Calls
+    - Number of Men (total personnel responses)
+    - Hours (total incident hours: dispatch to in-service)
+    - Man Hours (sum of personnel × hours for each incident)
+    - By Municipality
+    - By Call Type
+    - By Unit (responses per apparatus)
+    - Mutual Aid given
+    - Comparison to same month last year
+    """
+    
+    # Date range for this month
+    start_date = date(year, month, 1)
+    if month == 12:
+        end_date = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        end_date = date(year, month + 1, 1) - timedelta(days=1)
+    
+    # Same month last year for comparison
+    prev_start = date(year - 1, month, 1)
+    if month == 12:
+        prev_end = date(year, 1, 1) - timedelta(days=1)
+    else:
+        prev_end = date(year - 1, month + 1, 1) - timedelta(days=1)
+    
+    # =========================================================================
+    # CALL SUMMARY - Main stats
+    # =========================================================================
+    summary_result = db.execute(text("""
+        WITH incident_data AS (
+            SELECT 
+                i.id,
+                i.internal_incident_number,
+                -- Duration in hours from dispatch to in_service
+                EXTRACT(EPOCH FROM (
+                    COALESCE(i.time_in_service, i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
+                )) / 3600.0 AS duration_hours,
+                -- Count personnel on this incident
+                (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count
+            FROM incidents i
+            WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
+              AND i.deleted_at IS NULL
+              AND i.time_dispatched IS NOT NULL
+        )
+        SELECT 
+            COUNT(*) AS total_calls,
+            COALESCE(SUM(personnel_count), 0) AS total_men,
+            COALESCE(SUM(CASE WHEN duration_hours > 0 AND duration_hours < 24 THEN duration_hours ELSE 0 END), 0) AS total_hours,
+            COALESCE(SUM(CASE WHEN duration_hours > 0 AND duration_hours < 24 
+                         THEN duration_hours * personnel_count ELSE 0 END), 0) AS total_manhours
+        FROM incident_data
+    """), {"start_date": start_date, "end_date": end_date})
+    
+    summary_row = summary_result.fetchone()
+    
+    # Previous year count for comparison
+    prev_result = db.execute(text("""
+        SELECT COUNT(*) FROM incidents
+        WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
+          AND deleted_at IS NULL
+    """), {"start_date": prev_start, "end_date": prev_end})
+    prev_count = prev_result.fetchone()[0]
+    
+    current_count = int(summary_row[0] or 0)
+    change = current_count - prev_count
+    pct_change = round((change / prev_count * 100), 0) if prev_count > 0 else 0
+    
+    call_summary = {
+        "number_of_calls": current_count,
+        "number_of_men": int(summary_row[1] or 0),
+        "hours": round(float(summary_row[2] or 0), 2),
+        "man_hours": round(float(summary_row[3] or 0), 2),
+        "previous_year_calls": prev_count,
+        "change": change,
+        "percent_change": pct_change,
+    }
+    
+    # =========================================================================
+    # MUNICIPALITY SUMMARY
+    # =========================================================================
+    muni_result = db.execute(text("""
+        WITH incident_data AS (
+            SELECT 
+                i.id,
+                COALESCE(m.display_name, i.municipality_code, 'Unknown') AS municipality,
+                EXTRACT(EPOCH FROM (
+                    COALESCE(i.time_in_service, i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
+                )) / 3600.0 AS duration_hours,
+                (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count
+            FROM incidents i
+            LEFT JOIN municipalities m ON i.municipality_code = m.code
+            WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
+              AND i.deleted_at IS NULL
+        )
+        SELECT 
+            municipality,
+            COUNT(*) AS calls,
+            COALESCE(SUM(CASE WHEN duration_hours > 0 AND duration_hours < 24 
+                         THEN duration_hours * personnel_count ELSE 0 END), 0) AS manhours
+        FROM incident_data
+        GROUP BY municipality
+        ORDER BY calls DESC, municipality
+    """), {"start_date": start_date, "end_date": end_date})
+    
+    municipalities = []
+    for row in muni_result:
+        municipalities.append({
+            "municipality": row[0],
+            "calls": row[1],
+            "manhours": round(float(row[2] or 0), 2)
+        })
+    
+    # =========================================================================
+    # TYPE OF INCIDENT
+    # =========================================================================
+    type_result = db.execute(text("""
+        SELECT 
+            COALESCE(cad_event_type, 'Unknown') AS incident_type,
+            COUNT(*) AS count
+        FROM incidents
+        WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
+          AND deleted_at IS NULL
+        GROUP BY COALESCE(cad_event_type, 'Unknown')
+        ORDER BY count DESC, incident_type
+    """), {"start_date": start_date, "end_date": end_date})
+    
+    incident_types = []
+    for row in type_result:
+        incident_types.append({
+            "type": row[0],
+            "count": row[1]
+        })
+    
+    # =========================================================================
+    # RESPONSES PER UNIT
+    # =========================================================================
+    unit_result = db.execute(text("""
+        SELECT 
+            COALESCE(a.unit_designator, iu.cad_unit_id, 'Unknown') AS unit,
+            COALESCE(a.name, iu.cad_unit_id) AS unit_name,
+            COUNT(DISTINCT iu.incident_id) AS responses
+        FROM incident_units iu
+        LEFT JOIN apparatus a ON iu.apparatus_id = a.id
+        JOIN incidents i ON iu.incident_id = i.id
+        WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
+          AND i.deleted_at IS NULL
+        GROUP BY COALESCE(a.unit_designator, iu.cad_unit_id, 'Unknown'), 
+                 COALESCE(a.name, iu.cad_unit_id)
+        ORDER BY responses DESC, unit
+    """), {"start_date": start_date, "end_date": end_date})
+    
+    responses_per_unit = []
+    for row in unit_result:
+        responses_per_unit.append({
+            "unit": row[0],
+            "unit_name": row[1],
+            "responses": row[2]
+        })
+    
+    # =========================================================================
+    # MUTUAL AID GIVEN (Assist To)
+    # =========================================================================
+    mutual_aid_result = db.execute(text("""
+        SELECT 
+            COALESCE(iu.cad_unit_id, 'Unknown') AS assisted_station,
+            COUNT(DISTINCT iu.incident_id) AS count
+        FROM incident_units iu
+        JOIN incidents i ON iu.incident_id = i.id
+        WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
+          AND i.deleted_at IS NULL
+          AND iu.is_mutual_aid = true
+        GROUP BY COALESCE(iu.cad_unit_id, 'Unknown')
+        ORDER BY count DESC
+    """), {"start_date": start_date, "end_date": end_date})
+    
+    mutual_aid = []
+    for row in mutual_aid_result:
+        mutual_aid.append({
+            "station": row[0],
+            "count": row[1]
+        })
+    
+    # =========================================================================
+    # RESPONSE TIMES
+    # =========================================================================
+    times = get_response_times(db, start_date, end_date)
+    
+    return {
+        "month": month,
+        "year": year,
+        "month_name": start_date.strftime("%B"),
+        "date_range": {
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat()
+        },
+        "call_summary": call_summary,
+        "municipalities": municipalities,
+        "incident_types": incident_types,
+        "responses_per_unit": responses_per_unit,
+        "mutual_aid": mutual_aid,
+        "response_times": times
     }
 
 
@@ -605,6 +823,204 @@ async def generate_pdf_report(
         buffer.seek(0)
         
         filename = f"incident_report_{start_date}_{end_date}.pdf"
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except ImportError:
+        raise HTTPException(
+            status_code=500, 
+            detail="PDF generation requires reportlab. Install with: pip install reportlab"
+        )
+
+
+@router.get("/pdf/monthly")
+async def generate_monthly_pdf_report(
+    year: int = Query(...),
+    month: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Generate Monthly Chiefs Report PDF matching the UI format"""
+    
+    # Get monthly report data
+    report = await get_monthly_chiefs_report(year, month, db)
+    
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+        from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=16, alignment=TA_CENTER, spaceAfter=4)
+        subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], fontSize=14, alignment=TA_CENTER, textColor=colors.grey, spaceAfter=20)
+        section_style = ParagraphStyle('Section', parent=styles['Heading2'], fontSize=12, spaceAfter=8, textColor=colors.HexColor('#333333'))
+        
+        elements = []
+        
+        # Title
+        elements.append(Paragraph("GLEN MOORE FIRE CO. MONTHLY REPORT", title_style))
+        elements.append(Paragraph(f"{report['month_name']} {report['year']}", subtitle_style))
+        
+        # =================================================================
+        # CALL SUMMARY
+        # =================================================================
+        elements.append(Paragraph("CALL SUMMARY", section_style))
+        
+        cs = report['call_summary']
+        summary_data = [
+            ["Number of Calls for Month", str(cs['number_of_calls'])],
+            ["Number of Men", str(cs['number_of_men'])],
+            ["Hours", f"{cs['hours']:.2f}"],
+            ["Man Hours", f"{cs['man_hours']:.2f}"],
+            ["vs. Same Month Last Year", f"{'+' if cs['change'] >= 0 else ''}{cs['change']} ({'+' if cs['percent_change'] >= 0 else ''}{cs['percent_change']:.0f}%)"],
+        ]
+        
+        summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+        ]))
+        elements.append(summary_table)
+        elements.append(Spacer(1, 0.25*inch))
+        
+        # =================================================================
+        # TWO-COLUMN: MUNICIPALITY SUMMARY | RESPONSES PER UNIT
+        # =================================================================
+        
+        # Municipality data
+        muni_data = [["Municipality", "Calls", "Man Hrs"]]
+        for m in report['municipalities'][:12]:
+            muni_data.append([m['municipality'], str(m['calls']), f"{m['manhours']:.2f}"])
+        if not report['municipalities']:
+            muni_data.append(["No data", "", ""])
+        
+        muni_table = Table(muni_data, colWidths=[1.8*inch, 0.6*inch, 0.8*inch])
+        muni_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('PADDING', (0, 0), (-1, -1), 4),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ]))
+        
+        # Unit data
+        unit_data = [["Unit", "Responses"]]
+        for u in report['responses_per_unit'][:12]:
+            unit_data.append([u['unit_name'] or u['unit'], str(u['responses'])])
+        if not report['responses_per_unit']:
+            unit_data.append(["No data", ""])
+        
+        unit_table = Table(unit_data, colWidths=[2.2*inch, 0.8*inch])
+        unit_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('PADDING', (0, 0), (-1, -1), 4),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+        ]))
+        
+        # Side by side layout
+        elements.append(Paragraph("MUNICIPALITY SUMMARY", section_style))
+        elements.append(muni_table)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        elements.append(Paragraph("RESPONSES PER UNIT", section_style))
+        elements.append(unit_table)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # =================================================================
+        # TWO-COLUMN: TYPE OF INCIDENT | MUTUAL AID
+        # =================================================================
+        
+        # Type data
+        type_data = [["Type", "Count"]]
+        for t in report['incident_types'][:15]:
+            type_data.append([t['type'], str(t['count'])])
+        if not report['incident_types']:
+            type_data.append(["No data", ""])
+        
+        type_table = Table(type_data, colWidths=[2.8*inch, 0.6*inch])
+        type_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('PADDING', (0, 0), (-1, -1), 4),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+        ]))
+        
+        # Mutual aid data
+        ma_data = [["Station", "Count"]]
+        if report['mutual_aid']:
+            for ma in report['mutual_aid'][:10]:
+                ma_data.append([ma['station'], str(ma['count'])])
+        else:
+            ma_data.append(["None", ""])
+        
+        ma_table = Table(ma_data, colWidths=[2*inch, 0.6*inch])
+        ma_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('PADDING', (0, 0), (-1, -1), 4),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+        ]))
+        
+        elements.append(Paragraph("TYPE OF INCIDENT", section_style))
+        elements.append(type_table)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        elements.append(Paragraph("MUTUAL AID ASSIST TO", section_style))
+        elements.append(ma_table)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # =================================================================
+        # RESPONSE TIMES
+        # =================================================================
+        rt = report['response_times']
+        if rt:
+            elements.append(Paragraph("RESPONSE TIMES", section_style))
+            rt_data = [
+                ["Avg Turnout Time", f"{rt['avg_turnout_minutes']:.1f} min" if rt['avg_turnout_minutes'] else "-"],
+                ["Avg Response Time", f"{rt['avg_response_minutes']:.1f} min" if rt['avg_response_minutes'] else "-"],
+                ["Avg On Scene Time", f"{rt['avg_on_scene_minutes']:.1f} min" if rt['avg_on_scene_minutes'] else "-"],
+            ]
+            
+            rt_table = Table(rt_data, colWidths=[2*inch, 1.5*inch])
+            rt_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('PADDING', (0, 0), (-1, -1), 6),
+                ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+            ]))
+            elements.append(rt_table)
+        
+        # Footer
+        elements.append(Spacer(1, 0.3*inch))
+        elements.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", 
+                                  ParagraphStyle('Footer', fontSize=8, textColor=colors.grey, alignment=TA_CENTER)))
+        
+        doc.build(elements)
+        buffer.seek(0)
+        
+        month_name = report['month_name']
+        filename = f"monthly_report_{year}_{month:02d}_{month_name}.pdf"
         return StreamingResponse(
             buffer,
             media_type="application/pdf",
