@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog } from '../api';
+import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank } from '../api';
 import './AdminPage.css';
 import PersonnelPage from './PersonnelPage';
 import ApparatusPage from './ApparatusPage';
@@ -876,6 +876,206 @@ function NerisCodesTab() {
 
 
 // ============================================================================
+// RANKS TAB COMPONENT
+// ============================================================================
+
+function RanksTab() {
+  const [ranks, setRanks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [formData, setFormData] = useState({
+    rank_name: '',
+    abbreviation: '',
+    display_order: 100,
+  });
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    loadRanks();
+  }, []);
+
+  const loadRanks = async () => {
+    try {
+      const res = await getRanks();
+      setRanks(res.data);
+    } catch (err) {
+      console.error('Failed to load ranks:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdd = () => {
+    setEditing(null);
+    setFormData({ rank_name: '', abbreviation: '', display_order: 100 });
+    setError('');
+    setShowModal(true);
+  };
+
+  const handleEdit = (rank) => {
+    setEditing(rank);
+    setFormData({
+      rank_name: rank.rank_name,
+      abbreviation: rank.abbreviation || '',
+      display_order: rank.display_order,
+    });
+    setError('');
+    setShowModal(true);
+  };
+
+  const handleDelete = async (rank) => {
+    if (!confirm(`Deactivate rank "${rank.rank_name}"?`)) return;
+    
+    try {
+      await deleteRank(rank.id);
+      loadRanks();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to delete rank');
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    
+    try {
+      if (editing) {
+        await updateRank(editing.id, formData);
+      } else {
+        await createRank(formData);
+      }
+      setShowModal(false);
+      loadRanks();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to save rank');
+    }
+  };
+
+  const handleChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  if (loading) {
+    return <div className="loading">Loading...</div>;
+  }
+
+  return (
+    <div className="ranks-tab">
+      <div className="ranks-header">
+        <h3>Ranks</h3>
+        <button className="btn btn-primary" onClick={handleAdd}>+ Add Rank</button>
+      </div>
+      <p className="tab-intro">
+        Configure ranks for personnel. Lower display order = higher rank (Chief should be 1, FF should be 100).
+      </p>
+
+      <table className="ranks-table">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Rank Name</th>
+            <th>Abbreviation</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ranks.length === 0 ? (
+            <tr>
+              <td colSpan="5" style={{ textAlign: 'center', color: '#888' }}>
+                No ranks configured
+              </td>
+            </tr>
+          ) : (
+            ranks.map(rank => (
+              <tr key={rank.id} className={!rank.active ? 'inactive-row' : ''}>
+                <td>{rank.display_order}</td>
+                <td>{rank.rank_name}</td>
+                <td>{rank.abbreviation || '-'}</td>
+                <td>
+                  <span className={`badge ${rank.active ? 'badge-open' : 'badge-closed'}`}>
+                    {rank.active ? 'Active' : 'Inactive'}
+                  </span>
+                </td>
+                <td>
+                  <div className="action-buttons">
+                    <button className="btn btn-secondary btn-sm" onClick={() => handleEdit(rank)}>
+                      Edit
+                    </button>
+                    {rank.active && (
+                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(rank)}>
+                        Deactivate
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>{editing ? 'Edit Rank' : 'Add Rank'}</h3>
+            <form onSubmit={handleSubmit}>
+              {error && <div className="form-error">{error}</div>}
+              
+              <div className="form-group">
+                <label>Rank Name *</label>
+                <input
+                  type="text"
+                  value={formData.rank_name}
+                  onChange={(e) => handleChange('rank_name', e.target.value)}
+                  placeholder="Firefighter"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Abbreviation</label>
+                <input
+                  type="text"
+                  value={formData.abbreviation}
+                  onChange={(e) => handleChange('abbreviation', e.target.value)}
+                  placeholder="FF"
+                  maxLength={10}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Display Order</label>
+                <input
+                  type="number"
+                  value={formData.display_order}
+                  onChange={(e) => handleChange('display_order', parseInt(e.target.value) || 100)}
+                  min={1}
+                  max={999}
+                />
+                <small>Lower number = higher rank (Chief=1, Captain=10, FF=100)</small>
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  {editing ? 'Update' : 'Add'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ============================================================================
 // PASSWORD TAB COMPONENT
 // ============================================================================
 
@@ -1132,6 +1332,12 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
           👥 Personnel
         </button>
         <button 
+          className={activeTab === 'ranks' ? 'active' : ''} 
+          onClick={() => setActiveTab('ranks')}
+        >
+          🎖️ Ranks
+        </button>
+        <button 
           className={activeTab === 'apparatus' ? 'active' : ''} 
           onClick={() => setActiveTab('apparatus')}
         >
@@ -1162,6 +1368,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'sequence' && <IncidentSequenceTab />}
         {activeTab === 'neris' && <NerisCodesTab />}
         {activeTab === 'personnel' && <PersonnelPage embedded />}
+        {activeTab === 'ranks' && <RanksTab />}
         {activeTab === 'apparatus' && <ApparatusPage embedded />}
         {activeTab === 'municipalities' && <MunicipalitiesPage embedded />}
         {activeTab === 'audit' && <AuditLogTab />}

@@ -1012,3 +1012,73 @@
   text-align: center;
   color: #888;
 }
+
+
+/* =============================================================================
+   RANKS TAB
+   ============================================================================= */
+
+.ranks-tab {
+  max-width: 800px;
+}
+
+.ranks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.ranks-header h3 {
+  margin: 0;
+  color: #e94560;
+}
+
+.ranks-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.ranks-table th,
+.ranks-table td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #0f3460;
+}
+
+.ranks-table th {
+  background: #0f3460;
+  color: #e94560;
+  font-weight: 600;
+}
+
+.ranks-table tr:hover {
+  background: rgba(15, 52, 96, 0.3);
+}
+
+.ranks-table .inactive-row {
+  opacity: 0.5;
+}
+
+.ranks-table .action-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.form-error {
+  background: rgba(231, 76, 60, 0.15);
+  border: 1px solid #e74c3c;
+  color: #e74c3c;
+  padding: 0.75rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.modal-content small {
+  color: #888;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+  display: block;
+}

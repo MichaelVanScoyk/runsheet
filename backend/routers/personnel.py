@@ -114,6 +114,84 @@ async def list_ranks(
     ]
 
 
+# =============================================================================
+# RANKS CRUD
+# =============================================================================
+
+class RankCreate(BaseModel):
+    rank_name: str
+    abbreviation: Optional[str] = None
+    display_order: int = 100
+
+
+class RankUpdate(BaseModel):
+    rank_name: Optional[str] = None
+    abbreviation: Optional[str] = None
+    display_order: Optional[int] = None
+    active: Optional[bool] = None
+
+
+@router.post("/ranks")
+async def create_rank(
+    data: RankCreate,
+    db: Session = Depends(get_db)
+):
+    """Create a new rank"""
+    rank = Rank(
+        rank_name=data.rank_name,
+        abbreviation=data.abbreviation,
+        display_order=data.display_order,
+    )
+    db.add(rank)
+    db.commit()
+    db.refresh(rank)
+    return {"id": rank.id, "status": "ok"}
+
+
+@router.put("/ranks/{rank_id}")
+async def update_rank(
+    rank_id: int,
+    data: RankUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update a rank"""
+    rank = db.query(Rank).filter(Rank.id == rank_id).first()
+    
+    if not rank:
+        raise HTTPException(status_code=404, detail="Rank not found")
+    
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(rank, field, value)
+    
+    db.commit()
+    return {"id": rank_id, "status": "ok"}
+
+
+@router.delete("/ranks/{rank_id}")
+async def delete_rank(
+    rank_id: int,
+    db: Session = Depends(get_db)
+):
+    """Deactivate a rank"""
+    rank = db.query(Rank).filter(Rank.id == rank_id).first()
+    
+    if not rank:
+        raise HTTPException(status_code=404, detail="Rank not found")
+    
+    # Check if any personnel use this rank
+    personnel_count = db.query(Personnel).filter(Personnel.rank_id == rank_id).count()
+    if personnel_count > 0:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete rank - {personnel_count} personnel assigned"
+        )
+    
+    rank.active = False
+    db.commit()
+    return {"id": rank_id, "status": "ok"}
+
+
 @router.get("/{id}")
 async def get_personnel(id: int, db: Session = Depends(get_db)):
     """Get single personnel"""

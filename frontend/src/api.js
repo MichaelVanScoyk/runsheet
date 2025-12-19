@@ -46,6 +46,12 @@ export const deletePersonnel = (id) => api.delete(`/personnel/${id}`);
 
 export const getRanks = () => api.get('/personnel/ranks');
 
+export const createRank = (data) => api.post('/personnel/ranks', data);
+
+export const updateRank = (id, data) => api.put(`/personnel/ranks/${id}`, data);
+
+export const deleteRank = (id) => api.delete(`/personnel/ranks/${id}`);
+
 // ============================================================================
 // APPARATUS
 // ============================================================================
