@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getApparatus, createApparatus, updateApparatus, deleteApparatus } from '../api';
 
-const API_BASE = 'http://192.168.1.189:8001';
+const API_BASE = 'http://192.168.1.228:8001';
 
 function ApparatusPage() {
   const [apparatus, setApparatus] = useState([]);
