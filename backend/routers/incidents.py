@@ -17,7 +17,7 @@ import logging
 from database import get_db
 from models import (
     Incident, IncidentUnit, IncidentPersonnel, 
-    Municipality, Apparatus, Personnel, Rank
+    Municipality, Apparatus, Personnel, Rank, AuditLog
 )
 
 # Weather service (optional)
@@ -36,6 +36,41 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# =============================================================================
+# AUDIT LOGGING HELPER
+# =============================================================================
+
+def log_incident_audit(
+    db: Session,
+    action: str,
+    incident: Incident,
+    completed_by_id: Optional[int],
+    summary: str,
+    fields_changed: Optional[dict] = None
+):
+    """
+    Log an incident change to the audit trail.
+    Uses completed_by personnel field (honor system).
+    """
+    personnel_name = None
+    if completed_by_id:
+        person = db.query(Personnel).filter(Personnel.id == completed_by_id).first()
+        if person:
+            personnel_name = f"{person.last_name}, {person.first_name}"
+    
+    log_entry = AuditLog(
+        personnel_id=completed_by_id,
+        personnel_name=personnel_name,
+        action=action,
+        entity_type="incident",
+        entity_id=incident.id,
+        entity_display=f"Incident {incident.internal_incident_number}",
+        summary=summary,
+        fields_changed=fields_changed,
+    )
+    db.add(log_entry)
 
 
 # =============================================================================
@@ -798,6 +833,16 @@ async def create_incident(
         incident.neris_id = neris_id
         db.commit()
     
+    # Audit log
+    log_incident_audit(
+        db=db,
+        action="CREATE",
+        incident=incident,
+        completed_by_id=None,
+        summary=f"Incident created: {data.cad_event_type or 'Manual'}"
+    )
+    db.commit()
+    
     return {
         "id": incident.id, 
         "internal_incident_number": incident_number,
@@ -833,6 +878,14 @@ async def update_incident(
     for field in IMMUTABLE_FIELDS:
         update_data.pop(field, None)
     
+    # Track changes for audit
+    changes = {}
+    for field, new_value in update_data.items():
+        if hasattr(incident, field):
+            old_value = getattr(incident, field)
+            if old_value != new_value:
+                changes[field] = {"old": str(old_value) if old_value else None, "new": str(new_value) if new_value else None}
+    
     # Auto-fetch weather if enabled
     weather_auto_fetch = True
     if SETTINGS_AVAILABLE:
@@ -859,6 +912,9 @@ async def update_incident(
             except Exception as e:
                 logger.warning(f"Failed to auto-fetch weather: {e}")
     
+    # Get completed_by for audit (honor system)
+    completed_by_id = update_data.get('completed_by') or incident.completed_by
+    
     # Apply updates
     for field, value in update_data.items():
         if hasattr(incident, field):
@@ -871,6 +927,24 @@ async def update_incident(
         neris_id = maybe_generate_neris_id(db, incident)
         if neris_id:
             incident.neris_id = neris_id
+    
+    # Audit log (only if actual changes)
+    if changes:
+        # Summarize what changed
+        change_keys = list(changes.keys())
+        if len(change_keys) <= 3:
+            summary = f"Updated: {', '.join(change_keys)}"
+        else:
+            summary = f"Updated {len(change_keys)} fields"
+        
+        log_incident_audit(
+            db=db,
+            action="UPDATE",
+            incident=incident,
+            completed_by_id=completed_by_id,
+            summary=summary,
+            fields_changed=changes
+        )
     
     db.commit()
     
@@ -895,8 +969,20 @@ async def close_incident(
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     
+    old_status = incident.status
     incident.status = 'CLOSED'
     incident.updated_at = datetime.now(timezone.utc)
+    
+    # Audit log
+    log_incident_audit(
+        db=db,
+        action="CLOSE",
+        incident=incident,
+        completed_by_id=incident.completed_by,
+        summary=f"Status changed: {old_status} → CLOSED",
+        fields_changed={"status": {"old": old_status, "new": "CLOSED"}}
+    )
+    
     db.commit()
     
     return {"status": "ok", "id": incident_id}
@@ -965,6 +1051,16 @@ async def save_assignments(
                 assignment_source='MANUAL',
             )
             db.add(assignment)
+    
+    # Audit log
+    unit_count = len([u for u, slots in data.assignments.items() if any(p for p in slots if p)])
+    log_incident_audit(
+        db=db,
+        action="UPDATE",
+        incident=incident,
+        completed_by_id=incident.completed_by,
+        summary=f"Updated assignments ({unit_count} units)"
+    )
     
     incident.updated_at = datetime.now(timezone.utc)
     db.commit()

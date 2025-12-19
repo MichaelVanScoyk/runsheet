@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
 import IncidentsPage from './pages/IncidentsPage';
 import PersonnelPage from './pages/PersonnelPage';
@@ -5,9 +6,21 @@ import ApparatusPage from './pages/ApparatusPage';
 import MunicipalitiesPage from './pages/MunicipalitiesPage';
 import AdminPage from './pages/AdminPage';
 import ReportsPage from './pages/ReportsPage';
+import { isAdminAuthenticated, setAdminAuthenticated } from './api';
 import './App.css';
 
 function App() {
+  const [adminAuth, setAdminAuth] = useState(isAdminAuthenticated());
+
+  const handleAdminLogin = () => {
+    setAdminAuth(true);
+  };
+
+  const handleAdminLogout = () => {
+    setAdminAuthenticated(false);
+    setAdminAuth(false);
+  };
+
   return (
     <Router>
       <div className="app">
@@ -41,7 +54,7 @@ function App() {
             <Route path="/personnel" element={<PersonnelPage />} />
             <Route path="/apparatus" element={<ApparatusPage />} />
             <Route path="/municipalities" element={<MunicipalitiesPage />} />
-            <Route path="/admin" element={<AdminPage />} />
+            <Route path="/admin" element={<AdminPage isAuthenticated={adminAuth} onLogin={handleAdminLogin} onLogout={handleAdminLogout} />} />
           </Routes>
         </main>
       </div>

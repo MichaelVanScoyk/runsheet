@@ -578,3 +578,38 @@ class Setting(Base):
         # Unique constraint on category + key
         {'sqlite_autoincrement': True},
     )
+
+
+# =============================================================================
+# AUDIT LOG
+# =============================================================================
+
+class AuditLog(Base):
+    """
+    Audit trail for incident changes.
+    Uses completed_by personnel field (honor system), not login.
+    """
+    __tablename__ = "audit_log"
+    
+    id = Column(Integer, primary_key=True)
+    
+    # Who (from completed_by personnel)
+    personnel_id = Column(Integer, ForeignKey("personnel.id", ondelete="SET NULL"))
+    personnel_name = Column(String(100))
+    
+    # What
+    action = Column(String(50), nullable=False)  # CREATE, UPDATE, DELETE, CLOSE
+    entity_type = Column(String(50))              # incident, personnel, apparatus
+    entity_id = Column(Integer)
+    entity_display = Column(String(255))          # "Incident 2025001"
+    
+    # Details
+    summary = Column(Text)
+    fields_changed = Column(JSONB)
+    
+    # Context
+    ip_address = Column(String(45))
+    created_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
+    
+    # Relationship
+    personnel = relationship("Personnel")

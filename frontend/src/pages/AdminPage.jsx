@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog } from '../api';
 import './AdminPage.css';
 import PersonnelPage from './PersonnelPage';
 import ApparatusPage from './ApparatusPage';
@@ -875,15 +876,235 @@ function NerisCodesTab() {
 
 
 // ============================================================================
+// PASSWORD TAB COMPONENT
+// ============================================================================
+
+function PasswordTab() {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setMessage(null);
+
+    if (newPassword !== confirmPassword) {
+      setMessage({ type: 'error', text: 'New passwords do not match' });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setMessage({ type: 'error', text: 'Password must be at least 8 characters' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await changeAdminPassword(currentPassword, newPassword);
+      setMessage({ type: 'success', text: 'Password changed successfully' });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      setMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to change password' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="password-tab">
+      <h3>Change Admin Password</h3>
+      <form onSubmit={handleSubmit} className="password-form">
+        {message && (
+          <div className={`message ${message.type}`}>{message.text}</div>
+        )}
+        <div className="form-group">
+          <label>Current Password</label>
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label>New Password</label>
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            required
+            minLength={8}
+          />
+        </div>
+        <div className="form-group">
+          <label>Confirm New Password</label>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+          />
+        </div>
+        <button type="submit" disabled={saving}>
+          {saving ? 'Changing...' : 'Change Password'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+
+// ============================================================================
+// AUDIT LOG TAB COMPONENT
+// ============================================================================
+
+function AuditLogTab() {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+
+  useEffect(() => {
+    loadLogs();
+  }, [filter]);
+
+  const loadLogs = async () => {
+    setLoading(true);
+    try {
+      const entityType = filter === 'all' ? null : filter;
+      const res = await getAuditLog(100, entityType);
+      setLogs(res.data);
+    } catch (err) {
+      console.error('Failed to load audit log:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (isoString) => {
+    if (!isoString) return '-';
+    const d = new Date(isoString);
+    return d.toLocaleString();
+  };
+
+  return (
+    <div className="audit-log-tab">
+      <div className="audit-header">
+        <h3>Audit Log</h3>
+        <select value={filter} onChange={(e) => setFilter(e.target.value)}>
+          <option value="all">All Actions</option>
+          <option value="incident">Incidents Only</option>
+        </select>
+        <button onClick={loadLogs} disabled={loading}>Refresh</button>
+      </div>
+
+      {loading ? (
+        <div className="loading">Loading...</div>
+      ) : logs.length === 0 ? (
+        <div className="empty">No audit log entries</div>
+      ) : (
+        <table className="audit-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Who</th>
+              <th>Action</th>
+              <th>What</th>
+              <th>Summary</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.map(log => (
+              <tr key={log.id}>
+                <td>{formatDate(log.created_at)}</td>
+                <td>{log.personnel_name || '-'}</td>
+                <td>{log.action}</td>
+                <td>{log.entity_display || '-'}</td>
+                <td>{log.summary || '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+
+// ============================================================================
+// ADMIN LOGIN FORM
+// ============================================================================
+
+function AdminLoginForm({ onLogin }) {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      await verifyAdminPassword(password);
+      setAdminAuthenticated(true);
+      onLogin();
+    } catch (err) {
+      setError('Invalid password');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="admin-login">
+      <div className="login-box">
+        <h2>Admin Access</h2>
+        <p>Enter password to access admin settings</p>
+        <form onSubmit={handleSubmit}>
+          {error && <div className="login-error">{error}</div>}
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            autoFocus
+          />
+          <button type="submit" disabled={loading}>
+            {loading ? 'Verifying...' : 'Enter'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+
+// ============================================================================
 // MAIN ADMIN PAGE COMPONENT
 // ============================================================================
 
-function AdminPage() {
+function AdminPage({ isAuthenticated, onLogin, onLogout }) {
   const [activeTab, setActiveTab] = useState('settings');
+
+  if (!isAuthenticated) {
+    return (
+      <div className="admin-page">
+        <h2>Admin</h2>
+        <AdminLoginForm onLogin={onLogin} />
+      </div>
+    );
+  }
 
   return (
     <div className="admin-page">
-      <h2>Admin</h2>
+      <div className="admin-header">
+        <h2>Admin</h2>
+        <button className="btn-logout" onClick={onLogout}>Logout</button>
+      </div>
       
       <div className="admin-tabs">
         <button 
@@ -922,6 +1143,18 @@ function AdminPage() {
         >
           🏘️ Municipalities
         </button>
+        <button 
+          className={activeTab === 'audit' ? 'active' : ''} 
+          onClick={() => setActiveTab('audit')}
+        >
+          📝 Audit Log
+        </button>
+        <button 
+          className={activeTab === 'password' ? 'active' : ''} 
+          onClick={() => setActiveTab('password')}
+        >
+          🔑 Password
+        </button>
       </div>
 
       <div className="admin-content">
@@ -931,6 +1164,8 @@ function AdminPage() {
         {activeTab === 'personnel' && <PersonnelPage embedded />}
         {activeTab === 'apparatus' && <ApparatusPage embedded />}
         {activeTab === 'municipalities' && <MunicipalitiesPage embedded />}
+        {activeTab === 'audit' && <AuditLogTab />}
+        {activeTab === 'password' && <PasswordTab />}
       </div>
     </div>
   );

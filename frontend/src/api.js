@@ -111,4 +111,39 @@ export const getSetting = (category, key) => api.get(`/settings/${category}/${ke
 export const updateSetting = (category, key, value) => 
   api.put(`/settings/${category}/${key}`, { value });
 
+// ============================================================================
+// ADMIN (Password-protected section)
+// ============================================================================
+
+const ADMIN_AUTH_KEY = 'runsheet_admin_auth';
+
+export const isAdminAuthenticated = () => {
+  const auth = sessionStorage.getItem(ADMIN_AUTH_KEY);
+  return auth === 'true';
+};
+
+export const setAdminAuthenticated = (value) => {
+  if (value) {
+    sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
+  } else {
+    sessionStorage.removeItem(ADMIN_AUTH_KEY);
+  }
+};
+
+export const verifyAdminPassword = (password) => 
+  api.post('/admin/verify', { password });
+
+export const changeAdminPassword = (currentPassword, newPassword) =>
+  api.post('/admin/change-password', { 
+    current_password: currentPassword, 
+    new_password: newPassword 
+  });
+
+export const getAuditLog = (limit = 100, entityType = null, entityId = null) => {
+  const params = { limit };
+  if (entityType) params.entity_type = entityType;
+  if (entityId) params.entity_id = entityId;
+  return api.get('/admin/audit-log', { params });
+};
+
 export default api;
