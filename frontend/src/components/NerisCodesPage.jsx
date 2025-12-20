@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const API_BASE = 'http://192.168.1.228:8001/api';
+const API_BASE = 'http://71.185.249.212:8001/api';
 
 export default function NerisCodesPage() {
   const [activeTab, setActiveTab] = useState('browse');

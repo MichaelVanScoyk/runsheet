@@ -5,7 +5,7 @@ import PersonnelPage from './PersonnelPage';
 import ApparatusPage from './ApparatusPage';
 import MunicipalitiesPage from './MunicipalitiesPage';
 
-const API_BASE = 'http://192.168.1.228:8001';
+const API_BASE = 'http://71.185.249.212:8001';
 
 // ============================================================================
 // SETTINGS TAB COMPONENT
