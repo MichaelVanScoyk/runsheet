@@ -12,6 +12,7 @@ function ReportsPage() {
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [year, setYear] = useState(() => new Date().getFullYear());
+  const [categoryFilter, setCategoryFilter] = useState('FIRE'); // FIRE or EMS only
   
   // Report data state
   const [summary, setSummary] = useState(null);
@@ -68,7 +69,7 @@ function ReportsPage() {
   const loadReports = async () => {
     setLoading(true);
     try {
-      const params = `start_date=${startDate}&end_date=${endDate}`;
+      const params = `start_date=${startDate}&end_date=${endDate}&category=${categoryFilter}`;
       
       const [summaryRes, muniRes, typesRes, personnelRes, dowRes, hodRes] = await Promise.all([
         fetch(`${API_BASE}/api/reports/summary?${params}`),
@@ -104,7 +105,8 @@ function ReportsPage() {
   const loadMonthlyReport = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports/monthly?year=${reportYear}&month=${reportMonth}`);
+      const params = `year=${reportYear}&month=${reportMonth}&category=${categoryFilter}`;
+      const res = await fetch(`${API_BASE}/api/reports/monthly?${params}`);
       setMonthlyReport(await res.json());
     } catch (err) {
       console.error('Failed to load monthly report:', err);
@@ -117,21 +119,30 @@ function ReportsPage() {
     loadReports();
   }, []);
 
+  // Reload reports when category changes
+  useEffect(() => {
+    loadReports();
+    if (monthlyReport) {
+      loadMonthlyReport();
+    }
+  }, [categoryFilter]);
+
   const downloadPdf = async () => {
     setGenerating(true);
     try {
       let url;
       let filename;
+      const catSuffix = `_${categoryFilter.toLowerCase()}`;
       
       if (activeTab === 'monthly') {
         // Use monthly PDF endpoint
-        url = `${API_BASE}/api/reports/pdf/monthly?year=${reportYear}&month=${reportMonth}`;
+        url = `${API_BASE}/api/reports/pdf/monthly?year=${reportYear}&month=${reportMonth}&category=${categoryFilter}`;
         const monthName = new Date(reportYear, reportMonth - 1, 1).toLocaleString('default', { month: 'long' });
-        filename = `monthly_report_${reportYear}_${String(reportMonth).padStart(2, '0')}_${monthName}.pdf`;
+        filename = `monthly_report${catSuffix}_${reportYear}_${String(reportMonth).padStart(2, '0')}_${monthName}.pdf`;
       } else {
         // Use generic PDF endpoint
-        url = `${API_BASE}/api/reports/pdf?start_date=${startDate}&end_date=${endDate}&report_type=summary`;
-        filename = `incident_report_${startDate}_${endDate}.pdf`;
+        url = `${API_BASE}/api/reports/pdf?start_date=${startDate}&end_date=${endDate}&report_type=summary&category=${categoryFilter}`;
+        filename = `incident_report${catSuffix}_${startDate}_${endDate}.pdf`;
       }
       
       const response = await fetch(url);
@@ -207,7 +218,7 @@ function ReportsPage() {
     <div className="reports-page">
       {/* Header with date controls */}
       <div className="reports-header">
-        <h2>Reports</h2>
+        <h2>Reports - {categoryFilter === 'FIRE' ? '🔥 Fire' : '🚑 EMS'}</h2>
         <div className="date-controls">
           <div className="presets">
             <button onClick={() => setPreset('mtd')}>MTD</button>
@@ -229,6 +240,31 @@ function ReportsPage() {
               value={endDate} 
               onChange={(e) => setEndDate(e.target.value)} 
             />
+            {/* Category Filter - Fire or EMS only */}
+            <div style={{ display: 'flex', gap: '0.25rem', marginLeft: '1rem' }}>
+              <button
+                className={categoryFilter === 'FIRE' ? 'btn-primary' : ''}
+                onClick={() => setCategoryFilter('FIRE')}
+                style={{ 
+                  minWidth: '70px',
+                  backgroundColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined,
+                  borderColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined
+                }}
+              >
+                🔥 Fire
+              </button>
+              <button
+                className={categoryFilter === 'EMS' ? 'btn-primary' : ''}
+                onClick={() => setCategoryFilter('EMS')}
+                style={{ 
+                  minWidth: '70px',
+                  backgroundColor: categoryFilter === 'EMS' ? '#3498db' : undefined,
+                  borderColor: categoryFilter === 'EMS' ? '#3498db' : undefined
+                }}
+              >
+                🚑 EMS
+              </button>
+            </div>
             <button className="btn-primary" onClick={loadReports} disabled={loading}>
               {loading ? 'Loading...' : 'Update'}
             </button>
@@ -241,7 +277,7 @@ function ReportsPage() {
         <div className="summary-cards">
           <div className="summary-card">
             <div className="card-value">{summary.total_incidents}</div>
-            <div className="card-label">Total Incidents</div>
+            <div className="card-label">{categoryFilter} Incidents</div>
           </div>
           <div className="summary-card">
             <div className="card-value">{summary.total_personnel_responses}</div>
@@ -316,6 +352,31 @@ function ReportsPage() {
                   return <option key={y} value={y}>{y}</option>;
                 })}
               </select>
+              {/* Category Filter for Monthly */}
+              <div style={{ display: 'flex', gap: '0.25rem', marginLeft: '0.5rem' }}>
+                <button
+                  className={categoryFilter === 'FIRE' ? 'btn-primary' : ''}
+                  onClick={() => setCategoryFilter('FIRE')}
+                  style={{ 
+                    minWidth: '60px',
+                    backgroundColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined,
+                    borderColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined
+                  }}
+                >
+                  🔥 Fire
+                </button>
+                <button
+                  className={categoryFilter === 'EMS' ? 'btn-primary' : ''}
+                  onClick={() => setCategoryFilter('EMS')}
+                  style={{ 
+                    minWidth: '60px',
+                    backgroundColor: categoryFilter === 'EMS' ? '#3498db' : undefined,
+                    borderColor: categoryFilter === 'EMS' ? '#3498db' : undefined
+                  }}
+                >
+                  🚑 EMS
+                </button>
+              </div>
               <button onClick={loadMonthlyReport} disabled={loading}>
                 {loading ? 'Loading...' : 'Load Report'}
               </button>
@@ -325,7 +386,7 @@ function ReportsPage() {
               <div className="chiefs-report">
                 <h3 className="report-title">
                   GLEN MOORE FIRE CO. MONTHLY REPORT<br/>
-                  <span>{monthlyReport.month_name} {monthlyReport.year}</span>
+                  <span>{monthlyReport.month_name} {monthlyReport.year} - {categoryFilter === 'FIRE' ? '🔥 Fire' : '🚑 EMS'}</span>
                 </h3>
 
                 {/* Call Summary */}

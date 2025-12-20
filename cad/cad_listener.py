@@ -255,10 +255,16 @@ class CADListener:
             else:
                 logger.error(f"Failed to update incident: {resp.text}")
         else:
+            # Determine call category from event type mapping
+            event_type = report.get('event_type', '')
+            event_subtype = report.get('event_subtype')
+            call_category = self._determine_category(event_type, event_subtype)
+            
             # Create new incident
             create_data = {
                 'cad_event_number': event_number,
                 'cad_event_type': cad_type,
+                'call_category': call_category,
                 'address': report.get('address'),
                 'municipality_code': municipality_code,
                 'cad_raw_dispatch': raw_html,  # Store raw CAD HTML
@@ -445,6 +451,34 @@ class CADListener:
                     f"ER={ut.get('time_enroute', '-')} AR={ut.get('time_arrived', '-')} "
                     f"AQ={ut.get('time_at_quarters', '-')}"
                 )
+    
+    def _determine_category(self, event_type: str, event_subtype: str = None) -> str:
+        """
+        Determine call category (FIRE or EMS) from CAD event type.
+        Uses cad_type_mappings table for learned overrides, falls back to defaults.
+        """
+        # Try to look up in mappings via API
+        try:
+            params = {'event_type': event_type}
+            if event_subtype:
+                params['event_subtype'] = event_subtype
+            
+            resp = requests.get(
+                f"{self.api_url}/api/lookups/cad-type-mappings/lookup",
+                params=params
+            )
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get('call_category', 'FIRE')
+        except Exception as e:
+            logger.warning(f"Could not lookup category mapping: {e}")
+        
+        # Fall back to default logic
+        event_type_upper = (event_type or '').upper()
+        if event_type_upper.startswith('MEDICAL'):
+            return 'EMS'
+        return 'FIRE'
     
     def _parse_cad_datetime(self, dt_str: str) -> Optional[str]:
         """Parse CAD datetime format: 12-07-25 14:09:18 (24-hour clock)"""

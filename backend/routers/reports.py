@@ -39,12 +39,16 @@ class ReportSummary(BaseModel):
 # HELPER FUNCTIONS
 # =============================================================================
 
-def calculate_manhours(db: Session, start_date: date, end_date: date) -> dict:
+def calculate_manhours(db: Session, start_date: date, end_date: date, category: str = None) -> dict:
     """
     Calculate manhours for incidents in date range.
     Manhours = sum of (incident duration × personnel count) for each incident
     """
-    result = db.execute(text("""
+    cat_filter = ""
+    if category and category.upper() in ('FIRE', 'EMS'):
+        cat_filter = f"AND i.call_category = '{category.upper()}'"
+    
+    result = db.execute(text(f"""
         WITH incident_durations AS (
             SELECT 
                 i.id,
@@ -60,6 +64,7 @@ def calculate_manhours(db: Session, start_date: date, end_date: date) -> dict:
             WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
               AND i.deleted_at IS NULL
               AND i.time_dispatched IS NOT NULL
+              {cat_filter}
         )
         SELECT 
             COALESCE(SUM(duration_hours * personnel_count), 0) AS total_manhours,
@@ -79,9 +84,13 @@ def calculate_manhours(db: Session, start_date: date, end_date: date) -> dict:
     }
 
 
-def get_response_times(db: Session, start_date: date, end_date: date) -> dict:
+def get_response_times(db: Session, start_date: date, end_date: date, category: str = None) -> dict:
     """Calculate average response times"""
-    result = db.execute(text("""
+    cat_filter = ""
+    if category and category.upper() in ('FIRE', 'EMS'):
+        cat_filter = f"AND call_category = '{category.upper()}'"
+    
+    result = db.execute(text(f"""
         SELECT 
             AVG(EXTRACT(EPOCH FROM (time_first_enroute - time_dispatched)) / 60) AS avg_turnout,
             AVG(EXTRACT(EPOCH FROM (time_first_on_scene - time_dispatched)) / 60) AS avg_response,
@@ -90,6 +99,7 @@ def get_response_times(db: Session, start_date: date, end_date: date) -> dict:
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
           AND deleted_at IS NULL
           AND time_dispatched IS NOT NULL
+          {cat_filter}
     """), {"start_date": start_date, "end_date": end_date})
     
     row = result.fetchone()
@@ -146,31 +156,43 @@ async def debug_incidents(
 async def get_summary_report(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Get overall summary statistics for date range"""
     
+    # Build category filter
+    cat_filter = ""
+    if category and category.upper() in ('FIRE', 'EMS'):
+        cat_filter = f"AND call_category = '{category.upper()}'"
+    
     # Basic counts - use COALESCE to fall back to created_at if incident_date is null
-    basic_stats = db.execute(text("""
+    basic_stats = db.execute(text(f"""
         SELECT 
             COUNT(*) AS total_incidents,
             COUNT(CASE WHEN status = 'OPEN' THEN 1 END) AS open_count,
             COUNT(CASE WHEN status = 'CLOSED' THEN 1 END) AS closed_count,
-            COUNT(CASE WHEN status = 'SUBMITTED' THEN 1 END) AS submitted_count
+            COUNT(CASE WHEN status = 'SUBMITTED' THEN 1 END) AS submitted_count,
+            COUNT(CASE WHEN call_category = 'FIRE' THEN 1 END) AS fire_count,
+            COUNT(CASE WHEN call_category = 'EMS' THEN 1 END) AS ems_count
         FROM incidents
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
           AND deleted_at IS NULL
+          {cat_filter}
     """), {"start_date": start_date, "end_date": end_date}).fetchone()
     
     # Manhours
-    manhours = calculate_manhours(db, start_date, end_date)
+    manhours = calculate_manhours(db, start_date, end_date, category)
     
     # Response times
-    times = get_response_times(db, start_date, end_date)
+    times = get_response_times(db, start_date, end_date, category)
     
     return {
         "date_range": {"start": start_date.isoformat(), "end": end_date.isoformat()},
+        "category_filter": category.upper() if category else "ALL",
         "total_incidents": basic_stats[0],
+        "fire_incidents": basic_stats[4],
+        "ems_incidents": basic_stats[5],
         "incidents_by_status": {
             "open": basic_stats[1],
             "closed": basic_stats[2],
@@ -187,11 +209,16 @@ async def get_summary_report(
 async def get_municipality_report(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Get incident breakdown by municipality"""
     
-    result = db.execute(text("""
+    cat_filter = ""
+    if category and category.upper() in ('FIRE', 'EMS'):
+        cat_filter = f"AND i.call_category = '{category.upper()}'"
+    
+    result = db.execute(text(f"""
         SELECT 
             COALESCE(m.display_name, i.municipality_code, 'Unknown') AS municipality,
             COUNT(*) AS incident_count,
@@ -200,6 +227,7 @@ async def get_municipality_report(
         LEFT JOIN municipalities m ON i.municipality_code = m.code
         WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
           AND i.deleted_at IS NULL
+          {cat_filter}
         GROUP BY COALESCE(m.display_name, i.municipality_code, 'Unknown')
         ORDER BY incident_count DESC
     """), {"start_date": start_date, "end_date": end_date})
@@ -222,11 +250,16 @@ async def get_municipality_report(
 async def get_type_report(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Get incident breakdown by call type"""
     
-    result = db.execute(text("""
+    cat_filter = ""
+    if category and category.upper() in ('FIRE', 'EMS'):
+        cat_filter = f"AND call_category = '{category.upper()}'"
+    
+    result = db.execute(text(f"""
         SELECT 
             COALESCE(cad_event_type, 'Unknown') AS call_type,
             COUNT(*) AS incident_count,
@@ -236,6 +269,7 @@ async def get_type_report(
         FROM incidents
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
           AND deleted_at IS NULL
+          {cat_filter}
         GROUP BY COALESCE(cad_event_type, 'Unknown')
         ORDER BY incident_count DESC
     """), {"start_date": start_date, "end_date": end_date})
@@ -258,11 +292,16 @@ async def get_type_report(
 async def get_apparatus_report(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Get incident breakdown by apparatus"""
     
-    result = db.execute(text("""
+    cat_filter = ""
+    if category and category.upper() in ('FIRE', 'EMS'):
+        cat_filter = f"AND i.call_category = '{category.upper()}'"
+    
+    result = db.execute(text(f"""
         SELECT 
             a.unit_designator,
             a.name AS apparatus_name,
@@ -273,6 +312,7 @@ async def get_apparatus_report(
         LEFT JOIN incidents i ON ip.incident_id = i.id 
             AND COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
             AND i.deleted_at IS NULL
+            {cat_filter}
         WHERE a.is_virtual = false AND a.active = true
         GROUP BY a.id, a.unit_designator, a.name
         ORDER BY incident_count DESC
@@ -297,12 +337,17 @@ async def get_apparatus_report(
 async def get_personnel_report(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    category: Optional[str] = None,
     limit: int = Query(default=50, le=100),
     db: Session = Depends(get_db)
 ):
     """Get personnel response statistics - top responders"""
     
-    result = db.execute(text("""
+    cat_filter = ""
+    if category and category.upper() in ('FIRE', 'EMS'):
+        cat_filter = f"AND i.call_category = '{category.upper()}'"
+    
+    result = db.execute(text(f"""
         WITH personnel_stats AS (
             SELECT 
                 p.id,
@@ -323,6 +368,7 @@ async def get_personnel_report(
                 AND COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
                 AND i.deleted_at IS NULL
                 AND i.time_dispatched IS NOT NULL
+                {cat_filter}
             WHERE p.active = true
             GROUP BY p.id, p.first_name, p.last_name, r.rank_name
         )
@@ -403,17 +449,23 @@ async def get_monthly_trend(
 async def get_day_of_week_report(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Get incident breakdown by day of week"""
     
-    result = db.execute(text("""
+    cat_filter = ""
+    if category and category.upper() in ('FIRE', 'EMS'):
+        cat_filter = f"AND call_category = '{category.upper()}'"
+    
+    result = db.execute(text(f"""
         SELECT 
             EXTRACT(DOW FROM COALESCE(incident_date, created_at::date))::int AS day_of_week,
             COUNT(*) AS incident_count
         FROM incidents
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
           AND deleted_at IS NULL
+          {cat_filter}
         GROUP BY EXTRACT(DOW FROM COALESCE(incident_date, created_at::date))
         ORDER BY day_of_week
     """), {"start_date": start_date, "end_date": end_date})
@@ -434,11 +486,16 @@ async def get_day_of_week_report(
 async def get_hour_of_day_report(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Get incident breakdown by hour of day"""
     
-    result = db.execute(text("""
+    cat_filter = ""
+    if category and category.upper() in ('FIRE', 'EMS'):
+        cat_filter = f"AND call_category = '{category.upper()}'"
+    
+    result = db.execute(text(f"""
         SELECT 
             EXTRACT(HOUR FROM time_dispatched)::int AS hour,
             COUNT(*) AS incident_count
@@ -446,6 +503,7 @@ async def get_hour_of_day_report(
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
           AND deleted_at IS NULL
           AND time_dispatched IS NOT NULL
+          {cat_filter}
         GROUP BY EXTRACT(HOUR FROM time_dispatched)
         ORDER BY hour
     """), {"start_date": start_date, "end_date": end_date})
@@ -473,6 +531,7 @@ async def get_hour_of_day_report(
 async def get_monthly_chiefs_report(
     year: int = Query(...),
     month: int = Query(...),
+    category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -489,6 +548,10 @@ async def get_monthly_chiefs_report(
     - Mutual Aid given
     - Comparison to same month last year
     """
+    
+    cat_filter = ""
+    if category and category.upper() in ('FIRE', 'EMS'):
+        cat_filter = f"AND i.call_category = '{category.upper()}'"
     
     # Date range for this month
     start_date = date(year, month, 1)
@@ -507,7 +570,7 @@ async def get_monthly_chiefs_report(
     # =========================================================================
     # CALL SUMMARY - Main stats
     # =========================================================================
-    summary_result = db.execute(text("""
+    summary_result = db.execute(text(f"""
         WITH incident_data AS (
             SELECT 
                 i.id,
@@ -522,6 +585,7 @@ async def get_monthly_chiefs_report(
             WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
               AND i.deleted_at IS NULL
               AND i.time_dispatched IS NOT NULL
+              {cat_filter}
         )
         SELECT 
             COUNT(*) AS total_calls,
@@ -535,10 +599,11 @@ async def get_monthly_chiefs_report(
     summary_row = summary_result.fetchone()
     
     # Previous year count for comparison
-    prev_result = db.execute(text("""
-        SELECT COUNT(*) FROM incidents
+    prev_result = db.execute(text(f"""
+        SELECT COUNT(*) FROM incidents i
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
           AND deleted_at IS NULL
+          {cat_filter}
     """), {"start_date": prev_start, "end_date": prev_end})
     prev_count = prev_result.fetchone()[0]
     
@@ -559,7 +624,7 @@ async def get_monthly_chiefs_report(
     # =========================================================================
     # MUNICIPALITY SUMMARY
     # =========================================================================
-    muni_result = db.execute(text("""
+    muni_result = db.execute(text(f"""
         WITH incident_data AS (
             SELECT 
                 i.id,
@@ -572,6 +637,7 @@ async def get_monthly_chiefs_report(
             LEFT JOIN municipalities m ON i.municipality_code = m.code
             WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
               AND i.deleted_at IS NULL
+              {cat_filter}
         )
         SELECT 
             municipality,
@@ -594,13 +660,14 @@ async def get_monthly_chiefs_report(
     # =========================================================================
     # TYPE OF INCIDENT
     # =========================================================================
-    type_result = db.execute(text("""
+    type_result = db.execute(text(f"""
         SELECT 
             COALESCE(cad_event_type, 'Unknown') AS incident_type,
             COUNT(*) AS count
-        FROM incidents
+        FROM incidents i
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
           AND deleted_at IS NULL
+          {cat_filter}
         GROUP BY COALESCE(cad_event_type, 'Unknown')
         ORDER BY count DESC, incident_type
     """), {"start_date": start_date, "end_date": end_date})
@@ -615,7 +682,7 @@ async def get_monthly_chiefs_report(
     # =========================================================================
     # RESPONSES PER UNIT
     # =========================================================================
-    unit_result = db.execute(text("""
+    unit_result = db.execute(text(f"""
         SELECT 
             COALESCE(a.unit_designator, iu.cad_unit_id, 'Unknown') AS unit,
             COALESCE(a.name, iu.cad_unit_id) AS unit_name,
@@ -625,6 +692,7 @@ async def get_monthly_chiefs_report(
         JOIN incidents i ON iu.incident_id = i.id
         WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
           AND i.deleted_at IS NULL
+          {cat_filter}
         GROUP BY COALESCE(a.unit_designator, iu.cad_unit_id, 'Unknown'), 
                  COALESCE(a.name, iu.cad_unit_id)
         ORDER BY responses DESC, unit
@@ -641,7 +709,7 @@ async def get_monthly_chiefs_report(
     # =========================================================================
     # MUTUAL AID GIVEN (Assist To)
     # =========================================================================
-    mutual_aid_result = db.execute(text("""
+    mutual_aid_result = db.execute(text(f"""
         SELECT 
             COALESCE(iu.cad_unit_id, 'Unknown') AS assisted_station,
             COUNT(DISTINCT iu.incident_id) AS count
@@ -650,6 +718,7 @@ async def get_monthly_chiefs_report(
         WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
           AND i.deleted_at IS NULL
           AND iu.is_mutual_aid = true
+          {cat_filter}
         GROUP BY COALESCE(iu.cad_unit_id, 'Unknown')
         ORDER BY count DESC
     """), {"start_date": start_date, "end_date": end_date})
@@ -664,12 +733,13 @@ async def get_monthly_chiefs_report(
     # =========================================================================
     # RESPONSE TIMES
     # =========================================================================
-    times = get_response_times(db, start_date, end_date)
+    times = get_response_times(db, start_date, end_date, category)
     
     return {
         "month": month,
         "year": year,
         "month_name": start_date.strftime("%B"),
+        "category_filter": category.upper() if category else "ALL",
         "date_range": {
             "start": start_date.isoformat(),
             "end": end_date.isoformat()

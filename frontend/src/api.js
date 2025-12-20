@@ -11,9 +11,10 @@ const api = axios.create({
 // INCIDENTS
 // ============================================================================
 
-export const getIncidents = (year, status) => {
+export const getIncidents = (year, category, status) => {
   const params = {};
   if (year) params.year = year;
+  if (category) params.category = category;
   if (status) params.status = status;
   return api.get('/incidents', { params });
 };
@@ -28,7 +29,8 @@ export const closeIncident = (id) => api.post(`/incidents/${id}/close`);
 
 export const completeIncident = (id) => api.post(`/incidents/${id}/complete`);
 
-export const suggestIncidentNumber = () => api.get('/incidents/suggest-number');
+export const suggestIncidentNumber = (category = 'FIRE') => 
+  api.get('/incidents/suggest-number', { params: { category } });
 
 // ============================================================================
 // PERSONNEL
@@ -107,6 +109,15 @@ export const getAidDirections = () => api.get('/lookups/neris/aid-directions');
 export const getNerisCategory = (category) => api.get(`/neris-codes/categories/${category}`);
 
 // ============================================================================
+// CAD TYPE MAPPINGS
+// ============================================================================
+
+export const getCadTypeMappings = () => api.get('/lookups/cad-type-mappings');
+
+export const updateCadTypeMapping = (id, category) => 
+  api.put(`/lookups/cad-type-mappings/${id}`, null, { params: { call_category: category } });
+
+// ============================================================================
 // SETTINGS
 // ============================================================================
 
@@ -118,38 +129,28 @@ export const updateSetting = (category, key, value) =>
   api.put(`/settings/${category}/${key}`, { value });
 
 // ============================================================================
-// ADMIN (Password-protected section)
+// ADMIN
 // ============================================================================
-
-const ADMIN_AUTH_KEY = 'runsheet_admin_auth';
-
-export const isAdminAuthenticated = () => {
-  const auth = sessionStorage.getItem(ADMIN_AUTH_KEY);
-  return auth === 'true';
-};
-
-export const setAdminAuthenticated = (value) => {
-  if (value) {
-    sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
-  } else {
-    sessionStorage.removeItem(ADMIN_AUTH_KEY);
-  }
-};
 
 export const verifyAdminPassword = (password) => 
   api.post('/admin/verify', { password });
 
-export const changeAdminPassword = (currentPassword, newPassword) =>
-  api.post('/admin/change-password', { 
-    current_password: currentPassword, 
-    new_password: newPassword 
-  });
-
-export const getAuditLog = (limit = 100, entityType = null, entityId = null) => {
-  const params = { limit };
-  if (entityType) params.entity_type = entityType;
-  if (entityId) params.entity_id = entityId;
-  return api.get('/admin/audit-log', { params });
+export const setAdminAuthenticated = (value) => {
+  // Client-side only - store in sessionStorage
+  if (value) {
+    sessionStorage.setItem('adminAuthenticated', 'true');
+  } else {
+    sessionStorage.removeItem('adminAuthenticated');
+  }
 };
+
+export const isAdminAuthenticated = () => {
+  return sessionStorage.getItem('adminAuthenticated') === 'true';
+};
+
+export const changeAdminPassword = (currentPassword, newPassword) => 
+  api.post('/admin/change-password', { current_password: currentPassword, new_password: newPassword });
+
+export const getAuditLog = (params) => api.get('/admin/audit-log', { params });
 
 export default api;

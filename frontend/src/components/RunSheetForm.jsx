@@ -702,6 +702,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
   
   const [formData, setFormData] = useState({
     internal_incident_number: '',
+    call_category: 'FIRE',
     cad_event_number: '',
     cad_event_type: '',
     cad_raw_dispatch: '',
@@ -934,6 +935,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
 
         setFormData({
           internal_incident_number: incident.internal_incident_number || '',
+          call_category: incident.call_category || 'FIRE',
           cad_event_number: incident.cad_event_number || '',
           cad_event_type: incident.cad_event_type || '',
           cad_raw_dispatch: incident.cad_raw_dispatch || '',
@@ -1275,12 +1277,27 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
             <div className="form-group">
               <label>Internal # {incident && <span className="locked-indicator" title="Cannot be changed after creation">🔒</span>}</label>
               <input 
-                type="number" 
+                type="text" 
                 value={formData.internal_incident_number} 
-                onChange={(e) => handleChange('internal_incident_number', parseInt(e.target.value) || '')} 
+                onChange={(e) => handleChange('internal_incident_number', e.target.value)} 
                 disabled={!!incident}
                 className={incident ? 'field-locked' : ''}
+                placeholder="F250001"
               />
+            </div>
+            <div className="form-group">
+              <label>Category</label>
+              <select
+                value={formData.call_category}
+                onChange={(e) => handleChange('call_category', e.target.value)}
+                style={{
+                  backgroundColor: formData.call_category === 'EMS' ? 'rgba(52, 152, 219, 0.2)' : 'rgba(231, 76, 60, 0.2)',
+                  borderColor: formData.call_category === 'EMS' ? '#3498db' : '#e74c3c'
+                }}
+              >
+                <option value="FIRE">🔥 Fire</option>
+                <option value="EMS">🚑 EMS</option>
+              </select>
             </div>
             <div className="form-group">
               <label>CAD # {incident && <span className="locked-indicator" title="Cannot be changed after creation">🔒</span>}</label>

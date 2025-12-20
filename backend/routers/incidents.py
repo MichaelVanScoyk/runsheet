@@ -17,7 +17,8 @@ import logging
 from database import get_db
 from models import (
     Incident, IncidentUnit, IncidentPersonnel, 
-    Municipality, Apparatus, Personnel, Rank, AuditLog
+    Municipality, Apparatus, Personnel, Rank, AuditLog,
+    IncidentNumberSequence, CadTypeMapping
 )
 
 # Weather service (optional)
@@ -120,7 +121,8 @@ class IncidentCreate(BaseModel):
     cad_raw_dispatch: Optional[str] = None
     address: Optional[str] = None
     municipality_code: Optional[str] = None
-    internal_incident_number: Optional[int] = None
+    internal_incident_number: Optional[str] = None  # F250001, E250001
+    call_category: Optional[str] = 'FIRE'           # FIRE or EMS
     incident_date: Optional[str] = None  # YYYY-MM-DD
 
 
@@ -278,6 +280,9 @@ class IncidentUpdate(BaseModel):
     officer_in_charge: Optional[int] = None
     completed_by: Optional[int] = None
     
+    # Call category (FIRE or EMS) - changing this reassigns incident number
+    call_category: Optional[str] = None
+    
     # CAD units
     cad_units: Optional[List[Dict[str, Any]]] = None
 
@@ -330,17 +335,88 @@ def maybe_generate_neris_id(db: Session, incident: Incident) -> Optional[str]:
 # INCIDENT NUMBER HELPERS
 # =============================================================================
 
+def get_next_incident_number(db: Session, year: int, category: str) -> str:
+    """
+    Get next incident number for year and category.
+    Format: F250001 (Fire) or E250001 (EMS)
+    """
+    prefix = 'F' if category == 'FIRE' else 'E'
+    year_short = year % 100  # 2025 -> 25
+    
+    # Get or create sequence for this year/category
+    seq = db.query(IncidentNumberSequence).filter(
+        IncidentNumberSequence.year == year,
+        IncidentNumberSequence.category == category
+    ).first()
+    
+    if not seq:
+        seq = IncidentNumberSequence(year=year, category=category, next_number=1)
+        db.add(seq)
+        db.flush()
+    
+    next_num = seq.next_number
+    return f"{prefix}{year_short}{next_num:04d}"
+
+
+def claim_incident_number(db: Session, year: int, category: str) -> str:
+    """
+    Claim the next incident number (get and increment sequence).
+    """
+    prefix = 'F' if category == 'FIRE' else 'E'
+    year_short = year % 100
+    
+    # Get or create sequence
+    seq = db.query(IncidentNumberSequence).filter(
+        IncidentNumberSequence.year == year,
+        IncidentNumberSequence.category == category
+    ).with_for_update().first()
+    
+    if not seq:
+        seq = IncidentNumberSequence(year=year, category=category, next_number=1)
+        db.add(seq)
+        db.flush()
+    
+    num = seq.next_number
+    seq.next_number = num + 1
+    seq.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    
+    return f"{prefix}{year_short}{num:04d}"
+
+
+def parse_incident_number(number: str) -> tuple:
+    """
+    Parse incident number into components.
+    F250001 -> ('FIRE', 2025, 1)
+    E250015 -> ('EMS', 2025, 15)
+    """
+    if not number or len(number) < 3:
+        return (None, None, None)
+    
+    prefix = number[0]
+    category = 'FIRE' if prefix == 'F' else 'EMS'
+    year_short = int(number[1:3])
+    year = 2000 + year_short
+    seq_num = int(number[3:])
+    
+    return (category, year, seq_num)
+
+
 @router.get("/suggest-number")
 async def suggest_incident_number(
     year: Optional[int] = None,
+    category: str = 'FIRE',
     db: Session = Depends(get_db)
 ):
-    """Get next suggested incident number for given year"""
-    result = db.execute(
-        text("SELECT suggest_incident_number(:year)"),
-        {"year": year}
-    ).scalar()
-    return {"suggested_number": result}
+    """Get next suggested incident number for given year and category"""
+    if year is None:
+        year = datetime.now().year
+    
+    if category not in ('FIRE', 'EMS'):
+        category = 'FIRE'
+    
+    suggested = get_next_incident_number(db, year, category)
+    return {"suggested_number": suggested, "category": category}
 
 
 # =============================================================================
@@ -351,6 +427,7 @@ async def suggest_incident_number(
 async def list_incidents(
     year: Optional[int] = None,
     status: Optional[str] = None,
+    category: Optional[str] = None,  # FIRE, EMS, or None for all
     limit: int = Query(100, le=500),
     offset: int = 0,
     db: Session = Depends(get_db)
@@ -365,8 +442,17 @@ async def list_incidents(
     if status:
         query = query.filter(Incident.status == status)
     
+    # Only filter by category if explicitly FIRE or EMS (not empty string, null, etc)
+    if category and category.upper() in ('FIRE', 'EMS'):
+        query = query.filter(Incident.call_category == category.upper())
+        # When filtered to one category, order by incident number
+        query = query.order_by(Incident.internal_incident_number.desc())
+    else:
+        # When showing ALL, order by date/time (chronological, newest first)
+        query = query.order_by(Incident.incident_date.desc(), Incident.time_dispatched.desc(), Incident.created_at.desc())
+    
     total = query.count()
-    incidents = query.order_by(Incident.internal_incident_number.desc()).offset(offset).limit(limit).all()
+    incidents = query.offset(offset).limit(limit).all()
     
     return {
         "total": total,
@@ -375,6 +461,7 @@ async def list_incidents(
             {
                 "id": i.id,
                 "internal_incident_number": i.internal_incident_number,
+                "call_category": i.call_category,
                 "neris_id": i.neris_id,
                 "cad_event_number": i.cad_event_number,
                 "cad_event_type": i.cad_event_type,
@@ -408,6 +495,7 @@ async def get_incident_by_cad(
     return {
         "id": incident.id,
         "internal_incident_number": incident.internal_incident_number,
+        "call_category": incident.call_category,
         "neris_id": incident.neris_id,
         "cad_event_number": incident.cad_event_number,
         "cad_event_type": incident.cad_event_type,
@@ -427,133 +515,191 @@ async def get_incident_by_cad(
 @router.get("/admin/sequence")
 async def get_incident_sequence(
     year: Optional[int] = None,
+    category: Optional[str] = None,  # FIRE, EMS, or None for both
     db: Session = Depends(get_db)
 ):
     """Get incident sequence for admin review"""
     if year is None:
         year = datetime.now().year
     
-    incidents = db.execute(text("""
-        SELECT 
-            id, 
-            internal_incident_number, 
-            incident_date, 
-            cad_event_number, 
-            address,
-            COALESCE(out_of_sequence, FALSE) as out_of_sequence
-        FROM incidents
-        WHERE year_prefix = :year AND deleted_at IS NULL
-        ORDER BY internal_incident_number ASC
-    """), {"year": year}).fetchall()
+    year_short = year % 100
+    results = {"year": year, "fire": None, "ems": None}
     
-    by_date = db.execute(text("""
-        SELECT id, internal_incident_number, incident_date
-        FROM incidents
-        WHERE year_prefix = :year AND deleted_at IS NULL
-        ORDER BY incident_date ASC, created_at ASC
-    """), {"year": year}).fetchall()
+    categories_to_check = ['FIRE', 'EMS'] if category is None else [category]
     
-    correct_order = {}
-    base_number = year * 1000 + 1
-    for i, row in enumerate(by_date):
-        correct_order[row[0]] = base_number + i
+    for cat in categories_to_check:
+        prefix = 'F' if cat == 'FIRE' else 'E'
+        
+        incidents = db.execute(text("""
+            SELECT 
+                id, 
+                internal_incident_number, 
+                incident_date, 
+                cad_event_number, 
+                address,
+                COALESCE(out_of_sequence, FALSE) as out_of_sequence
+            FROM incidents
+            WHERE year_prefix = :year 
+              AND call_category = :cat
+              AND deleted_at IS NULL
+            ORDER BY internal_incident_number ASC
+        """), {"year": year, "cat": cat}).fetchall()
+        
+        by_date = db.execute(text("""
+            SELECT id, internal_incident_number, incident_date
+            FROM incidents
+            WHERE year_prefix = :year 
+              AND call_category = :cat
+              AND deleted_at IS NULL
+            ORDER BY incident_date ASC, created_at ASC
+        """), {"year": year, "cat": cat}).fetchall()
+        
+        correct_order = {}
+        for i, row in enumerate(by_date):
+            correct_number = f"{prefix}{year_short}{(i+1):04d}"
+            correct_order[row[0]] = correct_number
+        
+        incident_list = []
+        for inc in incidents:
+            should_be = correct_order.get(inc[0], inc[1])
+            incident_list.append({
+                "id": inc[0],
+                "number": inc[1],
+                "date": str(inc[2]) if inc[2] else None,
+                "cad_event_number": inc[3],
+                "address": inc[4],
+                "out_of_sequence": inc[5],
+                "should_be_number": should_be,
+                "needs_fix": inc[1] != should_be
+            })
+        
+        changes_needed = [i for i in incident_list if i["needs_fix"]]
+        
+        cat_result = {
+            "category": cat,
+            "total_incidents": len(incidents),
+            "out_of_sequence_count": len(changes_needed),
+            "incidents": incident_list,
+            "changes_preview": [
+                {
+                    "id": c["id"],
+                    "cad": c["cad_event_number"],
+                    "date": c["date"],
+                    "current_number": c["number"],
+                    "new_number": c["should_be_number"]
+                }
+                for c in changes_needed
+            ]
+        }
+        
+        if cat == 'FIRE':
+            results["fire"] = cat_result
+        else:
+            results["ems"] = cat_result
     
-    incident_list = []
-    for inc in incidents:
-        should_be = correct_order.get(inc[0], inc[1])
-        incident_list.append({
-            "id": inc[0],
-            "number": inc[1],
-            "date": str(inc[2]) if inc[2] else None,
-            "cad_event_number": inc[3],
-            "address": inc[4],
-            "out_of_sequence": inc[5],
-            "should_be_number": should_be,
-            "needs_fix": inc[1] != should_be
-        })
+    # Compute totals
+    total_incidents = 0
+    total_out_of_sequence = 0
+    all_incidents = []
+    all_changes_preview = []
     
-    changes_needed = [i for i in incident_list if i["needs_fix"]]
+    if results["fire"]:
+        total_incidents += results["fire"]["total_incidents"]
+        total_out_of_sequence += results["fire"]["out_of_sequence_count"]
+        all_incidents.extend(results["fire"]["incidents"])
+        all_changes_preview.extend(results["fire"]["changes_preview"])
+    if results["ems"]:
+        total_incidents += results["ems"]["total_incidents"]
+        total_out_of_sequence += results["ems"]["out_of_sequence_count"]
+        all_incidents.extend(results["ems"]["incidents"])
+        all_changes_preview.extend(results["ems"]["changes_preview"])
     
-    return {
-        "year": year,
-        "total_incidents": len(incidents),
-        "out_of_sequence_count": len(changes_needed),
-        "incidents": incident_list,
-        "changes_preview": [
-            {
-                "id": c["id"],
-                "cad": c["cad_event_number"],
-                "date": c["date"],
-                "current_number": c["number"],
-                "new_number": c["should_be_number"]
-            }
-            for c in changes_needed
-        ]
-    }
+    results["total_incidents"] = total_incidents
+    results["out_of_sequence_count"] = total_out_of_sequence
+    # Backward compatible - combined list sorted by number
+    results["incidents"] = sorted(all_incidents, key=lambda x: x["number"])
+    results["changes_preview"] = all_changes_preview
+    
+    return results
 
 
 @router.post("/admin/fix-sequence")
 async def fix_incident_sequence(
     year: int = Query(..., description="Year to fix"),
+    category: Optional[str] = Query(None, description="Category to fix (FIRE, EMS, or omit for both)"),
     db: Session = Depends(get_db)
 ):
     """Fix all out-of-sequence incidents for a year"""
-    by_date = db.execute(text("""
-        SELECT id, internal_incident_number, incident_date, cad_event_number
-        FROM incidents
-        WHERE year_prefix = :year AND deleted_at IS NULL
-        ORDER BY incident_date ASC, created_at ASC
-    """), {"year": year}).fetchall()
+    year_short = year % 100
+    categories_to_fix = ['FIRE', 'EMS'] if category is None else [category]
     
-    if not by_date:
-        return {"status": "ok", "message": f"No incidents found for year {year}", "changes": []}
+    all_changes = []
     
-    base_number = year * 1000 + 1
-    changes = []
+    for cat in categories_to_fix:
+        prefix = 'F' if cat == 'FIRE' else 'E'
+        
+        by_date = db.execute(text("""
+            SELECT id, internal_incident_number, incident_date, cad_event_number
+            FROM incidents
+            WHERE year_prefix = :year 
+              AND call_category = :cat
+              AND deleted_at IS NULL
+            ORDER BY incident_date ASC, created_at ASC
+        """), {"year": year, "cat": cat}).fetchall()
+        
+        if not by_date:
+            continue
+        
+        changes = []
+        for i, inc in enumerate(by_date):
+            new_number = f"{prefix}{year_short}{(i+1):04d}"
+            if inc[1] != new_number:
+                changes.append({
+                    "id": inc[0],
+                    "old_number": inc[1],
+                    "new_number": new_number,
+                    "date": str(inc[2]) if inc[2] else None,
+                    "cad": inc[3],
+                    "category": cat
+                })
+        
+        if not changes:
+            continue
+        
+        logger.warning(f"ADMIN: Fixing {cat} sequence for {len(changes)} incidents in year {year}")
+        
+        # Temporary string numbers to avoid unique constraint
+        for change in changes:
+            db.execute(text("""
+                UPDATE incidents 
+                SET internal_incident_number = :temp_num 
+                WHERE id = :id
+            """), {"temp_num": f"TEMP-{change['id']}", "id": change["id"]})
+        
+        db.flush()
+        
+        # Final numbers
+        for change in changes:
+            db.execute(text("""
+                UPDATE incidents 
+                SET internal_incident_number = :new_num,
+                    out_of_sequence = FALSE,
+                    updated_at = NOW()
+                WHERE id = :id
+            """), {"new_num": change["new_number"], "id": change["id"]})
+        
+        all_changes.extend(changes)
     
-    for i, inc in enumerate(by_date):
-        new_number = base_number + i
-        if inc[1] != new_number:
-            changes.append({
-                "id": inc[0],
-                "old_number": inc[1],
-                "new_number": new_number,
-                "date": str(inc[2]) if inc[2] else None,
-                "cad": inc[3],
-            })
-    
-    if not changes:
+    if not all_changes:
         return {"status": "ok", "message": "All incidents already in correct sequence", "changes": []}
-    
-    logger.warning(f"ADMIN: Fixing sequence for {len(changes)} incidents in year {year}")
-    
-    # Temporary negative numbers to avoid unique constraint
-    for change in changes:
-        db.execute(text("""
-            UPDATE incidents 
-            SET internal_incident_number = :temp_num 
-            WHERE id = :id
-        """), {"temp_num": -change["id"], "id": change["id"]})
-    
-    db.flush()
-    
-    # Final numbers
-    for change in changes:
-        db.execute(text("""
-            UPDATE incidents 
-            SET internal_incident_number = :new_num,
-                out_of_sequence = FALSE,
-                updated_at = NOW()
-            WHERE id = :id
-        """), {"new_num": change["new_number"], "id": change["id"]})
     
     db.commit()
     
     return {
         "status": "ok",
         "year": year,
-        "changes_applied": len(changes),
-        "changes": changes
+        "changes_applied": len(all_changes),
+        "changes": all_changes
     }
 
 
@@ -598,6 +744,7 @@ async def get_incident(
         "id": incident.id,
         "internal_incident_number": incident.internal_incident_number,
         "year_prefix": incident.year_prefix,
+        "call_category": incident.call_category,
         "neris_id": incident.neris_id,
         "cad_event_number": incident.cad_event_number,
         "cad_event_type": incident.cad_event_type,
@@ -777,13 +924,31 @@ async def create_incident(
         else:
             raise HTTPException(status_code=400, detail="Incident already exists")
     
+    # Determine category (default to FIRE)
+    call_category = data.call_category or 'FIRE'
+    if call_category not in ('FIRE', 'EMS'):
+        call_category = 'FIRE'
+    
+    # Determine incident date first (needed for year)
+    if data.incident_date:
+        try:
+            incident_date = datetime.strptime(data.incident_date, "%Y-%m-%d").date()
+        except ValueError:
+            incident_date = datetime.now(timezone.utc).date()
+    else:
+        incident_date = datetime.now(timezone.utc).date()
+    
+    year_prefix = incident_date.year
+    
     # Get incident number
     if data.internal_incident_number:
         incident_number = data.internal_incident_number
+        # Parse year from provided number
+        _, parsed_year, _ = parse_incident_number(incident_number)
+        if parsed_year:
+            year_prefix = parsed_year
     else:
-        incident_number = db.execute(text("SELECT suggest_incident_number(NULL)")).scalar()
-    
-    year_prefix = incident_number // 1000
+        incident_number = claim_incident_number(db, year_prefix, call_category)
     
     # Handle municipality
     municipality_id = None
@@ -795,31 +960,30 @@ async def create_incident(
             db.flush()
         municipality_id = muni.id
     
-    # Determine incident date
-    if data.incident_date:
-        try:
-            incident_date = datetime.strptime(data.incident_date, "%Y-%m-%d").date()
-        except ValueError:
-            incident_date = datetime.now(timezone.utc).date()
-    else:
-        incident_date = datetime.now(timezone.utc).date()
-    
-    # Check sequence
+    # Check sequence (compare within same category)
     out_of_sequence = False
-    check_result = db.execute(text("""
-        SELECT COUNT(*) FROM incidents 
-        WHERE year_prefix = :year 
-          AND internal_incident_number < :num 
-          AND incident_date > :date
-          AND deleted_at IS NULL
-    """), {"year": year_prefix, "num": incident_number, "date": incident_date}).scalar()
+    prefix = 'F' if call_category == 'FIRE' else 'E'
+    year_short = year_prefix % 100
     
-    if check_result and check_result > 0:
-        out_of_sequence = True
+    # Get sequence number from incident_number string
+    _, _, seq_num = parse_incident_number(incident_number)
+    if seq_num:
+        check_result = db.execute(text("""
+            SELECT COUNT(*) FROM incidents 
+            WHERE year_prefix = :year 
+              AND call_category = :cat
+              AND CAST(SUBSTRING(internal_incident_number FROM 4) AS INTEGER) < :seq
+              AND incident_date > :date
+              AND deleted_at IS NULL
+        """), {"year": year_prefix, "cat": call_category, "seq": seq_num, "date": incident_date}).scalar()
+        
+        if check_result and check_result > 0:
+            out_of_sequence = True
     
     incident = Incident(
         internal_incident_number=incident_number,
         year_prefix=year_prefix,
+        call_category=call_category,
         status='OPEN',
         cad_event_number=data.cad_event_number,
         cad_event_type=data.cad_event_type,
@@ -833,7 +997,6 @@ async def create_incident(
     )
     
     db.add(incident)
-    db.execute(text("SELECT claim_incident_number(:num)"), {"num": incident_number})
     db.commit()
     db.refresh(incident)
     
@@ -849,13 +1012,14 @@ async def create_incident(
         action="CREATE",
         incident=incident,
         completed_by_id=None,
-        summary=f"Incident created: {data.cad_event_type or 'Manual'}"
+        summary=f"Incident created: {data.cad_event_type or 'Manual'} ({call_category})"
     )
     db.commit()
     
     return {
         "id": incident.id, 
         "internal_incident_number": incident_number,
+        "call_category": call_category,
         "neris_id": incident.neris_id,
         "reopened": False,
         "out_of_sequence": out_of_sequence
@@ -887,6 +1051,53 @@ async def update_incident(
     IMMUTABLE_FIELDS = ['incident_date', 'internal_incident_number', 'cad_event_number', 'created_at', 'neris_id']
     for field in IMMUTABLE_FIELDS:
         update_data.pop(field, None)
+    
+    # Handle category change (special case - assigns new number)
+    category_changed = False
+    old_number = None
+    new_number = None
+    if 'call_category' in update_data:
+        new_category = update_data['call_category']
+        if new_category and new_category != incident.call_category and new_category in ('FIRE', 'EMS'):
+            category_changed = True
+            old_category = incident.call_category
+            old_number = incident.internal_incident_number
+            
+            # Assign new number from target category
+            new_number = claim_incident_number(db, incident.year_prefix, new_category)
+            incident.internal_incident_number = new_number
+            incident.call_category = new_category
+            
+            # Update CadTypeMapping to learn this override
+            if incident.cad_event_type:
+                # Parse event type and subtype
+                cad_parts = incident.cad_event_type.split(' / ')
+                event_type = cad_parts[0].strip() if cad_parts else incident.cad_event_type
+                event_subtype = cad_parts[1].strip() if len(cad_parts) > 1 else None
+                
+                # Look for existing mapping
+                mapping = db.query(CadTypeMapping).filter(
+                    CadTypeMapping.cad_event_type == event_type,
+                    CadTypeMapping.cad_event_subtype == event_subtype
+                ).first()
+                
+                if mapping:
+                    mapping.call_category = new_category
+                    mapping.auto_created = False  # User override
+                    mapping.updated_at = datetime.now(timezone.utc)
+                else:
+                    mapping = CadTypeMapping(
+                        cad_event_type=event_type,
+                        cad_event_subtype=event_subtype,
+                        call_category=new_category,
+                        auto_created=False
+                    )
+                    db.add(mapping)
+            
+            logger.info(f"Category changed: {old_category} → {new_category}, number {old_number} → {new_number}")
+            
+            # Remove from update_data since we handled it manually
+            del update_data['call_category']
     
     # Track changes for audit
     changes = {}
@@ -939,9 +1150,15 @@ async def update_incident(
             incident.neris_id = neris_id
     
     # Audit log (only if actual changes)
-    if changes:
+    if changes or category_changed:
         # Summarize what changed
         change_keys = list(changes.keys())
+        
+        if category_changed:
+            changes['call_category'] = {"old": old_category, "new": new_category}
+            changes['internal_incident_number'] = {"old": old_number, "new": new_number}
+            change_keys.extend(['call_category', 'internal_incident_number'])
+        
         if len(change_keys) <= 3:
             summary = f"Updated: {', '.join(change_keys)}"
         else:

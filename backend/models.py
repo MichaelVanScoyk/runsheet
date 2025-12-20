@@ -137,11 +137,38 @@ class NerisCode(Base):
 # =============================================================================
 
 class IncidentNumberSequence(Base):
-    """Tracks next incident number per year"""
+    """Tracks next incident number per year and category (Fire/EMS)"""
     __tablename__ = "incident_number_sequences"
     
-    year = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True)
+    year = Column(Integer, nullable=False)
+    category = Column(String(10), nullable=False, default='FIRE')  # FIRE or EMS
     next_number = Column(Integer, nullable=False, default=1)
+    updated_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
+    
+    __table_args__ = (
+        # Unique constraint on year + category
+        {'sqlite_autoincrement': True},
+    )
+
+
+# =============================================================================
+# CAD TYPE MAPPING (Learning System)
+# =============================================================================
+
+class CadTypeMapping(Base):
+    """
+    Maps CAD event types to call categories (FIRE/EMS).
+    Learns from user overrides.
+    """
+    __tablename__ = "cad_type_mappings"
+    
+    id = Column(Integer, primary_key=True)
+    cad_event_type = Column(String(100), nullable=False)      # MEDICAL, FIRE, ACCIDENT
+    cad_event_subtype = Column(String(100))                   # BLS, STRUCTURE, etc (nullable)
+    call_category = Column(String(10), nullable=False)        # FIRE or EMS
+    auto_created = Column(Boolean, default=True)              # True if system-generated
+    created_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
     updated_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
 
 
@@ -166,9 +193,10 @@ class Incident(Base):
     # =========================================================================
     # INTERNAL TRACKING
     # =========================================================================
-    internal_incident_number = Column(Integer, unique=True, nullable=False)  # 2025001
-    year_prefix = Column(Integer, nullable=False)                            # 2025
-    status = Column(String(20), nullable=False, default='OPEN')              # OPEN, CLOSED, SUBMITTED
+    internal_incident_number = Column(String(10), unique=True, nullable=False)  # F250001, E250001
+    year_prefix = Column(Integer, nullable=False)                               # 2025
+    call_category = Column(String(10), nullable=False, default='FIRE')          # FIRE or EMS
+    status = Column(String(20), nullable=False, default='OPEN')                 # OPEN, CLOSED, SUBMITTED
     
     # =========================================================================
     # NERIS IDENTIFIERS

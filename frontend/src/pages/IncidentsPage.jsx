@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getIncidents, getIncident } from '../api';
 import RunSheetForm from '../components/RunSheetForm';
+
+const FILTER_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 function IncidentsPage() {
   const [incidents, setIncidents] = useState([]);
@@ -10,17 +12,42 @@ function IncidentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingIncident, setEditingIncident] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [categoryFilter, setCategoryFilter] = useState('ALL'); // ALL, FIRE, EMS
+  
+  // Timeout ref for resetting filter
+  const filterTimeoutRef = useRef(null);
+
+  // Reset filter to ALL after 30 minutes of inactivity
+  const resetFilterTimeout = useCallback(() => {
+    if (filterTimeoutRef.current) {
+      clearTimeout(filterTimeoutRef.current);
+    }
+    filterTimeoutRef.current = setTimeout(() => {
+      setCategoryFilter('ALL');
+    }, FILTER_TIMEOUT_MS);
+  }, []);
+
+  // Reset timeout on user interaction
+  useEffect(() => {
+    resetFilterTimeout();
+    return () => {
+      if (filterTimeoutRef.current) {
+        clearTimeout(filterTimeoutRef.current);
+      }
+    };
+  }, [categoryFilter, resetFilterTimeout]);
 
   const loadData = useCallback(async () => {
     try {
-      const res = await getIncidents(year);
+      const category = categoryFilter === 'ALL' ? null : categoryFilter;
+      const res = await getIncidents(year, category);
       setIncidents(res.data.incidents || []);
     } catch (err) {
       console.error('Failed to load incidents:', err);
     } finally {
       setLoading(false);
     }
-  }, [year]);
+  }, [year, categoryFilter]);
 
   useEffect(() => {
     loadData();
@@ -66,6 +93,41 @@ function IncidentsPage() {
     loadData();
   };
 
+  const handleCategoryChange = (newCategory) => {
+    setCategoryFilter(newCategory);
+    resetFilterTimeout();
+  };
+
+  // Get row style based on category
+  const getRowStyle = (category) => {
+    if (category === 'EMS') {
+      return { 
+        borderLeft: '3px solid #3498db',
+        borderRight: '3px solid #3498db'
+      };
+    } else if (category === 'FIRE') {
+      return { 
+        borderLeft: '3px solid #e74c3c',
+        borderRight: '3px solid #e74c3c'
+      };
+    }
+    return {};
+  };
+
+  // Get category badge
+  const getCategoryBadge = (category) => {
+    if (category === 'EMS') {
+      return <span className="badge" style={{ backgroundColor: '#3498db', color: '#fff', marginLeft: '0.5rem' }}>EMS</span>;
+    } else if (category === 'FIRE') {
+      return <span className="badge" style={{ backgroundColor: '#e74c3c', color: '#fff', marginLeft: '0.5rem' }}>FIRE</span>;
+    }
+    return null;
+  };
+
+  // Count by category
+  const fireCounts = incidents.filter(i => i.call_category === 'FIRE').length;
+  const emsCounts = incidents.filter(i => i.call_category === 'EMS').length;
+
   if (showForm) {
     return (
       <RunSheetForm
@@ -95,14 +157,49 @@ function IncidentsPage() {
         </div>
       </div>
 
-      <div className="filter-bar">
+      <div className="filter-bar" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <select value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
           {[2025, 2024, 2023].map(y => (
             <option key={y} value={y}>{y}</option>
           ))}
         </select>
+        
+        {/* Category Filter Buttons */}
+        <div style={{ display: 'flex', gap: '0.25rem' }}>
+          <button
+            className={`btn btn-sm ${categoryFilter === 'ALL' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => handleCategoryChange('ALL')}
+            style={{ minWidth: '60px' }}
+          >
+            All
+          </button>
+          <button
+            className={`btn btn-sm ${categoryFilter === 'FIRE' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => handleCategoryChange('FIRE')}
+            style={{ 
+              minWidth: '60px',
+              backgroundColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined,
+              borderColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined
+            }}
+          >
+            Fire
+          </button>
+          <button
+            className={`btn btn-sm ${categoryFilter === 'EMS' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => handleCategoryChange('EMS')}
+            style={{ 
+              minWidth: '60px',
+              backgroundColor: categoryFilter === 'EMS' ? '#3498db' : undefined,
+              borderColor: categoryFilter === 'EMS' ? '#3498db' : undefined
+            }}
+          >
+            EMS
+          </button>
+        </div>
+        
         <span style={{ color: '#888', fontSize: '0.85rem' }}>
           {incidents.length} incidents
+          {categoryFilter === 'ALL' && ` (${fireCounts} Fire, ${emsCounts} EMS)`}
         </span>
       </div>
 
@@ -132,8 +229,11 @@ function IncidentsPage() {
                 </tr>
               ) : (
                 incidents.map((i) => (
-                  <tr key={i.id}>
-                    <td>{i.internal_incident_number}</td>
+                  <tr key={i.id} style={getRowStyle(i.call_category)}>
+                    <td>
+                      {i.internal_incident_number}
+                      {getCategoryBadge(i.call_category)}
+                    </td>
                     <td>{i.cad_event_number}</td>
                     <td>{i.incident_date}</td>
                     <td>{i.cad_event_type || '-'}</td>
