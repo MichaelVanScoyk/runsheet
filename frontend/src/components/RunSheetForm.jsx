@@ -516,6 +516,58 @@ function CADDataModal({ isOpen, onClose, dispatch, updates, clear }) {
   
   const hasData = dispatch || (updates && updates.length > 0) || clear;
   
+  // CSS to normalize CAD HTML content - override light colors
+  const cadContentStyle = {
+    background: '#fff',
+    padding: '15px',
+    borderRadius: '4px',
+    overflow: 'auto',
+    color: '#333',
+  };
+  
+  // Inject style overrides for the CAD HTML content
+  const styleOverride = `
+    <style>
+      .cad-html-content * { color: #333 !important; }
+      .cad-html-content table { color: #333 !important; border-collapse: collapse; }
+      .cad-html-content td, .cad-html-content th { color: #333 !important; padding: 4px 8px; }
+      .cad-html-content h1, .cad-html-content h2, .cad-html-content h3 { color: #222 !important; }
+      .cad-html-content th { background: #8b1538 !important; color: #fff !important; }
+      .cad-html-content tr:nth-child(even) { background: #f9f9f9; }
+    </style>
+  `;
+  
+  // Print a single CAD section
+  const handlePrint = (html, title) => {
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          table { border-collapse: collapse; width: 100%; }
+          td, th { padding: 5px 10px; border-bottom: 1px solid #ddd; }
+          th { background: #333; color: #fff; text-align: left; }
+          .Title { font-size: 1.5em; text-align: center; border-bottom: 2px solid #333; padding: 10px; }
+          .Header { font-size: 1.2em; font-weight: bold; border-bottom: 1px solid #333; }
+          tr:nth-child(even) { background: #f5f5f5; }
+          @media print {
+            body { margin: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        ${html}
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 250);
+  };
+  
   return (
     <div className="neris-modal-overlay" onClick={onClose}>
       <div className="neris-modal cad-data-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '90vh' }}>
@@ -528,25 +580,45 @@ function CADDataModal({ isOpen, onClose, dispatch, updates, clear }) {
           
           {dispatch && (
             <div className="cad-section">
-              <h4 style={{ borderBottom: '2px solid #c41e3a', paddingBottom: '5px', marginBottom: '10px' }}>Dispatch Report</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #c41e3a', paddingBottom: '5px', marginBottom: '10px' }}>
+                <h4 style={{ margin: 0, color: '#333' }}>Dispatch Report</h4>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handlePrint(dispatch, 'Dispatch Report')}
+                  style={{ fontSize: '0.8rem', padding: '2px 8px' }}
+                >
+                  🖨️ Print
+                </button>
+              </div>
               <div 
                 className="cad-html-content" 
-                style={{ background: '#f5f5f5', padding: '15px', borderRadius: '4px', overflow: 'auto' }}
-                dangerouslySetInnerHTML={{ __html: dispatch }} 
+                style={cadContentStyle}
+                dangerouslySetInnerHTML={{ __html: styleOverride + dispatch }} 
               />
             </div>
           )}
           
           {updates && updates.length > 0 && (
             <div className="cad-section" style={{ marginTop: '20px' }}>
-              <h4 style={{ borderBottom: '2px solid #f0ad4e', paddingBottom: '5px', marginBottom: '10px' }}>Updates ({updates.length})</h4>
+              <h4 style={{ borderBottom: '2px solid #f0ad4e', paddingBottom: '5px', marginBottom: '10px', color: '#333' }}>Updates ({updates.length})</h4>
               {updates.map((update, idx) => (
                 <div key={idx} style={{ marginBottom: '15px' }}>
-                  <h5 style={{ color: '#666', marginBottom: '5px' }}>Update #{idx + 1}</h5>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                    <h5 style={{ color: '#555', margin: 0 }}>Update #{idx + 1}</h5>
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => handlePrint(update, `Update #${idx + 1}`)}
+                      style={{ fontSize: '0.8rem', padding: '2px 8px' }}
+                    >
+                      🖨️ Print
+                    </button>
+                  </div>
                   <div 
                     className="cad-html-content" 
-                    style={{ background: '#f5f5f5', padding: '15px', borderRadius: '4px', overflow: 'auto' }}
-                    dangerouslySetInnerHTML={{ __html: update }} 
+                    style={cadContentStyle}
+                    dangerouslySetInnerHTML={{ __html: styleOverride + update }} 
                   />
                 </div>
               ))}
@@ -555,11 +627,21 @@ function CADDataModal({ isOpen, onClose, dispatch, updates, clear }) {
           
           {clear && (
             <div className="cad-section" style={{ marginTop: '20px' }}>
-              <h4 style={{ borderBottom: '2px solid #5cb85c', paddingBottom: '5px', marginBottom: '10px' }}>Clear Report</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #5cb85c', paddingBottom: '5px', marginBottom: '10px' }}>
+                <h4 style={{ margin: 0, color: '#333' }}>Clear Report</h4>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handlePrint(clear, 'Clear Report')}
+                  style={{ fontSize: '0.8rem', padding: '2px 8px' }}
+                >
+                  🖨️ Print
+                </button>
+              </div>
               <div 
                 className="cad-html-content" 
-                style={{ background: '#f5f5f5', padding: '15px', borderRadius: '4px', overflow: 'auto' }}
-                dangerouslySetInnerHTML={{ __html: clear }} 
+                style={cadContentStyle}
+                dangerouslySetInnerHTML={{ __html: styleOverride + clear }} 
               />
             </div>
           )}
@@ -1160,22 +1242,25 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
 
   return (
     <div className="runsheet-form">
-      <div className="runsheet-header">
-        <h2>Glen Moore Fire Company — Station 48</h2>
-        <h3>Incident Report</h3>
+      <div className="runsheet-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>Glen Moore Fire Company — Station 48</h2>
+            <h3 style={{ margin: 0, fontSize: '1rem', color: '#666' }}>Incident Report</h3>
+          </div>
+          {incident && (
+            <span className={`badge badge-${formData.status?.toLowerCase()}`}>{formData.status}</span>
+          )}
+        </div>
         {incident && (
-          <span className={`badge badge-${formData.status?.toLowerCase()}`}>{formData.status}</span>
+          <div className="timestamps-inline" style={{ display: 'flex', gap: '15px', fontSize: '0.85rem', color: '#666' }}>
+            <span>Created: {formatTimestamp(formData.created_at)}</span>
+            <span>Updated: {formatTimestamp(formData.updated_at)}</span>
+            {formData.closed_at && <span>Closed: {formatTimestamp(formData.closed_at)}</span>}
+            {formData.neris_submitted_at && <span>NERIS: {formatTimestamp(formData.neris_submitted_at)}</span>}
+          </div>
         )}
       </div>
-
-      {incident && (
-        <div className="timestamps-bar">
-          <span>Created: {formatTimestamp(formData.created_at)}</span>
-          <span>Updated: {formatTimestamp(formData.updated_at)}</span>
-          {formData.closed_at && <span>Closed: {formatTimestamp(formData.closed_at)}</span>}
-          {formData.neris_submitted_at && <span>NERIS: {formatTimestamp(formData.neris_submitted_at)}</span>}
-        </div>
-      )}
 
       {/* Top Action Buttons */}
       <div className="runsheet-actions runsheet-actions-top">
