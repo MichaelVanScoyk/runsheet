@@ -510,6 +510,68 @@ const saveAllAssignments = async (incidentId, assignments) => {
   return response.json();
 };
 
+// CAD Data Modal - renders raw CAD HTML
+function CADDataModal({ isOpen, onClose, dispatch, updates, clear }) {
+  if (!isOpen) return null;
+  
+  const hasData = dispatch || (updates && updates.length > 0) || clear;
+  
+  return (
+    <div className="neris-modal-overlay" onClick={onClose}>
+      <div className="neris-modal cad-data-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '90vh' }}>
+        <div className="neris-modal-header">
+          <h3>CAD Data</h3>
+          <button className="neris-modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="neris-modal-body" style={{ overflowY: 'auto', maxHeight: 'calc(90vh - 120px)' }}>
+          {!hasData && <p style={{ color: '#666', fontStyle: 'italic' }}>No CAD data available for this incident.</p>}
+          
+          {dispatch && (
+            <div className="cad-section">
+              <h4 style={{ borderBottom: '2px solid #c41e3a', paddingBottom: '5px', marginBottom: '10px' }}>Dispatch Report</h4>
+              <div 
+                className="cad-html-content" 
+                style={{ background: '#f5f5f5', padding: '15px', borderRadius: '4px', overflow: 'auto' }}
+                dangerouslySetInnerHTML={{ __html: dispatch }} 
+              />
+            </div>
+          )}
+          
+          {updates && updates.length > 0 && (
+            <div className="cad-section" style={{ marginTop: '20px' }}>
+              <h4 style={{ borderBottom: '2px solid #f0ad4e', paddingBottom: '5px', marginBottom: '10px' }}>Updates ({updates.length})</h4>
+              {updates.map((update, idx) => (
+                <div key={idx} style={{ marginBottom: '15px' }}>
+                  <h5 style={{ color: '#666', marginBottom: '5px' }}>Update #{idx + 1}</h5>
+                  <div 
+                    className="cad-html-content" 
+                    style={{ background: '#f5f5f5', padding: '15px', borderRadius: '4px', overflow: 'auto' }}
+                    dangerouslySetInnerHTML={{ __html: update }} 
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {clear && (
+            <div className="cad-section" style={{ marginTop: '20px' }}>
+              <h4 style={{ borderBottom: '2px solid #5cb85c', paddingBottom: '5px', marginBottom: '10px' }}>Clear Report</h4>
+              <div 
+                className="cad-html-content" 
+                style={{ background: '#f5f5f5', padding: '15px', borderRadius: '4px', overflow: 'auto' }}
+                dangerouslySetInnerHTML={{ __html: clear }} 
+              />
+            </div>
+          )}
+        </div>
+        <div className="neris-modal-footer">
+          <button className="btn btn-primary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RunSheetForm({ incident = null, onSave, onClose }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -520,6 +582,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
   const [locationUses, setLocationUses] = useState({});
   const [actionsTaken, setActionsTaken] = useState({});
   const [showNeris, setShowNeris] = useState(false);
+  const [showCadModal, setShowCadModal] = useState(false);
   const [showIncidentTypeModal, setShowIncidentTypeModal] = useState(false);
   const [showLocationUseModal, setShowLocationUseModal] = useState(false);
   const [showActionsModal, setShowActionsModal] = useState(false);
@@ -559,6 +622,9 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
     internal_incident_number: '',
     cad_event_number: '',
     cad_event_type: '',
+    cad_raw_dispatch: '',
+    cad_raw_updates: [],
+    cad_raw_clear: '',
     status: 'OPEN',
     incident_date: new Date().toISOString().split('T')[0],
     address: '',
@@ -788,6 +854,9 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
           internal_incident_number: incident.internal_incident_number || '',
           cad_event_number: incident.cad_event_number || '',
           cad_event_type: incident.cad_event_type || '',
+          cad_raw_dispatch: incident.cad_raw_dispatch || '',
+          cad_raw_updates: incident.cad_raw_updates || [],
+          cad_raw_clear: incident.cad_raw_clear || '',
           status: incident.status || 'OPEN',
           incident_date: incident.incident_date || new Date().toISOString().split('T')[0],
           address: incident.address || '',
@@ -1152,7 +1221,19 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
           </div>
           <div className="form-group">
             <label>CAD Type</label>
-            <input type="text" value={formData.cad_event_type} onChange={(e) => handleChange('cad_event_type', e.target.value)} />
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <input type="text" value={formData.cad_event_type} onChange={(e) => handleChange('cad_event_type', e.target.value)} style={{ flex: 1 }} />
+              {incident && (formData.cad_raw_dispatch || formData.cad_raw_clear) && (
+                <button 
+                  type="button" 
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowCadModal(true)}
+                  title="View raw CAD data"
+                >
+                  📄 CAD
+                </button>
+              )}
+            </div>
           </div>
           <div className="form-group">
             <label>Address</label>
@@ -2456,6 +2537,14 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         selected={formData.neris_action_codes || []}
         onToggle={handleActionToggle}
         dataType="children"
+      />
+
+      <CADDataModal
+        isOpen={showCadModal}
+        onClose={() => setShowCadModal(false)}
+        dispatch={formData.cad_raw_dispatch}
+        updates={formData.cad_raw_updates}
+        clear={formData.cad_raw_clear}
       />
 
       {/* Buttons */}

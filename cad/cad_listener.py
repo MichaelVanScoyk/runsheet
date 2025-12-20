@@ -130,8 +130,8 @@ class CADListener:
             else:
                 logger.warning(f"Unknown report type: {report_type}")
             
-            # Process the report
-            self._process_report(report_dict)
+            # Process the report (include raw HTML for storage)
+            self._process_report(report_dict, html)
             
         except Exception as e:
             logger.error(f"Error handling connection: {e}", exc_info=True)
@@ -139,7 +139,7 @@ class CADListener:
         finally:
             client_socket.close()
     
-    def _process_report(self, report: dict):
+    def _process_report(self, report: dict, raw_html: str = None):
         """Process parsed report - create/update/close incident via API"""
         
         event_number = report.get('event_number')
@@ -151,14 +151,14 @@ class CADListener:
         
         try:
             if report_type == 'DISPATCH':
-                self._handle_dispatch(report)
+                self._handle_dispatch(report, raw_html)
             elif report_type == 'CLEAR':
-                self._handle_clear(report)
+                self._handle_clear(report, raw_html)
         except Exception as e:
             logger.error(f"Error processing report: {e}", exc_info=True)
             self.stats['errors'] += 1
     
-    def _handle_dispatch(self, report: dict):
+    def _handle_dispatch(self, report: dict, raw_html: str = None):
         """Handle Dispatch Report - create or update incident"""
         
         event_number = report['event_number']
@@ -224,7 +224,11 @@ class CADListener:
             cad_units.append(unit_data)
         
         if exists:
-            # Update existing incident
+            # Update existing incident - append raw HTML to updates array
+            existing_updates = existing_incident.get('cad_raw_updates') or []
+            if raw_html:
+                existing_updates.append(raw_html)
+            
             update_data = {
                 'cad_event_type': cad_type,
                 'address': report.get('address'),
@@ -234,6 +238,7 @@ class CADListener:
                 'caller_name': report.get('caller_name'),
                 'caller_phone': report.get('caller_phone'),
                 'cad_units': cad_units,
+                'cad_raw_updates': existing_updates,  # Store update HTMLs
             }
             
             if report.get('dispatch_time'):
@@ -256,6 +261,7 @@ class CADListener:
                 'cad_event_type': cad_type,
                 'address': report.get('address'),
                 'municipality_code': municipality_code,
+                'cad_raw_dispatch': raw_html,  # Store raw CAD HTML
             }
             
             # Extract incident_date from dispatch_time - this is when the incident occurred
@@ -295,7 +301,7 @@ class CADListener:
             else:
                 logger.error(f"Failed to create incident: {resp.text}")
     
-    def _handle_clear(self, report: dict):
+    def _handle_clear(self, report: dict, raw_html: str = None):
         """Handle Clear Report - update times, merge unit times, and close incident"""
         
         event_number = report['event_number']
@@ -334,7 +340,9 @@ class CADListener:
                 pass
         
         # Build update data
-        update_data = {}
+        update_data = {
+            'cad_raw_clear': raw_html,  # Store raw clear report HTML
+        }
         
         if report.get('first_dispatch'):
             update_data['time_dispatched'] = self._parse_cad_time(

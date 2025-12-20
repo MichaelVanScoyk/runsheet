@@ -117,6 +117,7 @@ class IncidentCreate(BaseModel):
     """Create new incident"""
     cad_event_number: str
     cad_event_type: Optional[str] = None
+    cad_raw_dispatch: Optional[str] = None
     address: Optional[str] = None
     municipality_code: Optional[str] = None
     internal_incident_number: Optional[int] = None
@@ -128,6 +129,9 @@ class IncidentUpdate(BaseModel):
     
     # CAD fields (informational, not sent to NERIS)
     cad_event_type: Optional[str] = None
+    cad_raw_dispatch: Optional[str] = None
+    cad_raw_updates: Optional[List[str]] = None
+    cad_raw_clear: Optional[str] = None
     
     # Location - display
     address: Optional[str] = None
@@ -728,6 +732,11 @@ async def get_incident(
         "personnel_assignments": personnel_assignments,
         "cad_units": incident.cad_units or [],
         
+        # CAD Raw Data (for audit/replay)
+        "cad_raw_dispatch": incident.cad_raw_dispatch,
+        "cad_raw_updates": incident.cad_raw_updates or [],
+        "cad_raw_clear": incident.cad_raw_clear,
+        
         # Timestamps
         "created_at": incident.created_at.isoformat() if incident.created_at else None,
         "updated_at": incident.updated_at.isoformat() if incident.updated_at else None,
@@ -814,6 +823,7 @@ async def create_incident(
         status='OPEN',
         cad_event_number=data.cad_event_number,
         cad_event_type=data.cad_event_type,
+        cad_raw_dispatch=data.cad_raw_dispatch,
         address=data.address,
         municipality_id=municipality_id,
         municipality_code=data.municipality_code,
