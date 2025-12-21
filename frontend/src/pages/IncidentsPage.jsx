@@ -236,7 +236,9 @@ function IncidentsPage() {
                     </td>
                     <td>{i.cad_event_number}</td>
                     <td>{i.incident_date}</td>
-                    <td>{i.cad_event_type || '-'}</td>
+                    <td>{i.call_category === 'FIRE' && i.cad_event_subtype 
+                      ? `${i.cad_event_type} / ${i.cad_event_subtype}` 
+                      : i.cad_event_type || '-'}</td>
                     <td>{i.address || '-'}</td>
                     <td>{i.municipality_code || '-'}</td>
                     <td>

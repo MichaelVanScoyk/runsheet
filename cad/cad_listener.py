@@ -172,10 +172,9 @@ class CADListener:
             exists = False
             existing_incident = None
         
-        # Build CAD type string
-        cad_type = report.get('event_type', '')
-        if report.get('event_subtype'):
-            cad_type = f"{cad_type} / {report['event_subtype']}"
+        # Get event type and subtype separately (not combined)
+        event_type = report.get('event_type', '')
+        event_subtype = report.get('event_subtype', '')
         
         # Auto-create municipality if needed
         municipality_code = report.get('municipality')
@@ -230,7 +229,8 @@ class CADListener:
                 existing_updates.append(raw_html)
             
             update_data = {
-                'cad_event_type': cad_type,
+                'cad_event_type': event_type,
+                'cad_event_subtype': event_subtype,
                 'address': report.get('address'),
                 'municipality_code': municipality_code,
                 'cross_streets': report.get('cross_streets'),
@@ -256,14 +256,13 @@ class CADListener:
                 logger.error(f"Failed to update incident: {resp.text}")
         else:
             # Determine call category from event type mapping
-            event_type = report.get('event_type', '')
-            event_subtype = report.get('event_subtype')
             call_category = self._determine_category(event_type, event_subtype)
             
             # Create new incident
             create_data = {
                 'cad_event_number': event_number,
-                'cad_event_type': cad_type,
+                'cad_event_type': event_type,
+                'cad_event_subtype': event_subtype,
                 'call_category': call_category,
                 'address': report.get('address'),
                 'municipality_code': municipality_code,

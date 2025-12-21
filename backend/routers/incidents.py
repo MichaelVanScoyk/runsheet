@@ -118,6 +118,7 @@ class IncidentCreate(BaseModel):
     """Create new incident"""
     cad_event_number: str
     cad_event_type: Optional[str] = None
+    cad_event_subtype: Optional[str] = None
     cad_raw_dispatch: Optional[str] = None
     address: Optional[str] = None
     municipality_code: Optional[str] = None
@@ -131,6 +132,7 @@ class IncidentUpdate(BaseModel):
     
     # CAD fields (informational, not sent to NERIS)
     cad_event_type: Optional[str] = None
+    cad_event_subtype: Optional[str] = None
     cad_raw_dispatch: Optional[str] = None
     cad_raw_updates: Optional[List[str]] = None
     cad_raw_clear: Optional[str] = None
@@ -465,6 +467,7 @@ async def list_incidents(
                 "neris_id": i.neris_id,
                 "cad_event_number": i.cad_event_number,
                 "cad_event_type": i.cad_event_type,
+                "cad_event_subtype": i.cad_event_subtype,
                 "status": i.status,
                 "review_status": getattr(i, 'review_status', None),
                 "incident_date": i.incident_date.isoformat() if i.incident_date else None,
@@ -748,6 +751,7 @@ async def get_incident(
         "neris_id": incident.neris_id,
         "cad_event_number": incident.cad_event_number,
         "cad_event_type": incident.cad_event_type,
+        "cad_event_subtype": incident.cad_event_subtype,
         "status": incident.status,
         "review_status": getattr(incident, 'review_status', None),
         "incident_date": incident.incident_date.isoformat() if incident.incident_date else None,
@@ -987,6 +991,7 @@ async def create_incident(
         status='OPEN',
         cad_event_number=data.cad_event_number,
         cad_event_type=data.cad_event_type,
+        cad_event_subtype=data.cad_event_subtype,
         cad_raw_dispatch=data.cad_raw_dispatch,
         address=data.address,
         municipality_id=municipality_id,

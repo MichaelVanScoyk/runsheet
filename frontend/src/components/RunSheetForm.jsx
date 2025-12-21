@@ -705,6 +705,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
     call_category: 'FIRE',
     cad_event_number: '',
     cad_event_type: '',
+    cad_event_subtype: '',
     cad_raw_dispatch: '',
     cad_raw_updates: [],
     cad_raw_clear: '',
@@ -938,6 +939,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
           call_category: incident.call_category || 'FIRE',
           cad_event_number: incident.cad_event_number || '',
           cad_event_type: incident.cad_event_type || '',
+          cad_event_subtype: incident.cad_event_subtype || '',
           cad_raw_dispatch: incident.cad_raw_dispatch || '',
           cad_raw_updates: incident.cad_raw_updates || [],
           cad_raw_clear: incident.cad_raw_clear || '',
@@ -1188,6 +1190,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         const res = await createIncident({
           cad_event_number: cleanData.cad_event_number || `MANUAL-${Date.now()}`,
           cad_event_type: cleanData.cad_event_type,
+          cad_event_subtype: cleanData.cad_event_subtype,
           address: cleanData.address,
           municipality_code: cleanData.municipality_code,
           internal_incident_number: cleanData.internal_incident_number,
@@ -1323,8 +1326,12 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
           </div>
           <div className="form-group">
             <label>CAD Type</label>
+            <input type="text" value={formData.cad_event_type} onChange={(e) => handleChange('cad_event_type', e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>CAD Subtype</label>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <input type="text" value={formData.cad_event_type} onChange={(e) => handleChange('cad_event_type', e.target.value)} style={{ flex: 1 }} />
+              <input type="text" value={formData.cad_event_subtype} onChange={(e) => handleChange('cad_event_subtype', e.target.value)} style={{ flex: 1 }} />
               {incident && (formData.cad_raw_dispatch || formData.cad_raw_clear) && (
                 <button 
                   type="button" 

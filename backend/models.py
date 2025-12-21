@@ -213,7 +213,8 @@ class Incident(Base):
     # =========================================================================
     cad_event_number = Column(String(20), nullable=False, index=True)  # F25066673
     cad_event_id = Column(String(20))                                   # Internal CAD ID
-    cad_event_type = Column(String(100))                                # "FIRE / CHIMNEY"
+    cad_event_type = Column(String(100))                                # "FIRE", "MEDICAL", "ACCIDENT"
+    cad_event_subtype = Column(String(100))                             # "CHIMNEY", "HEART PROBLEMS - ALS"
     cad_raw_dispatch = Column(Text)                                     # Raw HTML
     cad_raw_updates = Column(ARRAY(Text))
     cad_raw_clear = Column(Text)
