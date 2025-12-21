@@ -182,4 +182,61 @@ export const changeAdminPassword = (currentPassword, newPassword) =>
 
 export const getAuditLog = (params) => api.get('/admin/audit-log', { params });
 
+// ============================================================================
+// USER SESSION AUTH (15 min timeout)
+// ============================================================================
+
+const SESSION_KEY = 'userSession';
+const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes in ms
+
+export const getUserSession = () => {
+  const data = sessionStorage.getItem(SESSION_KEY);
+  if (!data) return null;
+  
+  try {
+    const session = JSON.parse(data);
+    // Check if expired
+    if (Date.now() - session.lastActivity > SESSION_TIMEOUT) {
+      clearUserSession();
+      return null;
+    }
+    return session;
+  } catch {
+    return null;
+  }
+};
+
+export const setUserSession = (authResult) => {
+  const session = {
+    ...authResult,
+    lastActivity: Date.now(),
+    loginTime: Date.now(),
+  };
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+};
+
+export const updateSessionActivity = () => {
+  const session = getUserSession();
+  if (session) {
+    session.lastActivity = Date.now();
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  }
+};
+
+export const clearUserSession = () => {
+  sessionStorage.removeItem(SESSION_KEY);
+};
+
+export const isSessionExpired = () => {
+  const data = sessionStorage.getItem(SESSION_KEY);
+  if (!data) return true;
+  
+  try {
+    const session = JSON.parse(data);
+    return Date.now() - session.lastActivity > SESSION_TIMEOUT;
+  } catch {
+    return true;
+  }
+};
+
 export default api;
