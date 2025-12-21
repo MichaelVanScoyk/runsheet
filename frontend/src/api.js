@@ -54,6 +54,35 @@ export const updateRank = (id, data) => api.put(`/personnel/ranks/${id}`, data);
 
 export const deleteRank = (id) => api.delete(`/personnel/ranks/${id}`);
 
+// Personnel Auth
+export const personnelLogin = (personnelId, password) => 
+  api.post('/personnel/auth/login', { personnel_id: personnelId, password });
+
+export const personnelRegister = (personnelId, email) => 
+  api.post('/personnel/auth/register', { personnel_id: personnelId, email });
+
+export const personnelVerifyEmail = (personnelId, code) => 
+  api.post('/personnel/auth/verify-email', { personnel_id: personnelId, code });
+
+export const personnelSetPassword = (personnelId, password) => 
+  api.post('/personnel/auth/set-password', { personnel_id: personnelId, password });
+
+export const personnelGetAuthStatus = (personnelId) => 
+  api.get(`/personnel/auth/status/${personnelId}`);
+
+export const approveMember = (personnelId, approverId, approverPassword) => 
+  api.post(`/personnel/${personnelId}/approve`, { 
+    approver_id: approverId, 
+    approver_password: approverPassword 
+  });
+
+export const updatePersonnelRole = (personnelId, role, adminId, adminPassword) => 
+  api.put(`/personnel/${personnelId}/role`, { 
+    role, 
+    admin_id: adminId, 
+    admin_password: adminPassword 
+  });
+
 // ============================================================================
 // APPARATUS
 // ============================================================================

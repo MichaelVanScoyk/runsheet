@@ -13,6 +13,11 @@ import {
   getNerisCategory,
   getAidTypes,
   getAidDirections,
+  personnelLogin,
+  personnelRegister,
+  personnelVerifyEmail,
+  personnelSetPassword,
+  personnelGetAuthStatus,
 } from '../api';
 import './RunSheetForm.css';
 
@@ -672,6 +677,19 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
   const [showLocationUseModal, setShowLocationUseModal] = useState(false);
   const [showActionsModal, setShowActionsModal] = useState(false);
   
+  // Auth state
+  const [authPersonnelId, setAuthPersonnelId] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authStatus, setAuthStatus] = useState(null); // null = not selected, {is_registered, ...}
+  const [authResult, setAuthResult] = useState(null); // null = not authenticated, {role, can_edit, ...}
+  const [authError, setAuthError] = useState('');
+  const [showRegisterFlow, setShowRegisterFlow] = useState(false);
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerCode, setRegisterCode] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
+  const [registerStep, setRegisterStep] = useState('email'); // 'email', 'code', 'password'
+  const [registerLoading, setRegisterLoading] = useState(false);
+  
   // NERIS conditional module dropdown options (loaded from database)
   const [aidTypes, setAidTypes] = useState([]);
   const [aidDirections, setAidDirections] = useState([]);
@@ -1195,6 +1213,109 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
     }
   };
 
+  // Auth handlers
+  const handlePersonnelSelect = async (personnelId) => {
+    setAuthPersonnelId(personnelId);
+    setAuthPassword('');
+    setAuthResult(null);
+    setAuthError('');
+    setShowRegisterFlow(false);
+    
+    if (!personnelId) {
+      setAuthStatus(null);
+      return;
+    }
+    
+    try {
+      const res = await personnelGetAuthStatus(personnelId);
+      setAuthStatus(res.data);
+    } catch (err) {
+      console.error('Failed to get auth status:', err);
+      setAuthStatus(null);
+    }
+  };
+
+  const handleLogin = async () => {
+    if (!authPersonnelId || !authPassword) return;
+    setAuthError('');
+    
+    try {
+      const res = await personnelLogin(parseInt(authPersonnelId), authPassword);
+      setAuthResult(res.data);
+      // Set completed_by
+      handleChange('completed_by', parseInt(authPersonnelId));
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || 'Login failed');
+    }
+  };
+
+  const handleStartRegister = () => {
+    setShowRegisterFlow(true);
+    setRegisterStep('email');
+    setRegisterEmail(authStatus?.email || '');
+    setRegisterCode('');
+    setRegisterPassword('');
+  };
+
+  const handleRegisterSubmitEmail = async () => {
+    if (!registerEmail) return;
+    setRegisterLoading(true);
+    setAuthError('');
+    
+    try {
+      const res = await personnelRegister(parseInt(authPersonnelId), registerEmail);
+      // For testing, show the code (remove in production)
+      if (res.data.debug_code) {
+        alert(`Verification code (dev mode): ${res.data.debug_code}`);
+      }
+      setRegisterStep('code');
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || 'Failed to send verification');
+    } finally {
+      setRegisterLoading(false);
+    }
+  };
+
+  const handleRegisterVerifyCode = async () => {
+    if (!registerCode) return;
+    setRegisterLoading(true);
+    setAuthError('');
+    
+    try {
+      await personnelVerifyEmail(parseInt(authPersonnelId), registerCode);
+      setRegisterStep('password');
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || 'Invalid code');
+    } finally {
+      setRegisterLoading(false);
+    }
+  };
+
+  const handleRegisterSetPassword = async () => {
+    if (!registerPassword || registerPassword.length < 6) {
+      setAuthError('Password must be at least 6 characters');
+      return;
+    }
+    setRegisterLoading(true);
+    setAuthError('');
+    
+    try {
+      await personnelSetPassword(parseInt(authPersonnelId), registerPassword);
+      // Now log them in
+      const res = await personnelLogin(parseInt(authPersonnelId), registerPassword);
+      setAuthResult(res.data);
+      handleChange('completed_by', parseInt(authPersonnelId));
+      setShowRegisterFlow(false);
+      // Refresh auth status
+      const statusRes = await personnelGetAuthStatus(authPersonnelId);
+      setAuthStatus(statusRes.data);
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || 'Failed to set password');
+    } finally {
+      setRegisterLoading(false);
+    }
+  };
+
   // Restore from CAD - actually perform the restore
   const handleRestoreConfirm = async () => {
     if (!incident?.id) return;
@@ -1318,12 +1439,157 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         )}
       </div>
 
-      {/* Top Action Buttons */}
-      <div className="runsheet-actions runsheet-actions-top">
-        {onClose && <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>}
-        {incident?.id && formData.status === 'OPEN' && <button className="btn btn-warning" onClick={handleCloseIncident} disabled={saving}>Close Incident</button>}
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+      {/* Auth Bar */}
+      <div className="auth-bar" style={{ 
+        background: '#2a2a2a', 
+        padding: '10px 15px', 
+        marginBottom: '10px',
+        borderRadius: '4px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '15px',
+        flexWrap: 'wrap'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <label style={{ margin: 0, fontWeight: 'bold' }}>Completed By:</label>
+          <select 
+            value={authPersonnelId} 
+            onChange={(e) => handlePersonnelSelect(e.target.value)}
+            style={{ minWidth: '200px' }}
+          >
+            <option value="">-- Select Your Name --</option>
+            {personnel.map(p => (
+              <option key={p.id} value={p.id}>{p.last_name}, {p.first_name}</option>
+            ))}
+          </select>
+        </div>
+
+        {authPersonnelId && authStatus && (
+          <>
+            {authStatus.is_registered ? (
+              // Registered user - show password field
+              !authResult ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="Password"
+                    style={{ width: '150px' }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                  />
+                  <button className="btn btn-primary btn-sm" onClick={handleLogin}>Login</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ color: '#2ecc71' }}>✓ Logged in as {authResult.display_name}</span>
+                  <span className={`badge ${authResult.role === 'ADMIN' ? 'badge-admin' : authResult.role === 'OFFICER' ? 'badge-officer' : 'badge-member'}`}>
+                    {authResult.role}
+                  </span>
+                  {!authResult.is_approved && (
+                    <span style={{ color: '#f39c12', fontSize: '0.85rem' }}>
+                      (Pending approval - limited to 1 form)
+                    </span>
+                  )}
+                </div>
+              )
+            ) : (
+              // Not registered - show register button
+              !showRegisterFlow ? (
+                <button className="btn btn-secondary btn-sm" onClick={handleStartRegister}>
+                  Set Up Account
+                </button>
+              ) : (
+                // Registration flow
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {registerStep === 'email' && (
+                    <>
+                      <input
+                        type="email"
+                        value={registerEmail}
+                        onChange={(e) => setRegisterEmail(e.target.value)}
+                        placeholder="Your email"
+                        style={{ width: '200px' }}
+                      />
+                      <button 
+                        className="btn btn-primary btn-sm" 
+                        onClick={handleRegisterSubmitEmail}
+                        disabled={registerLoading}
+                      >
+                        {registerLoading ? '...' : 'Send Code'}
+                      </button>
+                    </>
+                  )}
+                  {registerStep === 'code' && (
+                    <>
+                      <input
+                        type="text"
+                        value={registerCode}
+                        onChange={(e) => setRegisterCode(e.target.value)}
+                        placeholder="6-digit code"
+                        style={{ width: '120px' }}
+                      />
+                      <button 
+                        className="btn btn-primary btn-sm" 
+                        onClick={handleRegisterVerifyCode}
+                        disabled={registerLoading}
+                      >
+                        {registerLoading ? '...' : 'Verify'}
+                      </button>
+                    </>
+                  )}
+                  {registerStep === 'password' && (
+                    <>
+                      <input
+                        type="password"
+                        value={registerPassword}
+                        onChange={(e) => setRegisterPassword(e.target.value)}
+                        placeholder="Set password (6+ chars)"
+                        style={{ width: '180px' }}
+                      />
+                      <button 
+                        className="btn btn-primary btn-sm" 
+                        onClick={handleRegisterSetPassword}
+                        disabled={registerLoading}
+                      >
+                        {registerLoading ? '...' : 'Complete'}
+                      </button>
+                    </>
+                  )}
+                  <button 
+                    className="btn btn-secondary btn-sm" 
+                    onClick={() => setShowRegisterFlow(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )
+            )}
+          </>
+        )}
+
+        {authError && (
+          <span style={{ color: '#e74c3c' }}>{authError}</span>
+        )}
+
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '10px' }}>
+          {onClose && <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>}
+          {incident?.id && formData.status === 'OPEN' && (
+            <button className="btn btn-warning" onClick={handleCloseIncident} disabled={saving || !authResult}>
+              Close Incident
+            </button>
+          )}
+          <button 
+            className="btn btn-primary" 
+            onClick={handleSave} 
+            disabled={saving || !authResult}
+            title={!authResult ? 'Please log in first' : ''}
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
       </div>
+
       {/* Incident Info */}
       <div className="runsheet-top">
         <div className="runsheet-col">
@@ -2791,8 +3057,19 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
       {/* Buttons */}
       <div className="runsheet-actions">
         {onClose && <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>}
-        {incident?.id && formData.status === 'OPEN' && <button className="btn btn-warning" onClick={handleCloseIncident} disabled={saving}>Close Incident</button>}
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+        {incident?.id && formData.status === 'OPEN' && (
+          <button className="btn btn-warning" onClick={handleCloseIncident} disabled={saving || !authResult}>
+            Close Incident
+          </button>
+        )}
+        <button 
+          className="btn btn-primary" 
+          onClick={handleSave} 
+          disabled={saving || !authResult}
+          title={!authResult ? 'Please log in first' : ''}
+        >
+          {saving ? 'Saving...' : 'Save'}
+        </button>
       </div>
     </div>
   );

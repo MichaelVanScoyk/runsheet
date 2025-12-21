@@ -40,14 +40,33 @@ class Personnel(Base):
     rank_id = Column(Integer, ForeignKey("ranks.id"))
     active = Column(Boolean, default=True)
     dashboard_id = Column(Integer)  # Link to Dashboard system if synced
+    
+    # Auth fields
+    email = Column(String(255))
+    role = Column(String(20))  # ADMIN, OFFICER, MEMBER
+    password_hash = Column(String(255))
+    email_verified_at = Column(TIMESTAMP(timezone=True))
+    approved_at = Column(TIMESTAMP(timezone=True))
+    approved_by = Column(Integer, ForeignKey("personnel.id"))
+    last_login_at = Column(TIMESTAMP(timezone=True))
+    
     created_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
     updated_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
     
     rank = relationship("Rank")
+    approver = relationship("Personnel", remote_side=[id], foreign_keys=[approved_by])
     
     @property
     def display_name(self):
         return f"{self.last_name}, {self.first_name}"
+    
+    @property
+    def is_registered(self):
+        return self.password_hash is not None
+    
+    @property
+    def is_approved(self):
+        return self.approved_at is not None
 
 
 class Apparatus(Base):
