@@ -6,7 +6,7 @@ Station 48 - Glen Moore Fire Company
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from routers import incidents, lookups, apparatus, personnel, settings, reports, neris_codes, admin
+from routers import incidents, lookups, apparatus, personnel, settings, reports, neris_codes, admin, backup
 from database import engine, Base
 
 @asynccontextmanager
@@ -42,6 +42,7 @@ app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 app.include_router(neris_codes.router, prefix="/api/neris-codes", tags=["NERIS Codes"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(backup.router, prefix="/api/backup", tags=["Backup"])
 
 @app.get("/")
 async def root():
