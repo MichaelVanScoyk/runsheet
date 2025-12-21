@@ -665,6 +665,9 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
   const [actionsTaken, setActionsTaken] = useState({});
   const [showNeris, setShowNeris] = useState(false);
   const [showCadModal, setShowCadModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [restorePreview, setRestorePreview] = useState(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
   const [showIncidentTypeModal, setShowIncidentTypeModal] = useState(false);
   const [showLocationUseModal, setShowLocationUseModal] = useState(false);
   const [showActionsModal, setShowActionsModal] = useState(false);
@@ -1171,6 +1174,54 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
     return loc.use_subtype ? `${loc.use_type}: ${loc.use_subtype}` : loc.use_type;
   };
 
+  // Restore from CAD - preview what would change
+  const handleRestorePreview = async () => {
+    if (!incident?.id) return;
+    setRestoreLoading(true);
+    try {
+      const response = await fetch(`/api/backup/preview-restore/${incident.id}`);
+      const data = await response.json();
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+      setRestorePreview(data);
+      setShowRestoreModal(true);
+    } catch (err) {
+      console.error('Failed to preview restore:', err);
+      alert('Failed to preview restore from CAD');
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
+  // Restore from CAD - actually perform the restore
+  const handleRestoreConfirm = async () => {
+    if (!incident?.id) return;
+    setRestoreLoading(true);
+    try {
+      const response = await fetch(`/api/backup/restore-from-cad/${incident.id}`, {
+        method: 'POST'
+      });
+      const data = await response.json();
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+      // Reload the form with restored data
+      alert(`Restored ${data.restored_fields.length} fields from CAD`);
+      setShowRestoreModal(false);
+      setRestorePreview(null);
+      // Reload incident data
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to restore from CAD:', err);
+      alert('Failed to restore from CAD');
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -1333,14 +1384,25 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
               <input type="text" value={formData.cad_event_subtype} onChange={(e) => handleChange('cad_event_subtype', e.target.value)} style={{ flex: 1 }} />
               {incident && (formData.cad_raw_dispatch || formData.cad_raw_clear) && (
-                <button 
-                  type="button" 
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setShowCadModal(true)}
-                  title="View raw CAD data"
-                >
-                  📄 CAD
-                </button>
+                <>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setShowCadModal(true)}
+                    title="View raw CAD data"
+                  >
+                    📄 CAD
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleRestorePreview}
+                    disabled={restoreLoading}
+                    title="Restore fields from original CAD data"
+                  >
+                    {restoreLoading ? '...' : '🔄 Restore'}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -2655,6 +2717,76 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         updates={formData.cad_raw_updates}
         clear={formData.cad_raw_clear}
       />
+
+      {/* Restore from CAD Modal */}
+      {showRestoreModal && restorePreview && (
+        <div className="neris-modal-overlay" onClick={() => setShowRestoreModal(false)}>
+          <div className="neris-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <div className="neris-modal-header">
+              <h3>Restore from CAD</h3>
+              <button className="neris-modal-close" onClick={() => { setShowRestoreModal(false); setRestorePreview(null); }}>×</button>
+            </div>
+            <div className="neris-modal-body">
+              <p style={{ color: '#888', marginBottom: '1rem' }}>
+                Source: {restorePreview.source} | Incident: {restorePreview.incident_number}
+              </p>
+              
+              {restorePreview.restorable_fields?.length > 0 ? (
+                <>
+                  <p><strong>The following fields will be restored:</strong></p>
+                  <table style={{ width: '100%', marginBottom: '1rem', fontSize: '0.9rem' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #444' }}>Field</th>
+                        <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #444' }}>Current</th>
+                        <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #444' }}>From CAD</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {restorePreview.restorable_fields.map(field => {
+                        const comp = restorePreview.comparison[field];
+                        return (
+                          <tr key={field}>
+                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #333' }}>{field}</td>
+                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #333', color: '#e74c3c' }}>
+                              {comp?.current || '(empty)'}
+                            </td>
+                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #333', color: '#2ecc71' }}>
+                              {comp?.would_become || comp?.from_cad || '(empty)'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <p style={{ color: '#f39c12', fontSize: '0.85rem' }}>
+                    ⚠️ {restorePreview.note}
+                  </p>
+                </>
+              ) : (
+                <p>No fields need to be restored - current values match CAD data.</p>
+              )}
+            </div>
+            <div className="neris-modal-footer">
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => { setShowRestoreModal(false); setRestorePreview(null); }}
+              >
+                Cancel
+              </button>
+              {restorePreview.restorable_fields?.length > 0 && (
+                <button 
+                  className="btn btn-primary" 
+                  onClick={handleRestoreConfirm}
+                  disabled={restoreLoading}
+                >
+                  {restoreLoading ? 'Restoring...' : 'Restore Fields'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Buttons */}
       <div className="runsheet-actions">

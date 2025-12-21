@@ -463,22 +463,26 @@ async def export_full_incidents(
         
         # Get personnel assignments
         personnel_result = db.execute(text("""
-            SELECT ip.*, p.first_name, p.last_name, a.unit_designator
+            SELECT ip.id, ip.incident_id, ip.incident_unit_id, ip.personnel_id,
+                   ip.personnel_first_name, ip.personnel_last_name, 
+                   ip.rank_name_snapshot, ip.role, ip.slot_index,
+                   COALESCE(a.unit_designator, iu.cad_unit_id) as unit_designator
             FROM incident_personnel ip
-            LEFT JOIN personnel p ON ip.personnel_id = p.id
-            LEFT JOIN apparatus a ON ip.apparatus_id = a.id
+            LEFT JOIN incident_units iu ON ip.incident_unit_id = iu.id
+            LEFT JOIN apparatus a ON iu.apparatus_id = a.id
             WHERE ip.incident_id = :incident_id
         """), {"incident_id": incident_id})
         
         personnel = []
         for prow in personnel_result:
             personnel.append({
-                "personnel_id": prow[1],
-                "apparatus_id": prow[2],
-                "seat_position": prow[3],
-                "first_name": prow[-3],
-                "last_name": prow[-2],
-                "unit_designator": prow[-1]
+                "personnel_id": prow[3],
+                "first_name": prow[4],
+                "last_name": prow[5],
+                "rank": prow[6],
+                "role": prow[7],
+                "slot_index": prow[8],
+                "unit_designator": prow[9]
             })
         incident_dict['personnel_assignments'] = personnel
         

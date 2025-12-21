@@ -1235,6 +1235,169 @@ function AuditLogTab() {
 
 
 // ============================================================================
+// DATA EXPORT TAB COMPONENT
+// ============================================================================
+
+function DataExportTab() {
+  const [loading, setLoading] = useState(false);
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [includeCAD, setIncludeCAD] = useState(true);
+  const [exportType, setExportType] = useState('full'); // 'full' or 'incidents_only'
+  
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
+
+  const handleExport = async () => {
+    setLoading(true);
+    try {
+      // Use the full export endpoint
+      const endpoint = includeCAD 
+        ? `/api/backup/full-export?year=${year}`
+        : `/api/backup/full-export?year=${year}`;
+      
+      const response = await fetch(endpoint);
+      if (!response.ok) throw new Error('Export failed');
+      
+      const data = await response.json();
+      
+      // If not including CAD, strip the raw HTML fields
+      if (!includeCAD && data.incidents) {
+        data.incidents = data.incidents.map(inc => {
+          const { cad_raw_dispatch, cad_raw_updates, cad_raw_clear, ...rest } = inc;
+          return rest;
+        });
+      }
+      
+      // Create downloadable file
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `department_data_${year}${includeCAD ? '_with_cad' : ''}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Failed to export data: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportAllYears = async () => {
+    setLoading(true);
+    try {
+      const allData = {
+        export_date: new Date().toISOString(),
+        export_type: 'full_department_backup',
+        years: {}
+      };
+      
+      for (const y of years) {
+        const response = await fetch(`/api/backup/full-export?year=${y}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.incidents && data.incidents.length > 0) {
+            if (!includeCAD) {
+              data.incidents = data.incidents.map(inc => {
+                const { cad_raw_dispatch, cad_raw_updates, cad_raw_clear, ...rest } = inc;
+                return rest;
+              });
+            }
+            allData.years[y] = data;
+          }
+        }
+      }
+      
+      const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `department_full_backup_${new Date().toISOString().split('T')[0]}${includeCAD ? '_with_cad' : ''}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Failed to export data: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="data-export-tab">
+      <h3>Export Department Data</h3>
+      <p style={{ color: '#888', marginBottom: '1.5rem' }}>
+        Download your incident records, personnel assignments, and CAD data. 
+        This is your data - export it anytime.
+      </p>
+      
+      <div className="export-options">
+        <div className="export-option">
+          <label>Year</label>
+          <select value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
+            {years.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+        
+        <div className="export-option">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <input 
+              type="checkbox" 
+              checked={includeCAD} 
+              onChange={(e) => setIncludeCAD(e.target.checked)}
+            />
+            Include raw CAD HTML
+          </label>
+          <span style={{ color: '#666', fontSize: '0.85rem' }}>
+            Original dispatch/clear reports from county CAD system (larger file size)
+          </span>
+        </div>
+      </div>
+      
+      <div className="export-actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        <button 
+          className="btn btn-primary" 
+          onClick={handleExport}
+          disabled={loading}
+        >
+          {loading ? 'Exporting...' : `📥 Export ${year} Data`}
+        </button>
+        
+        <button 
+          className="btn btn-secondary" 
+          onClick={handleExportAllYears}
+          disabled={loading}
+        >
+          {loading ? 'Exporting...' : '📦 Export All Years'}
+        </button>
+      </div>
+      
+      <div style={{ marginTop: '2rem', padding: '1rem', background: '#2a2a2a', borderRadius: '4px' }}>
+        <h4 style={{ marginBottom: '0.5rem' }}>What's included:</h4>
+        <ul style={{ color: '#888', marginLeft: '1.5rem' }}>
+          <li>All incident records with full details</li>
+          <li>Personnel assignments per incident</li>
+          <li>Unit/apparatus response data</li>
+          <li>NERIS classification codes</li>
+          <li>Timestamps and audit information</li>
+          {includeCAD && <li>Raw CAD dispatch and clear reports (HTML)</li>}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+
+// ============================================================================
 // ADMIN LOGIN FORM
 // ============================================================================
 
@@ -1361,6 +1524,12 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         >
           🔑 Password
         </button>
+        <button 
+          className={activeTab === 'export' ? 'active' : ''} 
+          onClick={() => setActiveTab('export')}
+        >
+          📥 Export Data
+        </button>
       </div>
 
       <div className="admin-content">
@@ -1373,6 +1542,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'municipalities' && <MunicipalitiesPage embedded />}
         {activeTab === 'audit' && <AuditLogTab />}
         {activeTab === 'password' && <PasswordTab />}
+        {activeTab === 'export' && <DataExportTab />}
       </div>
     </div>
   );
