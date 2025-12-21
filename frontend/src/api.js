@@ -23,11 +23,20 @@ export const getIncident = (id) => api.get(`/incidents/${id}`);
 
 export const createIncident = (data) => api.post('/incidents', data);
 
-export const updateIncident = (id, data) => api.put(`/incidents/${id}`, data);
+export const updateIncident = (id, data, editedBy = null) => {
+  const params = editedBy ? { edited_by: editedBy } : {};
+  return api.put(`/incidents/${id}`, data, { params });
+};
 
-export const closeIncident = (id) => api.post(`/incidents/${id}/close`);
+export const closeIncident = (id, editedBy = null) => {
+  const params = editedBy ? { edited_by: editedBy } : {};
+  return api.post(`/incidents/${id}/close`, null, { params });
+};
 
 export const completeIncident = (id) => api.post(`/incidents/${id}/complete`);
+
+export const getIncidentAuditLog = (id, limit = 50) => 
+  api.get(`/incidents/${id}/audit-log`, { params: { limit } });
 
 export const suggestIncidentNumber = (category = 'FIRE') => 
   api.get('/incidents/suggest-number', { params: { category } });

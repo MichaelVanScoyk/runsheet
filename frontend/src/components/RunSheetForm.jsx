@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   getApparatus, 
   getPersonnel, 
@@ -14,6 +14,7 @@ import {
   getAidTypes,
   getAidDirections,
   getUserSession,
+  getIncidentAuditLog,
 } from '../api';
 import './RunSheetForm.css';
 
@@ -673,6 +674,25 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
   const [showLocationUseModal, setShowLocationUseModal] = useState(false);
   const [showActionsModal, setShowActionsModal] = useState(false);
   
+  // Audit log state
+  const [auditLog, setAuditLog] = useState([]);
+  const [showFullAuditLog, setShowFullAuditLog] = useState(false);
+  const auditLogRef = useRef(null);
+  
+  // Close audit log when clicking outside
+  useEffect(() => {
+    if (!showFullAuditLog) return;
+    
+    const handleClickOutside = (e) => {
+      if (auditLogRef.current && !auditLogRef.current.contains(e.target)) {
+        setShowFullAuditLog(false);
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showFullAuditLog]);
+  
   // Get session for auth check
   const userSession = getUserSession();
   
@@ -1039,6 +1059,15 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         } else {
           setAssignments(emptyAssignments);
         }
+        
+        // Load audit log
+        try {
+          const auditRes = await getIncidentAuditLog(incident.id);
+          setAuditLog(auditRes.data.entries || []);
+        } catch (err) {
+          console.error('Failed to load audit log:', err);
+          setAuditLog([]);
+        }
       } else {
         setFormData(prev => ({
           ...prev,
@@ -1235,15 +1264,18 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
         cleanData[key] = (value === '' || value === undefined) ? null : value;
       }
 
-      // Set completed_by from session if not already set
+      // Set completed_by from session if not already set (original completer)
       if (userSession?.personnel_id && !cleanData.completed_by) {
         cleanData.completed_by = userSession.personnel_id;
       }
 
+      // edited_by is the logged-in user making this edit
+      const editedBy = userSession?.personnel_id || null;
+
       let incidentId;
       
       if (incident?.id) {
-        await updateIncident(incident.id, cleanData);
+        await updateIncident(incident.id, cleanData, editedBy);
         incidentId = incident.id;
       } else {
         // When creating, include incident_date since it can't be changed after
@@ -1257,7 +1289,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
           incident_date: cleanData.incident_date,  // Must be set at creation
         });
         incidentId = res.data.id;
-        await updateIncident(incidentId, cleanData);
+        await updateIncident(incidentId, cleanData, editedBy);
       }
 
       await saveAllAssignments(incidentId, assignments);
@@ -1277,7 +1309,8 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
     if (!confirm('Close this incident?')) return;
     
     try {
-      await closeIncident(incident.id);
+      const editedBy = userSession?.personnel_id || null;
+      await closeIncident(incident.id, editedBy);
       setFormData(prev => ({ ...prev, status: 'CLOSED' }));
       alert('Incident closed');
       if (onSave) onSave(incident.id);
@@ -1367,6 +1400,74 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
           </button>
         </div>
       </div>
+
+      {/* Audit Log - Last Edit */}
+      {incident?.id && auditLog.length > 0 && (
+        <div 
+          ref={auditLogRef}
+          style={{ 
+            background: '#1e1e1e', 
+            padding: '8px 15px', 
+            marginBottom: '10px',
+            borderRadius: '4px',
+            fontSize: '0.85rem'
+          }}
+        >
+          <div 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              cursor: 'pointer'
+            }}
+            onClick={() => setShowFullAuditLog(!showFullAuditLog)}
+          >
+            <div>
+              <span style={{ marginRight: '10px' }}>📝</span>
+              Last edit: <span>{auditLog[0]?.personnel_name || 'Unknown'}</span>
+              {' — '}
+              <span>{auditLog[0]?.summary}</span>
+              {' — '}
+              <span>
+                {auditLog[0]?.created_at ? new Date(auditLog[0].created_at).toLocaleString() : ''}
+              </span>
+            </div>
+            <span>
+              {showFullAuditLog ? '▲' : '▼'} {auditLog.length} edit{auditLog.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          
+          {showFullAuditLog && (
+            <div style={{ marginTop: '10px', borderTop: '1px solid #444', paddingTop: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+              {auditLog.map((entry, idx) => (
+                <div 
+                  key={entry.id || idx} 
+                  style={{ 
+                    padding: '6px 0', 
+                    borderBottom: idx < auditLog.length - 1 ? '1px solid #333' : 'none',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start'
+                  }}
+                >
+                  <div>
+                    <span style={{ marginRight: '8px', fontSize: '0.75rem' }}>
+                      {entry.action}
+                    </span>
+                    <span>{entry.personnel_name || 'Unknown'}</span>
+                    {entry.summary && (
+                      <span style={{ marginLeft: '8px' }}>— {entry.summary}</span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', marginLeft: '10px' }}>
+                    {entry.created_at ? new Date(entry.created_at).toLocaleString() : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Incident Info */}
       <div className="runsheet-top">
@@ -1664,7 +1765,7 @@ function RunSheetForm({ incident = null, onSave, onClose }) {
             </select>
           </div>
           <div className="form-group">
-            <label>Completed By</label>
+            <label>Originally Completed By</label>
             <select value={formData.completed_by} onChange={(e) => handleChange('completed_by', e.target.value ? parseInt(e.target.value) : '')}>
               <option value="">--</option>
               {personnel.map(p => <option key={p.id} value={p.id}>{p.last_name}, {p.first_name}</option>)}

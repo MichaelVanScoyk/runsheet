@@ -1039,6 +1039,7 @@ async def create_incident(
 async def update_incident(
     incident_id: int,
     data: IncidentUpdate,
+    edited_by: Optional[int] = Query(None, description="Personnel ID of logged-in user making the edit"),
     db: Session = Depends(get_db)
 ):
     """Update incident fields"""
@@ -1138,8 +1139,8 @@ async def update_incident(
             except Exception as e:
                 logger.warning(f"Failed to auto-fetch weather: {e}")
     
-    # Get completed_by for audit (honor system)
-    completed_by_id = update_data.get('completed_by') or incident.completed_by
+    # Use edited_by (logged-in user) for audit, fall back to completed_by
+    audit_user_id = edited_by or update_data.get('completed_by') or incident.completed_by
     
     # Apply updates
     for field, value in update_data.items():
@@ -1173,7 +1174,7 @@ async def update_incident(
             db=db,
             action="UPDATE",
             incident=incident,
-            completed_by_id=completed_by_id,
+            completed_by_id=audit_user_id,
             summary=summary,
             fields_changed=changes
         )
@@ -1190,6 +1191,7 @@ async def update_incident(
 @router.post("/{incident_id}/close")
 async def close_incident(
     incident_id: int,
+    edited_by: Optional[int] = Query(None, description="Personnel ID of logged-in user"),
     db: Session = Depends(get_db)
 ):
     """Close incident"""
@@ -1205,12 +1207,13 @@ async def close_incident(
     incident.status = 'CLOSED'
     incident.updated_at = datetime.now(timezone.utc)
     
-    # Audit log
+    # Audit log - use edited_by (logged-in user) or fall back to completed_by
+    audit_user_id = edited_by or incident.completed_by
     log_incident_audit(
         db=db,
         action="CLOSE",
         incident=incident,
-        completed_by_id=incident.completed_by,
+        completed_by_id=audit_user_id,
         summary=f"Status changed: {old_status} → CLOSED",
         fields_changed={"status": {"old": old_status, "new": "CLOSED"}}
     )
@@ -1379,4 +1382,45 @@ async def validate_neris(
         "is_valid": is_valid,
         "errors": errors,
         "warnings": warnings
+    }
+
+
+# =============================================================================
+# AUDIT LOG
+# =============================================================================
+
+@router.get("/{incident_id}/audit-log")
+async def get_incident_audit_log(
+    incident_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db)
+):
+    """Get audit log entries for a specific incident"""
+    incident = db.query(Incident).filter(
+        Incident.id == incident_id,
+        Incident.deleted_at.is_(None)
+    ).first()
+    
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    
+    entries = db.query(AuditLog).filter(
+        AuditLog.entity_type == "incident",
+        AuditLog.entity_id == incident_id
+    ).order_by(AuditLog.created_at.desc()).limit(limit).all()
+    
+    return {
+        "incident_id": incident_id,
+        "entries": [
+            {
+                "id": e.id,
+                "action": e.action,
+                "personnel_id": e.personnel_id,
+                "personnel_name": e.personnel_name,
+                "summary": e.summary,
+                "fields_changed": e.fields_changed,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in entries
+        ]
     }
