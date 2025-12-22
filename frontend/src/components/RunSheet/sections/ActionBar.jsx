@@ -35,6 +35,11 @@ export default function ActionBar() {
       </div>
 
       <div className="flex gap-2">
+        {onClose && (
+          <button className="btn btn-secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+        )}
         {incident?.id && formData.status === 'OPEN' && (
           <button 
             className="btn btn-warning" 
