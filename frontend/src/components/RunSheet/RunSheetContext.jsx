@@ -260,7 +260,15 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
 
   const toLocalDatetime = (isoString) => {
     if (!isoString) return '';
-    return new Date(isoString).toISOString().slice(0, 16);
+    // The database stores times with +00 suffix, but they're actually local times
+    // stored incorrectly as UTC. Just extract the datetime parts without conversion.
+    // Format: 2025-12-20T09:10:00+00:00 or 2025-12-20T09:10:00Z
+    const match = isoString.match(/(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+    if (match) {
+      return `${match[1]}T${match[2]}`;
+    }
+    // Fallback: just take first 16 chars
+    return isoString.slice(0, 16);
   };
 
   const loadData = async () => {
@@ -624,8 +632,11 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
     const minutes = parseInt(timeParts[1]);
     const seconds = timeParts[2] ? parseInt(timeParts[2]) : 0;
     
-    // Start with incident date
-    let date = new Date(baseDate + 'T00:00:00');
+    // Parse base date
+    const dateParts = baseDate.split('-');
+    let year = parseInt(dateParts[0]);
+    let month = parseInt(dateParts[1]) - 1; // JS months are 0-indexed
+    let day = parseInt(dateParts[2]);
     
     // Check for midnight crossing (24-hour clock logic):
     // If this time is earlier than dispatch time, it crossed midnight
@@ -639,13 +650,23 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
       // Simple rule: if this time < dispatch time, add 1 day
       // e.g., dispatch 23:07, cleared 00:15 → 00:15 < 23:07 → next day
       if (thisTotal < dispatchTotal) {
-        date.setDate(date.getDate() + 1);
+        day += 1;
+        // Handle month overflow (simplified - doesn't handle all edge cases but good enough)
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        if (day > daysInMonth) {
+          day = 1;
+          month += 1;
+          if (month > 11) {
+            month = 0;
+            year += 1;
+          }
+        }
       }
     }
     
-    date.setHours(hours, minutes, seconds, 0);
-    // Return in datetime-local format: YYYY-MM-DDTHH:MM
-    return date.toISOString().slice(0, 16);
+    // Format as datetime-local string (no timezone conversion)
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${year}-${pad(month + 1)}-${pad(day)}T${pad(hours)}:${pad(minutes)}`;
   };
 
   const handleRestorePreview = async () => {
@@ -701,14 +722,16 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
         const normalizedCad = cadDatetime.slice(0, 16);
         
         if (normalizedCad !== normalizedCurrent) {
-          // Format for display
+          // Format for display (no timezone conversion - just reformat the string)
           const formatDisplay = (dt) => {
             if (!dt) return null;
-            const d = new Date(dt);
-            return d.toLocaleString('en-US', { 
-              month: '2-digit', day: '2-digit', year: 'numeric',
-              hour: '2-digit', minute: '2-digit', hour12: false 
-            });
+            // dt is in format YYYY-MM-DDTHH:MM
+            const match = dt.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+            if (match) {
+              const [, year, month, day, hour, min] = match;
+              return `${month}/${day}/${year}, ${hour}:${min}`;
+            }
+            return dt;
           };
           changes.push({ 
             field, 

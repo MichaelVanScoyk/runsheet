@@ -53,13 +53,6 @@ async def restore_incident_from_cad(
     
     incident_number = result[1]
     incident_date = result[2]
-    current_times = {
-        'time_dispatched': result[3],
-        'time_first_enroute': result[4],
-        'time_first_on_scene': result[5],
-        'time_last_cleared': result[6],
-        'time_in_service': result[7],
-    }
     raw_dispatch = result[8]
     raw_clear = result[9]
     
@@ -75,15 +68,6 @@ async def restore_incident_from_cad(
         return {"error": "Failed to parse stored HTML", "incident_id": incident_id}
     
     report_dict = report_to_dict(parsed)
-    
-    # Time fields - need special handling to preserve dates
-    time_field_mapping = {
-        'dispatch_time': 'time_dispatched',
-        'first_enroute': 'time_first_enroute',
-        'first_arrive': 'time_first_on_scene',
-        'last_available': 'time_last_cleared',
-        'last_at_quarters': 'time_in_service',
-    }
     
     # Non-time fields - direct copy
     text_field_mapping = {
@@ -147,9 +131,20 @@ async def restore_incident_from_cad(
             restored_fields.append(dest_field)
     
     # Restore time fields with midnight crossing logic
-    dispatch_time_str = report_dict.get('dispatch_time')  # Reference for midnight crossing
-    for src_field, dest_field in time_field_mapping.items():
-        cad_time_str = report_dict.get(src_field)
+    # Note: Clear reports use first_dispatch, dispatch reports use dispatch_time
+    dispatch_time_str = report_dict.get('first_dispatch') or report_dict.get('dispatch_time')  # Reference for midnight crossing
+    
+    # Map CAD fields to database fields
+    # Use fallback for dispatch_time since clear/dispatch reports use different keys
+    time_field_mapping = [
+        (report_dict.get('first_dispatch') or report_dict.get('dispatch_time'), 'time_dispatched'),
+        (report_dict.get('first_enroute'), 'time_first_enroute'),
+        (report_dict.get('first_arrive'), 'time_first_on_scene'),
+        (report_dict.get('last_available'), 'time_last_cleared'),
+        (report_dict.get('last_at_quarters'), 'time_in_service'),
+    ]
+    
+    for cad_time_str, dest_field in time_field_mapping:
         if cad_time_str:
             new_datetime = build_datetime_with_midnight_crossing(incident_date, cad_time_str, dispatch_time_str)
             if new_datetime:
@@ -226,6 +221,7 @@ async def preview_restore_from_cad(
     
     # Return parsed CAD values - frontend does comparison
     # Time fields are raw strings (HH:MM:SS) - frontend applies date logic
+    # Note: Clear reports use first_dispatch, dispatch reports use dispatch_time
     cad_values = {
         # Text fields
         "address": report_dict.get('address'),
@@ -234,7 +230,8 @@ async def preview_restore_from_cad(
         "cad_event_type": report_dict.get('event_type'),
         "cad_event_subtype": report_dict.get('event_subtype'),
         # Time fields - raw time strings (HH:MM:SS)
-        "time_dispatched": report_dict.get('dispatch_time'),
+        # Use first_dispatch for clear reports, fall back to dispatch_time for dispatch reports
+        "time_dispatched": report_dict.get('first_dispatch') or report_dict.get('dispatch_time'),
         "time_first_enroute": report_dict.get('first_enroute'),
         "time_first_on_scene": report_dict.get('first_arrive'),
         "time_last_cleared": report_dict.get('last_available'),
