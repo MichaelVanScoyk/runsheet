@@ -1,0 +1,2957 @@
+import { useState, useEffect, useRef } from 'react';
+import { 
+  getApparatus, 
+  getPersonnel, 
+  suggestIncidentNumber,
+  getIncidentTypesByCategory,
+  getLocationUsesByCategory,
+  getActionsTakenByCategory,
+  getMunicipalities,
+  createIncident,
+  updateIncident,
+  closeIncident,
+  getNerisCategory,
+  getAidTypes,
+  getAidDirections,
+  getUserSession,
+  getIncidentAuditLog,
+} from '../api';
+import './RunSheetForm.css';
+
+// Dynamic growing list component for Direct/Station
+function DynamicPersonnelList({ label, assignedIds, onUpdate, allPersonnel, getAssignedIds }) {
+  const [searchText, setSearchText] = useState('');
+  const [showDropdown, setShowDropdown] = useState(null); // index of active dropdown
+
+  // Filter out nulls to get actual assigned people
+  const assigned = (assignedIds || []).filter(id => id !== null);
+
+  // Get all assigned IDs across entire form
+  const globalAssigned = getAssignedIds();
+
+  // Available personnel: not assigned elsewhere, or is current selection
+  const getAvailable = (currentIdx) => {
+    const currentValue = assigned[currentIdx];
+    return allPersonnel.filter(p => {
+      if (p.id === currentValue) return true;
+      return !globalAssigned.has(p.id);
+    });
+  };
+
+  // Filter by search text
+  const getFiltered = (currentIdx) => {
+    const available = getAvailable(currentIdx);
+    if (!searchText) return available;
+    const lower = searchText.toLowerCase();
+    return available.filter(p => 
+      p.last_name.toLowerCase().includes(lower) || 
+      p.first_name.toLowerCase().includes(lower)
+    );
+  };
+
+  const handleSelect = (idx, personnelId) => {
+    const newList = [...assigned];
+    if (idx >= newList.length) {
+      newList.push(personnelId);
+    } else {
+      newList[idx] = personnelId;
+    }
+    onUpdate(newList);
+    setSearchText('');
+    setShowDropdown(null);
+  };
+
+  const handleRemove = (idx) => {
+    const newList = assigned.filter((_, i) => i !== idx);
+    onUpdate(newList);
+  };
+
+  const getPersonName = (id) => {
+    const p = allPersonnel.find(x => x.id === id);
+    return p ? `${p.last_name}, ${p.first_name}` : '?';
+  };
+
+  return (
+    <div className="dynamic-list">
+      <div className="dynamic-list-header">{label}</div>
+      <div className="dynamic-list-items">
+        {/* Existing assignments */}
+        {assigned.map((personId, idx) => (
+          <div key={idx} className="dynamic-item">
+            <span className="dynamic-item-name">{getPersonName(personId)}</span>
+            <button className="clear-btn" onClick={() => handleRemove(idx)}>×</button>
+          </div>
+        ))}
+        
+        {/* New entry field - always show one empty slot */}
+        <div className="dynamic-item new-entry">
+          <input
+            type="text"
+            placeholder="+ Add..."
+            value={showDropdown === assigned.length ? searchText : ''}
+            onChange={(e) => setSearchText(e.target.value)}
+            onFocus={() => setShowDropdown(assigned.length)}
+            onBlur={() => setTimeout(() => setShowDropdown(null), 200)}
+          />
+          {showDropdown === assigned.length && (
+            <div className="typeahead-dropdown">
+              {getFiltered(assigned.length).slice(0, 10).map(p => (
+                <div
+                  key={p.id}
+                  className="typeahead-option"
+                  onMouseDown={() => handleSelect(assigned.length, p.id)}
+                >
+                  {p.last_name}, {p.first_name}
+                </div>
+              ))}
+              {getFiltered(assigned.length).length === 0 && (
+                <div className="typeahead-empty">No matches</div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Chip component for selected items
+function Chip({ label, onRemove }) {
+  return (
+    <span className="neris-chip">
+      {label}
+      <button type="button" onClick={onRemove} className="chip-remove">×</button>
+    </span>
+  );
+}
+
+// Typeahead component for personnel selection
+function PersonnelTypeahead({ value, availablePersonnel, allPersonnel, onSelect, onClear }) {
+  const [searchText, setSearchText] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1); // -1 = nothing highlighted
+  
+  // Get current person's name for display
+  const currentPerson = value ? allPersonnel.find(p => p.id === parseInt(value)) : null;
+  const displayValue = isOpen ? searchText : (currentPerson ? `${currentPerson.last_name}, ${currentPerson.first_name}` : '');
+  
+  // Filter available personnel by search text
+  const filtered = searchText 
+    ? availablePersonnel.filter(p => {
+        const search = searchText.toLowerCase();
+        return p.last_name.toLowerCase().includes(search) || 
+               p.first_name.toLowerCase().includes(search);
+      })
+    : availablePersonnel;
+  
+  const handleFocus = () => {
+    setIsOpen(true);
+    setSearchText('');
+    setHighlightedIndex(-1); // Nothing highlighted initially
+  };
+  
+  const handleBlur = () => {
+    // Delay to allow click on dropdown
+    setTimeout(() => {
+      setIsOpen(false);
+      setSearchText('');
+      setHighlightedIndex(-1);
+    }, 150);
+  };
+  
+  const handleChange = (e) => {
+    setSearchText(e.target.value);
+    setHighlightedIndex(-1); // Reset highlight when typing
+    if (!isOpen) setIsOpen(true);
+  };
+  
+  const handleSelect = (person) => {
+    onSelect(person.id);
+    setIsOpen(false);
+    setSearchText('');
+    setHighlightedIndex(-1);
+  };
+  
+  const handleKeyDown = (e) => {
+    if (!isOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter') {
+        setIsOpen(true);
+        e.preventDefault();
+      }
+      return;
+    }
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedIndex(prev => Math.min(prev + 1, filtered.length - 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedIndex(prev => Math.max(prev - 1, -1));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        // Only select if something is highlighted, OR if exactly one match
+        if (highlightedIndex >= 0 && filtered[highlightedIndex]) {
+          handleSelect(filtered[highlightedIndex]);
+        } else if (filtered.length === 1) {
+          handleSelect(filtered[0]);
+        }
+        break;
+      case 'Tab':
+        // Only select if user explicitly highlighted something, OR exactly one match after typing
+        if (highlightedIndex >= 0 && filtered[highlightedIndex]) {
+          handleSelect(filtered[highlightedIndex]);
+        } else if (searchText && filtered.length === 1) {
+          handleSelect(filtered[0]);
+        }
+        // Otherwise just let tab move to next field without selecting
+        setIsOpen(false);
+        setSearchText('');
+        break;
+      case 'Escape':
+        setIsOpen(false);
+        setSearchText('');
+        setHighlightedIndex(-1);
+        break;
+    }
+  };
+  
+  return (
+    <div className="personnel-typeahead">
+      <input
+        type="text"
+        value={displayValue}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        placeholder="-"
+        className="typeahead-input"
+      />
+      {value && !isOpen && (
+        <button className="clear-btn" onClick={onClear} type="button">×</button>
+      )}
+      {isOpen && filtered.length > 0 && (
+        <div className="typeahead-dropdown">
+          {filtered.slice(0, 10).map((p, idx) => (
+            <div
+              key={p.id}
+              className={`typeahead-option ${idx === highlightedIndex ? 'highlighted' : ''}`}
+              onMouseDown={() => handleSelect(p)}
+              onMouseEnter={() => setHighlightedIndex(idx)}
+            >
+              {p.last_name}, {p.first_name}
+            </div>
+          ))}
+        </div>
+      )}
+      {isOpen && searchText && filtered.length === 0 && (
+        <div className="typeahead-dropdown">
+          <div className="typeahead-empty">No matches</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// InfoTooltip component - displays official NERIS descriptions on hover
+function InfoTooltip({ text }) {
+  if (!text) return null;
+  return (
+    <span className="info-tooltip-wrapper">
+      <span className="info-icon">ℹ</span>
+      <span className="info-tooltip-text">{text}</span>
+    </span>
+  );
+}
+
+// Official NERIS descriptions from type files
+// Field-level tooltips for UI help text
+const NERIS_DESCRIPTIONS = {
+  fields: {
+    people_present: "Were people present at the incident location when units arrived?",
+    displaced: "Number of people displaced from their residence due to this incident",
+    mutual_aid: "Track mutual/automatic aid given to or received from other entities",
+    risk_reduction: "Record presence of fire safety systems. Required for NERIS structure fire reports.",
+    impedance: "Obstacles or issues that impacted response (traffic, access, weather, etc.)",
+    outcome: "Brief description of incident resolution",
+    fire_investigation: "Assessment of whether formal fire investigation is needed",
+    arrival_conditions: "Fire conditions observed upon arrival at scene",
+    structure_damage: "Extent of damage to structure",
+    patient_care: "Outcome of patient evaluation and care",
+    hazmat_disposition: "Final disposition of hazardous materials incident",
+    hazmat_evacuated: "Number of occupants/businesses evacuated during response",
+    smoke_alarm_type: "Type of smoke alarm (battery, hardwired, interconnected, etc.)",
+    smoke_alarm_working: "Was the smoke alarm functional at time of incident?",
+    smoke_alarm_operation: "Did the alarm operate and alert occupants?",
+    smoke_alarm_failure: "If alarm failed, what was the cause?",
+    fire_alarm_type: "Type of fire alarm system (manual, automatic, or both)",
+    fire_alarm_operation: "Did the fire alarm operate and alert occupants?",
+    other_alarm: "Presence of other detection systems (CO, gas, heat)",
+    other_alarm_type: "Type of other detection system present",
+    sprinkler_type: "Type of sprinkler/suppression system installed",
+    sprinkler_coverage: "Full or partial coverage of the structure",
+    sprinkler_operation: "Did the sprinkler system operate during the incident?",
+    sprinkler_heads: "Number of sprinkler heads that activated",
+    sprinkler_failure: "If system failed, what was the cause?",
+    cooking_suppression: "Presence of cooking fire suppression system",
+    cooking_suppression_type: "Type of cooking suppression system",
+    emerging_hazards: "Document modern hazards: EV/batteries, solar PV, CSST gas lines",
+    ev_battery: "Electric vehicle or battery storage system present",
+    ev_battery_type: "Type of electric/battery system involved",
+    ev_crash: "Was this related to a vehicle crash?",
+    solar_pv: "Solar photovoltaic system present at incident",
+    solar_energized: "Did the solar system remain energized during operations?",
+    solar_ignition: "Was the solar system a source of ignition?",
+    csst: "Corrugated Stainless Steel Tubing gas lines present",
+    csst_damage: "Was there damage or gas leak from CSST?",
+    exposures: "Properties affected beyond the origin building",
+    exposure_type: "Location of exposure relative to origin",
+    exposure_item: "Type of property or item exposed",
+  },
+};
+
+// Helper to get display name from NERIS value
+const getNerisDisplayName = (value) => {
+  if (!value) return '';
+  const parts = value.split(': ');
+  return parts[parts.length - 1].replace(/_/g, ' ');
+};
+
+// Helper functions to check incident type categories
+// Incident types are stored as strings like "FIRE: STRUCTURE_FIRE: ROOM_AND_CONTENTS_FIRE"
+const hasIncidentCategory = (types, category) => {
+  if (!types || !Array.isArray(types)) return false;
+  return types.some(t => t && t.startsWith(category));
+};
+
+const hasIncidentSubtype = (types, subtype) => {
+  if (!types || !Array.isArray(types)) return false;
+  return types.some(t => t && t.includes(subtype));
+};
+
+// Specific type checks for conditional modules
+const hasFireType = (types) => hasIncidentCategory(types, 'FIRE');
+const hasMedicalType = (types) => hasIncidentCategory(types, 'MEDICAL');
+const hasHazsitType = (types) => hasIncidentCategory(types, 'HAZSIT');
+const hasStructureFireType = (types) => hasIncidentSubtype(types, 'STRUCTURE_FIRE');
+const hasOutsideFireType = (types) => hasIncidentSubtype(types, 'OUTSIDE_FIRE');
+
+// NERIS Modal Picker
+function NerisModal({ 
+  isOpen, 
+  onClose, 
+  title,
+  data, 
+  selected, 
+  onToggle, 
+  maxSelections = null,
+  dataType = 'children'
+}) {
+  const [expandedCats, setExpandedCats] = useState({});
+
+  if (!isOpen) return null;
+
+  const toggleCategory = (cat) => {
+    setExpandedCats(prev => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  const isMulti = Array.isArray(selected);
+  const selectedArray = isMulti ? selected : (selected ? [selected] : []);
+  const atLimit = maxSelections && selectedArray.length >= maxSelections;
+
+  const handleToggle = (value) => {
+    if (isMulti) {
+      if (selectedArray.includes(value)) {
+        onToggle(value);
+      } else if (!atLimit) {
+        onToggle(value);
+      }
+    } else {
+      onToggle(value);
+    }
+  };
+
+  return (
+    <div className="neris-modal-overlay" onClick={onClose}>
+      <div className="neris-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="neris-modal-header">
+          <h3>{title}</h3>
+          <button className="neris-modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="neris-modal-selected">
+          {selectedArray.length === 0 ? (
+            <span className="neris-no-selection">None selected</span>
+          ) : (
+            selectedArray.map(val => (
+              <span key={val} className="neris-chip">
+                {getNerisDisplayName(val)}
+                <button className="chip-remove" onClick={() => onToggle(val)}>×</button>
+              </span>
+            ))
+          )}
+          {maxSelections && (
+            <span className="neris-counter">{selectedArray.length}/{maxSelections}</span>
+          )}
+        </div>
+
+        <div className="neris-modal-content">
+          {Object.entries(data).map(([cat, catData]) => {
+            const isCategorySelectable = dataType === 'children' && !catData.children && !catData.codes;
+            const isSelected = isCategorySelectable && selectedArray.includes(cat);
+            const isDisabled = isCategorySelectable && !isSelected && atLimit;
+            
+            return (
+            <div key={cat} className="neris-modal-category">
+              <button
+                type="button"
+                className={`neris-modal-cat-header ${expandedCats[cat] ? 'expanded' : ''} ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`}
+                onClick={() => {
+                  if (isCategorySelectable) {
+                    if (!isDisabled) handleToggle(cat);
+                  } else {
+                    toggleCategory(cat);
+                  }
+                }}
+                disabled={isDisabled}
+              >
+                <span>{catData.description || cat}</span>
+                {!isCategorySelectable && <span className="neris-cat-arrow">{expandedCats[cat] ? '▲' : '▼'}</span>}
+              </button>
+              
+              {expandedCats[cat] && (catData.children || catData.codes || catData.subtypes) && (
+                <div className="neris-modal-cat-content">
+                  {dataType === 'children' && catData.children && 
+                    Object.entries(catData.children).map(([subcat, subData]) => (
+                      <div key={subcat} className="neris-subcat">
+                        <div className="neris-subcat-label">{subData.description || subcat}</div>
+                        <div className="neris-items">
+                          {subData.codes?.map(item => {
+                            const isSelected = selectedArray.includes(item.value);
+                            const isDisabled = !isSelected && atLimit;
+                            return (
+                              <button
+                                key={item.value}
+                                type="button"
+                                className={`neris-item ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`}
+                                onClick={() => !isDisabled && handleToggle(item.value)}
+                                disabled={isDisabled}
+                              >
+                                {item.description}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))
+                  }
+                  {dataType === 'children' && catData.codes && !catData.children && (
+                    <div className="neris-items">
+                      {catData.codes.map(item => {
+                        const isSelected = selectedArray.includes(item.value);
+                        const isDisabled = !isSelected && atLimit;
+                        return (
+                          <button
+                            key={item.value}
+                            type="button"
+                            className={`neris-item ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`}
+                            onClick={() => !isDisabled && handleToggle(item.value)}
+                            disabled={isDisabled}
+                          >
+                            {item.description}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {dataType === 'subtypes' && catData.subtypes && (
+                    <div className="neris-items">
+                      {catData.subtypes.map(item => {
+                        const isSelected = selectedArray.includes(item.value);
+                        return (
+                          <button
+                            key={item.value}
+                            type="button"
+                            className={`neris-item ${isSelected ? 'selected' : ''}`}
+                            onClick={() => handleToggle(item.value)}
+                          >
+                            {item.description}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );})}
+        </div>
+
+        <div className="neris-modal-footer">
+          <span className="neris-modal-count">
+            {selectedArray.length} selected{maxSelections ? ` of ${maxSelections} max` : ''}
+          </span>
+          <button className="btn btn-primary" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Simple API call to save all assignments at once
+const saveAllAssignments = async (incidentId, assignments) => {
+  const response = await fetch(`/api/incidents/${incidentId}/assignments`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ assignments })
+  });
+  if (!response.ok) throw new Error('Failed to save assignments');
+  return response.json();
+};
+
+// CAD Data Modal - renders raw CAD HTML
+function CADDataModal({ isOpen, onClose, dispatch, updates, clear }) {
+  if (!isOpen) return null;
+  
+  const hasData = dispatch || (updates && updates.length > 0) || clear;
+  
+  // CSS to normalize CAD HTML content - override light colors
+  const cadContentStyle = {
+    background: '#fff',
+    padding: '15px',
+    borderRadius: '4px',
+    overflow: 'auto',
+    color: '#333',
+  };
+  
+  // Inject style overrides for the CAD HTML content
+  const styleOverride = `
+    <style>
+      .cad-html-content * { color: #333 !important; }
+      .cad-html-content table { color: #333 !important; border-collapse: collapse; }
+      .cad-html-content td, .cad-html-content th { color: #333 !important; padding: 4px 8px; }
+      .cad-html-content h1, .cad-html-content h2, .cad-html-content h3 { color: #222 !important; }
+      .cad-html-content th { background: #8b1538 !important; color: #fff !important; }
+      .cad-html-content tr:nth-child(even) { background: #f9f9f9; }
+    </style>
+  `;
+  
+  // Print a single CAD section
+  const handlePrint = (html, title) => {
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          table { border-collapse: collapse; width: 100%; }
+          td, th { padding: 5px 10px; border-bottom: 1px solid #ddd; }
+          th { background: #333; color: #fff; text-align: left; }
+          .Title { font-size: 1.5em; text-align: center; border-bottom: 2px solid #333; padding: 10px; }
+          .Header { font-size: 1.2em; font-weight: bold; border-bottom: 1px solid #333; }
+          tr:nth-child(even) { background: #f5f5f5; }
+          @media print {
+            body { margin: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        ${html}
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 250);
+  };
+  
+  return (
+    <div className="neris-modal-overlay" onClick={onClose}>
+      <div className="neris-modal cad-data-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '90vh' }}>
+        <div className="neris-modal-header">
+          <h3>CAD Data</h3>
+          <button className="neris-modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="neris-modal-body" style={{ overflowY: 'auto', maxHeight: 'calc(90vh - 120px)' }}>
+          {!hasData && <p style={{ color: '#666', fontStyle: 'italic' }}>No CAD data available for this incident.</p>}
+          
+          {dispatch && (
+            <div className="cad-section">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #c41e3a', paddingBottom: '5px', marginBottom: '10px' }}>
+                <h4 style={{ margin: 0, color: '#333' }}>Dispatch Report</h4>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handlePrint(dispatch, 'Dispatch Report')}
+                  style={{ fontSize: '0.8rem', padding: '2px 8px' }}
+                >
+                  🖨️ Print
+                </button>
+              </div>
+              <div 
+                className="cad-html-content" 
+                style={cadContentStyle}
+                dangerouslySetInnerHTML={{ __html: styleOverride + dispatch }} 
+              />
+            </div>
+          )}
+          
+          {updates && updates.length > 0 && (
+            <div className="cad-section" style={{ marginTop: '20px' }}>
+              <h4 style={{ borderBottom: '2px solid #f0ad4e', paddingBottom: '5px', marginBottom: '10px', color: '#333' }}>Updates ({updates.length})</h4>
+              {updates.map((update, idx) => (
+                <div key={idx} style={{ marginBottom: '15px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                    <h5 style={{ color: '#555', margin: 0 }}>Update #{idx + 1}</h5>
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => handlePrint(update, `Update #${idx + 1}`)}
+                      style={{ fontSize: '0.8rem', padding: '2px 8px' }}
+                    >
+                      🖨️ Print
+                    </button>
+                  </div>
+                  <div 
+                    className="cad-html-content" 
+                    style={cadContentStyle}
+                    dangerouslySetInnerHTML={{ __html: styleOverride + update }} 
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {clear && (
+            <div className="cad-section" style={{ marginTop: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #5cb85c', paddingBottom: '5px', marginBottom: '10px' }}>
+                <h4 style={{ margin: 0, color: '#333' }}>Clear Report</h4>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handlePrint(clear, 'Clear Report')}
+                  style={{ fontSize: '0.8rem', padding: '2px 8px' }}
+                >
+                  🖨️ Print
+                </button>
+              </div>
+              <div 
+                className="cad-html-content" 
+                style={cadContentStyle}
+                dangerouslySetInnerHTML={{ __html: styleOverride + clear }} 
+              />
+            </div>
+          )}
+        </div>
+        <div className="neris-modal-footer">
+          <button className="btn btn-primary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RunSheetForm({ incident = null, onSave, onClose }) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [apparatus, setApparatus] = useState([]);
+  const [personnel, setPersonnel] = useState([]);
+  const [municipalities, setMunicipalities] = useState([]);
+  const [incidentTypes, setIncidentTypes] = useState({});
+  const [locationUses, setLocationUses] = useState({});
+  const [actionsTaken, setActionsTaken] = useState({});
+  const [showNeris, setShowNeris] = useState(false);
+  const [showCadModal, setShowCadModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [restorePreview, setRestorePreview] = useState(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [showIncidentTypeModal, setShowIncidentTypeModal] = useState(false);
+  const [showLocationUseModal, setShowLocationUseModal] = useState(false);
+  const [showActionsModal, setShowActionsModal] = useState(false);
+  
+  // Audit log state
+  const [auditLog, setAuditLog] = useState([]);
+  const [showFullAuditLog, setShowFullAuditLog] = useState(false);
+  const auditLogRef = useRef(null);
+  
+  // Close audit log when clicking outside
+  useEffect(() => {
+    if (!showFullAuditLog) return;
+    
+    const handleClickOutside = (e) => {
+      if (auditLogRef.current && !auditLogRef.current.contains(e.target)) {
+        setShowFullAuditLog(false);
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showFullAuditLog]);
+  
+  // Get session for auth check
+  const userSession = getUserSession();
+  
+  // NERIS conditional module dropdown options (loaded from database)
+  const [aidTypes, setAidTypes] = useState([]);
+  const [aidDirections, setAidDirections] = useState([]);
+  const [noActionCodes, setNoActionCodes] = useState([]);
+  const [rrPresenceCodes, setRrPresenceCodes] = useState([]);
+  const [fireInvestNeedCodes, setFireInvestNeedCodes] = useState([]);
+  const [fireConditionArrivalCodes, setFireConditionArrivalCodes] = useState([]);
+  const [fireBldgDamageCodes, setFireBldgDamageCodes] = useState([]);
+  const [fireCauseInCodes, setFireCauseInCodes] = useState([]);
+  const [fireCauseOutCodes, setFireCauseOutCodes] = useState([]);
+  const [roomCodes, setRoomCodes] = useState([]);
+  const [medicalPatientCareCodes, setMedicalPatientCareCodes] = useState([]);
+  const [hazardDispositionCodes, setHazardDispositionCodes] = useState([]);
+  const [hazardDotCodes, setHazardDotCodes] = useState([]);
+  
+  // New NERIS code categories for expanded modules
+  const [smokeAlarmTypeCodes, setSmokeAlarmTypeCodes] = useState([]);
+  const [fireAlarmTypeCodes, setFireAlarmTypeCodes] = useState([]);
+  const [otherAlarmTypeCodes, setOtherAlarmTypeCodes] = useState([]);
+  const [alarmOperationCodes, setAlarmOperationCodes] = useState([]);
+  const [alarmFailureCodes, setAlarmFailureCodes] = useState([]);
+  const [sprinklerTypeCodes, setSprinklerTypeCodes] = useState([]);
+  const [sprinklerOperationCodes, setSprinklerOperationCodes] = useState([]);
+  const [cookingSuppressionCodes, setCookingSuppressionCodes] = useState([]);
+  const [fullPartialCodes, setFullPartialCodes] = useState([]);
+  const [exposureLocCodes, setExposureLocCodes] = useState([]);
+  const [exposureItemCodes, setExposureItemCodes] = useState([]);
+  const [emergHazElecCodes, setEmergHazElecCodes] = useState([]);
+  const [emergHazPvCodes, setEmergHazPvCodes] = useState([]);
+  const [emergHazPvIgnCodes, setEmergHazPvIgnCodes] = useState([]);
+  
+  const [formData, setFormData] = useState({
+    internal_incident_number: '',
+    call_category: 'FIRE',
+    cad_event_number: '',
+    cad_event_type: '',
+    cad_event_subtype: '',
+    cad_raw_dispatch: '',
+    cad_raw_updates: [],
+    cad_raw_clear: '',
+    status: 'OPEN',
+    incident_date: new Date().toISOString().split('T')[0],
+    address: '',
+    municipality_code: '',
+    cross_streets: '',
+    esz_box: '',
+    time_dispatched: '',
+    time_first_enroute: '',
+    time_first_on_scene: '',
+    time_fire_under_control: '',
+    time_last_cleared: '',
+    time_in_service: '',
+    caller_name: '',
+    caller_phone: '',
+    weather_conditions: '',
+    companies_called: '',
+    situation_found: '',
+    extent_of_damage: '',
+    services_provided: '',
+    narrative: '',
+    equipment_used: [],
+    problems_issues: '',
+    officer_in_charge: '',
+    completed_by: '',
+    neris_incident_type_codes: [],
+    neris_location_use: null,
+    neris_action_codes: [],
+    neris_noaction_code: null,
+    neris_people_present: null,
+    neris_aid_direction: null,
+    neris_aid_type: null,
+    neris_aid_departments: [],
+    neris_displaced_number: 0,
+    neris_risk_reduction: null,
+    neris_narrative_impedance: '',
+    neris_narrative_outcome: '',
+    // Fire module fields
+    neris_fire_investigation_need: null,
+    neris_fire_investigation_type: [],
+    neris_fire_arrival_conditions: null,
+    neris_fire_structure_damage: null,
+    neris_fire_structure_floor: null,
+    neris_fire_structure_room: null,
+    neris_fire_structure_cause: null,
+    neris_fire_outside_cause: null,
+    // Medical module fields
+    neris_medical_patient_care: null,
+    // Hazmat module fields
+    neris_hazmat_disposition: null,
+    neris_hazmat_evacuated: 0,
+    neris_hazmat_chemicals: [], // Array of {dot_class, name, release_occurred}
+    // Exposures module
+    neris_exposures: [],
+    // Emerging hazard module
+    neris_emerging_hazard: null,
+    // Risk Reduction Details - Smoke Alarm
+    neris_rr_smoke_alarm_type: [],
+    neris_rr_smoke_alarm_working: null,
+    neris_rr_smoke_alarm_operation: null,
+    neris_rr_smoke_alarm_failure: null,
+    neris_rr_smoke_alarm_action: null,
+    // Risk Reduction Details - Fire Alarm
+    neris_rr_fire_alarm_type: [],
+    neris_rr_fire_alarm_operation: null,
+    // Risk Reduction Details - Other Alarm
+    neris_rr_other_alarm: null,
+    neris_rr_other_alarm_type: [],
+    // Risk Reduction Details - Sprinkler
+    neris_rr_sprinkler_type: [],
+    neris_rr_sprinkler_coverage: null,
+    neris_rr_sprinkler_operation: null,
+    neris_rr_sprinkler_heads_activated: null,
+    neris_rr_sprinkler_failure: null,
+    // Risk Reduction Details - Cooking Suppression
+    neris_rr_cooking_suppression: null,
+    neris_rr_cooking_suppression_type: [],
+    cad_units: [],
+    created_at: null,
+    updated_at: null,
+    closed_at: null,
+    neris_submitted_at: null,
+  });
+
+  // Simple assignments: { "ENG481": [12, null, 5, null, null, null], "ENG482": [3, 7, null, null, null, null] }
+  const [assignments, setAssignments] = useState({});
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [
+        apparatusRes,
+        personnelRes,
+        municipalitiesRes,
+        incidentTypesRes,
+        locationUsesRes,
+        actionsTakenRes,
+        suggestedNumberRes,
+        // Conditional module codes from database
+        aidTypesRes,
+        aidDirectionsRes,
+        noActionRes,
+        rrPresenceRes,
+        fireInvestNeedRes,
+        fireConditionRes,
+        fireDamageRes,
+        fireCauseInRes,
+        fireCauseOutRes,
+        roomRes,
+        medicalCareRes,
+        hazardDispRes,
+        hazardDotRes,
+        // New expanded module code responses
+        smokeAlarmTypeRes,
+        fireAlarmTypeRes,
+        otherAlarmTypeRes,
+        alarmOperationRes,
+        alarmFailureRes,
+        sprinklerTypeRes,
+        sprinklerOperationRes,
+        cookingSuppressionRes,
+        fullPartialRes,
+        exposureLocRes,
+        exposureItemRes,
+        emergHazElecRes,
+        emergHazPvRes,
+        emergHazPvIgnRes,
+      ] = await Promise.all([
+        getApparatus(),
+        getPersonnel(),
+        getMunicipalities(),
+        getIncidentTypesByCategory(),
+        getLocationUsesByCategory(),
+        getActionsTakenByCategory(),
+        suggestIncidentNumber(),
+        // Load conditional module codes from neris_codes table
+        getAidTypes(),
+        getAidDirections(),
+        getNerisCategory('type_noaction'),
+        getNerisCategory('type_rr_presence'),
+        getNerisCategory('type_fire_invest_need'),
+        getNerisCategory('type_fire_condition_arrival'),
+        getNerisCategory('type_fire_bldg_damage'),
+        getNerisCategory('type_fire_cause_in'),
+        getNerisCategory('type_fire_cause_out'),
+        getNerisCategory('type_room'),
+        getNerisCategory('type_medical_patient_care'),
+        getNerisCategory('type_hazard_disposition'),
+        getNerisCategory('type_hazard_dot'),
+        // New expanded module code categories
+        getNerisCategory('type_alarm_smoke'),
+        getNerisCategory('type_alarm_fire'),
+        getNerisCategory('type_alarm_other'),
+        getNerisCategory('type_alarm_operation'),
+        getNerisCategory('type_alarm_failure'),
+        getNerisCategory('type_suppress_fire'),
+        getNerisCategory('type_suppress_operation'),
+        getNerisCategory('type_suppress_cooking'),
+        getNerisCategory('type_full_partial'),
+        getNerisCategory('type_exposure_loc'),
+        getNerisCategory('type_exposure_item'),
+        getNerisCategory('type_emerghaz_elec'),
+        getNerisCategory('type_emerghaz_pv'),
+        getNerisCategory('type_emerghaz_pv_ign'),
+      ]);
+
+      const activeApparatus = apparatusRes.data.filter(a => a.active);
+      setApparatus(activeApparatus);
+      setPersonnel(personnelRes.data.filter(p => p.active));
+      setMunicipalities(municipalitiesRes.data);
+      setIncidentTypes(incidentTypesRes.data);
+      setLocationUses(locationUsesRes.data);
+      setActionsTaken(actionsTakenRes.data);
+      
+      // Set conditional module dropdown options
+      setAidTypes(aidTypesRes.data || []);
+      setAidDirections(aidDirectionsRes.data || []);
+      setNoActionCodes(noActionRes.data || []);
+      setRrPresenceCodes(rrPresenceRes.data || []);
+      setFireInvestNeedCodes(fireInvestNeedRes.data || []);
+      setFireConditionArrivalCodes(fireConditionRes.data || []);
+      setFireBldgDamageCodes(fireDamageRes.data || []);
+      setFireCauseInCodes(fireCauseInRes.data || []);
+      setFireCauseOutCodes(fireCauseOutRes.data || []);
+      setRoomCodes(roomRes.data || []);
+      setMedicalPatientCareCodes(medicalCareRes.data || []);
+      setHazardDispositionCodes(hazardDispRes.data || []);
+      setHazardDotCodes(hazardDotRes.data || []);
+      
+      // Set new expanded module dropdown options
+      setSmokeAlarmTypeCodes(smokeAlarmTypeRes.data || []);
+      setFireAlarmTypeCodes(fireAlarmTypeRes.data || []);
+      setOtherAlarmTypeCodes(otherAlarmTypeRes.data || []);
+      setAlarmOperationCodes(alarmOperationRes.data || []);
+      setAlarmFailureCodes(alarmFailureRes.data || []);
+      setSprinklerTypeCodes(sprinklerTypeRes.data || []);
+      setSprinklerOperationCodes(sprinklerOperationRes.data || []);
+      setCookingSuppressionCodes(cookingSuppressionRes.data || []);
+      setFullPartialCodes(fullPartialRes.data || []);
+      setExposureLocCodes(exposureLocRes.data || []);
+      setExposureItemCodes(exposureItemRes.data || []);
+      setEmergHazElecCodes(emergHazElecRes.data || []);
+      setEmergHazPvCodes(emergHazPvRes.data || []);
+      setEmergHazPvIgnCodes(emergHazPvIgnRes.data || []);
+
+      // Initialize empty assignments for all apparatus
+      // Real trucks: 6 fixed slots
+      // Virtual units (Direct/Station): empty array (grows dynamically)
+      const emptyAssignments = {};
+      activeApparatus.forEach(a => {
+        if (a.is_virtual) {
+          emptyAssignments[a.unit_designator] = [];
+        } else {
+          emptyAssignments[a.unit_designator] = [null, null, null, null, null, null];
+        }
+      });
+
+      if (incident) {
+        const toLocalDatetime = (isoString) => {
+          if (!isoString) return '';
+          return new Date(isoString).toISOString().slice(0, 16);
+        };
+
+        setFormData({
+          internal_incident_number: incident.internal_incident_number || '',
+          call_category: incident.call_category || 'FIRE',
+          cad_event_number: incident.cad_event_number || '',
+          cad_event_type: incident.cad_event_type || '',
+          cad_event_subtype: incident.cad_event_subtype || '',
+          cad_raw_dispatch: incident.cad_raw_dispatch || '',
+          cad_raw_updates: incident.cad_raw_updates || [],
+          cad_raw_clear: incident.cad_raw_clear || '',
+          status: incident.status || 'OPEN',
+          incident_date: incident.incident_date || new Date().toISOString().split('T')[0],
+          address: incident.address || '',
+          municipality_code: incident.municipality_code || '',
+          cross_streets: incident.cross_streets || '',
+          esz_box: incident.esz_box || '',
+          time_dispatched: toLocalDatetime(incident.time_dispatched),
+          time_first_enroute: toLocalDatetime(incident.time_first_enroute),
+          time_first_on_scene: toLocalDatetime(incident.time_first_on_scene),
+          time_fire_under_control: toLocalDatetime(incident.time_fire_under_control),
+          time_last_cleared: toLocalDatetime(incident.time_last_cleared),
+          time_in_service: toLocalDatetime(incident.time_in_service),
+          caller_name: incident.caller_name || '',
+          caller_phone: incident.caller_phone || '',
+          weather_conditions: incident.weather_conditions || '',
+          companies_called: incident.companies_called || '',
+          situation_found: incident.situation_found || '',
+          extent_of_damage: incident.extent_of_damage || '',
+          services_provided: incident.services_provided || '',
+          narrative: incident.narrative || '',
+          equipment_used: incident.equipment_used || [],
+          problems_issues: incident.problems_issues || '',
+          officer_in_charge: incident.officer_in_charge || '',
+          completed_by: incident.completed_by || '',
+          neris_incident_type_codes: incident.neris_incident_type_codes || [],
+          neris_location_use: incident.neris_location_use || null,
+          neris_action_codes: incident.neris_action_codes || [],
+          neris_noaction_code: incident.neris_noaction_code || null,
+          neris_people_present: incident.neris_people_present,
+          neris_aid_direction: incident.neris_aid_direction || null,
+          neris_aid_type: incident.neris_aid_type || null,
+          neris_aid_departments: incident.neris_aid_departments || [],
+          neris_displaced_number: incident.neris_displaced_number ?? 0,
+          neris_risk_reduction: incident.neris_risk_reduction || null,
+          neris_narrative_impedance: incident.neris_narrative_impedance || '',
+          neris_narrative_outcome: incident.neris_narrative_outcome || '',
+          // Fire module fields
+          neris_fire_investigation_need: incident.neris_fire_investigation_need || null,
+          neris_fire_investigation_type: incident.neris_fire_investigation_type || [],
+          neris_fire_arrival_conditions: incident.neris_fire_arrival_conditions || null,
+          neris_fire_structure_damage: incident.neris_fire_structure_damage || null,
+          neris_fire_structure_floor: incident.neris_fire_structure_floor || null,
+          neris_fire_structure_room: incident.neris_fire_structure_room || null,
+          neris_fire_structure_cause: incident.neris_fire_structure_cause || null,
+          neris_fire_outside_cause: incident.neris_fire_outside_cause || null,
+          // Medical module fields
+          neris_medical_patient_care: incident.neris_medical_patient_care || null,
+          // Hazmat module fields
+          neris_hazmat_disposition: incident.neris_hazmat_disposition || null,
+          neris_hazmat_evacuated: incident.neris_hazmat_evacuated ?? 0,
+          neris_hazmat_chemicals: incident.neris_hazmat_chemicals || [],
+          // Exposures module
+          neris_exposures: incident.neris_exposures || [],
+          // Emerging hazard module
+          neris_emerging_hazard: incident.neris_emerging_hazard || null,
+          // Risk Reduction Details - Smoke Alarm
+          neris_rr_smoke_alarm_type: incident.neris_rr_smoke_alarm_type || [],
+          neris_rr_smoke_alarm_working: incident.neris_rr_smoke_alarm_working,
+          neris_rr_smoke_alarm_operation: incident.neris_rr_smoke_alarm_operation || null,
+          neris_rr_smoke_alarm_failure: incident.neris_rr_smoke_alarm_failure || null,
+          neris_rr_smoke_alarm_action: incident.neris_rr_smoke_alarm_action || null,
+          // Risk Reduction Details - Fire Alarm
+          neris_rr_fire_alarm_type: incident.neris_rr_fire_alarm_type || [],
+          neris_rr_fire_alarm_operation: incident.neris_rr_fire_alarm_operation || null,
+          // Risk Reduction Details - Other Alarm
+          neris_rr_other_alarm: incident.neris_rr_other_alarm || null,
+          neris_rr_other_alarm_type: incident.neris_rr_other_alarm_type || [],
+          // Risk Reduction Details - Sprinkler
+          neris_rr_sprinkler_type: incident.neris_rr_sprinkler_type || [],
+          neris_rr_sprinkler_coverage: incident.neris_rr_sprinkler_coverage || null,
+          neris_rr_sprinkler_operation: incident.neris_rr_sprinkler_operation || null,
+          neris_rr_sprinkler_heads_activated: incident.neris_rr_sprinkler_heads_activated,
+          neris_rr_sprinkler_failure: incident.neris_rr_sprinkler_failure || null,
+          // Risk Reduction Details - Cooking Suppression
+          neris_rr_cooking_suppression: incident.neris_rr_cooking_suppression || null,
+          neris_rr_cooking_suppression_type: incident.neris_rr_cooking_suppression_type || [],
+          cad_units: incident.cad_units || [],
+          created_at: incident.created_at,
+          updated_at: incident.updated_at,
+          closed_at: incident.closed_at,
+          neris_submitted_at: incident.neris_submitted_at,
+        });
+        
+        // Load assignments
+        if (incident.personnel_assignments) {
+          setAssignments({ ...emptyAssignments, ...incident.personnel_assignments });
+        } else {
+          setAssignments(emptyAssignments);
+        }
+        
+        // Load audit log
+        try {
+          const auditRes = await getIncidentAuditLog(incident.id);
+          setAuditLog(auditRes.data.entries || []);
+        } catch (err) {
+          console.error('Failed to load audit log:', err);
+          setAuditLog([]);
+        }
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          internal_incident_number: suggestedNumberRes.data.suggested_number,
+        }));
+        setAssignments(emptyAssignments);
+      }
+    } catch (err) {
+      console.error('Failed to load data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAssignment = (unitDesignator, slotIndex, personnelId) => {
+    setAssignments(prev => {
+      const updated = { ...prev };
+      if (!updated[unitDesignator]) {
+        updated[unitDesignator] = [null, null, null, null, null, null];
+      }
+      updated[unitDesignator] = [...updated[unitDesignator]];
+      updated[unitDesignator][slotIndex] = personnelId ? parseInt(personnelId) : null;
+      return updated;
+    });
+  };
+
+  const clearSlot = (unitDesignator, slotIndex) => {
+    handleAssignment(unitDesignator, slotIndex, null);
+  };
+
+  const getAssignedIds = () => {
+    const assigned = new Set();
+    Object.values(assignments).forEach(slots => {
+      slots.forEach(id => {
+        if (id) assigned.add(id);
+      });
+    });
+    return assigned;
+  };
+
+  const getAvailablePersonnel = (unitDesignator, slotIndex) => {
+    const assigned = getAssignedIds();
+    const currentValue = assignments[unitDesignator]?.[slotIndex];
+    return personnel.filter(p => !assigned.has(p.id) || p.id === currentValue);
+  };
+
+  // Generate "Units Called" string from CAD units
+  const generateUnitsCalled = () => {
+    if (!formData.cad_units || formData.cad_units.length === 0) return '';
+    
+    const stationUnits = formData.cad_units
+      .filter(u => !u.is_mutual_aid)
+      .map(u => u.unit_id);
+    
+    const mutualAidUnits = formData.cad_units
+      .filter(u => u.is_mutual_aid)
+      .map(u => u.unit_id);
+    
+    let result = '';
+    if (stationUnits.length > 0) {
+      result += `Station 48: ${stationUnits.join(', ')}`;
+    }
+    if (mutualAidUnits.length > 0) {
+      if (result) result += ' | ';
+      result += `Mutual Aid: ${mutualAidUnits.join(', ')}`;
+    }
+    return result;
+  };
+
+  const populateUnitsCalled = () => {
+    const generated = generateUnitsCalled();
+    if (generated) {
+      handleChange('companies_called', generated);
+    }
+  };
+
+  const handleNerisTypeToggle = (code) => {
+    setFormData(prev => {
+      const types = prev.neris_incident_type_codes || [];
+      if (types.includes(code)) {
+        return { ...prev, neris_incident_type_codes: types.filter(t => t !== code) };
+      } else if (types.length < 3) {
+        return { ...prev, neris_incident_type_codes: [...types, code] };
+      }
+      return prev;
+    });
+  };
+
+  const handleActionToggle = (code) => {
+    setFormData(prev => {
+      const actions = prev.neris_action_codes || [];
+      if (actions.includes(code)) {
+        return { ...prev, neris_action_codes: actions.filter(a => a !== code) };
+      }
+      return { ...prev, neris_action_codes: [...actions, code] };
+    });
+  };
+
+  // Location use toggle - stores as object {use_type, use_subtype}
+  const handleLocationUseToggle = (valueString) => {
+    setFormData(prev => {
+      // If clicking same value, deselect
+      const currentValue = prev.neris_location_use;
+      const currentString = currentValue ? `${currentValue.use_type}: ${currentValue.use_subtype}` : null;
+      
+      if (currentString === valueString) {
+        return { ...prev, neris_location_use: null };
+      }
+      
+      // Find the item in locationUses to get use_type and use_subtype
+      for (const catData of Object.values(locationUses)) {
+        if (catData.subtypes) {
+          const item = catData.subtypes.find(s => s.value === valueString);
+          if (item) {
+            return { 
+              ...prev, 
+              neris_location_use: { 
+                use_type: item.use_type, 
+                use_subtype: item.use_subtype 
+              } 
+            };
+          }
+        }
+      }
+      return prev;
+    });
+  };
+
+  // Get value string from location use object for display/comparison
+  const getLocationUseValue = () => {
+    const loc = formData.neris_location_use;
+    if (!loc || !loc.use_type) return '';
+    return loc.use_subtype ? `${loc.use_type}: ${loc.use_subtype}` : loc.use_type;
+  };
+
+  // Restore from CAD - preview what would change
+  const handleRestorePreview = async () => {
+    if (!incident?.id) return;
+    setRestoreLoading(true);
+    try {
+      const response = await fetch(`/api/backup/preview-restore/${incident.id}`);
+      const data = await response.json();
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+      setRestorePreview(data);
+      setShowRestoreModal(true);
+    } catch (err) {
+      console.error('Failed to preview restore:', err);
+      alert('Failed to preview restore from CAD');
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
+  // Restore from CAD - actually perform the restore
+  const handleRestoreConfirm = async () => {
+    if (!incident?.id) return;
+    setRestoreLoading(true);
+    try {
+      const response = await fetch(`/api/backup/restore-from-cad/${incident.id}`, {
+        method: 'POST'
+      });
+      const data = await response.json();
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+      // Reload the form with restored data
+      alert(`Restored ${data.restored_fields.length} fields from CAD`);
+      setShowRestoreModal(false);
+      setRestorePreview(null);
+      // Reload incident data
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to restore from CAD:', err);
+      alert('Failed to restore from CAD');
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const cleanData = {};
+      for (const [key, value] of Object.entries(formData)) {
+        if (['created_at', 'updated_at', 'closed_at', 'neris_submitted_at'].includes(key)) continue;
+        cleanData[key] = (value === '' || value === undefined) ? null : value;
+      }
+
+      // Set completed_by from session if not already set (original completer)
+      if (userSession?.personnel_id && !cleanData.completed_by) {
+        cleanData.completed_by = userSession.personnel_id;
+      }
+
+      // edited_by is the logged-in user making this edit
+      const editedBy = userSession?.personnel_id || null;
+
+      let incidentId;
+      
+      if (incident?.id) {
+        await updateIncident(incident.id, cleanData, editedBy);
+        incidentId = incident.id;
+      } else {
+        // When creating, include incident_date since it can't be changed after
+        const res = await createIncident({
+          cad_event_number: cleanData.cad_event_number || `MANUAL-${Date.now()}`,
+          cad_event_type: cleanData.cad_event_type,
+          cad_event_subtype: cleanData.cad_event_subtype,
+          address: cleanData.address,
+          municipality_code: cleanData.municipality_code,
+          internal_incident_number: cleanData.internal_incident_number,
+          incident_date: cleanData.incident_date,  // Must be set at creation
+        });
+        incidentId = res.data.id;
+        await updateIncident(incidentId, cleanData, editedBy);
+      }
+
+      await saveAllAssignments(incidentId, assignments);
+
+      if (onSave) onSave(incidentId);
+      if (onClose) onClose();
+    } catch (err) {
+      console.error('Failed to save:', err);
+      alert('Failed to save incident: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCloseIncident = async () => {
+    if (!incident?.id) return;
+    if (!confirm('Close this incident?')) return;
+    
+    try {
+      const editedBy = userSession?.personnel_id || null;
+      await closeIncident(incident.id, editedBy);
+      setFormData(prev => ({ ...prev, status: 'CLOSED' }));
+      alert('Incident closed');
+      if (onSave) onSave(incident.id);
+      if (onClose) onClose();
+    } catch (err) {
+      console.error('Failed to close:', err);
+      alert('Failed to close incident');
+    }
+  };
+
+  const formatTimestamp = (isoString) => {
+    if (!isoString) return '-';
+    const d = new Date(isoString);
+    // Military time format: YYYY-MM-DD HH:MM
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${mins}`;
+  };
+
+  if (loading) return <div className="loading">Loading...</div>;
+
+  const realTrucks = apparatus.filter(a => !a.is_virtual);
+  const virtualUnits = apparatus.filter(a => a.is_virtual);
+
+  return (
+    <div className="runsheet-form">
+      <div className="runsheet-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>Glen Moore Fire Company — Station 48</h2>
+            <h3 style={{ margin: 0, fontSize: '1rem', color: '#666' }}>Incident Report</h3>
+          </div>
+          {incident && (
+            <span className={`badge badge-${formData.status?.toLowerCase()}`}>{formData.status}</span>
+          )}
+        </div>
+        {incident && (
+          <div className="timestamps-inline" style={{ display: 'flex', gap: '15px', fontSize: '0.85rem', color: '#666' }}>
+            <span>Created: {formatTimestamp(formData.created_at)}</span>
+            <span>Updated: {formatTimestamp(formData.updated_at)}</span>
+            {formData.closed_at && <span>Closed: {formatTimestamp(formData.closed_at)}</span>}
+            {formData.neris_submitted_at && <span>NERIS: {formatTimestamp(formData.neris_submitted_at)}</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Action Bar */}
+      <div className="action-bar" style={{ 
+        background: '#2a2a2a', 
+        padding: '10px 15px', 
+        marginBottom: '10px',
+        borderRadius: '4px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '15px',
+        flexWrap: 'wrap'
+      }}>
+        {!userSession ? (
+          <span style={{ color: '#f39c12' }}>⚠️ Please log in using the sidebar to edit this form</span>
+        ) : (
+          <span style={{ color: '#2ecc71' }}>
+            ✓ Editing as {userSession.display_name}
+            {!userSession.is_approved && (
+              <span style={{ color: '#f39c12', marginLeft: '10px' }}>(Pending approval)</span>
+            )}
+          </span>
+        )}
+
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {onClose && <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>}
+          {incident?.id && formData.status === 'OPEN' && (
+            <button className="btn btn-warning" onClick={handleCloseIncident} disabled={saving || !userSession}>
+              Close Incident
+            </button>
+          )}
+          <button 
+            className="btn btn-primary" 
+            onClick={handleSave} 
+            disabled={saving || !userSession}
+            title={!userSession ? 'Please log in first' : ''}
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+
+      {/* Audit Log - Last Edit */}
+      {incident?.id && auditLog.length > 0 && (
+        <div 
+          ref={auditLogRef}
+          style={{ 
+            background: '#1e1e1e', 
+            padding: '8px 15px', 
+            marginBottom: '10px',
+            borderRadius: '4px',
+            fontSize: '0.85rem'
+          }}
+        >
+          <div 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              cursor: 'pointer'
+            }}
+            onClick={() => setShowFullAuditLog(!showFullAuditLog)}
+          >
+            <div>
+              <span style={{ marginRight: '10px' }}>📝</span>
+              Last edit: <span>{auditLog[0]?.personnel_name || 'Unknown'}</span>
+              {' — '}
+              <span>{auditLog[0]?.summary}</span>
+              {' — '}
+              <span>
+                {auditLog[0]?.created_at ? new Date(auditLog[0].created_at).toLocaleString() : ''}
+              </span>
+            </div>
+            <span>
+              {showFullAuditLog ? '▲' : '▼'} {auditLog.length} edit{auditLog.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          
+          {showFullAuditLog && (
+            <div style={{ marginTop: '10px', borderTop: '1px solid #444', paddingTop: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+              {auditLog.map((entry, idx) => (
+                <div 
+                  key={entry.id || idx} 
+                  style={{ 
+                    padding: '6px 0', 
+                    borderBottom: idx < auditLog.length - 1 ? '1px solid #333' : 'none',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start'
+                  }}
+                >
+                  <div>
+                    <span style={{ marginRight: '8px', fontSize: '0.75rem' }}>
+                      {entry.action}
+                    </span>
+                    <span>{entry.personnel_name || 'Unknown'}</span>
+                    {entry.summary && (
+                      <span style={{ marginLeft: '8px' }}>— {entry.summary}</span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', marginLeft: '10px' }}>
+                    {entry.created_at ? new Date(entry.created_at).toLocaleString() : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Incident Info */}
+      <div className="runsheet-top">
+        <div className="runsheet-col">
+          <div className="form-row">
+            <div className="form-group">
+              <label>Internal # {incident && <span className="locked-indicator" title="Cannot be changed after creation">🔒</span>}</label>
+              <input 
+                type="text" 
+                value={formData.internal_incident_number} 
+                onChange={(e) => handleChange('internal_incident_number', e.target.value)} 
+                disabled={!!incident}
+                className={incident ? 'field-locked' : ''}
+                placeholder="F250001"
+              />
+            </div>
+            <div className="form-group">
+              <label>Category</label>
+              <select
+                value={formData.call_category}
+                onChange={(e) => handleChange('call_category', e.target.value)}
+                style={{
+                  backgroundColor: formData.call_category === 'EMS' ? 'rgba(52, 152, 219, 0.2)' : 'rgba(231, 76, 60, 0.2)',
+                  borderColor: formData.call_category === 'EMS' ? '#3498db' : '#e74c3c'
+                }}
+              >
+                <option value="FIRE">🔥 Fire</option>
+                <option value="EMS">🚑 EMS</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>CAD # {incident && <span className="locked-indicator" title="Cannot be changed after creation">🔒</span>}</label>
+              <input 
+                type="text" 
+                value={formData.cad_event_number} 
+                onChange={(e) => handleChange('cad_event_number', e.target.value)} 
+                placeholder="F25000000"
+                disabled={!!incident}
+                className={incident ? 'field-locked' : ''}
+              />
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Incident Date {incident && <span className="locked-indicator" title="Cannot be changed after creation">🔒</span>}</label>
+            <input 
+              type="date" 
+              value={formData.incident_date} 
+              onChange={(e) => handleChange('incident_date', e.target.value)} 
+              disabled={!!incident}
+              className={incident ? 'field-locked' : ''}
+            />
+          </div>
+          <div className="form-group">
+            <label>CAD Type</label>
+            <input type="text" value={formData.cad_event_type} onChange={(e) => handleChange('cad_event_type', e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>CAD Subtype</label>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <input type="text" value={formData.cad_event_subtype} onChange={(e) => handleChange('cad_event_subtype', e.target.value)} style={{ flex: 1 }} />
+              {incident && (formData.cad_raw_dispatch || formData.cad_raw_clear) && (
+                <>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setShowCadModal(true)}
+                    title="View raw CAD data"
+                  >
+                    📄 CAD
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleRestorePreview}
+                    disabled={restoreLoading}
+                    title="Restore fields from original CAD data"
+                  >
+                    {restoreLoading ? '...' : '🔄 Restore'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Address</label>
+            <input type="text" value={formData.address} onChange={(e) => handleChange('address', e.target.value)} />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Municipality</label>
+              <select value={formData.municipality_code} onChange={(e) => handleChange('municipality_code', e.target.value)}>
+                <option value="">--</option>
+                {municipalities.map(m => (
+                  <option key={m.code} value={m.code}>
+                    {m.display_name || m.name}{m.subdivision_type ? ` ${m.subdivision_type}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>ESZ</label>
+              <input type="text" value={formData.esz_box} onChange={(e) => handleChange('esz_box', e.target.value)} />
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Cross Streets</label>
+            <input type="text" value={formData.cross_streets} onChange={(e) => handleChange('cross_streets', e.target.value)} />
+          </div>
+        </div>
+
+        <div className="runsheet-col">
+          <div className="form-group"><label>Dispatched</label><input type="datetime-local" value={formData.time_dispatched} onChange={(e) => handleChange('time_dispatched', e.target.value)} /></div>
+          <div className="form-group"><label>Enroute</label><input type="datetime-local" value={formData.time_first_enroute} onChange={(e) => handleChange('time_first_enroute', e.target.value)} /></div>
+          <div className="form-group"><label>On Scene</label><input type="datetime-local" value={formData.time_first_on_scene} onChange={(e) => handleChange('time_first_on_scene', e.target.value)} /></div>
+          <div className="form-group"><label>Under Control</label><input type="datetime-local" value={formData.time_fire_under_control} onChange={(e) => handleChange('time_fire_under_control', e.target.value)} /></div>
+          <div className="form-group"><label>Cleared</label><input type="datetime-local" value={formData.time_last_cleared} onChange={(e) => handleChange('time_last_cleared', e.target.value)} /></div>
+          <div className="form-group"><label>In Service</label><input type="datetime-local" value={formData.time_in_service} onChange={(e) => handleChange('time_in_service', e.target.value)} /></div>
+        </div>
+      </div>
+
+      {/* Caller */}
+      <div className="runsheet-section">
+        <div className="form-row three-col">
+          <div className="form-group"><label>Caller</label><input type="text" value={formData.caller_name} onChange={(e) => handleChange('caller_name', e.target.value)} /></div>
+          <div className="form-group"><label>Phone</label><input type="text" value={formData.caller_phone} onChange={(e) => handleChange('caller_phone', e.target.value)} /></div>
+          <div className="form-group"><label>Weather</label><input type="text" value={formData.weather_conditions} onChange={(e) => handleChange('weather_conditions', e.target.value)} /></div>
+        </div>
+      </div>
+
+      {/* Narrative */}
+      <div className="runsheet-section">
+        <div className="form-group units-called-group">
+          <label>Units Called</label>
+          <div className="units-called-row">
+            <input 
+              type="text" 
+              value={formData.companies_called} 
+              onChange={(e) => handleChange('companies_called', e.target.value)}
+              placeholder="Station 48: ENG481, CHF48 | Mutual Aid: AMB891"
+            />
+            {formData.cad_units && formData.cad_units.length > 0 && (
+              <button 
+                type="button" 
+                className="auto-fill-btn"
+                onClick={populateUnitsCalled}
+                title="Auto-fill from CAD data"
+              >
+                Auto
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="form-group"><label>Situation Found</label><textarea rows={2} value={formData.situation_found} onChange={(e) => handleChange('situation_found', e.target.value)} /></div>
+        <div className="form-group"><label>Damage</label><textarea rows={2} value={formData.extent_of_damage} onChange={(e) => handleChange('extent_of_damage', e.target.value)} /></div>
+        <div className="form-group"><label>Services</label><textarea rows={2} value={formData.services_provided} onChange={(e) => handleChange('services_provided', e.target.value)} /></div>
+        <div className="form-group"><label>Narrative</label><textarea rows={4} value={formData.narrative} onChange={(e) => handleChange('narrative', e.target.value)} /></div>
+        <div className="form-group"><label>Problems</label><textarea rows={2} value={formData.problems_issues} onChange={(e) => handleChange('problems_issues', e.target.value)} /></div>
+      </div>
+
+      {/* CAD Responding Units */}
+      {formData.cad_units && formData.cad_units.length > 0 && (
+        <div className="runsheet-section">
+          <h4>CAD Responding Units</h4>
+          <table className="cad-units-table">
+            <thead>
+              <tr>
+                <th>Unit</th>
+                <th>Dispatched</th>
+                <th>Enroute</th>
+                <th>Arrived</th>
+                <th>Cleared</th>
+                <th>Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              {formData.cad_units.map((unit, idx) => (
+                <tr key={idx} className={unit.is_mutual_aid ? 'mutual-aid-row' : 'our-unit-row'}>
+                  <td className="unit-id-cell">
+                    <strong>{unit.unit_id}</strong>
+                    {unit.is_mutual_aid && <span className="mutual-aid-badge">MA</span>}
+                  </td>
+                  <td>{unit.time_dispatched ? unit.time_dispatched.split('T')[1]?.substring(0,5) : '-'}</td>
+                  <td>{unit.time_enroute ? unit.time_enroute.split('T')[1]?.substring(0,5) : '-'}</td>
+                  <td>{unit.time_arrived ? unit.time_arrived.split('T')[1]?.substring(0,5) : '-'}</td>
+                  <td>{unit.time_cleared ? unit.time_cleared.split('T')[1]?.substring(0,5) : '-'}</td>
+                  <td>{unit.is_mutual_aid ? 'Mutual Aid' : 'Station 48'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Personnel Grid - Trucks */}
+      <div className="runsheet-section">
+        <h4>Personnel Assignments</h4>
+        <table className="personnel-table">
+          <thead>
+            <tr>
+              <th className="slot-col">#</th>
+              {realTrucks.map(t => {
+                // Only apply dispatched styling if we have actual CAD unit data
+                const hasCadData = Array.isArray(formData.cad_units) && formData.cad_units.length > 0;
+                const wasDispatched = hasCadData && formData.cad_units.some(u => 
+                  u.unit_id === t.unit_designator && !u.is_mutual_aid
+                );
+                // No CAD data = manual incident = no dimming (empty class)
+                const headerClass = hasCadData 
+                  ? (wasDispatched ? 'truck-dispatched' : 'truck-not-dispatched')
+                  : '';
+                return (
+                  <th key={t.id} className={headerClass}>
+                    {t.name}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {(() => {
+              // Calculate max slots across all trucks
+              const getSlotCount = (truck) => (truck.has_driver ? 1 : 0) + (truck.has_officer ? 1 : 0) + (truck.ff_slots || 0);
+              const maxSlots = Math.max(...realTrucks.map(getSlotCount), 1);
+              
+              // Generate slot labels: D, O, 3, 4, 5, 6
+              const getSlotLabel = (slot) => {
+                if (slot === 0) return 'D';
+                if (slot === 1) return 'O';
+                return String(slot + 1);
+              };
+              
+              return Array.from({ length: maxSlots }, (_, slot) => (
+                <tr key={slot}>
+                  <td className="slot-col">{getSlotLabel(slot)}</td>
+                  {realTrucks.map(t => {
+                    const slotCount = getSlotCount(t);
+                    // Don't render cell if this slot doesn't exist for this truck
+                    if (slot >= slotCount) {
+                      return <td key={t.id} className="slot-disabled"></td>;
+                    }
+                    
+                    const val = assignments[t.unit_designator]?.[slot] || '';
+                    // Only dim cells if we have actual CAD data and this truck wasn't dispatched
+                    const hasCadData = Array.isArray(formData.cad_units) && formData.cad_units.length > 0;
+                    const wasDispatched = hasCadData && formData.cad_units.some(u => 
+                      u.unit_id === t.unit_designator && !u.is_mutual_aid
+                    );
+                    const shouldDim = hasCadData && !wasDispatched;
+                    return (
+                      <td key={t.id} className={shouldDim ? 'cell-dimmed' : ''}>
+                        <PersonnelTypeahead
+                          value={val}
+                          availablePersonnel={getAvailablePersonnel(t.unit_designator, slot)}
+                          allPersonnel={personnel}
+                          onSelect={(personId) => handleAssignment(t.unit_designator, slot, personId)}
+                          onClear={() => clearSlot(t.unit_designator, slot)}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ));
+            })()}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Virtual Units - Dynamic Growing Lists */}
+      {virtualUnits.length > 0 && (
+        <div className="runsheet-section">
+          <h4>Direct / Station</h4>
+          <div className="virtual-units-row">
+            {virtualUnits.map(t => (
+              <DynamicPersonnelList
+                key={t.id}
+                label={t.unit_designator}
+                assignedIds={assignments[t.unit_designator] || []}
+                onUpdate={(newList) => setAssignments(prev => ({ ...prev, [t.unit_designator]: newList }))}
+                allPersonnel={personnel}
+                getAssignedIds={getAssignedIds}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Officer */}
+      <div className="runsheet-section">
+        <div className="form-row">
+          <div className="form-group">
+            <label>Officer in Charge</label>
+            <select value={formData.officer_in_charge} onChange={(e) => handleChange('officer_in_charge', e.target.value ? parseInt(e.target.value) : '')}>
+              <option value="">--</option>
+              {personnel.map(p => <option key={p.id} value={p.id}>{p.last_name}, {p.first_name}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Originally Completed By</label>
+            <select value={formData.completed_by} onChange={(e) => handleChange('completed_by', e.target.value ? parseInt(e.target.value) : '')}>
+              <option value="">--</option>
+              {personnel.map(p => <option key={p.id} value={p.id}>{p.last_name}, {p.first_name}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* NERIS */}
+      <div className="runsheet-section">
+        <button className="btn btn-secondary" onClick={() => setShowNeris(!showNeris)}>
+          {showNeris ? '▲ Hide NERIS' : '▼ NERIS Fields'}
+        </button>
+      </div>
+
+      {showNeris && (
+        <div className="runsheet-section neris-section">
+          <h4>NERIS Classification</h4>
+          
+          <div className="neris-field">
+            <label className="neris-field-label">Incident Type (max 3)</label>
+            <button type="button" className="neris-picker-btn" onClick={() => setShowIncidentTypeModal(true)}>
+              <span>{formData.neris_incident_type_codes?.length > 0 ? `${formData.neris_incident_type_codes.length} selected` : 'Select incident type...'}</span>
+              <span className="neris-picker-arrow">▼</span>
+            </button>
+            {formData.neris_incident_type_codes?.length > 0 && (
+              <div className="neris-selected-chips">
+                {formData.neris_incident_type_codes.map(val => (
+                  <span key={val} className="neris-chip">
+                    {getNerisDisplayName(val)}
+                    <button className="chip-remove" type="button" onClick={() => handleNerisTypeToggle(val)}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="neris-field">
+            <label className="neris-field-label">Location Use</label>
+            <button type="button" className="neris-picker-btn" onClick={() => setShowLocationUseModal(true)}>
+              <span>{getLocationUseValue() ? getNerisDisplayName(getLocationUseValue()) : 'Select location use...'}</span>
+              <span className="neris-picker-arrow">▼</span>
+            </button>
+            {getLocationUseValue() && (
+              <div className="neris-selected-chips">
+                <span className="neris-chip">
+                  {getNerisDisplayName(getLocationUseValue())}
+                  <button className="chip-remove" type="button" onClick={() => handleChange('neris_location_use', null)}>×</button>
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="neris-field">
+            <label className="neris-field-label">Actions Taken</label>
+            <button type="button" className="neris-picker-btn" onClick={() => setShowActionsModal(true)}>
+              <span>{formData.neris_action_codes?.length > 0 ? `${formData.neris_action_codes.length} selected` : 'Select actions taken...'}</span>
+              <span className="neris-picker-arrow">▼</span>
+            </button>
+            {formData.neris_action_codes?.length > 0 && (
+              <div className="neris-selected-chips">
+                {formData.neris_action_codes.map(val => (
+                  <span key={val} className="neris-chip">
+                    {getNerisDisplayName(val)}
+                    <button className="chip-remove" type="button" onClick={() => handleActionToggle(val)}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* No Action Reason - show only if no actions selected */}
+          {(!formData.neris_action_codes || formData.neris_action_codes.length === 0) && (
+            <div className="neris-field">
+              <label className="neris-field-label">No Action Reason</label>
+              <select 
+                value={formData.neris_noaction_code || ''} 
+                onChange={(e) => handleChange('neris_noaction_code', e.target.value || null)}
+                className="neris-select"
+              >
+                <option value="">Select if no actions taken...</option>
+                {noActionCodes.map(code => (
+                  <option key={code.value} value={code.value}>
+                    {code.description || code.display_text || code.value}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* People Present */}
+          <div className="neris-field">
+            <label className="neris-field-label">
+              People Present at Incident?
+              <InfoTooltip text={NERIS_DESCRIPTIONS.fields.people_present} />
+            </label>
+            <div className="neris-radio-group">
+              <label className="neris-radio">
+                <input 
+                  type="radio" 
+                  name="people_present" 
+                  checked={formData.neris_people_present === true}
+                  onChange={() => handleChange('neris_people_present', true)}
+                />
+                Yes
+              </label>
+              <label className="neris-radio">
+                <input 
+                  type="radio" 
+                  name="people_present" 
+                  checked={formData.neris_people_present === false}
+                  onChange={() => handleChange('neris_people_present', false)}
+                />
+                No
+              </label>
+              <label className="neris-radio">
+                <input 
+                  type="radio" 
+                  name="people_present" 
+                  checked={formData.neris_people_present === null}
+                  onChange={() => handleChange('neris_people_present', null)}
+                />
+                Unknown
+              </label>
+            </div>
+          </div>
+
+          {/* Displaced Number */}
+          <div className="neris-field">
+            <label className="neris-field-label">
+              People Displaced
+              <InfoTooltip text={NERIS_DESCRIPTIONS.fields.displaced} />
+            </label>
+            <input 
+              type="number" 
+              min="0" 
+              value={formData.neris_displaced_number ?? 0}
+              onChange={(e) => handleChange('neris_displaced_number', parseInt(e.target.value) || 0)}
+              className="neris-number-input"
+              placeholder="0"
+            />
+          </div>
+
+          {/* Mutual Aid */}
+          <div className="neris-field">
+            <label className="neris-field-label">
+              Mutual Aid
+              <InfoTooltip text={NERIS_DESCRIPTIONS.fields.mutual_aid} />
+            </label>
+            <div className="neris-row">
+              <div className="neris-select-with-tooltip">
+                <select 
+                  value={formData.neris_aid_direction || ''} 
+                  onChange={(e) => handleChange('neris_aid_direction', e.target.value || null)}
+                  className="neris-select"
+                >
+                  <option value="">No mutual aid</option>
+                  {aidDirections.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {formData.neris_aid_direction && (
+                <div className="neris-select-with-tooltip">
+                  <select 
+                    value={formData.neris_aid_type || ''} 
+                    onChange={(e) => handleChange('neris_aid_type', e.target.value || null)}
+                    className="neris-select"
+                  >
+                    <option value="">Select type...</option>
+                    {aidTypes.map(code => (
+                      <option key={code.value} value={code.value}>
+                        {code.description || code.value}
+                      </option>
+                    ))}
+                  </select>
+                  {formData.neris_aid_type && (
+                    <span className="neris-aid-description">
+                      {aidTypes.find(c => c.value === formData.neris_aid_type)?.description || ''}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Risk Reduction - Smoke Alarms, Fire Alarms, Sprinklers */}
+          <div className="neris-field">
+            <label className="neris-field-label">
+              Risk Reduction (Structure Incidents)
+              <InfoTooltip text={NERIS_DESCRIPTIONS.fields.risk_reduction} />
+            </label>
+            
+            {/* Presence Grid */}
+            <div className="neris-risk-grid">
+              <div className="neris-risk-item">
+                <span>Smoke Alarm</span>
+                <select 
+                  value={formData.neris_risk_reduction?.smoke_alarm_presence || ''} 
+                  onChange={(e) => handleChange('neris_risk_reduction', {
+                    ...formData.neris_risk_reduction,
+                    smoke_alarm_presence: e.target.value || null
+                  })}
+                >
+                  <option value="">--</option>
+                  {rrPresenceCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="neris-risk-item">
+                <span>Fire Alarm</span>
+                <select 
+                  value={formData.neris_risk_reduction?.fire_alarm_presence || ''} 
+                  onChange={(e) => handleChange('neris_risk_reduction', {
+                    ...formData.neris_risk_reduction,
+                    fire_alarm_presence: e.target.value || null
+                  })}
+                >
+                  <option value="">--</option>
+                  {rrPresenceCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="neris-risk-item">
+                <span>Sprinklers</span>
+                <select 
+                  value={formData.neris_risk_reduction?.fire_suppression_presence || ''} 
+                  onChange={(e) => handleChange('neris_risk_reduction', {
+                    ...formData.neris_risk_reduction,
+                    fire_suppression_presence: e.target.value || null
+                  })}
+                >
+                  <option value="">--</option>
+                  {rrPresenceCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="neris-risk-item">
+                <span>Other Alarm</span>
+                <select 
+                  value={formData.neris_rr_other_alarm || ''} 
+                  onChange={(e) => handleChange('neris_rr_other_alarm', e.target.value || null)}
+                >
+                  <option value="">--</option>
+                  {rrPresenceCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            {/* Smoke Alarm Details - shown when presence is PRESENT */}
+            {formData.neris_risk_reduction?.smoke_alarm_presence === 'PRESENT' && (
+              <div className="neris-rr-details">
+                <div className="neris-rr-details-header">Smoke Alarm Details</div>
+                <div className="neris-rr-details-grid">
+                  <div className="neris-rr-field">
+                    <label>Type(s) <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_type} /></label>
+                    <select 
+                      multiple
+                      value={formData.neris_rr_smoke_alarm_type || []}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => opt.value);
+                        handleChange('neris_rr_smoke_alarm_type', selected);
+                      }}
+                      className="neris-multi-select"
+                    >
+                      {smokeAlarmTypeCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Working?</label>
+                    <select 
+                      value={formData.neris_rr_smoke_alarm_working === null ? '' : formData.neris_rr_smoke_alarm_working.toString()}
+                      onChange={(e) => handleChange('neris_rr_smoke_alarm_working', e.target.value === '' ? null : e.target.value === 'true')}
+                    >
+                      <option value="">--</option>
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Operation <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_operation} /></label>
+                    <select 
+                      value={formData.neris_rr_smoke_alarm_operation || ''}
+                      onChange={(e) => handleChange('neris_rr_smoke_alarm_operation', e.target.value || null)}
+                    >
+                      <option value="">--</option>
+                      {alarmOperationCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Failure Reason <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_failure} /></label>
+                    <select 
+                      value={formData.neris_rr_smoke_alarm_failure || ''}
+                      onChange={(e) => handleChange('neris_rr_smoke_alarm_failure', e.target.value || null)}
+                    >
+                      <option value="">--</option>
+                      {alarmFailureCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Fire Alarm Details - shown when presence is PRESENT */}
+            {formData.neris_risk_reduction?.fire_alarm_presence === 'PRESENT' && (
+              <div className="neris-rr-details">
+                <div className="neris-rr-details-header">Fire Alarm Details</div>
+                <div className="neris-rr-details-grid">
+                  <div className="neris-rr-field">
+                    <label>Type(s) <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_type} /></label>
+                    <select 
+                      multiple
+                      value={formData.neris_rr_fire_alarm_type || []}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => opt.value);
+                        handleChange('neris_rr_fire_alarm_type', selected);
+                      }}
+                      className="neris-multi-select"
+                    >
+                      {fireAlarmTypeCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Operation <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_operation} /></label>
+                    <select 
+                      value={formData.neris_rr_fire_alarm_operation || ''}
+                      onChange={(e) => handleChange('neris_rr_fire_alarm_operation', e.target.value || null)}
+                    >
+                      <option value="">--</option>
+                      {alarmOperationCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Other Alarm Details - shown when presence is PRESENT */}
+            {formData.neris_rr_other_alarm === 'PRESENT' && (
+              <div className="neris-rr-details">
+                <div className="neris-rr-details-header">Other Alarm Details</div>
+                <div className="neris-rr-details-grid">
+                  <div className="neris-rr-field">
+                    <label>Type(s) <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_type} /></label>
+                    <select 
+                      multiple
+                      value={formData.neris_rr_other_alarm_type || []}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => opt.value);
+                        handleChange('neris_rr_other_alarm_type', selected);
+                      }}
+                      className="neris-multi-select"
+                    >
+                      {otherAlarmTypeCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Sprinkler Details - shown when presence is PRESENT */}
+            {formData.neris_risk_reduction?.fire_suppression_presence === 'PRESENT' && (
+              <div className="neris-rr-details">
+                <div className="neris-rr-details-header">Sprinkler/Suppression Details</div>
+                <div className="neris-rr-details-grid">
+                  <div className="neris-rr-field">
+                    <label>Type(s) <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_type} /></label>
+                    <select 
+                      multiple
+                      value={formData.neris_rr_sprinkler_type || []}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => opt.value);
+                        handleChange('neris_rr_sprinkler_type', selected);
+                      }}
+                      className="neris-multi-select"
+                    >
+                      {sprinklerTypeCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Coverage <InfoTooltip text={NERIS_DESCRIPTIONS.fields.sprinkler_coverage} /></label>
+                    <select 
+                      value={formData.neris_rr_sprinkler_coverage || ''}
+                      onChange={(e) => handleChange('neris_rr_sprinkler_coverage', e.target.value || null)}
+                    >
+                      <option value="">--</option>
+                      {fullPartialCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Operation <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_operation} /></label>
+                    <select 
+                      value={formData.neris_rr_sprinkler_operation || ''}
+                      onChange={(e) => handleChange('neris_rr_sprinkler_operation', e.target.value || null)}
+                    >
+                      <option value="">--</option>
+                      {sprinklerOperationCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Heads Activated <InfoTooltip text={NERIS_DESCRIPTIONS.fields.sprinkler_heads} /></label>
+                    <input 
+                      type="number"
+                      min="0"
+                      value={formData.neris_rr_sprinkler_heads_activated ?? ''}
+                      onChange={(e) => handleChange('neris_rr_sprinkler_heads_activated', e.target.value ? parseInt(e.target.value) : null)}
+                      className="neris-number-input"
+                    />
+                  </div>
+                  <div className="neris-rr-field">
+                    <label>Failure Reason <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_failure} /></label>
+                    <select 
+                      value={formData.neris_rr_sprinkler_failure || ''}
+                      onChange={(e) => handleChange('neris_rr_sprinkler_failure', e.target.value || null)}
+                    >
+                      <option value="">--</option>
+                      {alarmFailureCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Cooking Suppression - shown for confined cooking fires */}
+          {hasIncidentSubtype(formData.neris_incident_type_codes, 'CONFINED_COOKING') && (
+            <div className="neris-field">
+              <label className="neris-field-label">
+                Cooking Fire Suppression
+                <InfoTooltip text="Required for confined cooking appliance fires per NERIS" />
+              </label>
+              <div className="neris-rr-details-grid">
+                <div className="neris-rr-field">
+                  <label>Presence</label>
+                  <select 
+                    value={formData.neris_rr_cooking_suppression || ''}
+                    onChange={(e) => handleChange('neris_rr_cooking_suppression', e.target.value || null)}
+                  >
+                    <option value="">--</option>
+                    {rrPresenceCodes.map(code => (
+                      <option key={code.value} value={code.value}>
+                        {code.description || code.display_text || code.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {formData.neris_rr_cooking_suppression === 'PRESENT' && (
+                  <div className="neris-rr-field">
+                    <label>Type(s) <InfoTooltip text={NERIS_DESCRIPTIONS.fields.smoke_alarm_type} /></label>
+                    <select 
+                      multiple
+                      value={formData.neris_rr_cooking_suppression_type || []}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => opt.value);
+                        handleChange('neris_rr_cooking_suppression_type', selected);
+                      }}
+                      className="neris-multi-select"
+                    >
+                      {cookingSuppressionCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* Emerging Hazards Module */}
+          <div className="neris-field">
+            <label className="neris-field-label">
+              Emerging Hazards
+              <InfoTooltip text="Document presence of EV/batteries, solar PV, or CSST gas lines" />
+            </label>
+            <div className="neris-emerging-hazards">
+              {/* EV/Battery */}
+              <div className="neris-emerging-item">
+                <label className="neris-checkbox-label">
+                  <input 
+                    type="checkbox"
+                    checked={formData.neris_emerging_hazard?.ev_battery?.present || false}
+                    onChange={(e) => handleChange('neris_emerging_hazard', {
+                      ...formData.neris_emerging_hazard,
+                      ev_battery: { 
+                        ...formData.neris_emerging_hazard?.ev_battery, 
+                        present: e.target.checked 
+                      }
+                    })}
+                  />
+                  EV / Battery Storage
+                </label>
+                {formData.neris_emerging_hazard?.ev_battery?.present && (
+                  <div className="neris-emerging-details">
+                    <select 
+                      value={formData.neris_emerging_hazard?.ev_battery?.type || ''}
+                      onChange={(e) => handleChange('neris_emerging_hazard', {
+                        ...formData.neris_emerging_hazard,
+                        ev_battery: { 
+                          ...formData.neris_emerging_hazard?.ev_battery, 
+                          type: e.target.value || null 
+                        }
+                      })}
+                    >
+                      <option value="">Select type...</option>
+                      {emergHazElecCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                    <label className="neris-checkbox-label">
+                      <input 
+                        type="checkbox"
+                        checked={formData.neris_emerging_hazard?.ev_battery?.crash || false}
+                        onChange={(e) => handleChange('neris_emerging_hazard', {
+                          ...formData.neris_emerging_hazard,
+                          ev_battery: { 
+                            ...formData.neris_emerging_hazard?.ev_battery, 
+                            crash: e.target.checked 
+                          }
+                        })}
+                      />
+                      Vehicle Crash
+                    </label>
+                  </div>
+                )}
+              </div>
+              
+              {/* Solar PV */}
+              <div className="neris-emerging-item">
+                <label className="neris-checkbox-label">
+                  <input 
+                    type="checkbox"
+                    checked={formData.neris_emerging_hazard?.solar_pv?.present || false}
+                    onChange={(e) => handleChange('neris_emerging_hazard', {
+                      ...formData.neris_emerging_hazard,
+                      solar_pv: { 
+                        ...formData.neris_emerging_hazard?.solar_pv, 
+                        present: e.target.checked 
+                      }
+                    })}
+                  />
+                  Solar PV System
+                </label>
+                {formData.neris_emerging_hazard?.solar_pv?.present && (
+                  <div className="neris-emerging-details">
+                    <label className="neris-checkbox-label">
+                      <input 
+                        type="checkbox"
+                        checked={formData.neris_emerging_hazard?.solar_pv?.energized || false}
+                        onChange={(e) => handleChange('neris_emerging_hazard', {
+                          ...formData.neris_emerging_hazard,
+                          solar_pv: { 
+                            ...formData.neris_emerging_hazard?.solar_pv, 
+                            energized: e.target.checked 
+                          }
+                        })}
+                      />
+                      Remained Energized
+                    </label>
+                    <select 
+                      value={formData.neris_emerging_hazard?.solar_pv?.ignition || ''}
+                      onChange={(e) => handleChange('neris_emerging_hazard', {
+                        ...formData.neris_emerging_hazard,
+                        solar_pv: { 
+                          ...formData.neris_emerging_hazard?.solar_pv, 
+                          ignition: e.target.value || null 
+                        }
+                      })}
+                    >
+                      <option value="">Ignition source?</option>
+                      {emergHazPvIgnCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              
+              {/* CSST Gas */}
+              <div className="neris-emerging-item">
+                <label className="neris-checkbox-label">
+                  <input 
+                    type="checkbox"
+                    checked={formData.neris_emerging_hazard?.csst?.present || false}
+                    onChange={(e) => handleChange('neris_emerging_hazard', {
+                      ...formData.neris_emerging_hazard,
+                      csst: { 
+                        ...formData.neris_emerging_hazard?.csst, 
+                        present: e.target.checked 
+                      }
+                    })}
+                  />
+                  CSST Gas Lines
+                </label>
+                {formData.neris_emerging_hazard?.csst?.present && (
+                  <div className="neris-emerging-details">
+                    <label className="neris-checkbox-label">
+                      <input 
+                        type="checkbox"
+                        checked={formData.neris_emerging_hazard?.csst?.damage || false}
+                        onChange={(e) => handleChange('neris_emerging_hazard', {
+                          ...formData.neris_emerging_hazard,
+                          csst: { 
+                            ...formData.neris_emerging_hazard?.csst, 
+                            damage: e.target.checked 
+                          }
+                        })}
+                      />
+                      Damage / Gas Leak
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* Exposures Module - shown for structure fires with extension */}
+          {hasStructureFireType(formData.neris_incident_type_codes) && (
+            <div className="neris-field">
+              <label className="neris-field-label">
+                Exposures (Adjacent Properties Affected)
+                <InfoTooltip text="Document damage to properties beyond the origin building" />
+              </label>
+              <div className="neris-exposures-list">
+                {(formData.neris_exposures || []).map((exp, idx) => (
+                  <div key={idx} className="neris-exposure-item">
+                    <div className="neris-exposure-row">
+                      <select 
+                        value={exp.exposure_type || ''}
+                        onChange={(e) => {
+                          const updated = [...(formData.neris_exposures || [])];
+                          updated[idx] = { ...exp, exposure_type: e.target.value || null };
+                          handleChange('neris_exposures', updated);
+                        }}
+                      >
+                        <option value="">Location type...</option>
+                        {exposureLocCodes.map(code => (
+                          <option key={code.value} value={code.value}>
+                            {code.description || code.display_text || code.value}
+                          </option>
+                        ))}
+                      </select>
+                      <select 
+                        value={exp.exposure_item || ''}
+                        onChange={(e) => {
+                          const updated = [...(formData.neris_exposures || [])];
+                          updated[idx] = { ...exp, exposure_item: e.target.value || null };
+                          handleChange('neris_exposures', updated);
+                        }}
+                      >
+                        <option value="">Item type...</option>
+                        {exposureItemCodes.map(code => (
+                          <option key={code.value} value={code.value}>
+                            {code.description || code.display_text || code.value}
+                          </option>
+                        ))}
+                      </select>
+                      <input 
+                        type="text"
+                        placeholder="Address"
+                        value={exp.address || ''}
+                        onChange={(e) => {
+                          const updated = [...(formData.neris_exposures || [])];
+                          updated[idx] = { ...exp, address: e.target.value };
+                          handleChange('neris_exposures', updated);
+                        }}
+                      />
+                      <button 
+                        type="button"
+                        className="neris-remove-btn"
+                        onClick={() => {
+                          const updated = formData.neris_exposures.filter((_, i) => i !== idx);
+                          handleChange('neris_exposures', updated);
+                        }}
+                      >×</button>
+                    </div>
+                  </div>
+                ))}
+                <button 
+                  type="button"
+                  className="neris-add-btn"
+                  onClick={() => handleChange('neris_exposures', [...(formData.neris_exposures || []), {}])}
+                >
+                  + Add Exposure
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Narrative - Impedance */}
+          <div className="neris-field">
+            <label className="neris-field-label">
+              Impedance (obstacles/issues that impacted response)
+              <InfoTooltip text={NERIS_DESCRIPTIONS.fields.impedance} />
+            </label>
+            <textarea 
+              value={formData.neris_narrative_impedance || ''}
+              onChange={(e) => handleChange('neris_narrative_impedance', e.target.value)}
+              rows={2}
+              placeholder="Traffic, access issues, weather, etc."
+              className="neris-textarea"
+            />
+          </div>
+
+          {/* Narrative - Outcome */}
+          <div className="neris-field">
+            <label className="neris-field-label">
+              Outcome (final disposition)
+              <InfoTooltip text={NERIS_DESCRIPTIONS.fields.outcome} />
+            </label>
+            <textarea 
+              value={formData.neris_narrative_outcome || ''}
+              onChange={(e) => handleChange('neris_narrative_outcome', e.target.value)}
+              rows={2}
+              placeholder="Brief description of how incident was resolved"
+              className="neris-textarea"
+            />
+          </div>
+
+          {/* ============================================
+              CONDITIONAL MODULE: FIRE
+              Shown when incident type starts with FIRE:
+              ============================================ */}
+          {hasFireType(formData.neris_incident_type_codes) && (
+            <div className="neris-module neris-module-fire">
+              <h5 className="neris-module-title">Fire Module</h5>
+              
+              {/* Fire Investigation Need - Required for all fire types */}
+              <div className="neris-field">
+                <label className="neris-field-label">
+                  Fire Investigation Needed? <span className="neris-required">*</span>
+                  <InfoTooltip text={NERIS_DESCRIPTIONS.fields.fire_investigation} />
+                </label>
+                <select 
+                  value={formData.neris_fire_investigation_need || ''} 
+                  onChange={(e) => handleChange('neris_fire_investigation_need', e.target.value || null)}
+                  className="neris-select"
+                >
+                  <option value="">Select...</option>
+                  {fireInvestNeedCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Structure Fire Sub-module */}
+              {hasStructureFireType(formData.neris_incident_type_codes) && (
+                <>
+                  <div className="neris-field">
+                    <label className="neris-field-label">
+                      Arrival Conditions <span className="neris-required">*</span>
+                      <InfoTooltip text={NERIS_DESCRIPTIONS.fields.arrival_conditions} />
+                    </label>
+                    <select 
+                      value={formData.neris_fire_arrival_conditions || ''} 
+                      onChange={(e) => handleChange('neris_fire_arrival_conditions', e.target.value || null)}
+                      className="neris-select"
+                    >
+                      <option value="">Select...</option>
+                      {fireConditionArrivalCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="neris-field">
+                    <label className="neris-field-label">
+                      Structure Damage <span className="neris-required">*</span>
+                      <InfoTooltip text={NERIS_DESCRIPTIONS.fields.structure_damage} />
+                    </label>
+                    <select 
+                      value={formData.neris_fire_structure_damage || ''} 
+                      onChange={(e) => handleChange('neris_fire_structure_damage', e.target.value || null)}
+                      className="neris-select"
+                    >
+                      <option value="">Select...</option>
+                      {fireBldgDamageCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="neris-row">
+                    <div className="neris-field" style={{flex: 1}}>
+                      <label className="neris-field-label">Floor of Origin</label>
+                      <input 
+                        type="number" 
+                        min="0" 
+                        value={formData.neris_fire_structure_floor ?? ''}
+                        onChange={(e) => handleChange('neris_fire_structure_floor', e.target.value ? parseInt(e.target.value) : null)}
+                        className="neris-number-input"
+                        placeholder="Floor #"
+                        style={{width: '100%'}}
+                      />
+                    </div>
+                    <div className="neris-field" style={{flex: 2}}>
+                      <label className="neris-field-label">Room of Origin</label>
+                      <select 
+                        value={formData.neris_fire_structure_room || ''} 
+                        onChange={(e) => handleChange('neris_fire_structure_room', e.target.value || null)}
+                        className="neris-select"
+                        style={{width: '100%'}}
+                      >
+                        <option value="">Select...</option>
+                        {roomCodes.map(code => (
+                          <option key={code.value} value={code.value}>
+                            {code.description || code.display_text || code.value}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="neris-field">
+                    <label className="neris-field-label">Fire Cause (Structure)</label>
+                    <select 
+                      value={formData.neris_fire_structure_cause || ''} 
+                      onChange={(e) => handleChange('neris_fire_structure_cause', e.target.value || null)}
+                      className="neris-select"
+                    >
+                      <option value="">Select...</option>
+                      {fireCauseInCodes.map(code => (
+                        <option key={code.value} value={code.value}>
+                          {code.description || code.display_text || code.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {/* Outside Fire Sub-module */}
+              {hasOutsideFireType(formData.neris_incident_type_codes) && (
+                <div className="neris-field">
+                  <label className="neris-field-label">Fire Cause (Outside) <span className="neris-required">*</span></label>
+                  <select 
+                    value={formData.neris_fire_outside_cause || ''} 
+                    onChange={(e) => handleChange('neris_fire_outside_cause', e.target.value || null)}
+                    className="neris-select"
+                  >
+                    <option value="">Select...</option>
+                    {fireCauseOutCodes.map(code => (
+                      <option key={code.value} value={code.value}>
+                        {code.description || code.display_text || code.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ============================================
+              CONDITIONAL MODULE: MEDICAL
+              Shown when incident type starts with MEDICAL:
+              ============================================ */}
+          {hasMedicalType(formData.neris_incident_type_codes) && (
+            <div className="neris-module neris-module-medical">
+              <h5 className="neris-module-title">Medical Module</h5>
+              
+              <div className="neris-field">
+                <label className="neris-field-label">
+                  Patient Evaluation/Care <span className="neris-required">*</span>
+                  <InfoTooltip text={NERIS_DESCRIPTIONS.fields.patient_care} />
+                </label>
+                <select 
+                  value={formData.neris_medical_patient_care || ''} 
+                  onChange={(e) => handleChange('neris_medical_patient_care', e.target.value || null)}
+                  className="neris-select"
+                >
+                  <option value="">Select...</option>
+                  {medicalPatientCareCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* ============================================
+              CONDITIONAL MODULE: HAZMAT
+              Shown when incident type starts with HAZSIT:
+              ============================================ */}
+          {hasHazsitType(formData.neris_incident_type_codes) && (
+            <div className="neris-module neris-module-hazmat">
+              <h5 className="neris-module-title">Hazmat Module</h5>
+              
+              <div className="neris-field">
+                <label className="neris-field-label">
+                  Hazmat Disposition <span className="neris-required">*</span>
+                  <InfoTooltip text={NERIS_DESCRIPTIONS.fields.hazmat_disposition} />
+                </label>
+                <select 
+                  value={formData.neris_hazmat_disposition || ''} 
+                  onChange={(e) => handleChange('neris_hazmat_disposition', e.target.value || null)}
+                  className="neris-select"
+                >
+                  <option value="">Select...</option>
+                  {hazardDispositionCodes.map(code => (
+                    <option key={code.value} value={code.value}>
+                      {code.description || code.display_text || code.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="neris-field">
+                <label className="neris-field-label">
+                  People Evacuated <span className="neris-required">*</span>
+                  <InfoTooltip text={NERIS_DESCRIPTIONS.fields.hazmat_evacuated} />
+                </label>
+                <input 
+                  type="number" 
+                  min="0" 
+                  value={formData.neris_hazmat_evacuated ?? 0}
+                  onChange={(e) => handleChange('neris_hazmat_evacuated', parseInt(e.target.value) || 0)}
+                  className="neris-number-input"
+                  placeholder="0"
+                />
+              </div>
+
+              {/* Chemical Entry */}
+              <div className="neris-field">
+                <label className="neris-field-label">Chemicals Involved <span className="neris-required">*</span></label>
+                <div className="neris-chemicals-list">
+                  {(formData.neris_hazmat_chemicals || []).map((chem, idx) => (
+                    <div key={idx} className="neris-chemical-entry">
+                      <select 
+                        value={chem.dot_class || ''} 
+                        onChange={(e) => {
+                          const updated = [...formData.neris_hazmat_chemicals];
+                          updated[idx] = { ...updated[idx], dot_class: e.target.value || null };
+                          handleChange('neris_hazmat_chemicals', updated);
+                        }}
+                        className="neris-select"
+                      >
+                        <option value="">DOT Class...</option>
+                        {hazardDotCodes.map(code => (
+                          <option key={code.value} value={code.value}>
+                            {code.description || code.display_text || code.value}
+                          </option>
+                        ))}
+                      </select>
+                      <input 
+                        type="text"
+                        value={chem.name || ''}
+                        onChange={(e) => {
+                          const updated = [...formData.neris_hazmat_chemicals];
+                          updated[idx] = { ...updated[idx], name: e.target.value };
+                          handleChange('neris_hazmat_chemicals', updated);
+                        }}
+                        placeholder="Chemical name..."
+                        className="neris-text-input"
+                      />
+                      <label className="neris-checkbox-inline">
+                        <input 
+                          type="checkbox"
+                          checked={chem.release_occurred || false}
+                          onChange={(e) => {
+                            const updated = [...formData.neris_hazmat_chemicals];
+                            updated[idx] = { ...updated[idx], release_occurred: e.target.checked };
+                            handleChange('neris_hazmat_chemicals', updated);
+                          }}
+                        />
+                        Released
+                      </label>
+                      <button 
+                        type="button" 
+                        className="clear-btn"
+                        onClick={() => {
+                          const updated = formData.neris_hazmat_chemicals.filter((_, i) => i !== idx);
+                          handleChange('neris_hazmat_chemicals', updated);
+                        }}
+                      >×</button>
+                    </div>
+                  ))}
+                  <button 
+                    type="button" 
+                    className="neris-add-btn"
+                    onClick={() => {
+                      const updated = [...(formData.neris_hazmat_chemicals || []), { dot_class: null, name: '', release_occurred: false }];
+                      handleChange('neris_hazmat_chemicals', updated);
+                    }}
+                  >
+                    + Add Chemical
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <NerisModal
+        isOpen={showIncidentTypeModal}
+        onClose={() => setShowIncidentTypeModal(false)}
+        title="Select Incident Type"
+        data={incidentTypes}
+        selected={formData.neris_incident_type_codes || []}
+        onToggle={handleNerisTypeToggle}
+        maxSelections={3}
+        dataType="children"
+      />
+      <NerisModal
+        isOpen={showLocationUseModal}
+        onClose={() => setShowLocationUseModal(false)}
+        title="Select Location Use"
+        data={locationUses}
+        selected={getLocationUseValue()}
+        onToggle={handleLocationUseToggle}
+        dataType="subtypes"
+      />
+      <NerisModal
+        isOpen={showActionsModal}
+        onClose={() => setShowActionsModal(false)}
+        title="Select Actions Taken"
+        data={actionsTaken}
+        selected={formData.neris_action_codes || []}
+        onToggle={handleActionToggle}
+        dataType="children"
+      />
+
+      <CADDataModal
+        isOpen={showCadModal}
+        onClose={() => setShowCadModal(false)}
+        dispatch={formData.cad_raw_dispatch}
+        updates={formData.cad_raw_updates}
+        clear={formData.cad_raw_clear}
+      />
+
+      {/* Restore from CAD Modal */}
+      {showRestoreModal && restorePreview && (
+        <div className="neris-modal-overlay" onClick={() => setShowRestoreModal(false)}>
+          <div className="neris-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <div className="neris-modal-header">
+              <h3>Restore from CAD</h3>
+              <button className="neris-modal-close" onClick={() => { setShowRestoreModal(false); setRestorePreview(null); }}>×</button>
+            </div>
+            <div className="neris-modal-body">
+              <p style={{ color: '#888', marginBottom: '1rem' }}>
+                Source: {restorePreview.source} | Incident: {restorePreview.incident_number}
+              </p>
+              
+              {restorePreview.restorable_fields?.length > 0 ? (
+                <>
+                  <p><strong>The following fields will be restored:</strong></p>
+                  <table style={{ width: '100%', marginBottom: '1rem', fontSize: '0.9rem' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #444' }}>Field</th>
+                        <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #444' }}>Current</th>
+                        <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #444' }}>From CAD</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {restorePreview.restorable_fields.map(field => {
+                        const comp = restorePreview.comparison[field];
+                        return (
+                          <tr key={field}>
+                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #333' }}>{field}</td>
+                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #333', color: '#e74c3c' }}>
+                              {comp?.current || '(empty)'}
+                            </td>
+                            <td style={{ padding: '0.5rem', borderBottom: '1px solid #333', color: '#2ecc71' }}>
+                              {comp?.would_become || comp?.from_cad || '(empty)'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <p style={{ color: '#f39c12', fontSize: '0.85rem' }}>
+                    ⚠️ {restorePreview.note}
+                  </p>
+                </>
+              ) : (
+                <p>No fields need to be restored - current values match CAD data.</p>
+              )}
+            </div>
+            <div className="neris-modal-footer">
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => { setShowRestoreModal(false); setRestorePreview(null); }}
+              >
+                Cancel
+              </button>
+              {restorePreview.restorable_fields?.length > 0 && (
+                <button 
+                  className="btn btn-primary" 
+                  onClick={handleRestoreConfirm}
+                  disabled={restoreLoading}
+                >
+                  {restoreLoading ? 'Restoring...' : 'Restore Fields'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Buttons */}
+      <div className="runsheet-actions">
+        {onClose && <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>}
+        {incident?.id && formData.status === 'OPEN' && (
+          <button className="btn btn-warning" onClick={handleCloseIncident} disabled={saving || !userSession}>
+            Close Incident
+          </button>
+        )}
+        <button 
+          className="btn btn-primary" 
+          onClick={handleSave} 
+          disabled={saving || !userSession}
+          title={!userSession ? 'Please log in first' : ''}
+        >
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default RunSheetForm;
