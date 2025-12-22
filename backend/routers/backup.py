@@ -1,3 +1,21 @@
+"""
+Backup router - Export CAD data and incident records
+"""
+
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from typing import Optional
+from datetime import datetime, date, time as dt_time, timedelta
+import json
+import io
+
+from database import get_db
+
+router = APIRouter()
+
+
 @router.get("/diagnose-times")
 async def diagnose_incident_times(
     year: int = Query(None),
@@ -82,7 +100,7 @@ async def diagnose_incident_times(
     ok_count = 0
     
     for row in result:
-        incident_id = row[0]
+        inc_id = row[0]
         incident_number = row[1]
         incident_date = row[2]
         stored_times = {
@@ -102,7 +120,7 @@ async def diagnose_incident_times(
         parsed = parse_cad_html(raw_html)
         if not parsed:
             issues.append({
-                "incident_id": incident_id,
+                "incident_id": inc_id,
                 "incident_number": incident_number,
                 "issue": "PARSE_ERROR",
                 "details": "Failed to parse stored CAD HTML"
@@ -169,7 +187,7 @@ async def diagnose_incident_times(
         
         if incident_issues:
             issues.append({
-                "incident_id": incident_id,
+                "incident_id": inc_id,
                 "incident_number": incident_number,
                 "incident_date": incident_date.isoformat() if incident_date else None,
                 "issues": incident_issues
@@ -372,7 +390,7 @@ async def fix_all_incident_times(
     skipped = 0
     
     for row in result:
-        incident_id = row[0]
+        inc_id = row[0]
         incident_number = row[1]
         incident_date = row[2]
         stored_times = {
@@ -434,13 +452,13 @@ async def fix_all_incident_times(
         if update_fields:
             if not dry_run:
                 set_clauses = ", ".join([f"{k} = :{k}" for k in update_fields.keys()])
-                update_fields['id'] = incident_id
+                update_fields['id'] = inc_id
                 db.execute(text(f"""
                     UPDATE incidents SET {set_clauses}, updated_at = NOW() WHERE id = :id
                 """), update_fields)
             
             fixes.append({
-                "incident_id": incident_id,
+                "incident_id": inc_id,
                 "incident_number": incident_number,
                 "changes": changes
             })
@@ -459,24 +477,6 @@ async def fix_all_incident_times(
     }
 
 
-"""
-Backup router - Export CAD data and incident records
-"""
-
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from typing import Optional
-from datetime import datetime, date, time as dt_time, timedelta
-import json
-import io
-
-from database import get_db
-
-router = APIRouter()
-
-
 @router.post("/restore-from-cad/{incident_id}")
 async def restore_incident_from_cad(
     incident_id: int,
@@ -490,7 +490,6 @@ async def restore_incident_from_cad(
     import sys
     sys.path.insert(0, '/opt/runsheet/cad')
     from cad_parser import parse_cad_html, report_to_dict
-    from datetime import datetime, time as dt_time
     
     # Get the incident with raw HTML and current times
     result = db.execute(text("""
@@ -593,10 +592,9 @@ async def restore_incident_from_cad(
     
     # Restore time fields with midnight crossing logic
     # Note: Clear reports use first_dispatch, dispatch reports use dispatch_time
-    dispatch_time_str = report_dict.get('first_dispatch') or report_dict.get('dispatch_time')  # Reference for midnight crossing
+    dispatch_time_str = report_dict.get('first_dispatch') or report_dict.get('dispatch_time')
     
     # Map CAD fields to database fields
-    # Use fallback for dispatch_time since clear/dispatch reports use different keys
     time_field_mapping = [
         (report_dict.get('first_dispatch') or report_dict.get('dispatch_time'), 'time_dispatched'),
         (report_dict.get('first_enroute'), 'time_first_enroute'),
@@ -632,7 +630,6 @@ async def restore_incident_from_cad(
         "incident_number": incident_number,
         "source": "clear_report" if raw_clear else "dispatch_report",
         "restored_fields": restored_fields,
-        "note": "Dates unchanged on time fields - verify manually if incident spanned midnight",
         "values": {k: v.isoformat() if hasattr(v, 'isoformat') else v for k, v in update_fields.items() if k != 'id'}
     }
 
@@ -691,7 +688,6 @@ async def preview_restore_from_cad(
         "cad_event_type": report_dict.get('event_type'),
         "cad_event_subtype": report_dict.get('event_subtype'),
         # Time fields - raw time strings (HH:MM:SS)
-        # Use first_dispatch for clear reports, fall back to dispatch_time for dispatch reports
         "time_dispatched": report_dict.get('first_dispatch') or report_dict.get('dispatch_time'),
         "time_first_enroute": report_dict.get('first_enroute'),
         "time_first_on_scene": report_dict.get('first_arrive'),
