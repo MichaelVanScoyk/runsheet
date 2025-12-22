@@ -1,3 +1,464 @@
+@router.get("/diagnose-times")
+async def diagnose_incident_times(
+    year: int = Query(None),
+    incident_id: int = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Diagnose time/date issues in incidents by comparing stored values against CAD data.
+    
+    Checks:
+    - Missing times that exist in CAD
+    - Date discrepancies (wrong day due to midnight crossing logic)
+    - Time discrepancies
+    
+    Returns list of issues found.
+    """
+    import sys
+    sys.path.insert(0, '/opt/runsheet/cad')
+    from cad_parser import parse_cad_html, report_to_dict
+    
+    # Build query filter
+    if incident_id:
+        filter_clause = "id = :incident_id"
+        params = {"incident_id": incident_id}
+    elif year:
+        filter_clause = "year_prefix = :year"
+        params = {"year": year}
+    else:
+        # Default to current year
+        filter_clause = "year_prefix = :year"
+        params = {"year": datetime.now().year}
+    
+    result = db.execute(text(f"""
+        SELECT 
+            id,
+            internal_incident_number,
+            incident_date,
+            time_dispatched,
+            time_first_enroute,
+            time_first_on_scene,
+            time_last_cleared,
+            time_in_service,
+            cad_raw_dispatch,
+            cad_raw_clear
+        FROM incidents 
+        WHERE {filter_clause} AND deleted_at IS NULL
+        ORDER BY incident_date, internal_incident_number
+    """), params)
+    
+    def parse_time_parts(time_str):
+        if not time_str:
+            return None
+        try:
+            parts = time_str.split(':')
+            if len(parts) >= 2:
+                return (int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0)
+        except ValueError:
+            return None
+        return None
+    
+    def build_expected_datetime(base_date, time_str, dispatch_time_str):
+        """Build what the datetime SHOULD be based on CAD time and midnight crossing."""
+        time_parts = parse_time_parts(time_str)
+        if not time_parts or not base_date:
+            return None
+        
+        hours, minutes, seconds = time_parts
+        result_date = base_date
+        
+        if dispatch_time_str:
+            dispatch_parts = parse_time_parts(dispatch_time_str)
+            if dispatch_parts:
+                disp_total = dispatch_parts[0] * 60 + dispatch_parts[1]
+                this_total = hours * 60 + minutes
+                if this_total < disp_total:
+                    result_date = base_date + timedelta(days=1)
+        
+        return datetime.combine(result_date, dt_time(hours, minutes, seconds))
+    
+    issues = []
+    checked_count = 0
+    ok_count = 0
+    
+    for row in result:
+        incident_id = row[0]
+        incident_number = row[1]
+        incident_date = row[2]
+        stored_times = {
+            'time_dispatched': row[3],
+            'time_first_enroute': row[4],
+            'time_first_on_scene': row[5],
+            'time_last_cleared': row[6],
+            'time_in_service': row[7],
+        }
+        raw_dispatch = row[8]
+        raw_clear = row[9]
+        
+        raw_html = raw_clear or raw_dispatch
+        if not raw_html:
+            continue
+        
+        parsed = parse_cad_html(raw_html)
+        if not parsed:
+            issues.append({
+                "incident_id": incident_id,
+                "incident_number": incident_number,
+                "issue": "PARSE_ERROR",
+                "details": "Failed to parse stored CAD HTML"
+            })
+            continue
+        
+        report_dict = report_to_dict(parsed)
+        checked_count += 1
+        
+        # Get dispatch time for midnight crossing reference
+        dispatch_time_str = report_dict.get('first_dispatch') or report_dict.get('dispatch_time')
+        
+        # Map CAD fields to DB fields
+        time_mapping = [
+            ('time_dispatched', report_dict.get('first_dispatch') or report_dict.get('dispatch_time')),
+            ('time_first_enroute', report_dict.get('first_enroute')),
+            ('time_first_on_scene', report_dict.get('first_arrive')),
+            ('time_last_cleared', report_dict.get('last_available')),
+            ('time_in_service', report_dict.get('last_at_quarters')),
+        ]
+        
+        incident_issues = []
+        
+        for db_field, cad_time_str in time_mapping:
+            stored_val = stored_times[db_field]
+            
+            if cad_time_str:
+                expected = build_expected_datetime(incident_date, cad_time_str, dispatch_time_str)
+                
+                if stored_val is None:
+                    # CAD has time but DB doesn't
+                    incident_issues.append({
+                        "field": db_field,
+                        "issue": "MISSING",
+                        "stored": None,
+                        "expected": expected.isoformat() if expected else None,
+                        "cad_time": cad_time_str
+                    })
+                elif expected:
+                    # Compare stored vs expected
+                    # Normalize to compare (stored might have timezone info)
+                    stored_dt = stored_val.replace(tzinfo=None) if hasattr(stored_val, 'replace') else stored_val
+                    
+                    # Check date mismatch
+                    if stored_dt.date() != expected.date():
+                        incident_issues.append({
+                            "field": db_field,
+                            "issue": "DATE_MISMATCH",
+                            "stored": stored_dt.isoformat(),
+                            "expected": expected.isoformat(),
+                            "cad_time": cad_time_str,
+                            "stored_date": stored_dt.date().isoformat(),
+                            "expected_date": expected.date().isoformat()
+                        })
+                    # Check time mismatch (allowing 1 second tolerance for rounding)
+                    elif abs((stored_dt - expected).total_seconds()) > 1:
+                        incident_issues.append({
+                            "field": db_field,
+                            "issue": "TIME_MISMATCH",
+                            "stored": stored_dt.isoformat(),
+                            "expected": expected.isoformat(),
+                            "cad_time": cad_time_str
+                        })
+        
+        if incident_issues:
+            issues.append({
+                "incident_id": incident_id,
+                "incident_number": incident_number,
+                "incident_date": incident_date.isoformat() if incident_date else None,
+                "issues": incident_issues
+            })
+        else:
+            ok_count += 1
+    
+    return {
+        "checked": checked_count,
+        "ok": ok_count,
+        "with_issues": len(issues),
+        "issues": issues
+    }
+
+
+@router.post("/fix-times/{incident_id}")
+async def fix_incident_times(
+    incident_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Fix time/date issues for a specific incident by re-parsing CAD data
+    and applying correct midnight crossing logic.
+    
+    This is essentially the same as restore-from-cad but only updates time fields.
+    """
+    import sys
+    sys.path.insert(0, '/opt/runsheet/cad')
+    from cad_parser import parse_cad_html, report_to_dict
+    
+    # Get incident
+    result = db.execute(text("""
+        SELECT 
+            id,
+            internal_incident_number,
+            incident_date,
+            cad_raw_dispatch,
+            cad_raw_clear
+        FROM incidents 
+        WHERE id = :id AND deleted_at IS NULL
+    """), {"id": incident_id}).fetchone()
+    
+    if not result:
+        return {"error": "Incident not found"}
+    
+    incident_number = result[1]
+    incident_date = result[2]
+    raw_html = result[4] or result[3]  # Prefer clear report
+    
+    if not raw_html:
+        return {"error": "No raw CAD HTML stored"}
+    
+    parsed = parse_cad_html(raw_html)
+    if not parsed:
+        return {"error": "Failed to parse stored HTML"}
+    
+    report_dict = report_to_dict(parsed)
+    
+    def parse_time_parts(time_str):
+        if not time_str:
+            return None
+        try:
+            parts = time_str.split(':')
+            if len(parts) >= 2:
+                return (int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0)
+        except ValueError:
+            return None
+        return None
+    
+    def build_datetime(base_date, time_str, dispatch_time_str):
+        time_parts = parse_time_parts(time_str)
+        if not time_parts or not base_date:
+            return None
+        
+        hours, minutes, seconds = time_parts
+        result_date = base_date
+        
+        if dispatch_time_str:
+            dispatch_parts = parse_time_parts(dispatch_time_str)
+            if dispatch_parts:
+                disp_total = dispatch_parts[0] * 60 + dispatch_parts[1]
+                this_total = hours * 60 + minutes
+                if this_total < disp_total:
+                    result_date = base_date + timedelta(days=1)
+        
+        return datetime.combine(result_date, dt_time(hours, minutes, seconds))
+    
+    dispatch_time_str = report_dict.get('first_dispatch') or report_dict.get('dispatch_time')
+    
+    update_fields = {}
+    fixed_fields = []
+    
+    time_mapping = [
+        ('time_dispatched', report_dict.get('first_dispatch') or report_dict.get('dispatch_time')),
+        ('time_first_enroute', report_dict.get('first_enroute')),
+        ('time_first_on_scene', report_dict.get('first_arrive')),
+        ('time_last_cleared', report_dict.get('last_available')),
+        ('time_in_service', report_dict.get('last_at_quarters')),
+    ]
+    
+    for db_field, cad_time_str in time_mapping:
+        if cad_time_str:
+            new_datetime = build_datetime(incident_date, cad_time_str, dispatch_time_str)
+            if new_datetime:
+                update_fields[db_field] = new_datetime
+                fixed_fields.append(db_field)
+    
+    if not update_fields:
+        return {"error": "No time fields to fix"}
+    
+    set_clauses = ", ".join([f"{k} = :{k}" for k in update_fields.keys()])
+    update_fields['id'] = incident_id
+    
+    db.execute(text(f"""
+        UPDATE incidents 
+        SET {set_clauses}, updated_at = NOW()
+        WHERE id = :id
+    """), update_fields)
+    db.commit()
+    
+    return {
+        "success": True,
+        "incident_id": incident_id,
+        "incident_number": incident_number,
+        "fixed_fields": fixed_fields,
+        "new_values": {k: v.isoformat() if hasattr(v, 'isoformat') else v for k, v in update_fields.items() if k != 'id'}
+    }
+
+
+@router.post("/fix-all-times")
+async def fix_all_incident_times(
+    year: int = Query(None),
+    dry_run: bool = Query(True),
+    db: Session = Depends(get_db)
+):
+    """
+    Fix time/date issues for all incidents in a year.
+    
+    Args:
+        year: Year to process (defaults to current year)
+        dry_run: If True, only report what would be fixed without making changes
+    
+    Returns summary of fixes made (or that would be made).
+    """
+    import sys
+    sys.path.insert(0, '/opt/runsheet/cad')
+    from cad_parser import parse_cad_html, report_to_dict
+    
+    if not year:
+        year = datetime.now().year
+    
+    result = db.execute(text("""
+        SELECT 
+            id,
+            internal_incident_number,
+            incident_date,
+            time_dispatched,
+            time_first_enroute,
+            time_first_on_scene,
+            time_last_cleared,
+            time_in_service,
+            cad_raw_dispatch,
+            cad_raw_clear
+        FROM incidents 
+        WHERE year_prefix = :year AND deleted_at IS NULL
+        ORDER BY incident_date, internal_incident_number
+    """), {"year": year})
+    
+    def parse_time_parts(time_str):
+        if not time_str:
+            return None
+        try:
+            parts = time_str.split(':')
+            if len(parts) >= 2:
+                return (int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0)
+        except ValueError:
+            return None
+        return None
+    
+    def build_datetime(base_date, time_str, dispatch_time_str):
+        time_parts = parse_time_parts(time_str)
+        if not time_parts or not base_date:
+            return None
+        
+        hours, minutes, seconds = time_parts
+        result_date = base_date
+        
+        if dispatch_time_str:
+            dispatch_parts = parse_time_parts(dispatch_time_str)
+            if dispatch_parts:
+                disp_total = dispatch_parts[0] * 60 + dispatch_parts[1]
+                this_total = hours * 60 + minutes
+                if this_total < disp_total:
+                    result_date = base_date + timedelta(days=1)
+        
+        return datetime.combine(result_date, dt_time(hours, minutes, seconds))
+    
+    fixes = []
+    processed = 0
+    skipped = 0
+    
+    for row in result:
+        incident_id = row[0]
+        incident_number = row[1]
+        incident_date = row[2]
+        stored_times = {
+            'time_dispatched': row[3],
+            'time_first_enroute': row[4],
+            'time_first_on_scene': row[5],
+            'time_last_cleared': row[6],
+            'time_in_service': row[7],
+        }
+        raw_html = row[9] or row[8]  # Prefer clear report
+        
+        if not raw_html or not incident_date:
+            skipped += 1
+            continue
+        
+        parsed = parse_cad_html(raw_html)
+        if not parsed:
+            skipped += 1
+            continue
+        
+        report_dict = report_to_dict(parsed)
+        processed += 1
+        
+        dispatch_time_str = report_dict.get('first_dispatch') or report_dict.get('dispatch_time')
+        
+        time_mapping = [
+            ('time_dispatched', report_dict.get('first_dispatch') or report_dict.get('dispatch_time')),
+            ('time_first_enroute', report_dict.get('first_enroute')),
+            ('time_first_on_scene', report_dict.get('first_arrive')),
+            ('time_last_cleared', report_dict.get('last_available')),
+            ('time_in_service', report_dict.get('last_at_quarters')),
+        ]
+        
+        update_fields = {}
+        changes = []
+        
+        for db_field, cad_time_str in time_mapping:
+            if cad_time_str:
+                expected = build_datetime(incident_date, cad_time_str, dispatch_time_str)
+                stored = stored_times[db_field]
+                
+                if expected:
+                    needs_update = False
+                    if stored is None:
+                        needs_update = True
+                    else:
+                        stored_dt = stored.replace(tzinfo=None) if hasattr(stored, 'replace') else stored
+                        if stored_dt != expected:
+                            needs_update = True
+                    
+                    if needs_update:
+                        update_fields[db_field] = expected
+                        changes.append({
+                            "field": db_field,
+                            "old": stored.isoformat() if stored else None,
+                            "new": expected.isoformat()
+                        })
+        
+        if update_fields:
+            if not dry_run:
+                set_clauses = ", ".join([f"{k} = :{k}" for k in update_fields.keys()])
+                update_fields['id'] = incident_id
+                db.execute(text(f"""
+                    UPDATE incidents SET {set_clauses}, updated_at = NOW() WHERE id = :id
+                """), update_fields)
+            
+            fixes.append({
+                "incident_id": incident_id,
+                "incident_number": incident_number,
+                "changes": changes
+            })
+    
+    if not dry_run:
+        db.commit()
+    
+    return {
+        "dry_run": dry_run,
+        "year": year,
+        "processed": processed,
+        "skipped": skipped,
+        "incidents_with_fixes": len(fixes),
+        "total_field_fixes": sum(len(f["changes"]) for f in fixes),
+        "fixes": fixes
+    }
+
+
 """
 Backup router - Export CAD data and incident records
 """
