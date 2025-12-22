@@ -814,8 +814,16 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
 
       await saveAllAssignments(incidentId, assignments, editedBy);
 
+      // Refresh audit log after save
+      try {
+        const auditRes = await getIncidentAuditLog(incidentId);
+        setAuditLog(auditRes.data.entries || []);
+      } catch (err) {
+        console.error('Failed to refresh audit log:', err);
+      }
+
       if (onSave) onSave(incidentId);
-      if (onClose) onClose();
+      // Don't call onClose - stay on form after save
     } catch (err) {
       console.error('Failed to save:', err);
       alert('Failed to save incident: ' + (err.message || 'Unknown error'));

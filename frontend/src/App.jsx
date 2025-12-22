@@ -423,7 +423,11 @@ function AppContent() {
 
         <ul className="nav-links">
           <li>
-            <NavLink to="/" className={({ isActive }) => isActive ? 'active' : ''}>
+            <NavLink 
+              to="/" 
+              className={({ isActive }) => isActive ? 'active' : ''}
+              onClick={() => window.dispatchEvent(new CustomEvent('nav-incidents-click'))}
+            >
               📋 Incidents
             </NavLink>
           </li>

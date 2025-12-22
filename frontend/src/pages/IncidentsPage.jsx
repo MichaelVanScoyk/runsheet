@@ -37,6 +37,18 @@ function IncidentsPage() {
     };
   }, [categoryFilter, resetFilterTimeout]);
 
+  // Listen for nav menu click to close form (acts as Cancel)
+  useEffect(() => {
+    const handleNavClick = () => {
+      if (showForm) {
+        setShowForm(false);
+        setEditingIncident(null);
+      }
+    };
+    window.addEventListener('nav-incidents-click', handleNavClick);
+    return () => window.removeEventListener('nav-incidents-click', handleNavClick);
+  }, [showForm]);
+
   const loadData = useCallback(async () => {
     try {
       const category = categoryFilter === 'ALL' ? null : categoryFilter;

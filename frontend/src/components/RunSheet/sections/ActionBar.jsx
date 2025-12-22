@@ -13,21 +13,28 @@ export default function ActionBar() {
   
   return (
     <div className="bg-dark-hover rounded px-3 py-2 mb-2 flex items-center justify-between gap-3 flex-wrap">
-      {/* Only show warning if not logged in - per context doc */}
-      {!userSession && (
-        <span className="text-status-warning text-sm">⚠️ Log in to edit</span>
-      )}
-      {userSession && !userSession.is_approved && (
-        <span className="text-status-warning text-sm">⚠️ Pending approval</span>
-      )}
-      {userSession && userSession.is_approved && <span />}
-
-      <div className="flex gap-2">
+      {/* Left side - Back link */}
+      <div className="flex items-center gap-3">
         {onClose && (
-          <button className="btn btn-secondary" onClick={onClose} disabled={saving}>
-            Cancel
+          <button 
+            className="text-gray-400 hover:text-white text-sm"
+            onClick={onClose}
+            disabled={saving}
+          >
+            ← Back to List
           </button>
         )}
+        
+        {/* Warnings */}
+        {!userSession && (
+          <span className="text-status-warning text-sm">⚠️ Log in to edit</span>
+        )}
+        {userSession && !userSession.is_approved && (
+          <span className="text-status-warning text-sm">⚠️ Pending approval</span>
+        )}
+      </div>
+
+      <div className="flex gap-2">
         {incident?.id && formData.status === 'OPEN' && (
           <button 
             className="btn btn-warning" 
