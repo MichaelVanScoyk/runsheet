@@ -307,7 +307,7 @@ class CADListener:
                 logger.error(f"Failed to create incident: {resp.text}")
     
     def _handle_clear(self, report: dict, raw_html: str = None):
-        """Handle Clear Report - update times, merge unit times, and close incident"""
+        """Handle Clear Report - update all fields, times, merge unit times, and close incident"""
         
         event_number = report['event_number']
         
@@ -344,10 +344,61 @@ class CADListener:
             except:
                 pass
         
-        # Build update data
+        # Build update data - start with raw HTML
         update_data = {
             'cad_raw_clear': raw_html,  # Store raw clear report HTML
         }
+        
+        # Track fields that changed between dispatch and clear for audit purposes
+        cad_changes = []
+        
+        # Update ALL text fields from clear report (clear report is most authoritative)
+        # Address, municipality, cross streets, caller info, event type/subtype
+        if report.get('address'):
+            if report['address'] != incident.get('address'):
+                cad_changes.append(f"address: '{incident.get('address')}' -> '{report['address']}'")
+            update_data['address'] = report['address']
+        
+        if report.get('municipality'):
+            # Auto-create municipality if needed
+            try:
+                requests.post(
+                    f"{self.api_url}/api/lookups/municipalities/auto-create",
+                    params={'code': report['municipality']}
+                )
+            except Exception as e:
+                logger.warning(f"Could not auto-create municipality: {e}")
+            if report['municipality'] != incident.get('municipality_code'):
+                cad_changes.append(f"municipality: '{incident.get('municipality_code')}' -> '{report['municipality']}'")
+            update_data['municipality_code'] = report['municipality']
+        
+        if report.get('cross_streets'):
+            if report['cross_streets'] != incident.get('cross_streets'):
+                cad_changes.append(f"cross_streets: '{incident.get('cross_streets')}' -> '{report['cross_streets']}'")
+            update_data['cross_streets'] = report['cross_streets']
+        
+        if report.get('esz'):
+            update_data['esz_box'] = report['esz']
+        
+        if report.get('event_type'):
+            if report['event_type'] != incident.get('cad_event_type'):
+                cad_changes.append(f"event_type: '{incident.get('cad_event_type')}' -> '{report['event_type']}'")
+            update_data['cad_event_type'] = report['event_type']
+        
+        if report.get('event_subtype'):
+            if report['event_subtype'] != incident.get('cad_event_subtype'):
+                cad_changes.append(f"event_subtype: '{incident.get('cad_event_subtype')}' -> '{report['event_subtype']}'")
+            update_data['cad_event_subtype'] = report['event_subtype']
+        
+        if report.get('caller_name'):
+            update_data['caller_name'] = report['caller_name']
+        
+        if report.get('caller_phone'):
+            update_data['caller_phone'] = report['caller_phone']
+        
+        # Log any CAD data changes for audit trail
+        if cad_changes:
+            logger.info(f"CAD data changed between dispatch and clear for {event_number}: {'; '.join(cad_changes)}")
         
         if report.get('first_dispatch'):
             update_data['time_dispatched'] = self._parse_cad_time(
