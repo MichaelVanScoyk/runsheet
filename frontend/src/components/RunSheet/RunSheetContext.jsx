@@ -613,6 +613,41 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
     return loc.use_subtype ? `${loc.use_type}: ${loc.use_subtype}` : loc.use_type;
   };
 
+  // Build datetime from date and time string with midnight crossing logic (24-hour clock)
+  const buildCadDatetime = (baseDate, timeStr, dispatchTimeStr) => {
+    if (!timeStr || !baseDate) return null;
+    
+    // Parse time string (HH:MM:SS or HH:MM) - 24-hour format
+    const timeParts = timeStr.split(':');
+    if (timeParts.length < 2) return null;
+    const hours = parseInt(timeParts[0]);
+    const minutes = parseInt(timeParts[1]);
+    const seconds = timeParts[2] ? parseInt(timeParts[2]) : 0;
+    
+    // Start with incident date
+    let date = new Date(baseDate + 'T00:00:00');
+    
+    // Check for midnight crossing (24-hour clock logic):
+    // If this time is earlier than dispatch time, it crossed midnight
+    if (dispatchTimeStr) {
+      const dispatchParts = dispatchTimeStr.split(':');
+      const dispatchHours = parseInt(dispatchParts[0]);
+      const dispatchMins = parseInt(dispatchParts[1]);
+      const dispatchTotal = dispatchHours * 60 + dispatchMins;
+      const thisTotal = hours * 60 + minutes;
+      
+      // Simple rule: if this time < dispatch time, add 1 day
+      // e.g., dispatch 23:07, cleared 00:15 → 00:15 < 23:07 → next day
+      if (thisTotal < dispatchTotal) {
+        date.setDate(date.getDate() + 1);
+      }
+    }
+    
+    date.setHours(hours, minutes, seconds, 0);
+    // Return in datetime-local format: YYYY-MM-DDTHH:MM
+    return date.toISOString().slice(0, 16);
+  };
+
   const handleRestorePreview = async () => {
     if (!incident?.id) return;
     setRestoreLoading(true);
@@ -623,7 +658,70 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
         alert(data.error);
         return;
       }
-      setRestorePreview(data);
+      
+      // Backend returns cad_values - compare against current formData
+      const cadValues = data.cad_values || {};
+      const incidentDate = data.incident_date || formData.incident_date;
+      const dispatchTimeStr = cadValues.time_dispatched; // For midnight crossing reference
+      
+      const changes = [];
+      
+      // Text fields - direct comparison
+      const textFields = ['address', 'municipality_code', 'cross_streets', 'cad_event_type', 'cad_event_subtype'];
+      for (const field of textFields) {
+        const cadVal = cadValues[field];
+        const currentVal = formData[field] || '';
+        if (cadVal && cadVal !== currentVal) {
+          changes.push({ field, current: currentVal || null, cad: cadVal });
+        }
+      }
+      
+      // Time fields - build full datetime and compare
+      const timeFields = [
+        { field: 'time_dispatched', cadKey: 'time_dispatched' },
+        { field: 'time_first_enroute', cadKey: 'time_first_enroute' },
+        { field: 'time_first_on_scene', cadKey: 'time_first_on_scene' },
+        { field: 'time_last_cleared', cadKey: 'time_last_cleared' },
+        { field: 'time_in_service', cadKey: 'time_in_service' },
+      ];
+      
+      for (const { field, cadKey } of timeFields) {
+        const cadTimeStr = cadValues[cadKey];
+        if (!cadTimeStr) continue;
+        
+        // Build full datetime with midnight crossing logic
+        const cadDatetime = buildCadDatetime(incidentDate, cadTimeStr, dispatchTimeStr);
+        if (!cadDatetime) continue;
+        
+        // Current form value is in datetime-local format: YYYY-MM-DDTHH:MM
+        const currentVal = formData[field] || '';
+        
+        // Compare - normalize both to same format for comparison
+        const normalizedCurrent = currentVal ? currentVal.slice(0, 16) : '';
+        const normalizedCad = cadDatetime.slice(0, 16);
+        
+        if (normalizedCad !== normalizedCurrent) {
+          // Format for display
+          const formatDisplay = (dt) => {
+            if (!dt) return null;
+            const d = new Date(dt);
+            return d.toLocaleString('en-US', { 
+              month: '2-digit', day: '2-digit', year: 'numeric',
+              hour: '2-digit', minute: '2-digit', hour12: false 
+            });
+          };
+          changes.push({ 
+            field, 
+            current: formatDisplay(currentVal), 
+            cad: formatDisplay(cadDatetime) 
+          });
+        }
+      }
+      
+      setRestorePreview({
+        ...data,
+        changes,
+      });
       setShowRestoreModal(true);
     } catch (err) {
       console.error('Failed to preview restore:', err);

@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional
-from datetime import datetime, date
+from datetime import datetime, date, time as dt_time, timedelta
 import json
 import io
 
@@ -94,30 +94,47 @@ async def restore_incident_from_cad(
         'event_subtype': 'cad_event_subtype',
     }
     
-    def parse_time_only(time_str):
-        """Parse HH:MM:SS or HH:MM string to time object"""
+    def parse_time_parts(time_str):
+        """Parse HH:MM:SS or HH:MM string to (hours, minutes, seconds)"""
         if not time_str:
             return None
         try:
-            if len(time_str) == 8:  # HH:MM:SS
-                return datetime.strptime(time_str, "%H:%M:%S").time()
-            elif len(time_str) == 5:  # HH:MM
-                return datetime.strptime(time_str, "%H:%M").time()
+            parts = time_str.split(':')
+            if len(parts) >= 2:
+                hours = int(parts[0])
+                minutes = int(parts[1])
+                seconds = int(parts[2]) if len(parts) > 2 else 0
+                return (hours, minutes, seconds)
         except ValueError:
             return None
         return None
     
-    def combine_date_time(existing_dt, new_time):
-        """Keep existing date, replace time portion"""
-        if not new_time:
+    def build_datetime_with_midnight_crossing(base_date, time_str, dispatch_time_str):
+        """
+        Build datetime from date and time, handling midnight crossing (24-hour clock).
+        If time is earlier than dispatch, it crossed midnight (add 1 day).
+        """
+        time_parts = parse_time_parts(time_str)
+        if not time_parts or not base_date:
             return None
-        if existing_dt:
-            use_date = existing_dt.date() if hasattr(existing_dt, 'date') else existing_dt
-        elif incident_date:
-            use_date = incident_date
-        else:
-            return None
-        return datetime.combine(use_date, new_time)
+        
+        hours, minutes, seconds = time_parts
+        result_date = base_date
+        
+        # Check for midnight crossing (24-hour clock logic)
+        if dispatch_time_str:
+            dispatch_parts = parse_time_parts(dispatch_time_str)
+            if dispatch_parts:
+                disp_hours, disp_mins, _ = dispatch_parts
+                disp_total = disp_hours * 60 + disp_mins
+                this_total = hours * 60 + minutes
+                
+                # Simple rule: if this time < dispatch time, add 1 day
+                # e.g., dispatch 23:07, cleared 00:15 -> next day
+                if this_total < disp_total:
+                    result_date = base_date + timedelta(days=1)
+        
+        return datetime.combine(result_date, dt_time(hours, minutes, seconds))
     
     update_fields = {}
     restored_fields = []
@@ -129,17 +146,15 @@ async def restore_incident_from_cad(
             update_fields[dest_field] = value
             restored_fields.append(dest_field)
     
-    # Restore time fields (keep dates, update times)
+    # Restore time fields with midnight crossing logic
+    dispatch_time_str = report_dict.get('dispatch_time')  # Reference for midnight crossing
     for src_field, dest_field in time_field_mapping.items():
         cad_time_str = report_dict.get(src_field)
         if cad_time_str:
-            new_time = parse_time_only(cad_time_str)
-            if new_time:
-                existing_dt = current_times.get(dest_field)
-                new_datetime = combine_date_time(existing_dt, new_time)
-                if new_datetime:
-                    update_fields[dest_field] = new_datetime
-                    restored_fields.append(dest_field)
+            new_datetime = build_datetime_with_midnight_crossing(incident_date, cad_time_str, dispatch_time_str)
+            if new_datetime:
+                update_fields[dest_field] = new_datetime
+                restored_fields.append(dest_field)
     
     if not update_fields:
         return {"error": "No fields to restore from parsed HTML", "incident_id": incident_id}
@@ -172,30 +187,20 @@ async def preview_restore_from_cad(
     db: Session = Depends(get_db)
 ):
     """
-    Preview what would be restored from CAD HTML without making changes.
-    Shows all restorable fields: address, municipality, event type, cross streets, times.
+    Return parsed CAD values for frontend comparison.
+    Frontend compares against current form state (not database).
+    Returns raw time strings - frontend handles date logic with midnight crossing.
     """
     import sys
     sys.path.insert(0, '/opt/runsheet/cad')
     from cad_parser import parse_cad_html, report_to_dict
-    from datetime import datetime
     
-    # Get the incident with current values and raw HTML
+    # Get the incident's raw HTML and incident_date
     result = db.execute(text("""
         SELECT 
             id,
             internal_incident_number,
             incident_date,
-            address,
-            municipality_code,
-            cross_streets,
-            cad_event_type,
-            cad_event_subtype,
-            time_dispatched,
-            time_first_enroute,
-            time_first_on_scene,
-            time_last_cleared,
-            time_in_service,
             cad_raw_dispatch,
             cad_raw_clear
         FROM incidents 
@@ -206,21 +211,8 @@ async def preview_restore_from_cad(
         return {"error": "Incident not found"}
     
     incident_date = result[2]
-    current = {
-        "address": result[3],
-        "municipality_code": result[4],
-        "cross_streets": result[5],
-        "cad_event_type": result[6],
-        "cad_event_subtype": result[7],
-        "time_dispatched": result[8],
-        "time_first_enroute": result[9],
-        "time_first_on_scene": result[10],
-        "time_last_cleared": result[11],
-        "time_in_service": result[12],
-    }
-    
-    raw_dispatch = result[13]
-    raw_clear = result[14]
+    raw_dispatch = result[3]
+    raw_clear = result[4]
     raw_html = raw_clear or raw_dispatch
     
     if not raw_html:
@@ -232,94 +224,29 @@ async def preview_restore_from_cad(
     
     report_dict = report_to_dict(parsed)
     
-    # Field mappings
-    text_field_mapping = {
-        'address': 'address',
-        'municipality': 'municipality_code',
-        'cross_streets': 'cross_streets',
-        'event_type': 'cad_event_type',
-        'event_subtype': 'cad_event_subtype',
+    # Return parsed CAD values - frontend does comparison
+    # Time fields are raw strings (HH:MM:SS) - frontend applies date logic
+    cad_values = {
+        # Text fields
+        "address": report_dict.get('address'),
+        "municipality_code": report_dict.get('municipality'),
+        "cross_streets": report_dict.get('cross_streets'),
+        "cad_event_type": report_dict.get('event_type'),
+        "cad_event_subtype": report_dict.get('event_subtype'),
+        # Time fields - raw time strings (HH:MM:SS)
+        "time_dispatched": report_dict.get('dispatch_time'),
+        "time_first_enroute": report_dict.get('first_enroute'),
+        "time_first_on_scene": report_dict.get('first_arrive'),
+        "time_last_cleared": report_dict.get('last_available'),
+        "time_in_service": report_dict.get('last_at_quarters'),
     }
-    
-    time_field_mapping = {
-        'dispatch_time': 'time_dispatched',
-        'first_enroute': 'time_first_enroute',
-        'first_arrive': 'time_first_on_scene',
-        'last_available': 'time_last_cleared',
-        'last_at_quarters': 'time_in_service',
-    }
-    
-    def parse_time_only(time_str):
-        if not time_str:
-            return None
-        try:
-            if len(time_str) == 8:
-                return datetime.strptime(time_str, "%H:%M:%S").time()
-            elif len(time_str) == 5:
-                return datetime.strptime(time_str, "%H:%M").time()
-        except ValueError:
-            return None
-        return None
-    
-    # Build comparison
-    restorable = []
-    comparison = {}
-    
-    # Text fields
-    for src_field, dest_field in text_field_mapping.items():
-        cad_value = report_dict.get(src_field)
-        current_value = current.get(dest_field)
-        
-        comparison[dest_field] = {
-            "current": current_value,
-            "from_cad": cad_value,
-        }
-        
-        if cad_value and cad_value != current_value:
-            comparison[dest_field]["would_change"] = True
-            restorable.append(dest_field)
-    
-    # Time fields
-    for src_field, dest_field in time_field_mapping.items():
-        cad_time_str = report_dict.get(src_field)
-        current_dt = current.get(dest_field)
-        
-        comparison[dest_field] = {
-            "current": current_dt.isoformat() if current_dt else None,
-            "cad_time": cad_time_str,
-        }
-        
-        if cad_time_str:
-            new_time = parse_time_only(cad_time_str)
-            if new_time and current_dt:
-                new_dt = datetime.combine(current_dt.date(), new_time)
-                comparison[dest_field]["would_become"] = new_dt.isoformat()
-                comparison[dest_field]["time_changed"] = current_dt.time() != new_time
-                if current_dt.time() != new_time:
-                    restorable.append(dest_field)
-    
-    # Build changes array for frontend compatibility
-    changes = []
-    for field in restorable:
-        comp = comparison.get(field, {})
-        current_val = comp.get('current')
-        cad_val = comp.get('from_cad') or comp.get('cad_time') or comp.get('would_become')
-        if current_val or cad_val:
-            changes.append({
-                "field": field,
-                "current": str(current_val) if current_val else None,
-                "cad": str(cad_val) if cad_val else None
-            })
     
     return {
         "incident_id": incident_id,
         "incident_number": result[1],
         "incident_date": incident_date.isoformat() if incident_date else None,
         "source": "clear_report" if raw_clear else "dispatch_report",
-        "comparison": comparison,
-        "restorable_fields": restorable,
-        "changes": changes,
-        "note": "Restore updates these fields from CAD. Time dates unchanged - verify manually if incident spanned midnight."
+        "cad_values": cad_values,
     }
 
 

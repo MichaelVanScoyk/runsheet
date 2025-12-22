@@ -522,14 +522,14 @@ class CADListener:
             # Combine date and time
             dt = datetime.combine(base_date, time_part)
             
-            # Check for midnight crossover
-            # If we have a dispatch time and this time is earlier, it likely crossed midnight
+            # Check for midnight crossover (24-hour clock logic)
+            # If this time is earlier than dispatch time, it crossed midnight
             if dispatch_time_str and incident_date:
                 try:
                     dispatch_time = datetime.strptime(dispatch_time_str, '%H:%M:%S').time()
-                    # If this time is significantly earlier than dispatch time,
-                    # it probably crossed midnight (e.g., dispatch 23:30, cleared 00:15)
-                    if time_part < dispatch_time and dispatch_time.hour >= 20 and time_part.hour < 8:
+                    # Simple rule: if this time < dispatch time, add 1 day
+                    # e.g., dispatch 23:07, cleared 00:15 -> next day
+                    if time_part < dispatch_time:
                         dt = dt + timedelta(days=1)
                         logger.debug(f"Midnight crossover detected: {time_str} -> {dt.date()}")
                 except:
