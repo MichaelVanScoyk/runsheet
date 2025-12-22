@@ -1231,6 +1231,7 @@ async def close_incident(
 async def save_assignments(
     incident_id: int,
     data: AssignmentsUpdate,
+    edited_by: Optional[int] = Query(None, description="Personnel ID of logged-in user making the edit"),
     db: Session = Depends(get_db)
 ):
     """Save personnel assignments"""
@@ -1287,13 +1288,14 @@ async def save_assignments(
             )
             db.add(assignment)
     
-    # Audit log
+    # Audit log - use edited_by (logged-in user) or fall back to completed_by
     unit_count = len([u for u, slots in data.assignments.items() if any(p for p in slots if p)])
+    audit_user_id = edited_by or incident.completed_by
     log_incident_audit(
         db=db,
         action="UPDATE",
         incident=incident,
-        completed_by_id=incident.completed_by,
+        completed_by_id=audit_user_id,
         summary=f"Updated assignments ({unit_count} units)"
     )
     

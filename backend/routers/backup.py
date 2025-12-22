@@ -298,6 +298,19 @@ async def preview_restore_from_cad(
                 if current_dt.time() != new_time:
                     restorable.append(dest_field)
     
+    # Build changes array for frontend compatibility
+    changes = []
+    for field in restorable:
+        comp = comparison.get(field, {})
+        current_val = comp.get('current')
+        cad_val = comp.get('from_cad') or comp.get('cad_time') or comp.get('would_become')
+        if current_val or cad_val:
+            changes.append({
+                "field": field,
+                "current": str(current_val) if current_val else None,
+                "cad": str(cad_val) if cad_val else None
+            })
+    
     return {
         "incident_id": incident_id,
         "incident_number": result[1],
@@ -305,6 +318,7 @@ async def preview_restore_from_cad(
         "source": "clear_report" if raw_clear else "dispatch_report",
         "comparison": comparison,
         "restorable_fields": restorable,
+        "changes": changes,
         "note": "Restore updates these fields from CAD. Time dates unchanged - verify manually if incident spanned midnight."
     }
 

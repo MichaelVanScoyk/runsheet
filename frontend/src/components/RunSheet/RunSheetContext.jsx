@@ -44,8 +44,9 @@ export const hasStructureFireType = (types) => hasIncidentSubtype(types, 'STRUCT
 export const hasOutsideFireType = (types) => hasIncidentSubtype(types, 'OUTSIDE_FIRE');
 
 // Save all assignments API call
-const saveAllAssignments = async (incidentId, assignments) => {
-  const response = await fetch(`/api/incidents/${incidentId}/assignments`, {
+const saveAllAssignments = async (incidentId, assignments, editedBy) => {
+  const params = editedBy ? `?edited_by=${editedBy}` : '';
+  const response = await fetch(`/api/incidents/${incidentId}/assignments${params}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ assignments })
@@ -690,7 +691,7 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
         await updateIncident(incidentId, cleanData, editedBy);
       }
 
-      await saveAllAssignments(incidentId, assignments);
+      await saveAllAssignments(incidentId, assignments, editedBy);
 
       if (onSave) onSave(incidentId);
       if (onClose) onClose();
