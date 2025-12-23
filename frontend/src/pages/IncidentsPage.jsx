@@ -255,7 +255,14 @@ function IncidentsPage() {
                         </span>
                       )}
                     </td>
-                    <td>{i.cad_event_type || '-'}</td>
+                    <td>
+                      {i.call_category === 'EMS' 
+                        ? (i.cad_event_type || '-')
+                        : (i.cad_event_subtype 
+                            ? `${i.cad_event_type || ''} / ${i.cad_event_subtype}`.replace(/^\s*\/\s*/, '')
+                            : (i.cad_event_type || '-'))
+                      }
+                    </td>
                     <td>{i.address || '-'}</td>
                     <td>{i.municipality_display_name || i.municipality_code || '-'}</td>
                     <td>
