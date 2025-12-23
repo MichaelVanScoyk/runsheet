@@ -224,7 +224,7 @@ function IncidentsPage() {
               <tr>
                 <th>Incident #</th>
                 <th>CAD #</th>
-                <th>Date</th>
+                <th>Date/Time</th>
                 <th>Type</th>
                 <th>Address</th>
                 <th>Township</th>
@@ -247,7 +247,14 @@ function IncidentsPage() {
                       {getCategoryBadge(i.call_category)}
                     </td>
                     <td>{i.cad_event_number}</td>
-                    <td>{i.incident_date}</td>
+                    <td>
+                      {i.incident_date}
+                      {i.time_dispatched && (
+                        <span style={{ color: '#888', marginLeft: '0.5rem' }}>
+                          {i.time_dispatched.split('T')[1]?.slice(0, 5)}
+                        </span>
+                      )}
+                    </td>
                     <td>{i.cad_event_type || '-'}</td>
                     <td>{i.address || '-'}</td>
                     <td>{i.municipality_code || '-'}</td>

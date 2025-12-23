@@ -185,6 +185,7 @@ const initialFormData = {
 export function RunSheetProvider({ incident, onSave, onClose, children }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [apparatus, setApparatus] = useState([]);
   const [personnel, setPersonnel] = useState([]);
   const [municipalities, setMunicipalities] = useState([]);
@@ -822,6 +823,10 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
         console.error('Failed to refresh audit log:', err);
       }
 
+      // Show success message
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+
       if (onSave) onSave(incidentId);
       // Don't call onClose - stay on form after save
     } catch (err) {
@@ -869,6 +874,7 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
     // Loading state
     loading,
     saving,
+    saveSuccess,
     
     // Reference data
     apparatus,

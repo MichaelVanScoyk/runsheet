@@ -5,7 +5,8 @@ export default function ActionBar() {
     incident, 
     formData, 
     userSession, 
-    saving, 
+    saving,
+    saveSuccess,
     onClose, 
     handleCloseIncident, 
     handleSave 
@@ -34,7 +35,10 @@ export default function ActionBar() {
         )}
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-center">
+        {saveSuccess && (
+          <span className="text-green-500 text-sm">✓ Saved</span>
+        )}
         {onClose && (
           <button className="btn btn-secondary" onClick={onClose} disabled={saving}>
             Cancel
