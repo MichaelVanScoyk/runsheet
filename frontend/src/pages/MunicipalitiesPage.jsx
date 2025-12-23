@@ -118,8 +118,11 @@ function MunicipalitiesPage() {
           + Add Municipality
         </button>
       </div>
-      <p style={{ color: '#888', marginBottom: '1rem', fontSize: '0.85rem' }}>
-        Map CAD codes to display names. Incidents store the CAD code; reports use the display name.
+      <p style={{ color: '#888', marginBottom: '1rem', fontSize: '0.85rem', lineHeight: '1.5' }}>
+        When a new municipality code arrives from CAD (like "WALLAC"), the system auto-creates an entry 
+        using the CAD code as the display name. These appear in the "Needs Normalization" section below. 
+        Edit them to set proper display names (e.g., "WALLAC" → "Wallace Township"). 
+        The incident list and reports will show the normalized display name instead of the CAD code.
       </p>
 
       {/* Auto-created needing attention */}

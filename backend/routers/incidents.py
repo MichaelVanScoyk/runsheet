@@ -438,28 +438,43 @@ async def list_incidents(
     total = query.count()
     incidents = query.offset(offset).limit(limit).all()
     
+    # Build response with municipality display names
+    incident_list = []
+    for i in incidents:
+        # Get municipality display name
+        muni_display = i.municipality_code  # Default to code
+        if i.municipality_id:
+            muni = db.query(Municipality).filter(Municipality.id == i.municipality_id).first()
+            if muni:
+                muni_display = muni.display_name or muni.name or muni.code
+        elif i.municipality_code:
+            # Fallback: look up by code if no ID
+            muni = db.query(Municipality).filter(Municipality.code == i.municipality_code).first()
+            if muni:
+                muni_display = muni.display_name or muni.name or muni.code
+        
+        incident_list.append({
+            "id": i.id,
+            "internal_incident_number": i.internal_incident_number,
+            "call_category": i.call_category,
+            "neris_id": i.neris_id,
+            "cad_event_number": i.cad_event_number,
+            "cad_event_type": i.cad_event_type,
+            "cad_event_subtype": i.cad_event_subtype,
+            "status": i.status,
+            "review_status": getattr(i, 'review_status', None),
+            "incident_date": i.incident_date.isoformat() if i.incident_date else None,
+            "address": i.address,
+            "municipality_code": i.municipality_code,
+            "municipality_display_name": muni_display,
+            "time_dispatched": i.time_dispatched.isoformat() if i.time_dispatched else None,
+            "neris_incident_type_codes": i.neris_incident_type_codes,
+        })
+    
     return {
         "total": total,
         "year": year,
-        "incidents": [
-            {
-                "id": i.id,
-                "internal_incident_number": i.internal_incident_number,
-                "call_category": i.call_category,
-                "neris_id": i.neris_id,
-                "cad_event_number": i.cad_event_number,
-                "cad_event_type": i.cad_event_type,
-                "cad_event_subtype": i.cad_event_subtype,
-                "status": i.status,
-                "review_status": getattr(i, 'review_status', None),
-                "incident_date": i.incident_date.isoformat() if i.incident_date else None,
-                "address": i.address,
-                "municipality_code": i.municipality_code,
-                "time_dispatched": i.time_dispatched.isoformat() if i.time_dispatched else None,
-                "neris_incident_type_codes": i.neris_incident_type_codes,
-            }
-            for i in incidents
-        ]
+        "incidents": incident_list
     }
 
 

@@ -257,7 +257,7 @@ function IncidentsPage() {
                     </td>
                     <td>{i.cad_event_type || '-'}</td>
                     <td>{i.address || '-'}</td>
-                    <td>{i.municipality_code || '-'}</td>
+                    <td>{i.municipality_display_name || i.municipality_code || '-'}</td>
                     <td>
                       <span className={`badge badge-${i.status?.toLowerCase()}`}>
                         {i.status}
