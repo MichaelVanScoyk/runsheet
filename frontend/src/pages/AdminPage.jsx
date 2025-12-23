@@ -191,8 +191,17 @@ function SettingsTab() {
         </div>
         <input
           type="text"
-          value={setting.raw_value || ''}
-          onChange={(e) => updateSetting(setting.category, setting.key, e.target.value)}
+          defaultValue={setting.raw_value || ''}
+          onBlur={(e) => {
+            if (e.target.value !== (setting.raw_value || '')) {
+              updateSetting(setting.category, setting.key, e.target.value);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.target.blur();
+            }
+          }}
           disabled={isSaving}
         />
       </div>

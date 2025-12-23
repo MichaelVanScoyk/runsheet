@@ -227,7 +227,7 @@ function IncidentsPage() {
                 <th>Date/Time</th>
                 <th>Type</th>
                 <th>Address</th>
-                <th>Township</th>
+                <th>Municipality</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
