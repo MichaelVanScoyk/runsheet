@@ -152,26 +152,6 @@ class NerisCode(Base):
 
 
 # =============================================================================
-# INCIDENT NUMBER SEQUENCE
-# =============================================================================
-
-class IncidentNumberSequence(Base):
-    """Tracks next incident number per year and category (Fire/EMS)"""
-    __tablename__ = "incident_number_sequences"
-    
-    id = Column(Integer, primary_key=True)
-    year = Column(Integer, nullable=False)
-    category = Column(String(10), nullable=False, default='FIRE')  # FIRE or EMS
-    next_number = Column(Integer, nullable=False, default=1)
-    updated_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
-    
-    __table_args__ = (
-        # Unique constraint on year + category
-        {'sqlite_autoincrement': True},
-    )
-
-
-# =============================================================================
 # CAD TYPE MAPPING (Learning System)
 # =============================================================================
 

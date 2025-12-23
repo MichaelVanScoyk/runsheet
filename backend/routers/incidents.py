@@ -18,7 +18,7 @@ from database import get_db
 from models import (
     Incident, IncidentUnit, IncidentPersonnel, 
     Municipality, Apparatus, Personnel, Rank, AuditLog,
-    IncidentNumberSequence, CadTypeMapping
+    CadTypeMapping
 )
 
 # Weather service (optional)
@@ -339,51 +339,33 @@ def maybe_generate_neris_id(db: Session, incident: Incident) -> Optional[str]:
 
 def get_next_incident_number(db: Session, year: int, category: str) -> str:
     """
-    Get next incident number for year and category.
+    Get next incident number for year and category based on actual incidents.
     Format: F250001 (Fire) or E250001 (EMS)
+    Uses MAX(existing) + 1 instead of a separate sequence table.
     """
     prefix = 'F' if category == 'FIRE' else 'E'
     year_short = year % 100  # 2025 -> 25
     
-    # Get or create sequence for this year/category
-    seq = db.query(IncidentNumberSequence).filter(
-        IncidentNumberSequence.year == year,
-        IncidentNumberSequence.category == category
-    ).first()
+    # Find the highest sequence number currently in use
+    result = db.execute(text("""
+        SELECT MAX(CAST(SUBSTRING(internal_incident_number FROM 4) AS INTEGER))
+        FROM incidents
+        WHERE year_prefix = :year
+          AND call_category = :category
+          AND deleted_at IS NULL
+    """), {"year": year, "category": category}).scalar()
     
-    if not seq:
-        seq = IncidentNumberSequence(year=year, category=category, next_number=1)
-        db.add(seq)
-        db.flush()
-    
-    next_num = seq.next_number
+    next_num = (result or 0) + 1
     return f"{prefix}{year_short}{next_num:04d}"
 
 
 def claim_incident_number(db: Session, year: int, category: str) -> str:
     """
-    Claim the next incident number (get and increment sequence).
+    Claim the next incident number based on actual incidents (MAX + 1).
+    This is now the same as get_next_incident_number since we don't pre-increment.
+    The unique constraint on internal_incident_number handles concurrency.
     """
-    prefix = 'F' if category == 'FIRE' else 'E'
-    year_short = year % 100
-    
-    # Get or create sequence
-    seq = db.query(IncidentNumberSequence).filter(
-        IncidentNumberSequence.year == year,
-        IncidentNumberSequence.category == category
-    ).with_for_update().first()
-    
-    if not seq:
-        seq = IncidentNumberSequence(year=year, category=category, next_number=1)
-        db.add(seq)
-        db.flush()
-    
-    num = seq.next_number
-    seq.next_number = num + 1
-    seq.updated_at = datetime.now(timezone.utc)
-    db.flush()
-    
-    return f"{prefix}{year_short}{num:04d}"
+    return get_next_incident_number(db, year, category)
 
 
 def parse_incident_number(number: str) -> tuple:
