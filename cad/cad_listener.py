@@ -407,14 +407,9 @@ class CADListener:
             update_data['time_dispatched'] = self._parse_cad_time(
                 report['first_dispatch'], incident_date, dispatch_time_str
             )
-        if report.get('first_enroute'):
-            update_data['time_first_enroute'] = self._parse_cad_time(
-                report['first_enroute'], incident_date, dispatch_time_str
-            )
-        if report.get('first_arrive'):
-            update_data['time_first_on_scene'] = self._parse_cad_time(
-                report['first_arrive'], incident_date, dispatch_time_str
-            )
+        # NOTE: first_enroute and first_on_scene will be calculated from units
+        # that have counts_for_response_times=true (after processing unit times below)
+        
         if report.get('last_at_quarters'):
             parsed_time = self._parse_cad_time(
                 report['last_at_quarters'], incident_date, dispatch_time_str
@@ -485,6 +480,27 @@ class CADListener:
         cad_units = list(existing_units.values())
         if cad_units:
             update_data['cad_units'] = cad_units
+            
+            # Calculate first_enroute and first_on_scene from units where counts_for_response_times=true
+            # This excludes chief vehicles and other units configured not to affect metrics
+            metric_units = [u for u in cad_units if u.get('counts_for_response_times', True)]
+            
+            # Find earliest enroute time from units that count
+            enroute_times = [u['time_enroute'] for u in metric_units if u.get('time_enroute')]
+            if enroute_times:
+                update_data['time_first_enroute'] = min(enroute_times)
+                logger.debug(f"Calculated first_enroute from {len(enroute_times)} metric units")
+            
+            # Find earliest arrival time from units that count
+            arrive_times = [u['time_arrived'] for u in metric_units if u.get('time_arrived')]
+            if arrive_times:
+                update_data['time_first_on_scene'] = min(arrive_times)
+                logger.debug(f"Calculated first_on_scene from {len(arrive_times)} metric units")
+            
+            # Log which units were excluded from metrics
+            excluded_units = [u['unit_id'] for u in cad_units if not u.get('counts_for_response_times', True)]
+            if excluded_units:
+                logger.info(f"Units excluded from response metrics: {', '.join(excluded_units)}")
         
         # Update incident
         if update_data:
