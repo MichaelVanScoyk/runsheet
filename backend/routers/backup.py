@@ -90,6 +90,7 @@ def get_full_unit_info(db: Session, unit_id: str) -> Dict[str, Any]:
     Full unit lookup matching settings_helper.get_unit_info().
     Returns all info needed to build cad_units entries.
     Checks cad_unit_id, unit_designator, AND aliases.
+    Returns canonical unit_designator to normalize aliases.
     """
     if not unit_id:
         return {
@@ -97,6 +98,7 @@ def get_full_unit_info(db: Session, unit_id: str) -> Dict[str, Any]:
             'apparatus_id': None,
             'category': None,
             'counts_for_response_times': False,
+            'unit_designator': None,
         }
     
     result = db.execute(text("""
@@ -116,6 +118,7 @@ def get_full_unit_info(db: Session, unit_id: str) -> Dict[str, Any]:
             'apparatus_id': result[0],
             'category': result[1],
             'counts_for_response_times': result[2] if result[2] is not None else True,
+            'unit_designator': result[4],  # Canonical unit_designator
         }
     
     # Not found in apparatus - it's mutual aid, doesn't count for our response metrics
@@ -124,6 +127,7 @@ def get_full_unit_info(db: Session, unit_id: str) -> Dict[str, Any]:
         'apparatus_id': None,
         'category': None,
         'counts_for_response_times': False,
+        'unit_designator': None,
     }
 
 
@@ -220,8 +224,10 @@ def full_reparse_incident(incident_id: int, db: Session) -> Dict[str, Any]:
         )
         
         # Build the unit entry
+        # Use canonical unit_designator if available (normalizes aliases like 48QRS -> QRS48)
+        canonical_unit_id = unit_info['unit_designator'] or unit_id
         unit_entry = {
-            'unit_id': unit_id,
+            'unit_id': canonical_unit_id,
             'station': None,
             'agency': None,
             'is_mutual_aid': not unit_info['is_ours'],

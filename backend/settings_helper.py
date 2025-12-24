@@ -103,6 +103,7 @@ def get_unit_info(unit_id: str) -> dict:
         apparatus_id: int or None - database ID
         category: str or None - APPARATUS, DIRECT, STATION
         counts_for_response_times: bool - whether to include in metrics
+        unit_designator: str or None - canonical unit ID (use this, not the alias)
     """
     if not unit_id:
         return {
@@ -110,6 +111,7 @@ def get_unit_info(unit_id: str) -> dict:
             'apparatus_id': None,
             'category': None,
             'counts_for_response_times': False,
+            'unit_designator': None,
         }
     
     try:
@@ -137,6 +139,7 @@ def get_unit_info(unit_id: str) -> dict:
                 'apparatus_id': row['id'],
                 'category': row['unit_category'],
                 'counts_for_response_times': row['counts_for_response_times'] or False,
+                'unit_designator': row['unit_designator'],  # Canonical ID
             }
         
         # Fall back to station_units setting for backward compatibility
@@ -148,6 +151,7 @@ def get_unit_info(unit_id: str) -> dict:
                 'apparatus_id': None,
                 'category': 'APPARATUS',  # Assume apparatus if in station_units
                 'counts_for_response_times': True,
+                'unit_designator': unit_id.upper(),  # Use as-is
             }
         
         return {
@@ -155,6 +159,7 @@ def get_unit_info(unit_id: str) -> dict:
             'apparatus_id': None,
             'category': None,
             'counts_for_response_times': False,
+            'unit_designator': None,
         }
         
     except Exception as e:
@@ -167,6 +172,7 @@ def get_unit_info(unit_id: str) -> dict:
             'apparatus_id': None,
             'category': None,
             'counts_for_response_times': is_ours,  # Only count if it's our unit
+            'unit_designator': unit_id.upper() if is_ours else None,
         }
 
 

@@ -204,12 +204,15 @@ class CADListener:
             # Look up unit info (includes category and response time config)
             unit_info = get_unit_info(unit_id)
             
+            # Use canonical unit_designator if available (normalizes aliases like 48QRS -> QRS48)
+            canonical_unit_id = unit_info['unit_designator'] or unit_id
+            
             # Merge with existing data
-            if unit_id in existing_units:
-                unit_data = existing_units[unit_id]
+            if canonical_unit_id in existing_units:
+                unit_data = existing_units[canonical_unit_id]
             else:
                 unit_data = {
-                    'unit_id': unit_id,
+                    'unit_id': canonical_unit_id,
                     'station': unit.get('station'),
                     'agency': unit.get('agency'),
                     'is_mutual_aid': not unit_info['is_ours'],
@@ -431,6 +434,9 @@ class CADListener:
             # Look up unit info (includes category and response time config)
             unit_info = get_unit_info(unit_id)
             
+            # Use canonical unit_designator if available (normalizes aliases like 48QRS -> QRS48)
+            canonical_unit_id = unit_info['unit_designator'] or unit_id
+            
             # Parse unit times with proper date
             time_dispatched = self._parse_cad_time(
                 ut.get('time_dispatched'), incident_date, dispatch_time_str
@@ -448,22 +454,22 @@ class CADListener:
                 ut.get('time_at_quarters'), incident_date, dispatch_time_str
             ) if ut.get('time_at_quarters') else None
             
-            if unit_id in existing_units:
+            if canonical_unit_id in existing_units:
                 # Update existing unit with times
-                existing_units[unit_id]['time_dispatched'] = time_dispatched
-                existing_units[unit_id]['time_enroute'] = time_enroute
-                existing_units[unit_id]['time_arrived'] = time_arrived
-                existing_units[unit_id]['time_available'] = time_available
-                existing_units[unit_id]['time_cleared'] = time_cleared
+                existing_units[canonical_unit_id]['time_dispatched'] = time_dispatched
+                existing_units[canonical_unit_id]['time_enroute'] = time_enroute
+                existing_units[canonical_unit_id]['time_arrived'] = time_arrived
+                existing_units[canonical_unit_id]['time_available'] = time_available
+                existing_units[canonical_unit_id]['time_cleared'] = time_cleared
                 # Ensure unit info is populated (may not be if unit was in dispatch before migration)
-                if 'counts_for_response_times' not in existing_units[unit_id]:
-                    existing_units[unit_id]['apparatus_id'] = unit_info['apparatus_id']
-                    existing_units[unit_id]['unit_category'] = unit_info['category']
-                    existing_units[unit_id]['counts_for_response_times'] = unit_info['counts_for_response_times']
+                if 'counts_for_response_times' not in existing_units[canonical_unit_id]:
+                    existing_units[canonical_unit_id]['apparatus_id'] = unit_info['apparatus_id']
+                    existing_units[canonical_unit_id]['unit_category'] = unit_info['category']
+                    existing_units[canonical_unit_id]['counts_for_response_times'] = unit_info['counts_for_response_times']
             else:
                 # New unit from clear report (maybe wasn't in dispatch)
-                existing_units[unit_id] = {
-                    'unit_id': unit_id,
+                existing_units[canonical_unit_id] = {
+                    'unit_id': canonical_unit_id,
                     'station': None,
                     'agency': None,
                     'is_mutual_aid': not unit_info['is_ours'],
