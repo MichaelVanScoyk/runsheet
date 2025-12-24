@@ -1252,8 +1252,11 @@ async def preview_restore_from_cad(
         new_is_mutual_aid = not unit_info['is_ours']
         new_counts_for_response = unit_info['counts_for_response_times']
         
-        # Find the current stored config for this unit
-        old_unit = next((u for u in existing_cad_units if u.get('unit_id') == unit_id), None)
+        # Get the real unit ID (alias gets replaced with actual unit ID)
+        real_unit_id = unit_info['unit_designator'] or unit_id
+        
+        # Find the current stored config for this unit (check both alias and real ID)
+        old_unit = next((u for u in existing_cad_units if u.get('unit_id') == unit_id or u.get('unit_id') == real_unit_id), None)
         
         if old_unit:
             old_is_mutual_aid = old_unit.get('is_mutual_aid')
