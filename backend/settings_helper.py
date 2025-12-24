@@ -87,19 +87,90 @@ def _parse_value(value: str, value_type: str) -> Any:
 # =============================================================================
 
 def get_station_units() -> List[str]:
-    """Get list of station unit IDs"""
+    """Get list of station unit IDs - DEPRECATED, use get_unit_info() instead"""
     units = get_setting('units', 'station_units', [])
     if isinstance(units, list):
         return [u.upper() for u in units]
     return []
 
 
+def get_unit_info(unit_id: str) -> dict:
+    """
+    Look up unit in apparatus table by CAD unit ID or designator.
+    
+    Returns dict with:
+        is_ours: bool - whether this is one of our units
+        apparatus_id: int or None - database ID
+        category: str or None - APPARATUS, DIRECT, STATION
+        counts_for_response_times: bool - whether to include in metrics
+    """
+    if not unit_id:
+        return {
+            'is_ours': False,
+            'apparatus_id': None,
+            'category': None,
+            'counts_for_response_times': False,
+        }
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Look up by cad_unit_id first, then unit_designator
+        cur.execute("""
+            SELECT id, unit_category, counts_for_response_times, cad_unit_id, unit_designator
+            FROM apparatus 
+            WHERE (
+                UPPER(cad_unit_id) = %s 
+                OR UPPER(unit_designator) = %s
+            ) AND active = true
+            LIMIT 1
+        """, (unit_id.upper(), unit_id.upper()))
+        
+        row = cur.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'is_ours': True,
+                'apparatus_id': row['id'],
+                'category': row['unit_category'],
+                'counts_for_response_times': row['counts_for_response_times'] or False,
+            }
+        
+        # Fall back to station_units setting for backward compatibility
+        # This handles units not yet in apparatus table
+        units = get_station_units()
+        if unit_id.upper() in units:
+            return {
+                'is_ours': True,
+                'apparatus_id': None,
+                'category': 'APPARATUS',  # Assume apparatus if in station_units
+                'counts_for_response_times': True,
+            }
+        
+        return {
+            'is_ours': False,
+            'apparatus_id': None,
+            'category': None,
+            'counts_for_response_times': False,
+        }
+        
+    except Exception as e:
+        print(f"Error looking up unit {unit_id}: {e}")
+        # Fall back to station_units on error
+        units = get_station_units()
+        return {
+            'is_ours': unit_id.upper() in units,
+            'apparatus_id': None,
+            'category': None,
+            'counts_for_response_times': True,  # Assume true for backward compat
+        }
+
+
 def is_station_unit(unit_id: str) -> bool:
     """Check if unit belongs to this station"""
-    if not unit_id:
-        return False
-    units = get_station_units()
-    return unit_id.upper() in units
+    return get_unit_info(unit_id)['is_ours']
 
 
 def get_station_coords() -> tuple:

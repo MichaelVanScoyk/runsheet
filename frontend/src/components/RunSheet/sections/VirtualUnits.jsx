@@ -11,7 +11,11 @@ export default function VirtualUnits() {
     getAssignedIds
   } = useRunSheet();
   
-  const virtualUnits = apparatus.filter(a => a.is_virtual);
+  // Virtual units: DIRECT and STATION categories
+  const virtualUnits = apparatus.filter(a => {
+    const category = a.unit_category || (a.is_virtual ? 'DIRECT' : 'APPARATUS');
+    return ['DIRECT', 'STATION'].includes(category);
+  });
   
   if (virtualUnits.length === 0) return null;
   

@@ -15,8 +15,7 @@ function SettingsTab() {
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
-  const [editingUnits, setEditingUnits] = useState(false);
-  const [unitsText, setUnitsText] = useState('');
+  // editingUnits and unitsText removed - units now managed in Units tab
   const [collapsed, setCollapsed] = useState({});
 
   useEffect(() => {
@@ -32,10 +31,7 @@ function SettingsTab() {
       const cats = Object.keys(data);
       setCollapsed(cats.reduce((acc, cat) => ({ ...acc, [cat]: true }), {}));
       
-      if (data.units?.find(s => s.key === 'station_units')) {
-        const unitsVal = data.units.find(s => s.key === 'station_units').value;
-        setUnitsText(Array.isArray(unitsVal) ? unitsVal.join(', ') : unitsVal);
-      }
+      // station_units initialization removed - now managed in Units tab
     } catch (err) {
       console.error('Failed to load settings:', err);
     } finally {
@@ -68,48 +64,29 @@ function SettingsTab() {
     }
   };
 
-  const saveUnits = async () => {
-    const units = unitsText.split(',').map(u => u.trim()).filter(u => u);
-    await updateSetting('units', 'station_units', JSON.stringify(units));
-    setEditingUnits(false);
-  };
+  // saveUnits removed - units now managed in Units tab
 
   const renderSetting = (setting) => {
     const isSaving = saving === `${setting.category}.${setting.key}`;
     
+    // Hide station_units - now managed in Admin > Units
     if (setting.key === 'station_units') {
       return (
-        <div key={setting.key} className="setting-item setting-units">
+        <div key={setting.key} className="setting-item setting-units" style={{ opacity: 0.5 }}>
           <div className="setting-header">
             <label>{formatLabel(setting.key)}</label>
-            <span className="setting-desc">{setting.description}</span>
+            <span className="setting-desc" style={{ color: '#f59e0b' }}>
+              ⚠️ Deprecated - Units are now managed in Admin → Units tab
+            </span>
           </div>
-          {editingUnits ? (
-            <div className="units-edit">
-              <textarea
-                value={unitsText}
-                onChange={(e) => setUnitsText(e.target.value)}
-                placeholder="ENG481, ENG482, CHF48, etc."
-                rows={3}
-              />
-              <div className="units-buttons">
-                <button onClick={saveUnits} disabled={isSaving}>
-                  {isSaving ? 'Saving...' : 'Save'}
-                </button>
-                <button onClick={() => setEditingUnits(false)} className="cancel">Cancel</button>
-              </div>
+          <div className="units-display">
+            <div className="units-list">
+              {Array.isArray(setting.value) 
+                ? setting.value.map((u, i) => <span key={i} className="unit-badge">{u}</span>)
+                : <span>{setting.raw_value}</span>
+              }
             </div>
-          ) : (
-            <div className="units-display">
-              <div className="units-list">
-                {Array.isArray(setting.value) 
-                  ? setting.value.map((u, i) => <span key={i} className="unit-badge">{u}</span>)
-                  : <span>{setting.raw_value}</span>
-                }
-              </div>
-              <button onClick={() => setEditingUnits(true)}>Edit</button>
-            </div>
-          )}
+          </div>
         </div>
       );
     }
@@ -1513,7 +1490,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
           className={activeTab === 'apparatus' ? 'active' : ''} 
           onClick={() => setActiveTab('apparatus')}
         >
-          🚒 Apparatus
+          🚒 Units
         </button>
         <button 
           className={activeTab === 'municipalities' ? 'active' : ''} 

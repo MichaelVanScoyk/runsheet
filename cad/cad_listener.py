@@ -23,7 +23,7 @@ from cad_parser import parse_cad_html, report_to_dict
 # Import settings from database
 import sys
 sys.path.insert(0, '/opt/runsheet/backend')
-from settings_helper import is_station_unit, get_api_url, get_cad_port
+from settings_helper import is_station_unit, get_unit_info, get_api_url, get_cad_port
 
 # Configure logging
 logging.basicConfig(
@@ -201,8 +201,8 @@ class CADListener:
             if not unit_id:
                 continue
             
-            # Check if this is our unit or mutual aid
-            is_ours = is_station_unit(unit_id)
+            # Look up unit info (includes category and response time config)
+            unit_info = get_unit_info(unit_id)
             
             # Merge with existing data
             if unit_id in existing_units:
@@ -212,7 +212,10 @@ class CADListener:
                     'unit_id': unit_id,
                     'station': unit.get('station'),
                     'agency': unit.get('agency'),
-                    'is_mutual_aid': not is_ours,
+                    'is_mutual_aid': not unit_info['is_ours'],
+                    'apparatus_id': unit_info['apparatus_id'],
+                    'unit_category': unit_info['category'],
+                    'counts_for_response_times': unit_info['counts_for_response_times'],
                     'time_dispatched': unit.get('time'),
                     'time_enroute': None,
                     'time_arrived': None,
@@ -430,8 +433,8 @@ class CADListener:
             if not unit_id:
                 continue
             
-            # Check if this is our unit or mutual aid
-            is_ours = is_station_unit(unit_id)
+            # Look up unit info (includes category and response time config)
+            unit_info = get_unit_info(unit_id)
             
             # Parse unit times with proper date
             time_dispatched = self._parse_cad_time(
@@ -457,13 +460,21 @@ class CADListener:
                 existing_units[unit_id]['time_arrived'] = time_arrived
                 existing_units[unit_id]['time_available'] = time_available
                 existing_units[unit_id]['time_cleared'] = time_cleared
+                # Ensure unit info is populated (may not be if unit was in dispatch before migration)
+                if 'counts_for_response_times' not in existing_units[unit_id]:
+                    existing_units[unit_id]['apparatus_id'] = unit_info['apparatus_id']
+                    existing_units[unit_id]['unit_category'] = unit_info['category']
+                    existing_units[unit_id]['counts_for_response_times'] = unit_info['counts_for_response_times']
             else:
                 # New unit from clear report (maybe wasn't in dispatch)
                 existing_units[unit_id] = {
                     'unit_id': unit_id,
                     'station': None,
                     'agency': None,
-                    'is_mutual_aid': not is_ours,
+                    'is_mutual_aid': not unit_info['is_ours'],
+                    'apparatus_id': unit_info['apparatus_id'],
+                    'unit_category': unit_info['category'],
+                    'counts_for_response_times': unit_info['counts_for_response_times'],
                     'time_dispatched': time_dispatched,
                     'time_enroute': time_enroute,
                     'time_arrived': time_arrived,

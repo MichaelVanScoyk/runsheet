@@ -77,7 +77,7 @@ class Apparatus(Base):
     unit_designator = Column(String(20), unique=True, nullable=False)  # ENG481, RES48
     name = Column(String(50), nullable=False)                          # Engine 48-1
     apparatus_type = Column(String(30))                                # Engine, Rescue (display)
-    is_virtual = Column(Boolean, default=False)                        # Command, Staging
+    is_virtual = Column(Boolean, default=False)                        # DEPRECATED - use unit_category
     has_driver = Column(Boolean, default=True)
     has_officer = Column(Boolean, default=True)
     ff_slots = Column(Integer, default=4)
@@ -88,6 +88,36 @@ class Apparatus(Base):
     # NERIS: Unit type from type_unit lookup
     # Values: "ENGINE", "LADDER", "QUINT", "RESCUE", "AMBULANCE_ALS", "AMBULANCE_BLS", etc.
     neris_unit_type = Column(Text)
+    
+    # Unit Management (added in migration 002)
+    # Categories:
+    #   APPARATUS - Physical CAD units (engines, trucks, chief vehicles) with configurable crew slots
+    #   DIRECT    - Virtual unit for personnel going directly to scene (POV)
+    #   STATION   - Virtual unit for personnel who reported to station (not on scene)
+    unit_category = Column(String(20), nullable=False, default='APPARATUS')
+    
+    # Whether this unit's times count for response metrics (first enroute, first on scene)
+    # Configurable for APPARATUS, always false for DIRECT/STATION
+    # Chief vehicles (CHF48, etc.) are APPARATUS with 0 crew slots and this set to false
+    counts_for_response_times = Column(Boolean, default=True)
+    
+    # CAD identifier for matching incoming CAD data (usually same as unit_designator)
+    cad_unit_id = Column(String(20))
+    
+    @property
+    def is_physical_unit(self):
+        """Physical vehicles that have CAD times and export to NERIS"""
+        return self.unit_category == 'APPARATUS'
+    
+    @property
+    def is_on_scene(self):
+        """Units whose personnel are physically at the incident"""
+        return self.unit_category in ('APPARATUS', 'DIRECT')
+    
+    @property
+    def exports_to_neris(self):
+        """Units that should be included in NERIS apparatus module"""
+        return self.unit_category == 'APPARATUS'
 
 
 class Municipality(Base):

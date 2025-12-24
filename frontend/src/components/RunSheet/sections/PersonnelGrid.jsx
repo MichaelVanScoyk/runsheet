@@ -13,14 +13,24 @@ export default function PersonnelGrid() {
     personnel
   } = useRunSheet();
   
-  // Only real trucks (not virtual units)
-  const realTrucks = apparatus.filter(a => !a.is_virtual);
+  // Only APPARATUS category (physical units with crew slots)
+  // Chief vehicles are APPARATUS with 0 slots - they won't show in grid
+  const realTrucks = apparatus.filter(a => {
+    const category = a.unit_category || 'APPARATUS';
+    return category === 'APPARATUS';
+  });
   
   if (realTrucks.length === 0) return null;
   
   // Calculate slot count per truck from apparatus config
   const getSlotCount = (truck) => (truck.has_driver ? 1 : 0) + (truck.has_officer ? 1 : 0) + (truck.ff_slots || 0);
-  const maxSlots = Math.max(...realTrucks.map(getSlotCount), 1);
+  
+  // Filter out units with 0 slots (e.g., chief vehicles)
+  const trucksWithSlots = realTrucks.filter(t => getSlotCount(t) > 0);
+  
+  if (trucksWithSlots.length === 0) return null;
+  
+  const maxSlots = Math.max(...trucksWithSlots.map(getSlotCount), 1);
   
   // Slot labels: D, O, 3, 4, 5, 6
   const getSlotLabel = (slot) => {
@@ -43,7 +53,7 @@ export default function PersonnelGrid() {
           <thead>
             <tr>
               <th className="w-8 bg-dark-border text-gray-400 text-xs font-semibold px-1 py-1.5 border border-dark-border">#</th>
-              {realTrucks.map(t => {
+              {trucksWithSlots.map(t => {
                 const dispatched = wasDispatched(t);
                 const headerClass = hasCadData 
                   ? (dispatched ? 'bg-status-open/30 text-status-open' : 'opacity-40 text-gray-500')
@@ -65,7 +75,7 @@ export default function PersonnelGrid() {
                 <td className="w-8 bg-dark-border text-gray-400 text-xs font-semibold text-center px-1 py-1 border border-dark-border">
                   {getSlotLabel(slot)}
                 </td>
-                {realTrucks.map(t => {
+                {trucksWithSlots.map(t => {
                   const slotCount = getSlotCount(t);
                   
                   // Slot doesn't exist for this truck
