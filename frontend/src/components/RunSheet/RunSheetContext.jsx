@@ -745,6 +745,7 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
       setRestorePreview({
         ...data,
         changes,
+        unitChanges: data.unit_changes || [],  // Include unit config changes from backend
       });
       setShowRestoreModal(true);
     } catch (err) {

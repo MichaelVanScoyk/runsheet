@@ -1151,18 +1151,23 @@ async def preview_restore_from_cad(
 ):
     """
     Preview what would be restored from CAD.
-    Returns parsed CAD values and calculated response times.
+    Returns parsed CAD values, calculated response times, and unit config changes.
+    
+    This now detects:
+    - Text field changes (address, municipality, etc.)
+    - Time field changes
+    - Unit config changes (is_mutual_aid, counts_for_response_times)
     """
     try:
         parse_cad_html, report_to_dict = get_cad_parser()
     except ImportError as e:
         return {"error": f"CAD parser not available: {e}"}
     
-    # Get the incident
+    # Get the incident including current cad_units
     result = db.execute(text("""
         SELECT 
             id, internal_incident_number, incident_date,
-            cad_raw_dispatch, cad_raw_clear
+            cad_raw_dispatch, cad_raw_clear, cad_units
         FROM incidents 
         WHERE id = :id AND deleted_at IS NULL
     """), {"id": incident_id}).fetchone()
@@ -1173,6 +1178,7 @@ async def preview_restore_from_cad(
     incident_date = result[2]
     raw_dispatch = result[3]
     raw_clear = result[4]
+    existing_cad_units = result[5] or []
     raw_html = raw_clear or raw_dispatch
     
     if not raw_html:
@@ -1216,6 +1222,56 @@ async def preview_restore_from_cad(
         if response_calc['time_first_on_scene']:
             cad_values['time_first_on_scene'] = response_calc['time_first_on_scene'].strftime('%H:%M:%S')
     
+    # ==========================================================================
+    # CHECK FOR UNIT CONFIG CHANGES
+    # Compare current cad_units against what they WOULD be with current apparatus config
+    # ==========================================================================
+    
+    unit_changes = []
+    for ut in unit_times:
+        unit_id = ut.get('unit_id')
+        if not unit_id:
+            continue
+        
+        # Look up what the unit config WOULD be now
+        unit_info = get_full_unit_info(db, unit_id)
+        new_is_mutual_aid = not unit_info['is_ours']
+        new_counts_for_response = unit_info['counts_for_response_times']
+        
+        # Find the current stored config for this unit
+        old_unit = next((u for u in existing_cad_units if u.get('unit_id') == unit_id), None)
+        
+        if old_unit:
+            old_is_mutual_aid = old_unit.get('is_mutual_aid')
+            old_counts_for_response = old_unit.get('counts_for_response_times')
+            
+            if old_is_mutual_aid != new_is_mutual_aid:
+                unit_changes.append({
+                    'unit_id': unit_id,
+                    'field': 'is_mutual_aid',
+                    'current': old_is_mutual_aid,
+                    'will_be': new_is_mutual_aid,
+                    'display': f"{unit_id}: MA {old_is_mutual_aid} → {new_is_mutual_aid}"
+                })
+            
+            if old_counts_for_response != new_counts_for_response:
+                unit_changes.append({
+                    'unit_id': unit_id,
+                    'field': 'counts_for_response_times',
+                    'current': old_counts_for_response,
+                    'will_be': new_counts_for_response,
+                    'display': f"{unit_id}: counts {old_counts_for_response} → {new_counts_for_response}"
+                })
+        else:
+            # Unit exists in CAD but not in stored cad_units - it will be added
+            unit_changes.append({
+                'unit_id': unit_id,
+                'field': 'new_unit',
+                'current': None,
+                'will_be': {'is_mutual_aid': new_is_mutual_aid, 'counts_for_response_times': new_counts_for_response},
+                'display': f"{unit_id}: NEW (MA={new_is_mutual_aid})"
+            })
+    
     return {
         "incident_id": incident_id,
         "incident_number": result[1],
@@ -1223,6 +1279,7 @@ async def preview_restore_from_cad(
         "source": "clear_report" if raw_clear else "dispatch_report",
         "cad_values": cad_values,
         "unit_times": unit_times,
+        "unit_changes": unit_changes,  # NEW: unit config changes
         "response_calculation": {
             "included_units": response_calc['included_units'] if response_calc else [],
             "excluded_units": response_calc['excluded_units'] if response_calc else [],
