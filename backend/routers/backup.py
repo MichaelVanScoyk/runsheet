@@ -351,7 +351,7 @@ def full_reparse_incident(incident_id: int, db: Session) -> Dict[str, Any]:
     
     for key, value in update_fields.items():
         if key == 'cad_units':
-            set_parts.append(f"{key} = :cad_units::jsonb")
+            set_parts.append(f"{key} = CAST(:cad_units AS jsonb)")
             params['cad_units'] = value
         else:
             set_parts.append(f"{key} = :{key}")
