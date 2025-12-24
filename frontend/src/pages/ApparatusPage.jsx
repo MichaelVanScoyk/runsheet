@@ -39,6 +39,7 @@ function ApparatusPage({ embedded = false }) {
     unit_category: 'APPARATUS',
     counts_for_response_times: true,
     cad_unit_id: '',
+    cad_unit_aliases: '',  // Comma-separated string for UI
     has_driver: true,
     has_officer: true,
     ff_slots: 4,
@@ -95,6 +96,7 @@ function ApparatusPage({ embedded = false }) {
       unit_category: category,
       counts_for_response_times: isPhysical,  // APPARATUS counts by default
       cad_unit_id: '',
+      cad_unit_aliases: '',
       has_driver: isPhysical,
       has_officer: isPhysical,
       ff_slots: isPhysical ? 4 : 0,
@@ -104,6 +106,8 @@ function ApparatusPage({ embedded = false }) {
 
   const handleEdit = (item) => {
     setEditing(item);
+    // Convert aliases array to comma-separated string for UI
+    const aliasesStr = (item.cad_unit_aliases || []).join(', ');
     setFormData({
       unit_designator: item.unit_designator,
       name: item.name,
@@ -112,6 +116,7 @@ function ApparatusPage({ embedded = false }) {
       unit_category: item.unit_category || 'APPARATUS',
       counts_for_response_times: item.counts_for_response_times ?? true,
       cad_unit_id: item.cad_unit_id || item.unit_designator,
+      cad_unit_aliases: aliasesStr,
       has_driver: item.has_driver,
       has_officer: item.has_officer,
       ff_slots: item.ff_slots,
@@ -168,6 +173,11 @@ function ApparatusPage({ embedded = false }) {
     if (!submitData.cad_unit_id) {
       submitData.cad_unit_id = submitData.unit_designator;
     }
+    
+    // Convert comma-separated aliases to array
+    submitData.cad_unit_aliases = submitData.cad_unit_aliases
+      ? submitData.cad_unit_aliases.split(',').map(a => a.trim().toUpperCase()).filter(a => a)
+      : [];
     
     try {
       if (editing) {
@@ -407,6 +417,26 @@ function ApparatusPage({ embedded = false }) {
                     onChange={(e) => handleChange('cad_unit_id', e.target.value.toUpperCase())}
                     placeholder={formData.unit_designator || 'Same as Unit ID'}
                   />
+                </div>
+              )}
+
+              {/* CAD Unit Aliases (for physical units) */}
+              {isPhysicalUnit && (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">
+                    CAD Unit Aliases
+                    <span className="text-gray-500 ml-1">(alternate IDs, comma-separated)</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full bg-dark-hover border border-dark-border rounded px-3 py-2 text-white"
+                    value={formData.cad_unit_aliases}
+                    onChange={(e) => handleChange('cad_unit_aliases', e.target.value.toUpperCase())}
+                    placeholder="e.g., 48QRS, SQUAD48"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    For dispatch centers using inconsistent unit IDs
+                  </p>
                 </div>
               )}
 

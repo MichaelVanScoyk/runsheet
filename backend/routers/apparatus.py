@@ -37,6 +37,7 @@ class ApparatusCreate(BaseModel):
     unit_category: str = 'APPARATUS'
     counts_for_response_times: Optional[bool] = None  # None = use category default
     cad_unit_id: Optional[str] = None
+    cad_unit_aliases: Optional[List[str]] = []  # Alternate CAD identifiers
     has_driver: bool = True
     has_officer: bool = True
     ff_slots: int = 4
@@ -51,6 +52,7 @@ class ApparatusUpdate(BaseModel):
     unit_category: Optional[str] = None
     counts_for_response_times: Optional[bool] = None
     cad_unit_id: Optional[str] = None
+    cad_unit_aliases: Optional[List[str]] = None  # Alternate CAD identifiers
     has_driver: Optional[bool] = None
     has_officer: Optional[bool] = None
     ff_slots: Optional[int] = None
@@ -71,6 +73,7 @@ def apparatus_to_dict(a: Apparatus) -> dict:
         "unit_category": category,
         "counts_for_response_times": getattr(a, 'counts_for_response_times', True),
         "cad_unit_id": getattr(a, 'cad_unit_id', a.unit_designator),
+        "cad_unit_aliases": getattr(a, 'cad_unit_aliases', []) or [],
         "has_driver": a.has_driver,
         "has_officer": a.has_officer,
         "ff_slots": a.ff_slots,
@@ -207,6 +210,7 @@ async def create_apparatus(
         unit_category=category,
         counts_for_response_times=counts_for_response,
         cad_unit_id=data.cad_unit_id or data.unit_designator,
+        cad_unit_aliases=data.cad_unit_aliases or [],
         has_driver=data.has_driver,
         has_officer=data.has_officer,
         ff_slots=data.ff_slots,

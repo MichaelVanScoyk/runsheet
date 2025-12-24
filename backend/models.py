@@ -104,6 +104,10 @@ class Apparatus(Base):
     # CAD identifier for matching incoming CAD data (usually same as unit_designator)
     cad_unit_id = Column(String(20))
     
+    # Alternate CAD identifiers (for inconsistent dispatch center naming)
+    # Example: QRS48 is primary, but dispatch sometimes uses 48QRS
+    cad_unit_aliases = Column(ARRAY(Text), default=[])
+    
     @property
     def is_physical_unit(self):
         """Physical vehicles that have CAD times and export to NERIS"""

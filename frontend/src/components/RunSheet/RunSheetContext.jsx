@@ -771,7 +771,9 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
       alert(`Restored ${data.restored_fields.length} fields from CAD`);
       setShowRestoreModal(false);
       setRestorePreview(null);
-      window.location.reload();
+      
+      // Reload data instead of full page reload - stays on current incident
+      await loadData();
     } catch (err) {
       console.error('Failed to restore from CAD:', err);
       alert('Failed to restore from CAD');

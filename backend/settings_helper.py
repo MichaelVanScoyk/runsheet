@@ -96,7 +96,7 @@ def get_station_units() -> List[str]:
 
 def get_unit_info(unit_id: str) -> dict:
     """
-    Look up unit in apparatus table by CAD unit ID or designator.
+    Look up unit in apparatus table by CAD unit ID, designator, or alias.
     
     Returns dict with:
         is_ours: bool - whether this is one of our units
@@ -116,16 +116,17 @@ def get_unit_info(unit_id: str) -> dict:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Look up by cad_unit_id first, then unit_designator
+        # Look up by cad_unit_id, unit_designator, OR alias
         cur.execute("""
-            SELECT id, unit_category, counts_for_response_times, cad_unit_id, unit_designator
+            SELECT id, unit_category, counts_for_response_times, cad_unit_id, unit_designator, cad_unit_aliases
             FROM apparatus 
             WHERE (
                 UPPER(cad_unit_id) = %s 
                 OR UPPER(unit_designator) = %s
+                OR %s = ANY(SELECT UPPER(unnest(cad_unit_aliases)))
             ) AND active = true
             LIMIT 1
-        """, (unit_id.upper(), unit_id.upper()))
+        """, (unit_id.upper(), unit_id.upper(), unit_id.upper()))
         
         row = cur.fetchone()
         conn.close()

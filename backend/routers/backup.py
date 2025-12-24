@@ -55,6 +55,7 @@ def get_unit_response_config(db: Session, unit_id: str) -> Dict[str, Any]:
     """
     Look up unit configuration from apparatus table.
     Returns dict with counts_for_response_times flag.
+    Checks cad_unit_id, unit_designator, AND aliases.
     
     This matches the logic in settings_helper.get_unit_info()
     """
@@ -64,8 +65,11 @@ def get_unit_response_config(db: Session, unit_id: str) -> Dict[str, Any]:
     result = db.execute(text("""
         SELECT id, unit_category, counts_for_response_times 
         FROM apparatus 
-        WHERE (UPPER(cad_unit_id) = :unit_id OR UPPER(unit_designator) = :unit_id)
-          AND active = true
+        WHERE (
+            UPPER(cad_unit_id) = :unit_id 
+            OR UPPER(unit_designator) = :unit_id
+            OR :unit_id = ANY(SELECT UPPER(unnest(cad_unit_aliases)))
+        ) AND active = true
         LIMIT 1
     """), {"unit_id": unit_id.upper()}).fetchone()
     
@@ -85,6 +89,7 @@ def get_full_unit_info(db: Session, unit_id: str) -> Dict[str, Any]:
     """
     Full unit lookup matching settings_helper.get_unit_info().
     Returns all info needed to build cad_units entries.
+    Checks cad_unit_id, unit_designator, AND aliases.
     """
     if not unit_id:
         return {
@@ -95,10 +100,13 @@ def get_full_unit_info(db: Session, unit_id: str) -> Dict[str, Any]:
         }
     
     result = db.execute(text("""
-        SELECT id, unit_category, counts_for_response_times, cad_unit_id, unit_designator
+        SELECT id, unit_category, counts_for_response_times, cad_unit_id, unit_designator, cad_unit_aliases
         FROM apparatus 
-        WHERE (UPPER(cad_unit_id) = :unit_id OR UPPER(unit_designator) = :unit_id)
-          AND active = true
+        WHERE (
+            UPPER(cad_unit_id) = :unit_id 
+            OR UPPER(unit_designator) = :unit_id
+            OR :unit_id = ANY(SELECT UPPER(unnest(cad_unit_aliases)))
+        ) AND active = true
         LIMIT 1
     """), {"unit_id": unit_id.upper()}).fetchone()
     
