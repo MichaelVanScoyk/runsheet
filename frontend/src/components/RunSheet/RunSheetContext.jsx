@@ -264,12 +264,18 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
     // The database stores times with +00 suffix, but they're actually local times
     // stored incorrectly as UTC. Just extract the datetime parts without conversion.
     // Format: 2025-12-20T09:10:00+00:00 or 2025-12-20T09:10:00Z
-    const match = isoString.match(/(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+    // Preserve seconds for accurate comparison with CAD unit times
+    const match = isoString.match(/(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
     if (match) {
       return `${match[1]}T${match[2]}`;
     }
-    // Fallback: just take first 16 chars
-    return isoString.slice(0, 16);
+    // Fallback: check for HH:MM without seconds
+    const matchNoSec = isoString.match(/(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+    if (matchNoSec) {
+      return `${matchNoSec[1]}T${matchNoSec[2]}:00`;
+    }
+    // Final fallback
+    return isoString.slice(0, 19);
   };
 
   const loadData = async () => {

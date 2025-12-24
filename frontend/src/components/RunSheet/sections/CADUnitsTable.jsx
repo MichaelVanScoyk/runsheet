@@ -7,13 +7,25 @@ export default function CADUnitsTable() {
   
   const formatTime = (isoString) => {
     if (!isoString) return '-';
-    return isoString.split('T')[1]?.substring(0, 5) || '-';
+    return isoString.split('T')[1]?.substring(0, 8) || '-';
   };
   
   // Check if a unit's time matches the incident metric time
+  // Normalize both to YYYY-MM-DDTHH:MM:SS format for comparison
   const timesMatch = (unitTime, metricTime) => {
     if (!unitTime || !metricTime) return false;
-    return unitTime === metricTime;
+    // Extract YYYY-MM-DDTHH:MM:SS from both, padding seconds if missing
+    const normalizeTime = (t) => {
+      if (!t) return '';
+      // Try with seconds first: YYYY-MM-DDTHH:MM:SS
+      const matchSec = t.match(/(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
+      if (matchSec) return `${matchSec[1]}T${matchSec[2]}`;
+      // Fallback without seconds: YYYY-MM-DDTHH:MM -> add :00
+      const matchNoSec = t.match(/(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+      if (matchNoSec) return `${matchNoSec[1]}T${matchNoSec[2]}:00`;
+      return t.slice(0, 19);
+    };
+    return normalizeTime(unitTime) === normalizeTime(metricTime);
   };
   
   return (
@@ -35,6 +47,7 @@ export default function CADUnitsTable() {
             {formData.cad_units.map((unit, idx) => {
               // Only highlight enroute/arrived for units that count for response times
               const countsForMetrics = unit.counts_for_response_times !== false;
+              const isFirstDispatch = countsForMetrics && timesMatch(unit.time_dispatched, formData.time_dispatched);
               const isFirstEnroute = countsForMetrics && timesMatch(unit.time_enroute, formData.time_first_enroute);
               const isFirstArrived = countsForMetrics && timesMatch(unit.time_arrived, formData.time_first_on_scene);
               // Cleared highlights for any unit that matches
@@ -55,7 +68,7 @@ export default function CADUnitsTable() {
                       </span>
                     )}
                   </td>
-                  <td className="px-2 py-1.5 border-b border-dark-border text-gray-400">{formatTime(unit.time_dispatched)}</td>
+                  <td className={`px-2 py-1.5 border-b border-dark-border ${isFirstDispatch ? highlightClass : 'text-gray-400'}`}>{formatTime(unit.time_dispatched)}</td>
                   <td className={`px-2 py-1.5 border-b border-dark-border ${isFirstEnroute ? highlightClass : 'text-gray-400'}`}>{formatTime(unit.time_enroute)}</td>
                   <td className={`px-2 py-1.5 border-b border-dark-border ${isFirstArrived ? highlightClass : 'text-gray-400'}`}>{formatTime(unit.time_arrived)}</td>
                   <td className={`px-2 py-1.5 border-b border-dark-border ${isLastCleared ? highlightClass : 'text-gray-400'}`}>{formatTime(unit.time_cleared)}</td>

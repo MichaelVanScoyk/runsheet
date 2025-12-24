@@ -20,6 +20,7 @@ export default function TimeFields() {
           <label className="text-gray-400 text-xs w-20 text-right shrink-0">{label}</label>
           <input 
             type="datetime-local" 
+            step="1"
             value={formData[key]} 
             onChange={(e) => handleChange(key, e.target.value)}
             className="flex-1"
