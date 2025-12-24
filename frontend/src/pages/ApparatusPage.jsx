@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getApparatus, createApparatus, updateApparatus, deleteApparatus } from '../api';
+import { getApparatus, createApparatus, updateApparatus, deleteApparatus, reactivateApparatus, hardDeleteApparatus } from '../api';
 
 const API_BASE = 'http://71.185.249.212:8001';
 
@@ -51,7 +51,8 @@ function ApparatusPage({ embedded = false }) {
 
   const loadData = async () => {
     try {
-      const res = await getApparatus();
+      // Include inactive units
+      const res = await getApparatus(true);
       setUnits(res.data);
     } catch (err) {
       console.error('Failed to load units:', err);
@@ -118,26 +119,39 @@ function ApparatusPage({ embedded = false }) {
     setShowModal(true);
   };
 
-  const handleDelete = async (item) => {
-    const msg = `Deactivate ${item.unit_designator}?`;
+  const handleDeactivate = async (item) => {
+    const msg = `Deactivate ${item.unit_designator}? It will be hidden but can be reactivated.`;
     if (!confirm(msg)) return;
     
     try {
       await deleteApparatus(item.id);
       loadData();
     } catch (err) {
-      console.error('Failed to delete:', err);
+      console.error('Failed to deactivate:', err);
       alert('Failed to deactivate');
     }
   };
 
   const handleReactivate = async (item) => {
     try {
-      await fetch(`${API_BASE}/api/apparatus/${item.id}/reactivate`, { method: 'POST' });
+      await reactivateApparatus(item.id);
       loadData();
     } catch (err) {
       console.error('Failed to reactivate:', err);
       alert('Failed to reactivate');
+    }
+  };
+
+  const handlePermanentDelete = async (item) => {
+    const msg = `PERMANENTLY DELETE ${item.unit_designator}?\n\nThis cannot be undone. The unit will be removed from the database.`;
+    if (!confirm(msg)) return;
+    
+    try {
+      await hardDeleteApparatus(item.id);
+      loadData();
+    } catch (err) {
+      console.error('Failed to delete:', err);
+      alert('Failed to delete permanently');
     }
   };
 
@@ -221,7 +235,7 @@ function ApparatusPage({ embedded = false }) {
                 categoryUnits.map(unit => (
                   <tr 
                     key={unit.id} 
-                    className={`border-t border-dark-border ${!unit.active ? 'opacity-50' : ''}`}
+                    className={`border-t border-dark-border ${!unit.active ? 'opacity-50 bg-dark-hover/30' : ''}`}
                   >
                     <td className="px-3 py-2 font-semibold">{unit.unit_designator}</td>
                     <td className="px-3 py-2">{unit.name}</td>
@@ -248,7 +262,7 @@ function ApparatusPage({ embedded = false }) {
                       </span>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <button 
                           className="text-sm text-gray-400 hover:text-white"
                           onClick={() => handleEdit(unit)}
@@ -257,18 +271,26 @@ function ApparatusPage({ embedded = false }) {
                         </button>
                         {unit.active ? (
                           <button 
-                            className="text-sm text-red-400 hover:text-red-300"
-                            onClick={() => handleDelete(unit)}
+                            className="text-sm text-yellow-400 hover:text-yellow-300"
+                            onClick={() => handleDeactivate(unit)}
                           >
                             Deactivate
                           </button>
                         ) : (
-                          <button 
-                            className="text-sm text-status-open hover:text-green-400"
-                            onClick={() => handleReactivate(unit)}
-                          >
-                            Reactivate
-                          </button>
+                          <>
+                            <button 
+                              className="text-sm text-status-open hover:text-green-400"
+                              onClick={() => handleReactivate(unit)}
+                            >
+                              Reactivate
+                            </button>
+                            <button 
+                              className="text-sm text-red-500 hover:text-red-400"
+                              onClick={() => handlePermanentDelete(unit)}
+                            >
+                              Delete
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>

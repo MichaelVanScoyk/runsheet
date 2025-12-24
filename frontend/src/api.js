@@ -96,13 +96,18 @@ export const updatePersonnelRole = (personnelId, role, adminId, adminPassword) =
 // APPARATUS
 // ============================================================================
 
-export const getApparatus = () => api.get('/apparatus');
+export const getApparatus = (includeInactive = true) => 
+  api.get('/apparatus', { params: { active_only: !includeInactive } });
 
 export const createApparatus = (data) => api.post('/apparatus', data);
 
 export const updateApparatus = (id, data) => api.put(`/apparatus/${id}`, data);
 
 export const deleteApparatus = (id) => api.delete(`/apparatus/${id}`);
+
+export const reactivateApparatus = (id) => api.post(`/apparatus/${id}/reactivate`);
+
+export const hardDeleteApparatus = (id) => api.delete(`/apparatus/${id}/permanent`);
 
 // ============================================================================
 // MUNICIPALITIES

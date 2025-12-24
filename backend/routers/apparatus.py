@@ -286,3 +286,17 @@ async def reactivate_apparatus(id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return {"id": id, "status": "ok"}
+
+
+@router.delete("/{id}/permanent")
+async def hard_delete_apparatus(id: int, db: Session = Depends(get_db)):
+    """Permanently delete apparatus/unit from database"""
+    apparatus = db.query(Apparatus).filter(Apparatus.id == id).first()
+    
+    if not apparatus:
+        raise HTTPException(status_code=404, detail="Apparatus not found")
+    
+    db.delete(apparatus)
+    db.commit()
+    
+    return {"id": id, "status": "deleted"}
