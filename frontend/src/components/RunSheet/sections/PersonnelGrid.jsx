@@ -39,10 +39,11 @@ export default function PersonnelGrid() {
     return String(slot + 1);
   };
   
-  // Check if truck was dispatched (only if we have CAD data)
+  // Check if truck actually responded (only if we have CAD data)
+  // Must have gone enroute OR arrived - just being dispatched isn't enough
   const hasCadData = Array.isArray(formData.cad_units) && formData.cad_units.length > 0;
-  const wasDispatched = (truck) => hasCadData && formData.cad_units.some(u => 
-    u.unit_id === truck.unit_designator && !u.is_mutual_aid
+  const actuallyResponded = (truck) => hasCadData && formData.cad_units.some(u => 
+    u.unit_id === truck.unit_designator && !u.is_mutual_aid && (u.time_enroute || u.time_arrived)
   );
   
   return (
@@ -54,9 +55,9 @@ export default function PersonnelGrid() {
             <tr>
               <th className="w-8 bg-dark-border text-gray-400 text-xs font-semibold px-1 py-1.5 border border-dark-border">#</th>
               {trucksWithSlots.map(t => {
-                const dispatched = wasDispatched(t);
+                const responded = actuallyResponded(t);
                 const headerClass = hasCadData 
-                  ? (dispatched ? 'bg-status-open/30 text-status-open' : 'opacity-40 text-gray-500')
+                  ? (responded ? 'bg-status-open/30 text-status-open' : 'opacity-40 text-gray-500')
                   : 'text-accent-red';
                 return (
                   <th 
@@ -84,8 +85,8 @@ export default function PersonnelGrid() {
                   }
                   
                   const val = assignments[t.unit_designator]?.[slot] || '';
-                  const dispatched = wasDispatched(t);
-                  const shouldDim = hasCadData && !dispatched;
+                  const responded = actuallyResponded(t);
+                  const shouldDim = hasCadData && !responded;
                   
                   return (
                     <td 
