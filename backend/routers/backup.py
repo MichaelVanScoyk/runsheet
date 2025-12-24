@@ -280,6 +280,10 @@ def full_reparse_incident(incident_id: int, db: Session) -> Dict[str, Any]:
     arrive_times = [u['time_arrived'] for u in metric_units if u.get('time_arrived')]
     time_first_on_scene = min(arrive_times) if arrive_times else None
     
+    # Find latest cleared from ALL units (not just metric units)
+    cleared_times = [u['time_cleared'] for u in new_cad_units if u.get('time_cleared')]
+    time_last_cleared = max(cleared_times) if cleared_times else None
+    
     # ==========================================================================
     # BUILD UPDATE DATA
     # ==========================================================================
@@ -338,14 +342,10 @@ def full_reparse_incident(incident_id: int, db: Session) -> Dict[str, Any]:
         update_fields['time_first_on_scene'] = time_first_on_scene
         restored_fields.append('time_first_on_scene')
     
-    # Cleared / in-service times
-    if report_dict.get('last_available'):
-        dt = build_datetime_with_midnight_crossing(
-            incident_date, report_dict['last_available'], dispatch_time_str
-        )
-        if dt:
-            update_fields['time_last_cleared'] = dt
-            restored_fields.append('time_last_cleared')
+    if time_last_cleared:
+        # Calculated from MAX(time_cleared) across all units
+        update_fields['time_last_cleared'] = time_last_cleared
+        restored_fields.append('time_last_cleared')
     
     if report_dict.get('last_at_quarters'):
         dt = build_datetime_with_midnight_crossing(
