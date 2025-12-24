@@ -413,12 +413,9 @@ class CADListener:
         # NOTE: first_enroute and first_on_scene will be calculated from units
         # that have counts_for_response_times=true (after processing unit times below)
         
-        if report.get('last_at_quarters'):
-            parsed_time = self._parse_cad_time(
-                report['last_at_quarters'], incident_date, dispatch_time_str
-            )
-            update_data['time_last_cleared'] = parsed_time
-            update_data['time_in_service'] = parsed_time
+        # NOTE: time_last_cleared will be calculated from MAX(time_cleared) across all units
+        # below after processing unit times. We no longer use the header value.
+        # time_in_service is NOT stored as a timestamp - it's calculated as duration in frontend.
         
         # Merge unit times from Clear Report into cad_units
         existing_units = {}
@@ -502,6 +499,13 @@ class CADListener:
             if arrive_times:
                 update_data['time_first_on_scene'] = min(arrive_times)
                 logger.debug(f"Calculated first_on_scene from {len(arrive_times)} metric units")
+            
+            # Find latest cleared time from ALL units (not just metric units)
+            # This is when the incident is actually over
+            cleared_times = [u['time_cleared'] for u in cad_units if u.get('time_cleared')]
+            if cleared_times:
+                update_data['time_last_cleared'] = max(cleared_times)
+                logger.debug(f"Calculated last_cleared from {len(cleared_times)} units")
             
             # Log which units were excluded from metrics
             excluded_units = [u['unit_id'] for u in cad_units if not u.get('counts_for_response_times', True)]

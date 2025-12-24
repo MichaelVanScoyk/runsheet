@@ -120,7 +120,6 @@ const initialFormData = {
   time_first_on_scene: '',
   time_fire_under_control: '',
   time_last_cleared: '',
-  time_in_service: '',
   caller_name: '',
   caller_phone: '',
   weather_conditions: '',

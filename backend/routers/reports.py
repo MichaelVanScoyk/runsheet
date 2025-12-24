@@ -54,9 +54,9 @@ def calculate_manhours(db: Session, start_date: date, end_date: date, category: 
                 i.id,
                 i.internal_incident_number,
                 COALESCE(i.incident_date, i.created_at::date) AS inc_date,
-                -- Duration in hours: from dispatch to last_cleared or in_service
+                -- Duration in hours: from dispatch to cleared
                 EXTRACT(EPOCH FROM (
-                    COALESCE(i.time_in_service, i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
+                    COALESCE(i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
                 )) / 3600.0 AS duration_hours,
                 -- Count personnel assignments
                 (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count
@@ -264,7 +264,7 @@ async def get_type_report(
             COALESCE(cad_event_type, 'Unknown') AS call_type,
             COUNT(*) AS incident_count,
             AVG(EXTRACT(EPOCH FROM (
-                COALESCE(time_in_service, time_last_cleared) - time_dispatched
+                time_last_cleared - time_dispatched
             )) / 60) AS avg_duration_minutes
         FROM incidents
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
@@ -358,7 +358,7 @@ async def get_personnel_report(
                 -- Calculate manhours per person
                 SUM(
                     EXTRACT(EPOCH FROM (
-                        COALESCE(i.time_in_service, i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
+                        COALESCE(i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
                     )) / 3600.0
                 ) AS total_hours
             FROM personnel p
@@ -575,9 +575,9 @@ async def get_monthly_chiefs_report(
             SELECT 
                 i.id,
                 i.internal_incident_number,
-                -- Duration in hours from dispatch to in_service
+                -- Duration in hours from dispatch to cleared
                 EXTRACT(EPOCH FROM (
-                    COALESCE(i.time_in_service, i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
+                    COALESCE(i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
                 )) / 3600.0 AS duration_hours,
                 -- Count personnel on this incident
                 (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count
@@ -630,7 +630,7 @@ async def get_monthly_chiefs_report(
                 i.id,
                 COALESCE(m.display_name, i.municipality_code, 'Unknown') AS municipality,
                 EXTRACT(EPOCH FROM (
-                    COALESCE(i.time_in_service, i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
+                    COALESCE(i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
                 )) / 3600.0 AS duration_hours,
                 (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count
             FROM incidents i

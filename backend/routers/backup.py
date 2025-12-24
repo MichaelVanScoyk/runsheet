@@ -343,17 +343,12 @@ def full_reparse_incident(incident_id: int, db: Session) -> Dict[str, Any]:
         restored_fields.append('time_first_on_scene')
     
     if time_last_cleared:
-        # Calculated from MAX(time_cleared) across all units
+        # Calculated from MAX(time_cleared) across all units (AQ times)
         update_fields['time_last_cleared'] = time_last_cleared
         restored_fields.append('time_last_cleared')
     
-    if report_dict.get('last_at_quarters'):
-        dt = build_datetime_with_midnight_crossing(
-            incident_date, report_dict['last_at_quarters'], dispatch_time_str
-        )
-        if dt:
-            update_fields['time_in_service'] = dt
-            restored_fields.append('time_in_service')
+    # NOTE: time_in_service is NOT stored as a timestamp
+    # It's calculated as duration (Cleared - Dispatched) in the frontend
     
     # ==========================================================================
     # EXECUTE UPDATE
