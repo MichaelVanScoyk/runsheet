@@ -77,8 +77,8 @@ def get_unit_response_config(db: Session, unit_id: str) -> Dict[str, Any]:
             'found': True
         }
     
-    # Unknown unit (probably mutual aid) - default to counting
-    return {'counts_for_response_times': True, 'found': False}
+    # Unknown unit (mutual aid) - doesn't count for our response metrics
+    return {'counts_for_response_times': False, 'found': False}
 
 
 def get_full_unit_info(db: Session, unit_id: str) -> Dict[str, Any]:
@@ -110,12 +110,12 @@ def get_full_unit_info(db: Session, unit_id: str) -> Dict[str, Any]:
             'counts_for_response_times': result[2] if result[2] is not None else True,
         }
     
-    # Not found in apparatus - it's mutual aid
+    # Not found in apparatus - it's mutual aid, doesn't count for our response metrics
     return {
         'is_ours': False,
         'apparatus_id': None,
         'category': None,
-        'counts_for_response_times': True,  # MA units count for response times
+        'counts_for_response_times': False,
     }
 
 

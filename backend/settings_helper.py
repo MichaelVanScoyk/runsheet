@@ -160,11 +160,12 @@ def get_unit_info(unit_id: str) -> dict:
         print(f"Error looking up unit {unit_id}: {e}")
         # Fall back to station_units on error
         units = get_station_units()
+        is_ours = unit_id.upper() in units
         return {
-            'is_ours': unit_id.upper() in units,
+            'is_ours': is_ours,
             'apparatus_id': None,
             'category': None,
-            'counts_for_response_times': True,  # Assume true for backward compat
+            'counts_for_response_times': is_ours,  # Only count if it's our unit
         }
 
 
