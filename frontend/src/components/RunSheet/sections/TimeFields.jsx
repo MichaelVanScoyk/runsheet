@@ -97,9 +97,13 @@ export default function TimeFields() {
       {/* Time in Service - calculated duration, read-only */}
       <div className="flex items-center gap-2">
         <label className="text-gray-400 text-xs w-20 text-right shrink-0">In Service</label>
-        <div className="flex-1 font-mono text-sm px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-300">
-          {timeInService || '—'}
-        </div>
+        <input 
+          type="text"
+          value={timeInService || '—'}
+          readOnly
+          disabled
+          className="flex-1 font-mono text-sm cursor-default"
+        />
       </div>
     </div>
   );
