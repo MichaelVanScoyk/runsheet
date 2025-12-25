@@ -51,40 +51,6 @@ def get_cad_parser():
     raise ImportError("Could not import cad_parser from any known path")
 
 
-def get_unit_response_config(db: Session, unit_id: str) -> Dict[str, Any]:
-    """
-    Look up unit configuration from apparatus table.
-    Returns dict with counts_for_response_times flag.
-    Checks cad_unit_id, unit_designator, AND aliases.
-    
-    This matches the logic in settings_helper.get_unit_info()
-    """
-    if not unit_id:
-        return {'counts_for_response_times': False, 'found': False}
-    
-    result = db.execute(text("""
-        SELECT id, unit_category, counts_for_response_times 
-        FROM apparatus 
-        WHERE (
-            UPPER(cad_unit_id) = :unit_id 
-            OR UPPER(unit_designator) = :unit_id
-            OR :unit_id = ANY(SELECT UPPER(unnest(cad_unit_aliases)))
-        ) AND active = true
-        LIMIT 1
-    """), {"unit_id": unit_id.upper()}).fetchone()
-    
-    if result:
-        return {
-            'apparatus_id': result[0],
-            'unit_category': result[1],
-            'counts_for_response_times': result[2] if result[2] is not None else True,
-            'found': True
-        }
-    
-    # Unknown unit (mutual aid) - doesn't count for our response metrics
-    return {'counts_for_response_times': False, 'found': False}
-
-
 def get_full_unit_info(db: Session, unit_id: str) -> Dict[str, Any]:
     """
     Full unit lookup matching settings_helper.get_unit_info().
@@ -455,8 +421,6 @@ def calculate_response_times_from_units(
     Calculate first_enroute and first_on_scene from per-unit times,
     only including units where counts_for_response_times=true.
     
-    This matches the logic in cad_listener._handle_clear()
-    
     Args:
         unit_times: List of dicts from CAD parser with unit_id, time_enroute, time_arrived, etc.
         incident_date: Base date for building full timestamps
@@ -480,10 +444,10 @@ def calculate_response_times_from_units(
         if not unit_id:
             continue
         
-        # Look up if this unit counts for response times
-        unit_config = get_unit_response_config(db, unit_id)
+        # Look up unit config
+        unit_info = get_full_unit_info(db, unit_id)
         
-        if not unit_config['counts_for_response_times']:
+        if not unit_info['counts_for_response_times']:
             excluded_units.append(unit_id)
             continue
         
@@ -514,7 +478,7 @@ def calculate_response_times_from_units(
 
 
 # =============================================================================
-# REPARSE / DIAGNOSE ENDPOINTS
+# DIAGNOSE ENDPOINT
 # =============================================================================
 
 @router.get("/diagnose-times")
@@ -554,7 +518,7 @@ async def diagnose_incident_times(
         SELECT 
             id, internal_incident_number, incident_date,
             time_dispatched, time_first_enroute, time_first_on_scene,
-            time_last_cleared, time_in_service,
+            time_last_cleared,
             cad_raw_dispatch, cad_raw_clear
         FROM incidents 
         WHERE {filter_clause} AND deleted_at IS NULL
@@ -574,10 +538,9 @@ async def diagnose_incident_times(
             'time_first_enroute': row[4],
             'time_first_on_scene': row[5],
             'time_last_cleared': row[6],
-            'time_in_service': row[7],
         }
-        raw_dispatch = row[8]
-        raw_clear = row[9]
+        raw_dispatch = row[7]
+        raw_clear = row[8]
         
         # Prefer clear report (has unit times table)
         raw_html = raw_clear or raw_dispatch
@@ -620,7 +583,6 @@ async def diagnose_incident_times(
                     })
         
         # Calculate expected first_enroute and first_on_scene using per-unit times
-        # This is the KEY FIX - we filter by counts_for_response_times
         unit_times = report_dict.get('unit_times', [])
         if unit_times:
             response_times = calculate_response_times_from_units(
@@ -678,38 +640,37 @@ async def diagnose_incident_times(
                             "included_units": response_times['included_units'],
                             "excluded_units": response_times['excluded_units'],
                         })
-        
-        # Check cleared/in-service times
-        for field, cad_key in [
-            ('time_last_cleared', 'last_available'),
-            ('time_in_service', 'last_at_quarters'),
-        ]:
-            cad_time_str = report_dict.get(cad_key)
-            if cad_time_str:
-                expected = build_datetime_with_midnight_crossing(
-                    incident_date, cad_time_str, dispatch_time_str
-                )
-                stored = stored_times[field]
+            
+            # Check time_last_cleared (calculated from MAX of unit AQ times)
+            cleared_times_from_units = []
+            for ut in unit_times:
+                if ut.get('time_at_quarters'):
+                    cleared_dt = build_datetime_with_midnight_crossing(
+                        incident_date, ut['time_at_quarters'], dispatch_time_str
+                    )
+                    if cleared_dt:
+                        cleared_times_from_units.append(cleared_dt)
+            
+            if cleared_times_from_units:
+                expected_cleared = max(cleared_times_from_units)
+                stored_cleared = stored_times['time_last_cleared']
                 
-                if expected:
-                    if stored is None:
+                if stored_cleared is None:
+                    incident_issues.append({
+                        "field": "time_last_cleared",
+                        "issue": "MISSING",
+                        "stored": None,
+                        "expected": expected_cleared.isoformat(),
+                    })
+                else:
+                    stored_dt = stored_cleared.replace(tzinfo=None) if hasattr(stored_cleared, 'replace') else stored_cleared
+                    if abs((stored_dt - expected_cleared).total_seconds()) > 1:
                         incident_issues.append({
-                            "field": field,
-                            "issue": "MISSING",
-                            "stored": None,
-                            "expected": expected.isoformat(),
-                            "cad_time": cad_time_str
+                            "field": "time_last_cleared",
+                            "issue": "TIME_MISMATCH",
+                            "stored": stored_dt.isoformat(),
+                            "expected": expected_cleared.isoformat(),
                         })
-                    else:
-                        stored_dt = stored.replace(tzinfo=None) if hasattr(stored, 'replace') else stored
-                        if abs((stored_dt - expected).total_seconds()) > 1:
-                            incident_issues.append({
-                                "field": field,
-                                "issue": "TIME_MISMATCH",
-                                "stored": stored_dt.isoformat(),
-                                "expected": expected.isoformat(),
-                                "cad_time": cad_time_str
-                            })
         
         if incident_issues:
             issues.append({
@@ -729,323 +690,8 @@ async def diagnose_incident_times(
     }
 
 
-@router.post("/fix-times/{incident_id}")
-async def fix_incident_times(
-    incident_id: int,
-    db: Session = Depends(get_db)
-):
-    """
-    Fix time issues for a specific incident by re-parsing CAD data,
-    applying midnight crossing logic, and using counts_for_response_times rules.
-    """
-    try:
-        parse_cad_html, report_to_dict = get_cad_parser()
-    except ImportError as e:
-        return {"error": f"CAD parser not available: {e}"}
-    
-    # Get incident
-    result = db.execute(text("""
-        SELECT 
-            id, internal_incident_number, incident_date,
-            cad_raw_dispatch, cad_raw_clear
-        FROM incidents 
-        WHERE id = :id AND deleted_at IS NULL
-    """), {"id": incident_id}).fetchone()
-    
-    if not result:
-        return {"error": "Incident not found"}
-    
-    incident_number = result[1]
-    incident_date = result[2]
-    raw_html = result[4] or result[3]  # Prefer clear report
-    
-    if not raw_html:
-        return {"error": "No raw CAD HTML stored"}
-    
-    if not incident_date:
-        return {"error": "No incident_date set - cannot calculate times"}
-    
-    parsed = parse_cad_html(raw_html)
-    if not parsed:
-        return {"error": "Failed to parse stored HTML"}
-    
-    report_dict = report_to_dict(parsed)
-    
-    dispatch_time_str = report_dict.get('first_dispatch') or report_dict.get('dispatch_time')
-    
-    update_fields = {}
-    fixed_fields = []
-    
-    # Fix dispatch time
-    if dispatch_time_str:
-        new_dispatch = build_datetime_with_midnight_crossing(
-            incident_date, dispatch_time_str, dispatch_time_str
-        )
-        if new_dispatch:
-            update_fields['time_dispatched'] = new_dispatch
-            fixed_fields.append('time_dispatched')
-    
-    # Fix first_enroute and first_on_scene using per-unit times
-    unit_times = report_dict.get('unit_times', [])
-    excluded_units = []
-    included_units = []
-    
-    if unit_times:
-        response_times = calculate_response_times_from_units(
-            unit_times, incident_date, dispatch_time_str, db
-        )
-        
-        if response_times['time_first_enroute']:
-            update_fields['time_first_enroute'] = response_times['time_first_enroute']
-            fixed_fields.append('time_first_enroute')
-        
-        if response_times['time_first_on_scene']:
-            update_fields['time_first_on_scene'] = response_times['time_first_on_scene']
-            fixed_fields.append('time_first_on_scene')
-        
-        excluded_units = response_times['excluded_units']
-        included_units = response_times['included_units']
-    
-    # Fix cleared/in-service times
-    for field, cad_key in [
-        ('time_last_cleared', 'last_available'),
-        ('time_in_service', 'last_at_quarters'),
-    ]:
-        cad_time_str = report_dict.get(cad_key)
-        if cad_time_str:
-            new_dt = build_datetime_with_midnight_crossing(
-                incident_date, cad_time_str, dispatch_time_str
-            )
-            if new_dt:
-                update_fields[field] = new_dt
-                fixed_fields.append(field)
-    
-    if not update_fields:
-        return {"message": "No time fields to fix", "incident_id": incident_id}
-    
-    # Execute update
-    set_clauses = ", ".join([f"{k} = :{k}" for k in update_fields.keys()])
-    update_fields['id'] = incident_id
-    
-    db.execute(text(f"""
-        UPDATE incidents 
-        SET {set_clauses}, updated_at = NOW()
-        WHERE id = :id
-    """), update_fields)
-    db.commit()
-    
-    return {
-        "success": True,
-        "incident_id": incident_id,
-        "incident_number": incident_number,
-        "fixed_fields": fixed_fields,
-        "included_units": included_units,
-        "excluded_units": excluded_units,
-        "new_values": {
-            k: v.isoformat() if hasattr(v, 'isoformat') else v 
-            for k, v in update_fields.items() if k != 'id'
-        }
-    }
-
-
-@router.post("/fix-all-times")
-async def fix_all_incident_times(
-    year: int = Query(None),
-    dry_run: bool = Query(True),
-    db: Session = Depends(get_db)
-):
-    """
-    Fix time issues for all incidents in a year.
-    
-    Args:
-        year: Year to process (defaults to current year)
-        dry_run: If True, only report what would be fixed without making changes
-    
-    Returns summary of fixes made (or that would be made).
-    """
-    try:
-        parse_cad_html, report_to_dict = get_cad_parser()
-    except ImportError as e:
-        return {"error": f"CAD parser not available: {e}"}
-    
-    if not year:
-        year = datetime.now().year
-    
-    result = db.execute(text("""
-        SELECT 
-            id, internal_incident_number, incident_date,
-            time_dispatched, time_first_enroute, time_first_on_scene,
-            time_last_cleared, time_in_service,
-            cad_raw_dispatch, cad_raw_clear
-        FROM incidents 
-        WHERE year_prefix = :year AND deleted_at IS NULL
-        ORDER BY incident_date, internal_incident_number
-    """), {"year": year})
-    
-    fixes = []
-    processed = 0
-    skipped = 0
-    
-    for row in result:
-        inc_id = row[0]
-        incident_number = row[1]
-        incident_date = row[2]
-        stored_times = {
-            'time_dispatched': row[3],
-            'time_first_enroute': row[4],
-            'time_first_on_scene': row[5],
-            'time_last_cleared': row[6],
-            'time_in_service': row[7],
-        }
-        raw_html = row[9] or row[8]  # Prefer clear report
-        
-        if not raw_html or not incident_date:
-            skipped += 1
-            continue
-        
-        parsed = parse_cad_html(raw_html)
-        if not parsed:
-            skipped += 1
-            continue
-        
-        report_dict = report_to_dict(parsed)
-        processed += 1
-        
-        dispatch_time_str = report_dict.get('first_dispatch') or report_dict.get('dispatch_time')
-        
-        update_fields = {}
-        changes = []
-        
-        # Check dispatch time
-        if dispatch_time_str:
-            expected = build_datetime_with_midnight_crossing(
-                incident_date, dispatch_time_str, dispatch_time_str
-            )
-            stored = stored_times['time_dispatched']
-            if expected:
-                needs_update = False
-                if stored is None:
-                    needs_update = True
-                else:
-                    stored_dt = stored.replace(tzinfo=None) if hasattr(stored, 'replace') else stored
-                    if abs((stored_dt - expected).total_seconds()) > 1:
-                        needs_update = True
-                
-                if needs_update:
-                    update_fields['time_dispatched'] = expected
-                    changes.append({
-                        "field": "time_dispatched",
-                        "old": stored.isoformat() if stored else None,
-                        "new": expected.isoformat()
-                    })
-        
-        # Check first_enroute and first_on_scene using per-unit times
-        unit_times = report_dict.get('unit_times', [])
-        if unit_times:
-            response_times = calculate_response_times_from_units(
-                unit_times, incident_date, dispatch_time_str, db
-            )
-            
-            # Check first_enroute
-            expected = response_times['time_first_enroute']
-            stored = stored_times['time_first_enroute']
-            if expected:
-                needs_update = False
-                if stored is None:
-                    needs_update = True
-                else:
-                    stored_dt = stored.replace(tzinfo=None) if hasattr(stored, 'replace') else stored
-                    if abs((stored_dt - expected).total_seconds()) > 1:
-                        needs_update = True
-                
-                if needs_update:
-                    update_fields['time_first_enroute'] = expected
-                    changes.append({
-                        "field": "time_first_enroute",
-                        "old": stored.isoformat() if stored else None,
-                        "new": expected.isoformat(),
-                        "excluded_units": response_times['excluded_units'],
-                    })
-            
-            # Check first_on_scene
-            expected = response_times['time_first_on_scene']
-            stored = stored_times['time_first_on_scene']
-            if expected:
-                needs_update = False
-                if stored is None:
-                    needs_update = True
-                else:
-                    stored_dt = stored.replace(tzinfo=None) if hasattr(stored, 'replace') else stored
-                    if abs((stored_dt - expected).total_seconds()) > 1:
-                        needs_update = True
-                
-                if needs_update:
-                    update_fields['time_first_on_scene'] = expected
-                    changes.append({
-                        "field": "time_first_on_scene",
-                        "old": stored.isoformat() if stored else None,
-                        "new": expected.isoformat(),
-                        "excluded_units": response_times['excluded_units'],
-                    })
-        
-        # Check cleared/in-service times
-        for field, cad_key in [
-            ('time_last_cleared', 'last_available'),
-            ('time_in_service', 'last_at_quarters'),
-        ]:
-            cad_time_str = report_dict.get(cad_key)
-            if cad_time_str:
-                expected = build_datetime_with_midnight_crossing(
-                    incident_date, cad_time_str, dispatch_time_str
-                )
-                stored = stored_times[field]
-                if expected:
-                    needs_update = False
-                    if stored is None:
-                        needs_update = True
-                    else:
-                        stored_dt = stored.replace(tzinfo=None) if hasattr(stored, 'replace') else stored
-                        if abs((stored_dt - expected).total_seconds()) > 1:
-                            needs_update = True
-                    
-                    if needs_update:
-                        update_fields[field] = expected
-                        changes.append({
-                            "field": field,
-                            "old": stored.isoformat() if stored else None,
-                            "new": expected.isoformat()
-                        })
-        
-        if update_fields:
-            if not dry_run:
-                set_clauses = ", ".join([f"{k} = :{k}" for k in update_fields.keys()])
-                update_fields['id'] = inc_id
-                db.execute(text(f"""
-                    UPDATE incidents SET {set_clauses}, updated_at = NOW() WHERE id = :id
-                """), update_fields)
-            
-            fixes.append({
-                "incident_id": inc_id,
-                "incident_number": incident_number,
-                "changes": changes
-            })
-    
-    if not dry_run:
-        db.commit()
-    
-    return {
-        "dry_run": dry_run,
-        "year": year,
-        "processed": processed,
-        "skipped": skipped,
-        "incidents_with_fixes": len(fixes),
-        "total_field_fixes": sum(len(f["changes"]) for f in fixes),
-        "fixes": fixes
-    }
-
-
 # =============================================================================
-# RESTORE FROM CAD
+# RESTORE FROM CAD / FULL REPARSE
 # =============================================================================
 
 @router.post("/restore-from-cad/{incident_id}")
@@ -1220,8 +866,7 @@ async def preview_restore_from_cad(
         "time_dispatched": dispatch_time_str,
         "time_first_enroute": None,  # Calculated below
         "time_first_on_scene": None,  # Calculated below
-        "time_last_cleared": report_dict.get('last_available'),
-        "time_in_service": report_dict.get('last_at_quarters'),
+        "time_last_cleared": None,  # Calculated from unit AQ times
     }
     
     # Add calculated response times (formatted)
@@ -1230,6 +875,19 @@ async def preview_restore_from_cad(
             cad_values['time_first_enroute'] = response_calc['time_first_enroute'].strftime('%H:%M:%S')
         if response_calc['time_first_on_scene']:
             cad_values['time_first_on_scene'] = response_calc['time_first_on_scene'].strftime('%H:%M:%S')
+    
+    # Calculate time_last_cleared from unit AQ times
+    if unit_times and incident_date:
+        cleared_times = []
+        for ut in unit_times:
+            if ut.get('time_at_quarters'):
+                cleared_dt = build_datetime_with_midnight_crossing(
+                    incident_date, ut['time_at_quarters'], dispatch_time_str
+                )
+                if cleared_dt:
+                    cleared_times.append(cleared_dt)
+        if cleared_times:
+            cad_values['time_last_cleared'] = max(cleared_times).strftime('%H:%M:%S')
     
     # ==========================================================================
     # CHECK FOR UNIT CONFIG CHANGES
@@ -1291,7 +949,7 @@ async def preview_restore_from_cad(
         "source": "clear_report" if raw_clear else "dispatch_report",
         "cad_values": cad_values,
         "unit_times": unit_times,
-        "unit_changes": unit_changes,  # NEW: unit config changes
+        "unit_changes": unit_changes,
         "response_calculation": {
             "included_units": response_calc['included_units'] if response_calc else [],
             "excluded_units": response_calc['excluded_units'] if response_calc else [],
@@ -1328,7 +986,7 @@ async def export_cad_data(
             id, internal_incident_number, call_category, cad_event_number, cad_event_type,
             incident_date, address, municipality_code,
             time_dispatched, time_first_enroute, time_first_on_scene,
-            time_last_cleared, time_in_service,
+            time_last_cleared,
             cad_raw_dispatch, cad_raw_updates, cad_raw_clear,
             created_at, updated_at
         FROM incidents
@@ -1351,12 +1009,11 @@ async def export_cad_data(
             "time_first_enroute": row[9].isoformat() if row[9] else None,
             "time_first_on_scene": row[10].isoformat() if row[10] else None,
             "time_last_cleared": row[11].isoformat() if row[11] else None,
-            "time_in_service": row[12].isoformat() if row[12] else None,
-            "cad_raw_dispatch": row[13],
-            "cad_raw_updates": row[14] or [],
-            "cad_raw_clear": row[15],
-            "created_at": row[16].isoformat() if row[16] else None,
-            "updated_at": row[17].isoformat() if row[17] else None,
+            "cad_raw_dispatch": row[12],
+            "cad_raw_updates": row[13] or [],
+            "cad_raw_clear": row[14],
+            "created_at": row[15].isoformat() if row[15] else None,
+            "updated_at": row[16].isoformat() if row[16] else None,
         })
     
     return {
