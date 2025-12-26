@@ -23,7 +23,7 @@ from cad_parser import parse_cad_html, report_to_dict
 # Import settings from database
 import sys
 sys.path.insert(0, '/opt/runsheet/backend')
-from settings_helper import is_station_unit, get_unit_info, get_api_url, get_cad_port
+from settings_helper import get_unit_info, get_api_url, get_cad_port
 
 # Configure logging
 logging.basicConfig(
@@ -207,9 +207,15 @@ class CADListener:
             # Use canonical unit_designator if available (normalizes aliases like 48QRS -> QRS48)
             canonical_unit_id = unit_info['unit_designator'] or unit_id
             
-            # Merge with existing data
+            # Merge with existing data, but ALWAYS update unit config from current apparatus table
             if canonical_unit_id in existing_units:
                 unit_data = existing_units[canonical_unit_id]
+                # ALWAYS update unit config fields from current apparatus config
+                # This ensures changes to apparatus table are reflected
+                unit_data['is_mutual_aid'] = not unit_info['is_ours']
+                unit_data['apparatus_id'] = unit_info['apparatus_id']
+                unit_data['unit_category'] = unit_info['category']
+                unit_data['counts_for_response_times'] = unit_info['counts_for_response_times']
             else:
                 unit_data = {
                     'unit_id': canonical_unit_id,
@@ -452,17 +458,18 @@ class CADListener:
             ) if ut.get('time_at_quarters') else None
             
             if canonical_unit_id in existing_units:
-                # Update existing unit with times
+                # Update existing unit with times AND always refresh config from apparatus table
                 existing_units[canonical_unit_id]['time_dispatched'] = time_dispatched
                 existing_units[canonical_unit_id]['time_enroute'] = time_enroute
                 existing_units[canonical_unit_id]['time_arrived'] = time_arrived
                 existing_units[canonical_unit_id]['time_available'] = time_available
                 existing_units[canonical_unit_id]['time_cleared'] = time_cleared
-                # Ensure unit info is populated (may not be if unit was in dispatch before migration)
-                if 'counts_for_response_times' not in existing_units[canonical_unit_id]:
-                    existing_units[canonical_unit_id]['apparatus_id'] = unit_info['apparatus_id']
-                    existing_units[canonical_unit_id]['unit_category'] = unit_info['category']
-                    existing_units[canonical_unit_id]['counts_for_response_times'] = unit_info['counts_for_response_times']
+                # ALWAYS update unit config from current apparatus table
+                # This ensures changes to apparatus config are reflected
+                existing_units[canonical_unit_id]['is_mutual_aid'] = not unit_info['is_ours']
+                existing_units[canonical_unit_id]['apparatus_id'] = unit_info['apparatus_id']
+                existing_units[canonical_unit_id]['unit_category'] = unit_info['category']
+                existing_units[canonical_unit_id]['counts_for_response_times'] = unit_info['counts_for_response_times']
             else:
                 # New unit from clear report (maybe wasn't in dispatch)
                 existing_units[canonical_unit_id] = {
@@ -486,7 +493,11 @@ class CADListener:
             
             # Calculate first_enroute and first_on_scene from units where counts_for_response_times=true
             # This excludes chief vehicles and other units configured not to affect metrics
-            metric_units = [u for u in cad_units if u.get('counts_for_response_times', True)]
+            # CRITICAL: Default to False - if field is missing/None, unit should NOT affect metrics
+            # Also check is_mutual_aid as belt-and-suspenders safety
+            metric_units = [u for u in cad_units 
+                           if u.get('counts_for_response_times') == True 
+                           and not u.get('is_mutual_aid', True)]
             
             # Find earliest enroute time from units that count
             enroute_times = [u['time_enroute'] for u in metric_units if u.get('time_enroute')]
@@ -508,7 +519,9 @@ class CADListener:
                 logger.debug(f"Calculated last_cleared from {len(cleared_times)} units")
             
             # Log which units were excluded from metrics
-            excluded_units = [u['unit_id'] for u in cad_units if not u.get('counts_for_response_times', True)]
+            # Excluded = either counts_for_response_times is not True OR is_mutual_aid is True
+            excluded_units = [u['unit_id'] for u in cad_units 
+                             if u.get('counts_for_response_times') != True or u.get('is_mutual_aid', True)]
             if excluded_units:
                 logger.info(f"Units excluded from response metrics: {', '.join(excluded_units)}")
         

@@ -83,7 +83,8 @@ def get_full_unit_info(db: Session, unit_id: str) -> Dict[str, Any]:
             'is_ours': True,
             'apparatus_id': result[0],
             'category': result[1],
-            'counts_for_response_times': result[2] if result[2] is not None else True,
+            # CRITICAL: Default to False if NULL in database - safer to exclude than include
+            'counts_for_response_times': result[2] if result[2] is not None else False,
             'unit_designator': result[4],  # Canonical unit_designator
         }
     
@@ -234,8 +235,14 @@ def full_reparse_incident(incident_id: int, db: Session) -> Dict[str, Any]:
     # CALCULATE RESPONSE TIMES FROM FILTERED UNITS
     # ==========================================================================
     
-    metric_units = [u for u in new_cad_units if u.get('counts_for_response_times', True)]
-    excluded_units = [u['unit_id'] for u in new_cad_units if not u.get('counts_for_response_times', True)]
+    # CRITICAL: Default to False - if field is missing/None, unit should NOT affect metrics
+    # Also check is_mutual_aid as belt-and-suspenders safety
+    metric_units = [u for u in new_cad_units 
+                   if u.get('counts_for_response_times') == True 
+                   and not u.get('is_mutual_aid', True)]
+    # Excluded = either counts_for_response_times is False/None OR is_mutual_aid is True
+    excluded_units = [u['unit_id'] for u in new_cad_units 
+                     if u.get('counts_for_response_times') != True or u.get('is_mutual_aid', True)]
     included_units = [u['unit_id'] for u in metric_units]
     
     # Find earliest enroute from units that count

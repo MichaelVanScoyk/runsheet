@@ -4,7 +4,7 @@ For use by standalone scripts (cad_listener, etc.)
 """
 
 import json
-from typing import Any, List, Optional
+from typing import Any, Optional
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -83,16 +83,8 @@ def _parse_value(value: str, value_type: str) -> Any:
 
 
 # =============================================================================
-# CONVENIENCE FUNCTIONS
+# UNIT LOOKUP
 # =============================================================================
-
-def get_station_units() -> List[str]:
-    """Get list of station unit IDs - DEPRECATED, use get_unit_info() instead"""
-    units = get_setting('units', 'station_units', [])
-    if isinstance(units, list):
-        return [u.upper() for u in units]
-    return []
-
 
 def get_unit_info(unit_id: str) -> dict:
     """
@@ -134,26 +126,18 @@ def get_unit_info(unit_id: str) -> dict:
         conn.close()
         
         if row:
+            # Found in apparatus table - use explicit values from database
+            # NULL counts_for_response_times defaults to False (safer to exclude than include)
             return {
                 'is_ours': True,
                 'apparatus_id': row['id'],
                 'category': row['unit_category'],
-                'counts_for_response_times': row['counts_for_response_times'] or False,
+                'counts_for_response_times': row['counts_for_response_times'] if row['counts_for_response_times'] is not None else False,
                 'unit_designator': row['unit_designator'],  # Canonical ID
             }
         
-        # Fall back to station_units setting for backward compatibility
-        # This handles units not yet in apparatus table
-        units = get_station_units()
-        if unit_id.upper() in units:
-            return {
-                'is_ours': True,
-                'apparatus_id': None,
-                'category': 'APPARATUS',  # Assume apparatus if in station_units
-                'counts_for_response_times': True,
-                'unit_designator': unit_id.upper(),  # Use as-is
-            }
-        
+        # Not found in apparatus table - this is mutual aid
+        # Do NOT fall back to station_units setting - apparatus table is authoritative
         return {
             'is_ours': False,
             'apparatus_id': None,
@@ -164,22 +148,19 @@ def get_unit_info(unit_id: str) -> dict:
         
     except Exception as e:
         print(f"Error looking up unit {unit_id}: {e}")
-        # Fall back to station_units on error
-        units = get_station_units()
-        is_ours = unit_id.upper() in units
+        # On database error, treat as mutual aid (safer to exclude than include)
         return {
-            'is_ours': is_ours,
+            'is_ours': False,
             'apparatus_id': None,
             'category': None,
-            'counts_for_response_times': is_ours,  # Only count if it's our unit
-            'unit_designator': unit_id.upper() if is_ours else None,
+            'counts_for_response_times': False,
+            'unit_designator': None,
         }
 
 
-def is_station_unit(unit_id: str) -> bool:
-    """Check if unit belongs to this station"""
-    return get_unit_info(unit_id)['is_ours']
-
+# =============================================================================
+# OTHER SETTINGS
+# =============================================================================
 
 def get_station_coords() -> tuple:
     """Get station coordinates"""
@@ -217,7 +198,8 @@ if __name__ == "__main__":
             print(f"  {key} = {val}")
     
     print("\n" + "-" * 40)
-    print(f"Station units: {get_station_units()}")
-    print(f"Is ENG481 ours? {is_station_unit('ENG481')}")
-    print(f"Is AMB891 ours? {is_station_unit('AMB891')}")
-    print(f"Station coords: {get_station_coords()}")
+    print("\nUnit lookups:")
+    print(f"  ENG481: {get_unit_info('ENG481')}")
+    print(f"  AMB891: {get_unit_info('AMB891')}")
+    print(f"  QRS48:  {get_unit_info('QRS48')}")
+    print(f"\nStation coords: {get_station_coords()}")
