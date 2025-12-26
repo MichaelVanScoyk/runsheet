@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank } from '../api';
+import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings } from '../api';
 import './AdminPage.css';
 import PersonnelPage from './PersonnelPage';
 import ApparatusPage from './ApparatusPage';
@@ -1384,6 +1384,130 @@ function DataExportTab() {
 
 
 // ============================================================================
+// PRINT SETTINGS TAB COMPONENT
+// ============================================================================
+
+const PRINT_SETTING_LABELS = {
+  showHeader: { label: 'Header', desc: 'Station name and "Incident Report" title' },
+  showTimes: { label: 'Response Times', desc: 'Dispatched, Enroute, On Scene, etc.' },
+  showLocation: { label: 'Location', desc: 'Address of incident' },
+  showCrossStreets: { label: 'Cross Streets', desc: 'Nearby intersections' },
+  showDispatchInfo: { label: 'Dispatch Info', desc: 'CAD type and subtype' },
+  showCadUnits: { label: 'Units Called', desc: 'List of units dispatched' },
+  showSituationFound: { label: 'Situation Found', desc: 'What was found on arrival' },
+  showExtentOfDamage: { label: 'Extent of Damage', desc: 'Damage description' },
+  showServicesProvided: { label: 'Services Provided', desc: 'Actions taken' },
+  showNarrative: { label: 'Narrative', desc: 'Detailed incident description' },
+  showEquipmentUsed: { label: 'Equipment Used', desc: 'Tools and equipment list' },
+  showPersonnelGrid: { label: 'Personnel Grid', desc: 'Who responded on each unit' },
+  showOfficerInfo: { label: 'Officer Info', desc: 'OIC and Report Completed By' },
+  showProblemsIssues: { label: 'Problems/Issues', desc: 'Issues encountered' },
+  showWeather: { label: 'Weather', desc: 'Weather conditions' },
+  showCallerInfo: { label: 'Caller Info', desc: 'Caller name and phone (privacy)' },
+  showNerisInfo: { label: 'NERIS Codes', desc: 'Federal reporting classifications' },
+};
+
+function PrintSettingsTab() {
+  const [settings, setSettings] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const res = await getPrintSettings();
+      setSettings(res.data);
+    } catch (err) {
+      console.error('Failed to load print settings:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggle = (key) => {
+    setSettings(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      await updatePrintSettings(settings);
+      setMessage({ type: 'success', text: 'Print settings saved' });
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to save settings' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="loading">Loading print settings...</div>;
+
+  const headerGroup = ['showHeader', 'showWeather'];
+  const timesGroup = ['showTimes'];
+  const locationGroup = ['showLocation', 'showCrossStreets', 'showDispatchInfo', 'showCadUnits'];
+  const narrativeGroup = ['showSituationFound', 'showExtentOfDamage', 'showServicesProvided', 'showNarrative'];
+  const personnelGroup = ['showPersonnelGrid', 'showOfficerInfo', 'showEquipmentUsed'];
+  const otherGroup = ['showProblemsIssues', 'showCallerInfo', 'showNerisInfo'];
+
+  const renderGroup = (title, keys) => (
+    <div className="print-settings-group" style={{ marginBottom: '1rem' }}>
+      <h4 style={{ marginBottom: '0.5rem', color: '#888' }}>{title}</h4>
+      {keys.map(key => {
+        const info = PRINT_SETTING_LABELS[key] || { label: key, desc: '' };
+        return (
+          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={settings[key] ?? true}
+              onChange={() => handleToggle(key)}
+            />
+            <span style={{ fontWeight: '500' }}>{info.label}</span>
+            <span style={{ color: '#666', fontSize: '0.85rem' }}>— {info.desc}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div className="print-settings-tab">
+      <h3>Print Layout Settings</h3>
+      <p className="tab-intro">
+        Choose which sections appear on printed incident reports. Changes apply to all users.
+      </p>
+
+      {message && (
+        <div className={`message ${message.type}`} style={{ marginBottom: '1rem' }}>{message.text}</div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+        {renderGroup('Header', headerGroup)}
+        {renderGroup('Times', timesGroup)}
+        {renderGroup('Location & Dispatch', locationGroup)}
+        {renderGroup('Incident Details', narrativeGroup)}
+        {renderGroup('Personnel & Equipment', personnelGroup)}
+        {renderGroup('Other', otherGroup)}
+      </div>
+
+      <button 
+        className="btn btn-primary" 
+        onClick={handleSave} 
+        disabled={saving}
+        style={{ marginTop: '1rem' }}
+      >
+        {saving ? 'Saving...' : 'Save Print Settings'}
+      </button>
+    </div>
+  );
+}
+
+
+// ============================================================================
 // ADMIN LOGIN FORM
 // ============================================================================
 
@@ -1516,6 +1640,12 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         >
           📥 Export Data
         </button>
+        <button 
+          className={activeTab === 'print' ? 'active' : ''} 
+          onClick={() => setActiveTab('print')}
+        >
+          🖨️ Print Layout
+        </button>
       </div>
 
       <div className="admin-content">
@@ -1529,6 +1659,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'audit' && <AuditLogTab />}
         {activeTab === 'password' && <PasswordTab />}
         {activeTab === 'export' && <DataExportTab />}
+        {activeTab === 'print' && <PrintSettingsTab />}
       </div>
     </div>
   );

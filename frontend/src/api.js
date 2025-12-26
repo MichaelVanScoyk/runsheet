@@ -171,6 +171,10 @@ export const getSetting = (category, key) => api.get(`/settings/${category}/${ke
 export const updateSetting = (category, key, value) => 
   api.put(`/settings/${category}/${key}`, { value });
 
+export const getPrintSettings = () => api.get('/settings/print');
+
+export const updatePrintSettings = (settings) => api.put('/settings/print', settings);
+
 // ============================================================================
 // ADMIN
 // ============================================================================

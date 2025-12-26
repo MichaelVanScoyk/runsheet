@@ -242,6 +242,80 @@ def _parse_value(value: str, value_type: str) -> Any:
 
 
 # =============================================================================
+# PRINT SETTINGS HELPERS
+# =============================================================================
+
+DEFAULT_PRINT_SETTINGS = {
+    'showHeader': True,
+    'showTimes': True,
+    'showLocation': True,
+    'showDispatchInfo': True,
+    'showSituationFound': True,
+    'showExtentOfDamage': True,
+    'showServicesProvided': True,
+    'showNarrative': True,
+    'showPersonnelGrid': True,
+    'showEquipmentUsed': True,
+    'showOfficerInfo': True,
+    'showProblemsIssues': True,
+    'showCadUnits': True,
+    'showNerisInfo': False,
+    'showWeather': True,
+    'showCrossStreets': True,
+    'showCallerInfo': False,
+}
+
+
+@router.get("/print")
+async def get_print_settings(db: Session = Depends(get_db)):
+    """Get print settings as a combined object"""
+    result = db.execute(
+        text("SELECT key, value, value_type FROM settings WHERE category = 'print'")
+    )
+    
+    settings = dict(DEFAULT_PRINT_SETTINGS)  # Start with defaults
+    
+    for row in result:
+        key = row[0]
+        value = _parse_value(row[1], row[2])
+        if key in settings:
+            settings[key] = value
+    
+    return settings
+
+
+@router.put("/print")
+async def update_print_settings(
+    settings: dict,
+    db: Session = Depends(get_db)
+):
+    """Update print settings"""
+    for key, value in settings.items():
+        # Check if setting exists
+        exists = db.execute(
+            text("SELECT 1 FROM settings WHERE category = 'print' AND key = :key"),
+            {"key": key}
+        ).fetchone()
+        
+        value_str = str(value).lower() if isinstance(value, bool) else str(value)
+        value_type = 'boolean' if isinstance(value, bool) else 'string'
+        
+        if exists:
+            db.execute(
+                text("UPDATE settings SET value = :value, updated_at = NOW() WHERE category = 'print' AND key = :key"),
+                {"key": key, "value": value_str}
+            )
+        else:
+            db.execute(
+                text("INSERT INTO settings (category, key, value, value_type) VALUES ('print', :key, :value, :value_type)"),
+                {"key": key, "value": value_str, "value_type": value_type}
+            )
+    
+    db.commit()
+    return {"status": "ok"}
+
+
+# =============================================================================
 # CONVENIENCE GETTERS (for use by other modules)
 # =============================================================================
 

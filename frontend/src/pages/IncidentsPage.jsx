@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getIncidents, getIncident } from '../api';
 import RunSheetForm from '../components/RunSheetForm';
+import PrintView from '../components/PrintView';
 
 const FILTER_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -13,6 +14,10 @@ function IncidentsPage() {
   const [editingIncident, setEditingIncident] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState('ALL'); // ALL, FIRE, EMS
+  
+  // Print view state
+  const [showPrintView, setShowPrintView] = useState(false);
+  const [printIncidentId, setPrintIncidentId] = useState(null);
   
   // Timeout ref for resetting filter
   const filterTimeoutRef = useRef(null);
@@ -44,10 +49,14 @@ function IncidentsPage() {
         setShowForm(false);
         setEditingIncident(null);
       }
+      if (showPrintView) {
+        setShowPrintView(false);
+        setPrintIncidentId(null);
+      }
     };
     window.addEventListener('nav-incidents-click', handleNavClick);
     return () => window.removeEventListener('nav-incidents-click', handleNavClick);
-  }, [showForm]);
+  }, [showForm, showPrintView]);
 
   const loadData = useCallback(async () => {
     try {
@@ -65,16 +74,16 @@ function IncidentsPage() {
     loadData();
   }, [loadData]);
 
-  // Auto-refresh every 5 seconds when enabled
+  // Auto-refresh every 5 seconds when enabled (and not viewing form/print)
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!autoRefresh || showForm || showPrintView) return;
     
     const interval = setInterval(() => {
       loadData();
     }, 5000);
     
     return () => clearInterval(interval);
-  }, [autoRefresh, loadData]);
+  }, [autoRefresh, loadData, showForm, showPrintView]);
 
   const handleNewIncident = () => {
     setEditingIncident(null);
@@ -95,6 +104,11 @@ function IncidentsPage() {
     }
   };
 
+  const handlePrintIncident = (incidentId) => {
+    setPrintIncidentId(incidentId);
+    setShowPrintView(true);
+  };
+
   const handleFormClose = () => {
     setShowForm(false);
     setEditingIncident(null);
@@ -103,6 +117,11 @@ function IncidentsPage() {
 
   const handleFormSave = () => {
     loadData();
+  };
+
+  const handlePrintClose = () => {
+    setShowPrintView(false);
+    setPrintIncidentId(null);
   };
 
   const handleCategoryChange = (newCategory) => {
@@ -139,6 +158,11 @@ function IncidentsPage() {
   // Count by category
   const fireCounts = incidents.filter(i => i.call_category === 'FIRE').length;
   const emsCounts = incidents.filter(i => i.call_category === 'EMS').length;
+
+  // Show print view
+  if (showPrintView && printIncidentId) {
+    return <PrintView incidentId={printIncidentId} onClose={handlePrintClose} />;
+  }
 
   if (showForm) {
     return (
@@ -271,13 +295,23 @@ function IncidentsPage() {
                       </span>
                     </td>
                     <td>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => handleEditIncident(i)}
-                        disabled={loadingIncident}
-                      >
-                        Edit
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handlePrintIncident(i.id)}
+                          title="Print View"
+                          style={{ padding: '0.25rem 0.5rem' }}
+                        >
+                          🖨️
+                        </button>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handleEditIncident(i)}
+                          disabled={loadingIncident}
+                        >
+                          Edit
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
