@@ -299,26 +299,23 @@ def full_reparse_incident(incident_id: int, db: Session) -> Dict[str, Any]:
         update_fields['caller_phone'] = report_dict['caller_phone']
         restored_fields.append('caller_phone')
     
-    # Time fields
+    # Time fields - ALWAYS set these, even to NULL, to clear old bad data
     if dispatch_time_str:
         dt = build_datetime_with_midnight_crossing(incident_date, dispatch_time_str, dispatch_time_str)
         if dt:
             update_fields['time_dispatched'] = dt
             restored_fields.append('time_dispatched')
     
-    if time_first_enroute:
-        # Already ISO string from the cad_units processing
-        update_fields['time_first_enroute'] = time_first_enroute
-        restored_fields.append('time_first_enroute')
+    # ALWAYS set response time fields - NULL if no metric units have data
+    # This clears old bad data from mutual aid times
+    update_fields['time_first_enroute'] = time_first_enroute
+    restored_fields.append('time_first_enroute')
     
-    if time_first_on_scene:
-        update_fields['time_first_on_scene'] = time_first_on_scene
-        restored_fields.append('time_first_on_scene')
+    update_fields['time_first_on_scene'] = time_first_on_scene
+    restored_fields.append('time_first_on_scene')
     
-    if time_last_cleared:
-        # Calculated from MAX(time_cleared) across all units (AQ times)
-        update_fields['time_last_cleared'] = time_last_cleared
-        restored_fields.append('time_last_cleared')
+    update_fields['time_last_cleared'] = time_last_cleared
+    restored_fields.append('time_last_cleared')
     
     # NOTE: time_in_service is NOT stored as a timestamp
     # It's calculated as duration (Cleared - Dispatched) in the frontend
