@@ -7,6 +7,8 @@ export default function RestorePreviewModal() {
     restorePreview, 
     setRestorePreview,
     restoreLoading,
+    restoreComplete,
+    setRestoreComplete,
     handleRestoreConfirm 
   } = useRunSheet();
   
@@ -15,6 +17,7 @@ export default function RestorePreviewModal() {
   const handleClose = () => {
     setShowRestoreModal(false);
     setRestorePreview(null);
+    setRestoreComplete(false);
   };
 
   const hasFieldChanges = restorePreview.changes && restorePreview.changes.length > 0;
@@ -32,7 +35,9 @@ export default function RestorePreviewModal() {
       >
         {/* Header */}
         <div className="px-5 py-4 border-b border-dark-border flex justify-between items-center">
-          <h3 className="text-accent-red text-lg font-semibold m-0">Reparse from CAD</h3>
+          <h3 className={`text-lg font-semibold m-0 ${restoreComplete ? 'text-status-open' : 'text-accent-red'}`}>
+            {restoreComplete ? '✓ Reparse Complete' : 'Reparse from CAD'}
+          </h3>
           <button 
             className="bg-transparent border-none text-gray-500 hover:text-white text-2xl cursor-pointer leading-none p-0"
             onClick={handleClose}
@@ -43,28 +48,41 @@ export default function RestorePreviewModal() {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          <p className="text-gray-400 text-sm mb-4">
-            This will reparse the stored CAD data and update all CAD-derived fields,
-            including unit configurations (is_mutual_aid, counts_for_response_times).
-          </p>
+          {!restoreComplete && (
+            <p className="text-gray-400 text-sm mb-4">
+              This will reparse the stored CAD data and update all CAD-derived fields,
+              including unit configurations (is_mutual_aid, counts_for_response_times).
+            </p>
+          )}
+          
+          {restoreComplete && (
+            <p className="text-status-open text-sm mb-4">
+              {totalChanges > 0 
+                ? `Successfully applied ${totalChanges} change${totalChanges !== 1 ? 's' : ''}.`
+                : 'Data is now in sync with current apparatus configuration.'
+              }
+            </p>
+          )}
           
           {/* Field Changes */}
           {hasFieldChanges && (
             <>
-              <h4 className="text-gray-300 text-sm font-medium mb-2">Field Changes</h4>
+              <h4 className="text-gray-300 text-sm font-medium mb-2">
+                {restoreComplete ? 'Fields Updated' : 'Field Changes'}
+              </h4>
               <table className="w-full text-sm border-collapse mb-4">
                 <thead>
                   <tr className="bg-dark-border text-accent-red text-xs uppercase">
                     <th className="px-3 py-2 text-left">Field</th>
-                    <th className="px-3 py-2 text-left">Current Value</th>
-                    <th className="px-3 py-2 text-left">CAD Value</th>
+                    <th className="px-3 py-2 text-left">{restoreComplete ? 'Was' : 'Current Value'}</th>
+                    <th className="px-3 py-2 text-left">{restoreComplete ? 'Now' : 'CAD Value'}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {restorePreview.changes.map((change, idx) => (
                     <tr key={idx} className="border-b border-dark-border">
                       <td className="px-3 py-2 text-gray-300 font-medium">{change.field}</td>
-                      <td className="px-3 py-2 text-status-error">
+                      <td className={`px-3 py-2 ${restoreComplete ? 'text-gray-500 line-through' : 'text-status-error'}`}>
                         {change.current || <span className="text-gray-600 italic">empty</span>}
                       </td>
                       <td className="px-3 py-2 text-status-open">
@@ -80,14 +98,16 @@ export default function RestorePreviewModal() {
           {/* Unit Config Changes */}
           {hasUnitChanges && (
             <>
-              <h4 className="text-gray-300 text-sm font-medium mb-2">Unit Configuration Changes</h4>
+              <h4 className="text-gray-300 text-sm font-medium mb-2">
+                {restoreComplete ? 'Units Updated' : 'Unit Configuration Changes'}
+              </h4>
               <table className="w-full text-sm border-collapse mb-4">
                 <thead>
                   <tr className="bg-dark-border text-accent-red text-xs uppercase">
                     <th className="px-3 py-2 text-left">Unit</th>
                     <th className="px-3 py-2 text-left">Field</th>
-                    <th className="px-3 py-2 text-left">Current</th>
-                    <th className="px-3 py-2 text-left">Will Be</th>
+                    <th className="px-3 py-2 text-left">{restoreComplete ? 'Was' : 'Current'}</th>
+                    <th className="px-3 py-2 text-left">{restoreComplete ? 'Now' : 'Will Be'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -95,7 +115,7 @@ export default function RestorePreviewModal() {
                     <tr key={idx} className="border-b border-dark-border">
                       <td className="px-3 py-2 text-gray-300 font-medium">{change.unit_id}</td>
                       <td className="px-3 py-2 text-gray-400">{change.field}</td>
-                      <td className="px-3 py-2 text-status-error">
+                      <td className={`px-3 py-2 ${restoreComplete ? 'text-gray-500 line-through' : 'text-status-error'}`}>
                         {change.current === null ? <span className="text-gray-600 italic">none</span> : String(change.current)}
                       </td>
                       <td className="px-3 py-2 text-status-open">
@@ -109,9 +129,15 @@ export default function RestorePreviewModal() {
           )}
 
           {/* No visible changes message */}
-          {!hasFieldChanges && !hasUnitChanges && (
+          {!hasFieldChanges && !hasUnitChanges && !restoreComplete && (
             <p className="text-gray-500 italic mb-4">
-              No visible changes detected. You can still reparse to ensure data is in sync with current apparatus configuration.
+              No changes detected. You can still reparse to ensure data is in sync with current apparatus configuration.
+            </p>
+          )}
+          
+          {!hasFieldChanges && !hasUnitChanges && restoreComplete && (
+            <p className="text-gray-400 italic mb-4">
+              No changes were needed. Data was already in sync.
             </p>
           )}
         </div>
@@ -119,20 +145,26 @@ export default function RestorePreviewModal() {
         {/* Footer */}
         <div className="px-5 py-3 border-t border-dark-border flex justify-between items-center">
           <span className="text-gray-500 text-sm">
-            {totalChanges > 0 
-              ? `${totalChanges} change${totalChanges !== 1 ? 's' : ''} detected`
-              : 'Full reparse will sync with current config'
+            {restoreComplete 
+              ? (totalChanges > 0 ? `${totalChanges} change${totalChanges !== 1 ? 's' : ''} applied` : 'No changes needed')
+              : (totalChanges > 0 ? `${totalChanges} change${totalChanges !== 1 ? 's' : ''} detected` : 'Full reparse will sync with current config')
             }
           </span>
           <div className="flex gap-2">
-            <button className="btn btn-secondary" onClick={handleClose}>Cancel</button>
-            <button 
-              className="btn btn-warning" 
-              onClick={handleRestoreConfirm}
-              disabled={restoreLoading}
-            >
-              {restoreLoading ? 'Reparsing...' : 'Reparse'}
-            </button>
+            {restoreComplete ? (
+              <button className="btn btn-primary" onClick={handleClose}>Close</button>
+            ) : (
+              <>
+                <button className="btn btn-secondary" onClick={handleClose}>Cancel</button>
+                <button 
+                  className="btn btn-warning" 
+                  onClick={handleRestoreConfirm}
+                  disabled={restoreLoading}
+                >
+                  {restoreLoading ? 'Reparsing...' : 'Reparse'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

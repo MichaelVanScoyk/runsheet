@@ -196,6 +196,7 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [restorePreview, setRestorePreview] = useState(null);
   const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreComplete, setRestoreComplete] = useState(false);
   const [showIncidentTypeModal, setShowIncidentTypeModal] = useState(false);
   const [showLocationUseModal, setShowLocationUseModal] = useState(false);
   const [showActionsModal, setShowActionsModal] = useState(false);
@@ -651,6 +652,7 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
         changes,
         unitChanges: data.unit_config_changes || [],
       });
+      setRestoreComplete(false);  // Reset completion state
       setShowRestoreModal(true);
     } catch (err) {
       console.error('Failed to preview restore:', err);
@@ -672,11 +674,11 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
         alert(data.error);
         return;
       }
-      alert(`Restored ${data.restored_fields.length} fields from CAD`);
-      setShowRestoreModal(false);
-      setRestorePreview(null);
       
-      // Reload data instead of full page reload - stays on current incident
+      // Show completion in modal instead of alert
+      setRestoreComplete(true);
+      
+      // Reload data in background
       await loadData();
     } catch (err) {
       console.error('Failed to restore from CAD:', err);
@@ -830,6 +832,8 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
     restorePreview,
     setRestorePreview,
     restoreLoading,
+    restoreComplete,
+    setRestoreComplete,
     showIncidentTypeModal,
     setShowIncidentTypeModal,
     showLocationUseModal,
