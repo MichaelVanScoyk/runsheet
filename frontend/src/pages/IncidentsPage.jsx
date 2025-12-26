@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getIncidents, getIncident } from '../api';
 import RunSheetForm from '../components/RunSheetForm';
-import PrintView from '../components/PrintView';
 
 const FILTER_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -14,10 +13,6 @@ function IncidentsPage() {
   const [editingIncident, setEditingIncident] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState('ALL'); // ALL, FIRE, EMS
-  
-  // Print view state
-  const [showPrintView, setShowPrintView] = useState(false);
-  const [printIncidentId, setPrintIncidentId] = useState(null);
   
   // Timeout ref for resetting filter
   const filterTimeoutRef = useRef(null);
@@ -49,14 +44,10 @@ function IncidentsPage() {
         setShowForm(false);
         setEditingIncident(null);
       }
-      if (showPrintView) {
-        setShowPrintView(false);
-        setPrintIncidentId(null);
-      }
     };
     window.addEventListener('nav-incidents-click', handleNavClick);
     return () => window.removeEventListener('nav-incidents-click', handleNavClick);
-  }, [showForm, showPrintView]);
+  }, [showForm]);
 
   const loadData = useCallback(async () => {
     try {
@@ -74,16 +65,16 @@ function IncidentsPage() {
     loadData();
   }, [loadData]);
 
-  // Auto-refresh every 5 seconds when enabled (and not viewing form/print)
+  // Auto-refresh every 5 seconds when enabled (and not viewing form)
   useEffect(() => {
-    if (!autoRefresh || showForm || showPrintView) return;
+    if (!autoRefresh || showForm) return;
     
     const interval = setInterval(() => {
       loadData();
     }, 5000);
     
     return () => clearInterval(interval);
-  }, [autoRefresh, loadData, showForm, showPrintView]);
+  }, [autoRefresh, loadData, showForm]);
 
   const handleNewIncident = () => {
     setEditingIncident(null);
@@ -105,8 +96,8 @@ function IncidentsPage() {
   };
 
   const handlePrintIncident = (incidentId) => {
-    setPrintIncidentId(incidentId);
-    setShowPrintView(true);
+    // Open print view in new tab - cleaner print without app shell
+    window.open(`/print/${incidentId}`, '_blank');
   };
 
   const handleFormClose = () => {
@@ -117,11 +108,6 @@ function IncidentsPage() {
 
   const handleFormSave = () => {
     loadData();
-  };
-
-  const handlePrintClose = () => {
-    setShowPrintView(false);
-    setPrintIncidentId(null);
   };
 
   const handleCategoryChange = (newCategory) => {
@@ -158,11 +144,6 @@ function IncidentsPage() {
   // Count by category
   const fireCounts = incidents.filter(i => i.call_category === 'FIRE').length;
   const emsCounts = incidents.filter(i => i.call_category === 'EMS').length;
-
-  // Show print view
-  if (showPrintView && printIncidentId) {
-    return <PrintView incidentId={printIncidentId} onClose={handlePrintClose} />;
-  }
 
   if (showForm) {
     return (

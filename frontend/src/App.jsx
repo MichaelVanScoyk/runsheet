@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter as Router, Routes, Route, NavLink, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, NavLink, useNavigate, useParams } from 'react-router-dom';
 import IncidentsPage from './pages/IncidentsPage';
 import PersonnelPage from './pages/PersonnelPage';
 import ApparatusPage from './pages/ApparatusPage';
@@ -21,7 +21,19 @@ import {
   personnelSetPassword,
   personnelGetAuthStatus,
 } from './api';
+import PrintView from './components/PrintView';
 import './App.css';
+
+// Standalone Print Page - no app shell
+function PrintPage() {
+  const { id } = useParams();
+  
+  if (!id) {
+    return <div style={{ padding: '2rem' }}>Invalid incident ID</div>;
+  }
+  
+  return <PrintView incidentId={parseInt(id)} onClose={() => window.close()} />;
+}
 
 // Session timeout checker component
 function SessionManager({ userSession, onSessionExpired }) {
@@ -460,7 +472,12 @@ function AppContent() {
 function App() {
   return (
     <Router>
-      <AppContent />
+      <Routes>
+        {/* Print route - standalone, no app shell */}
+        <Route path="/print/:id" element={<PrintPage />} />
+        {/* All other routes use the app shell */}
+        <Route path="/*" element={<AppContent />} />
+      </Routes>
     </Router>
   );
 }

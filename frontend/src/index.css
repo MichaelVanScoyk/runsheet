@@ -76,3 +76,59 @@ body {
     @apply bg-status-completed text-white;
   }
 }
+
+/* ==============================================
+   PRINT STYLES - Hide app shell when printing
+   ============================================== */
+@media print {
+  /* Hide the entire app shell - sidebar and navigation */
+  .sidebar,
+  .app > .sidebar,
+  .logo,
+  .nav-links,
+  .no-print,
+  .print-controls {
+    display: none !important;
+    visibility: hidden !important;
+    position: absolute !important;
+    left: -9999px !important;
+  }
+  
+  /* Reset body and html for print */
+  html, body {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+  
+  /* Reset the app container */
+  .app {
+    display: block !important;
+  }
+  
+  /* Make main content full width, remove sidebar margin */
+  .content {
+    margin-left: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+  
+  /* Ensure print content fills the page */
+  .print-view-container {
+    background: white !important;
+    padding: 0 !important;
+    min-height: auto !important;
+  }
+  
+  .print-content {
+    display: block !important;
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    max-width: none !important;
+    box-shadow: none !important;
+  }
+}
