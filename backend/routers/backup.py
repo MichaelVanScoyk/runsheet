@@ -809,24 +809,25 @@ async def preview_restore_from_cad(
     db: Session = Depends(get_db)
 ):
     """
-    Preview what would be restored from CAD.
-    Returns parsed CAD values, calculated response times, and unit config changes.
+    Preview what would be restored/changed from CAD reparse.
     
-    This now detects:
-    - Text field changes (address, municipality, etc.)
-    - Time field changes
-    - Unit config changes (is_mutual_aid, counts_for_response_times)
+    Returns ALL changes that will happen:
+    - field_changes: List of {field, current, will_be, display} for incident-level fields
+    - unit_config_changes: List of changes to unit config (is_mutual_aid, counts_for_response_times)
+    - response_calculation: Which units are included/excluded from metrics
     """
     try:
         parse_cad_html, report_to_dict = get_cad_parser()
     except ImportError as e:
         return {"error": f"CAD parser not available: {e}"}
     
-    # Get the incident including current cad_units
+    # Get the incident including CURRENT stored values
     result = db.execute(text("""
         SELECT 
             id, internal_incident_number, incident_date,
-            cad_raw_dispatch, cad_raw_clear, cad_units
+            cad_raw_dispatch, cad_raw_clear, cad_units,
+            address, municipality_code, cross_streets, cad_event_type, cad_event_subtype,
+            time_dispatched, time_first_enroute, time_first_on_scene, time_last_cleared
         FROM incidents 
         WHERE id = :id AND deleted_at IS NULL
     """), {"id": incident_id}).fetchone()
@@ -834,10 +835,25 @@ async def preview_restore_from_cad(
     if not result:
         return {"error": "Incident not found"}
     
+    incident_number = result[1]
     incident_date = result[2]
     raw_dispatch = result[3]
     raw_clear = result[4]
     existing_cad_units = result[5] or []
+    
+    # Current stored values
+    current_values = {
+        'address': result[6],
+        'municipality_code': result[7],
+        'cross_streets': result[8],
+        'cad_event_type': result[9],
+        'cad_event_subtype': result[10],
+        'time_dispatched': result[11],
+        'time_first_enroute': result[12],
+        'time_first_on_scene': result[13],
+        'time_last_cleared': result[14],
+    }
+    
     raw_html = raw_clear or raw_dispatch
     
     if not raw_html:
@@ -848,116 +864,217 @@ async def preview_restore_from_cad(
         return {"error": "Failed to parse stored HTML"}
     
     report_dict = report_to_dict(parsed)
-    
     dispatch_time_str = report_dict.get('first_dispatch') or report_dict.get('dispatch_time')
-    
-    # Calculate response times using per-unit data
     unit_times = report_dict.get('unit_times', [])
-    response_calc = None
-    if unit_times and incident_date:
-        response_calc = calculate_response_times_from_units(
-            unit_times, incident_date, dispatch_time_str, db
-        )
     
-    # Build CAD values dict for frontend comparison
-    cad_values = {
-        "address": report_dict.get('address'),
-        "municipality_code": report_dict.get('municipality'),
-        "cross_streets": report_dict.get('cross_streets'),
-        "cad_event_type": report_dict.get('event_type'),
-        "cad_event_subtype": report_dict.get('event_subtype'),
-        # Time strings (HH:MM:SS) for display
-        "time_dispatched": dispatch_time_str,
-        "time_first_enroute": None,  # Calculated below
-        "time_first_on_scene": None,  # Calculated below
-        "time_last_cleared": None,  # Calculated from unit AQ times
+    # ==========================================================================
+    # CALCULATE WHAT VALUES WILL BE AFTER REPARSE
+    # ==========================================================================
+    
+    new_values = {
+        'address': report_dict.get('address'),
+        'municipality_code': report_dict.get('municipality'),
+        'cross_streets': report_dict.get('cross_streets'),
+        'cad_event_type': report_dict.get('event_type'),
+        'cad_event_subtype': report_dict.get('event_subtype'),
+        'time_dispatched': None,
+        'time_first_enroute': None,
+        'time_first_on_scene': None,
+        'time_last_cleared': None,
     }
     
-    # Add calculated response times (formatted)
-    if response_calc:
-        if response_calc['time_first_enroute']:
-            cad_values['time_first_enroute'] = response_calc['time_first_enroute'].strftime('%H:%M:%S')
-        if response_calc['time_first_on_scene']:
-            cad_values['time_first_on_scene'] = response_calc['time_first_on_scene'].strftime('%H:%M:%S')
+    # Calculate time_dispatched
+    if dispatch_time_str and incident_date:
+        dt = build_datetime_with_midnight_crossing(incident_date, dispatch_time_str, dispatch_time_str)
+        if dt:
+            new_values['time_dispatched'] = dt
     
-    # Calculate time_last_cleared from unit AQ times
+    # Calculate response times from units that count
+    included_units = []
+    excluded_units = []
+    
     if unit_times and incident_date:
+        # Build list of metric units
+        metric_units = []
+        for ut in unit_times:
+            unit_id = ut.get('unit_id')
+            if not unit_id:
+                continue
+            unit_info = get_full_unit_info(db, unit_id)
+            canonical_id = unit_info['unit_designator'] or unit_id
+            
+            # Only include if counts_for_response_times=True AND is_ours=True
+            if unit_info['counts_for_response_times'] and unit_info['is_ours']:
+                included_units.append(canonical_id)
+                metric_units.append({
+                    'unit_id': canonical_id,
+                    'time_enroute': ut.get('time_enroute'),
+                    'time_arrived': ut.get('time_arrived'),
+                })
+            else:
+                excluded_units.append(canonical_id)
+        
+        # Calculate first_enroute from metric units
+        enroute_times = []
+        for mu in metric_units:
+            if mu['time_enroute']:
+                dt = build_datetime_with_midnight_crossing(incident_date, mu['time_enroute'], dispatch_time_str)
+                if dt:
+                    enroute_times.append(dt)
+        if enroute_times:
+            new_values['time_first_enroute'] = min(enroute_times)
+        
+        # Calculate first_on_scene from metric units
+        arrive_times = []
+        for mu in metric_units:
+            if mu['time_arrived']:
+                dt = build_datetime_with_midnight_crossing(incident_date, mu['time_arrived'], dispatch_time_str)
+                if dt:
+                    arrive_times.append(dt)
+        if arrive_times:
+            new_values['time_first_on_scene'] = min(arrive_times)
+        
+        # Calculate last_cleared from ALL units
         cleared_times = []
         for ut in unit_times:
             if ut.get('time_at_quarters'):
-                cleared_dt = build_datetime_with_midnight_crossing(
-                    incident_date, ut['time_at_quarters'], dispatch_time_str
-                )
-                if cleared_dt:
-                    cleared_times.append(cleared_dt)
+                dt = build_datetime_with_midnight_crossing(incident_date, ut['time_at_quarters'], dispatch_time_str)
+                if dt:
+                    cleared_times.append(dt)
         if cleared_times:
-            cad_values['time_last_cleared'] = max(cleared_times).strftime('%H:%M:%S')
+            new_values['time_last_cleared'] = max(cleared_times)
     
     # ==========================================================================
-    # CHECK FOR UNIT CONFIG CHANGES
-    # Compare current cad_units against what they WOULD be with current apparatus config
+    # COMPARE CURRENT vs NEW - BUILD FIELD CHANGES LIST
     # ==========================================================================
     
-    unit_changes = []
+    field_changes = []
+    
+    def format_time(val):
+        """Format datetime for display"""
+        if val is None:
+            return None
+        if hasattr(val, 'strftime'):
+            return val.strftime('%Y-%m-%d %H:%M:%S')
+        return str(val)
+    
+    def times_differ(current, new):
+        """Check if two time values differ (handling None and timezone)"""
+        if current is None and new is None:
+            return False
+        if current is None or new is None:
+            return True
+        # Strip timezone for comparison
+        c = current.replace(tzinfo=None) if hasattr(current, 'replace') else current
+        n = new.replace(tzinfo=None) if hasattr(new, 'replace') else new
+        return abs((c - n).total_seconds()) > 1
+    
+    # Check time fields - these are the critical ones
+    time_fields = ['time_dispatched', 'time_first_enroute', 'time_first_on_scene', 'time_last_cleared']
+    for field in time_fields:
+        current = current_values[field]
+        new = new_values[field]
+        if times_differ(current, new):
+            field_changes.append({
+                'field': field,
+                'current': format_time(current),
+                'will_be': format_time(new),
+                'display': f"{field}: {format_time(current) or 'NULL'} → {format_time(new) or 'NULL'}"
+            })
+    
+    # Check text fields
+    text_fields = ['address', 'municipality_code', 'cross_streets', 'cad_event_type', 'cad_event_subtype']
+    for field in text_fields:
+        current = current_values[field]
+        new = new_values[field]
+        if current != new and new is not None:  # Only show if CAD has a value
+            field_changes.append({
+                'field': field,
+                'current': current,
+                'will_be': new,
+                'display': f"{field}: '{current}' → '{new}'"
+            })
+    
+    # ==========================================================================
+    # CHECK UNIT CONFIG CHANGES
+    # ==========================================================================
+    
+    unit_config_changes = []
+    
     for ut in unit_times:
         unit_id = ut.get('unit_id')
         if not unit_id:
             continue
         
-        # Look up what the unit config WOULD be now
         unit_info = get_full_unit_info(db, unit_id)
         new_is_mutual_aid = not unit_info['is_ours']
-        new_counts_for_response = unit_info['counts_for_response_times']
+        new_counts = unit_info['counts_for_response_times']
+        canonical_id = unit_info['unit_designator'] or unit_id
         
-        # Get the real unit ID (alias gets replaced with actual unit ID)
-        real_unit_id = unit_info['unit_designator'] or unit_id
-        
-        # Find the current stored config for this unit (check both alias and real ID)
-        old_unit = next((u for u in existing_cad_units if u.get('unit_id') == unit_id or u.get('unit_id') == real_unit_id), None)
+        # Find existing unit config
+        old_unit = next((u for u in existing_cad_units 
+                        if u.get('unit_id') == unit_id or u.get('unit_id') == canonical_id), None)
         
         if old_unit:
-            old_is_mutual_aid = old_unit.get('is_mutual_aid')
-            old_counts_for_response = old_unit.get('counts_for_response_times')
+            old_ma = old_unit.get('is_mutual_aid')
+            old_counts = old_unit.get('counts_for_response_times')
             
-            if old_is_mutual_aid != new_is_mutual_aid:
-                unit_changes.append({
-                    'unit_id': unit_id,
+            if old_ma != new_is_mutual_aid:
+                unit_config_changes.append({
+                    'unit_id': canonical_id,
                     'field': 'is_mutual_aid',
-                    'current': old_is_mutual_aid,
+                    'current': old_ma,
                     'will_be': new_is_mutual_aid,
-                    'display': f"{unit_id}: MA {old_is_mutual_aid} → {new_is_mutual_aid}"
+                    'display': f"{canonical_id}: is_mutual_aid {old_ma} → {new_is_mutual_aid}"
                 })
             
-            if old_counts_for_response != new_counts_for_response:
-                unit_changes.append({
-                    'unit_id': unit_id,
+            if old_counts != new_counts:
+                unit_config_changes.append({
+                    'unit_id': canonical_id,
                     'field': 'counts_for_response_times',
-                    'current': old_counts_for_response,
-                    'will_be': new_counts_for_response,
-                    'display': f"{unit_id}: counts {old_counts_for_response} → {new_counts_for_response}"
+                    'current': old_counts,
+                    'will_be': new_counts,
+                    'display': f"{canonical_id}: counts_for_response_times {old_counts} → {new_counts}"
                 })
         else:
-            # Unit exists in CAD but not in stored cad_units - it will be added
-            unit_changes.append({
-                'unit_id': unit_id,
+            unit_config_changes.append({
+                'unit_id': canonical_id,
                 'field': 'new_unit',
                 'current': None,
-                'will_be': {'is_mutual_aid': new_is_mutual_aid, 'counts_for_response_times': new_counts_for_response},
-                'display': f"{unit_id}: NEW (MA={new_is_mutual_aid})"
+                'will_be': {'is_mutual_aid': new_is_mutual_aid, 'counts_for_response_times': new_counts},
+                'display': f"{canonical_id}: NEW UNIT (MA={new_is_mutual_aid}, counts={new_counts})"
             })
+    
+    # ==========================================================================
+    # BUILD RESPONSE
+    # ==========================================================================
     
     return {
         "incident_id": incident_id,
-        "incident_number": result[1],
+        "incident_number": incident_number,
         "incident_date": incident_date.isoformat() if incident_date else None,
         "source": "clear_report" if raw_clear else "dispatch_report",
-        "cad_values": cad_values,
-        "unit_times": unit_times,
-        "unit_changes": unit_changes,
+        
+        # Summary counts for UI
+        "changes_summary": {
+            "field_changes": len(field_changes),
+            "unit_config_changes": len(unit_config_changes),
+            "total_changes": len(field_changes) + len(unit_config_changes),
+        },
+        
+        # Detailed changes
+        "field_changes": field_changes,
+        "unit_config_changes": unit_config_changes,
+        
+        # Response time calculation info
         "response_calculation": {
-            "included_units": response_calc['included_units'] if response_calc else [],
-            "excluded_units": response_calc['excluded_units'] if response_calc else [],
-        } if response_calc else None,
+            "included_units": included_units,
+            "excluded_units": excluded_units,
+            "note": "Included units have counts_for_response_times=True and is_mutual_aid=False"
+        },
+        
+        # Raw unit times from CAD (for reference)
+        "unit_times": unit_times,
     }
 
 
