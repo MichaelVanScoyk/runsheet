@@ -300,18 +300,18 @@ function AppContent() {
                 <>
                   {authStatus.is_registered ? (
                     // Has account - show password
-                    <div style={{ display: 'flex', gap: '5px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                       <input
                         type="password"
                         value={authPassword}
                         onChange={(e) => setAuthPassword(e.target.value)}
                         placeholder="Password"
-                        style={{ flex: 1, padding: '6px', fontSize: '0.85rem' }}
+                        style={{ width: '100%', padding: '6px', fontSize: '0.85rem', boxSizing: 'border-box' }}
                         onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
                       />
                       <button 
                         onClick={handleLogin}
-                        style={{ padding: '6px 12px', fontSize: '0.85rem', cursor: 'pointer' }}
+                        style={{ width: '100%', padding: '6px', fontSize: '0.85rem', cursor: 'pointer' }}
                       >
                         Login
                       </button>

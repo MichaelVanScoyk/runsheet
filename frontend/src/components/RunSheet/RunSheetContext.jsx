@@ -666,7 +666,9 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
     if (!incident?.id) return;
     setRestoreLoading(true);
     try {
-      const response = await fetch(`/api/backup/restore-from-cad/${incident.id}`, {
+      // Pass logged-in user for audit trail
+      const params = userSession?.personnel_id ? `?edited_by=${userSession.personnel_id}` : '';
+      const response = await fetch(`/api/backup/restore-from-cad/${incident.id}${params}`, {
         method: 'POST'
       });
       const data = await response.json();

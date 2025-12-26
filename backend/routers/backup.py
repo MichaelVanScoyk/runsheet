@@ -98,7 +98,7 @@ def get_full_unit_info(db: Session, unit_id: str) -> Dict[str, Any]:
     }
 
 
-def full_reparse_incident(incident_id: int, db: Session) -> Dict[str, Any]:
+def full_reparse_incident(incident_id: int, db: Session, edited_by: Optional[int] = None) -> Dict[str, Any]:
     """
     Full reparse of an incident from stored CAD HTML.
     
@@ -343,6 +343,43 @@ def full_reparse_incident(incident_id: int, db: Session) -> Dict[str, Any]:
         SET {set_clause}, updated_at = NOW()
         WHERE id = :id
     """), params)
+    
+    # Add audit log entry for the reparse
+    # Look up person's name if edited_by provided, otherwise use "CAD Parser"
+    personnel_name = "CAD Parser"
+    if edited_by:
+        person_result = db.execute(text("""
+            SELECT first_name, last_name FROM personnel WHERE id = :id
+        """), {"id": edited_by}).fetchone()
+        if person_result:
+            personnel_name = f"{person_result[1]}, {person_result[0]}"
+    
+    audit_summary = f"Reparsed from {report_source}"
+    if units_changed:
+        audit_summary += f" ({len(units_changed)} unit config changes)"
+    
+    db.execute(text("""
+        INSERT INTO audit_log (
+            personnel_id, personnel_name, action, entity_type, entity_id, 
+            entity_display, summary, fields_changed, created_at
+        ) VALUES (
+            :personnel_id, :personnel_name, 'REPARSE', 'incident', :incident_id,
+            :entity_display, :summary, :fields_changed, NOW()
+        )
+    """), {
+        "personnel_id": edited_by,
+        "personnel_name": personnel_name,
+        "incident_id": incident_id,
+        "entity_display": f"Incident {incident_number}",
+        "summary": audit_summary,
+        "fields_changed": json.dumps({
+            "restored_fields": restored_fields,
+            "unit_changes": units_changed,
+            "included_units": included_units,
+            "excluded_units": excluded_units,
+        })
+    })
+    
     db.commit()
     
     return {
@@ -701,6 +738,7 @@ async def diagnose_incident_times(
 @router.post("/restore-from-cad/{incident_id}")
 async def restore_incident_from_cad(
     incident_id: int,
+    edited_by: Optional[int] = Query(None, description="Personnel ID of logged-in user"),
     db: Session = Depends(get_db)
 ):
     """
@@ -714,18 +752,19 @@ async def restore_incident_from_cad(
     
     Keeps: internal_incident_number, call_category, personnel, NERIS codes, notes.
     """
-    return full_reparse_incident(incident_id, db)
+    return full_reparse_incident(incident_id, db, edited_by)
 
 
 @router.post("/full-reparse/{incident_id}")
 async def full_reparse_from_cad(
     incident_id: int,
+    edited_by: Optional[int] = Query(None, description="Personnel ID of logged-in user"),
     db: Session = Depends(get_db)
 ):
     """
     Alias for restore-from-cad. Full reparse of incident from stored CAD HTML.
     """
-    return full_reparse_incident(incident_id, db)
+    return full_reparse_incident(incident_id, db, edited_by)
 
 
 @router.post("/full-reparse-all")
