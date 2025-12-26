@@ -7,10 +7,15 @@ export default function ActionBar() {
     userSession, 
     saving,
     saveSuccess,
+    restoreLoading,
     onClose, 
     handleCloseIncident, 
-    handleSave 
+    handleSave,
+    setShowCadModal,
+    handleRestorePreview
   } = useRunSheet();
+  
+  const hasCADData = incident && (formData.cad_raw_dispatch || formData.cad_raw_clear);
   
   return (
     <div className="bg-dark-hover rounded px-3 py-2 mb-2 flex items-center justify-between gap-3 flex-wrap">
@@ -39,6 +44,30 @@ export default function ActionBar() {
         {saveSuccess && (
           <span className="text-green-500 text-sm">✓ Saved</span>
         )}
+        
+        {/* CAD Data buttons */}
+        {hasCADData && (
+          <>
+            <button 
+              type="button" 
+              className="btn btn-secondary"
+              onClick={() => setShowCadModal(true)}
+              title="View raw CAD data"
+            >
+              View CAD
+            </button>
+            <button 
+              type="button" 
+              className="btn btn-secondary"
+              onClick={handleRestorePreview}
+              disabled={restoreLoading || !userSession}
+              title={!userSession ? 'Please log in first' : 'Reparse incident from stored CAD data'}
+            >
+              {restoreLoading ? 'Loading...' : 'Reparse'}
+            </button>
+          </>
+        )}
+        
         {onClose && (
           <button className="btn btn-secondary" onClick={onClose} disabled={saving}>
             Cancel

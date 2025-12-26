@@ -5,10 +5,7 @@ export default function IncidentInfo() {
     incident, 
     formData, 
     handleChange, 
-    municipalities,
-    restoreLoading,
-    setShowCadModal,
-    handleRestorePreview
+    municipalities
   } = useRunSheet();
   
   const isLocked = !!incident;
@@ -83,38 +80,14 @@ export default function IncidentInfo() {
         />
       </div>
       
-      {/* CAD Subtype + buttons */}
+      {/* CAD Subtype */}
       <div className="flex flex-col gap-0.5">
         <label className="text-gray-400 text-xs">CAD Subtype</label>
-        <div className="flex gap-2 items-center">
-          <input 
-            type="text" 
-            value={formData.cad_event_subtype} 
-            onChange={(e) => handleChange('cad_event_subtype', e.target.value)} 
-            className="flex-1"
-          />
-          {incident && (formData.cad_raw_dispatch || formData.cad_raw_clear) && (
-            <>
-              <button 
-                type="button" 
-                className="btn btn-secondary btn-sm"
-                onClick={() => setShowCadModal(true)}
-                title="View raw CAD data"
-              >
-                📄
-              </button>
-              <button 
-                type="button" 
-                className="btn btn-secondary btn-sm"
-                onClick={handleRestorePreview}
-                disabled={restoreLoading}
-                title="Restore from CAD"
-              >
-                {restoreLoading ? '...' : '🔄'}
-              </button>
-            </>
-          )}
-        </div>
+        <input 
+          type="text" 
+          value={formData.cad_event_subtype} 
+          onChange={(e) => handleChange('cad_event_subtype', e.target.value)} 
+        />
       </div>
       
       {/* Address */}
