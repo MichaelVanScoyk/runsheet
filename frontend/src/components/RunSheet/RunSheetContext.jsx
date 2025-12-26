@@ -627,54 +627,6 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
     return loc.use_subtype ? `${loc.use_type}: ${loc.use_subtype}` : loc.use_type;
   };
 
-  // Build datetime from date and time string with midnight crossing logic (24-hour clock)
-  const buildCadDatetime = (baseDate, timeStr, dispatchTimeStr) => {
-    if (!timeStr || !baseDate) return null;
-    
-    // Parse time string (HH:MM:SS or HH:MM) - 24-hour format
-    const timeParts = timeStr.split(':');
-    if (timeParts.length < 2) return null;
-    const hours = parseInt(timeParts[0]);
-    const minutes = parseInt(timeParts[1]);
-    const seconds = timeParts[2] ? parseInt(timeParts[2]) : 0;
-    
-    // Parse base date
-    const dateParts = baseDate.split('-');
-    let year = parseInt(dateParts[0]);
-    let month = parseInt(dateParts[1]) - 1; // JS months are 0-indexed
-    let day = parseInt(dateParts[2]);
-    
-    // Check for midnight crossing (24-hour clock logic):
-    // If this time is earlier than dispatch time, it crossed midnight
-    if (dispatchTimeStr) {
-      const dispatchParts = dispatchTimeStr.split(':');
-      const dispatchHours = parseInt(dispatchParts[0]);
-      const dispatchMins = parseInt(dispatchParts[1]);
-      const dispatchTotal = dispatchHours * 60 + dispatchMins;
-      const thisTotal = hours * 60 + minutes;
-      
-      // Simple rule: if this time < dispatch time, add 1 day
-      // e.g., dispatch 23:07, cleared 00:15 → 00:15 < 23:07 → next day
-      if (thisTotal < dispatchTotal) {
-        day += 1;
-        // Handle month overflow (simplified - doesn't handle all edge cases but good enough)
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
-        if (day > daysInMonth) {
-          day = 1;
-          month += 1;
-          if (month > 11) {
-            month = 0;
-            year += 1;
-          }
-        }
-      }
-    }
-    
-    // Format as datetime-local string (no timezone conversion)
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${year}-${pad(month + 1)}-${pad(day)}T${pad(hours)}:${pad(minutes)}`;
-  };
-
   const handleRestorePreview = async () => {
     if (!incident?.id) return;
     setRestoreLoading(true);
@@ -686,71 +638,18 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
         return;
       }
       
-      // Backend returns cad_values - compare against current formData
-      const cadValues = data.cad_values || {};
-      const incidentDate = data.incident_date || formData.incident_date;
-      const dispatchTimeStr = cadValues.time_dispatched; // For midnight crossing reference
-      
-      const changes = [];
-      
-      // Text fields - direct comparison
-      const textFields = ['address', 'municipality_code', 'cross_streets', 'cad_event_type', 'cad_event_subtype'];
-      for (const field of textFields) {
-        const cadVal = cadValues[field];
-        const currentVal = formData[field] || '';
-        if (cadVal && cadVal !== currentVal) {
-          changes.push({ field, current: currentVal || null, cad: cadVal });
-        }
-      }
-      
-      // Time fields - build full datetime and compare
-      const timeFields = [
-        { field: 'time_dispatched', cadKey: 'time_dispatched' },
-        { field: 'time_first_enroute', cadKey: 'time_first_enroute' },
-        { field: 'time_first_on_scene', cadKey: 'time_first_on_scene' },
-        { field: 'time_last_cleared', cadKey: 'time_last_cleared' },
-        { field: 'time_in_service', cadKey: 'time_in_service' },
-      ];
-      
-      for (const { field, cadKey } of timeFields) {
-        const cadTimeStr = cadValues[cadKey];
-        if (!cadTimeStr) continue;
-        
-        // Build full datetime with midnight crossing logic
-        const cadDatetime = buildCadDatetime(incidentDate, cadTimeStr, dispatchTimeStr);
-        if (!cadDatetime) continue;
-        
-        // Current form value is in datetime-local format: YYYY-MM-DDTHH:MM
-        const currentVal = formData[field] || '';
-        
-        // Compare - normalize both to same format for comparison
-        const normalizedCurrent = currentVal ? currentVal.slice(0, 16) : '';
-        const normalizedCad = cadDatetime.slice(0, 16);
-        
-        if (normalizedCad !== normalizedCurrent) {
-          // Format for display (no timezone conversion - just reformat the string)
-          const formatDisplay = (dt) => {
-            if (!dt) return null;
-            // dt is in format YYYY-MM-DDTHH:MM
-            const match = dt.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
-            if (match) {
-              const [, year, month, day, hour, min] = match;
-              return `${month}/${day}/${year}, ${hour}:${min}`;
-            }
-            return dt;
-          };
-          changes.push({ 
-            field, 
-            current: formatDisplay(currentVal), 
-            cad: formatDisplay(cadDatetime) 
-          });
-        }
-      }
+      // Backend now returns field_changes and unit_config_changes directly
+      // Map to the format expected by RestorePreviewModal
+      const changes = (data.field_changes || []).map(fc => ({
+        field: fc.field,
+        current: fc.current,
+        cad: fc.will_be,  // Modal expects 'cad' not 'will_be'
+      }));
       
       setRestorePreview({
         ...data,
         changes,
-        unitChanges: data.unit_changes || [],  // Include unit config changes from backend
+        unitChanges: data.unit_config_changes || [],
       });
       setShowRestoreModal(true);
     } catch (err) {
