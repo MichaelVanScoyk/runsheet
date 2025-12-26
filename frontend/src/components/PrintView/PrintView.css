@@ -235,7 +235,7 @@
     display: none !important;
   }
 
-  /* Reset page */
+  /* Default portrait */
   @page {
     size: letter;
     margin: 0.35in;

@@ -29,10 +29,33 @@ export default function PrintView({ incidentId, onClose }) {
   const [personnel, setPersonnel] = useState([]);
   const [loading, setLoading] = useState(true);
   const [printSettings, setPrintSettings] = useState(DEFAULT_PRINT_SETTINGS);
+  const [landscape, setLandscape] = useState(false);
 
   useEffect(() => {
     loadData();
   }, [incidentId]);
+
+  // Inject landscape style when toggled
+  useEffect(() => {
+    const styleId = 'print-orientation-style';
+    let styleEl = document.getElementById(styleId);
+    
+    if (landscape) {
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = styleId;
+        document.head.appendChild(styleEl);
+      }
+      styleEl.textContent = '@media print { @page { size: letter landscape; } }';
+    } else if (styleEl) {
+      styleEl.remove();
+    }
+    
+    return () => {
+      const el = document.getElementById(styleId);
+      if (el) el.remove();
+    };
+  }, [landscape]);
 
   const loadData = async () => {
     try {
@@ -144,6 +167,14 @@ export default function PrintView({ incidentId, onClose }) {
       {/* Controls - hidden when printing */}
       <div className="print-controls no-print">
         <button onClick={onClose}>← Back to List</button>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ccc', fontSize: '0.9rem' }}>
+          <input
+            type="checkbox"
+            checked={landscape}
+            onChange={(e) => setLandscape(e.target.checked)}
+          />
+          Landscape
+        </label>
         <button onClick={handlePrint} className="print-btn">🖨️ Print</button>
       </div>
 
