@@ -253,8 +253,10 @@ class CADListener:
                 'cad_raw_updates': existing_updates,  # Store update HTMLs
             }
             
-            if report.get('dispatch_time'):
-                update_data['time_dispatched'] = self._parse_cad_datetime(report['dispatch_time'])
+            # NOTE: Do NOT update time_dispatched on update reports
+            # The new unit's dispatch time goes in cad_units[].time_dispatched
+            # The incident-level time_dispatched must stay as the original incident start
+            # Otherwise clear report midnight logic breaks (compares times to wrong reference)
             
             resp = requests.put(
                 f"{self.api_url}/api/incidents/{existing_incident['id']}",
