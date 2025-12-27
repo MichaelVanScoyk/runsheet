@@ -10,9 +10,7 @@ import {
   createIncident,
   updateIncident,
   closeIncident,
-  getNerisCategory,
-  getAidTypes,
-  getAidDirections,
+  getAllNerisDropdowns,
   getUserSession,
   getIncidentAuditLog,
 } from '../../api';
@@ -280,6 +278,8 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
 
   const loadData = async () => {
     try {
+      // Load core data and ALL NERIS codes in minimal API calls
+      // This replaces 34 parallel calls with just 8
       const [
         apparatusRes,
         personnelRes,
@@ -288,33 +288,7 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
         locationUsesRes,
         actionsTakenRes,
         suggestedNumberRes,
-        aidTypesRes,
-        aidDirectionsRes,
-        noActionRes,
-        rrPresenceRes,
-        fireInvestNeedRes,
-        fireConditionRes,
-        fireDamageRes,
-        fireCauseInRes,
-        fireCauseOutRes,
-        roomRes,
-        medicalCareRes,
-        hazardDispRes,
-        hazardDotRes,
-        smokeAlarmTypeRes,
-        fireAlarmTypeRes,
-        otherAlarmTypeRes,
-        alarmOperationRes,
-        alarmFailureRes,
-        sprinklerTypeRes,
-        sprinklerOperationRes,
-        cookingSuppressionRes,
-        fullPartialRes,
-        exposureLocRes,
-        exposureItemRes,
-        emergHazElecRes,
-        emergHazPvRes,
-        emergHazPvIgnRes,
+        nerisDropdownsRes,
       ] = await Promise.all([
         getApparatus(),
         getPersonnel(),
@@ -323,33 +297,7 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
         getLocationUsesByCategory(),
         getActionsTakenByCategory(),
         suggestIncidentNumber(),
-        getAidTypes(),
-        getAidDirections(),
-        getNerisCategory('type_noaction'),
-        getNerisCategory('type_rr_presence'),
-        getNerisCategory('type_fire_invest_need'),
-        getNerisCategory('type_fire_condition_arrival'),
-        getNerisCategory('type_fire_bldg_damage'),
-        getNerisCategory('type_fire_cause_in'),
-        getNerisCategory('type_fire_cause_out'),
-        getNerisCategory('type_room'),
-        getNerisCategory('type_medical_patient_care'),
-        getNerisCategory('type_hazard_disposition'),
-        getNerisCategory('type_hazard_dot'),
-        getNerisCategory('type_alarm_smoke'),
-        getNerisCategory('type_alarm_fire'),
-        getNerisCategory('type_alarm_other'),
-        getNerisCategory('type_alarm_operation'),
-        getNerisCategory('type_alarm_failure'),
-        getNerisCategory('type_suppress_fire'),
-        getNerisCategory('type_suppress_operation'),
-        getNerisCategory('type_suppress_cooking'),
-        getNerisCategory('type_full_partial'),
-        getNerisCategory('type_exposure_loc'),
-        getNerisCategory('type_exposure_item'),
-        getNerisCategory('type_emerghaz_elec'),
-        getNerisCategory('type_emerghaz_pv'),
-        getNerisCategory('type_emerghaz_pv_ign'),
+        getAllNerisDropdowns(),
       ]);
 
       const activeApparatus = apparatusRes.data.filter(a => a.active);
@@ -360,33 +308,35 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
       setLocationUses(locationUsesRes.data);
       setActionsTaken(actionsTakenRes.data);
       
-      setAidTypes(aidTypesRes.data || []);
-      setAidDirections(aidDirectionsRes.data || []);
-      setNoActionCodes(noActionRes.data || []);
-      setRrPresenceCodes(rrPresenceRes.data || []);
-      setFireInvestNeedCodes(fireInvestNeedRes.data || []);
-      setFireConditionArrivalCodes(fireConditionRes.data || []);
-      setFireBldgDamageCodes(fireDamageRes.data || []);
-      setFireCauseInCodes(fireCauseInRes.data || []);
-      setFireCauseOutCodes(fireCauseOutRes.data || []);
-      setRoomCodes(roomRes.data || []);
-      setMedicalPatientCareCodes(medicalCareRes.data || []);
-      setHazardDispositionCodes(hazardDispRes.data || []);
-      setHazardDotCodes(hazardDotRes.data || []);
-      setSmokeAlarmTypeCodes(smokeAlarmTypeRes.data || []);
-      setFireAlarmTypeCodes(fireAlarmTypeRes.data || []);
-      setOtherAlarmTypeCodes(otherAlarmTypeRes.data || []);
-      setAlarmOperationCodes(alarmOperationRes.data || []);
-      setAlarmFailureCodes(alarmFailureRes.data || []);
-      setSprinklerTypeCodes(sprinklerTypeRes.data || []);
-      setSprinklerOperationCodes(sprinklerOperationRes.data || []);
-      setCookingSuppressionCodes(cookingSuppressionRes.data || []);
-      setFullPartialCodes(fullPartialRes.data || []);
-      setExposureLocCodes(exposureLocRes.data || []);
-      setExposureItemCodes(exposureItemRes.data || []);
-      setEmergHazElecCodes(emergHazElecRes.data || []);
-      setEmergHazPvCodes(emergHazPvRes.data || []);
-      setEmergHazPvIgnCodes(emergHazPvIgnRes.data || []);
+      // Extract NERIS dropdown codes from single response
+      const cats = nerisDropdownsRes.data.categories || {};
+      setAidTypes(cats.type_aid || []);
+      setAidDirections(cats.type_aid_direction || []);
+      setNoActionCodes(cats.type_noaction || []);
+      setRrPresenceCodes(cats.type_rr_presence || []);
+      setFireInvestNeedCodes(cats.type_fire_invest_need || []);
+      setFireConditionArrivalCodes(cats.type_fire_condition_arrival || []);
+      setFireBldgDamageCodes(cats.type_fire_bldg_damage || []);
+      setFireCauseInCodes(cats.type_fire_cause_in || []);
+      setFireCauseOutCodes(cats.type_fire_cause_out || []);
+      setRoomCodes(cats.type_room || []);
+      setMedicalPatientCareCodes(cats.type_medical_patient_care || []);
+      setHazardDispositionCodes(cats.type_hazard_disposition || []);
+      setHazardDotCodes(cats.type_hazard_dot || []);
+      setSmokeAlarmTypeCodes(cats.type_alarm_smoke || []);
+      setFireAlarmTypeCodes(cats.type_alarm_fire || []);
+      setOtherAlarmTypeCodes(cats.type_alarm_other || []);
+      setAlarmOperationCodes(cats.type_alarm_operation || []);
+      setAlarmFailureCodes(cats.type_alarm_failure || []);
+      setSprinklerTypeCodes(cats.type_suppress_fire || []);
+      setSprinklerOperationCodes(cats.type_suppress_operation || []);
+      setCookingSuppressionCodes(cats.type_suppress_cooking || []);
+      setFullPartialCodes(cats.type_full_partial || []);
+      setExposureLocCodes(cats.type_exposure_loc || []);
+      setExposureItemCodes(cats.type_exposure_item || []);
+      setEmergHazElecCodes(cats.type_emerghaz_elec || []);
+      setEmergHazPvCodes(cats.type_emerghaz_pv || []);
+      setEmergHazPvIgnCodes(cats.type_emerghaz_pv_ign || []);
 
       // Build empty assignments from apparatus config
       const emptyAssignments = {};

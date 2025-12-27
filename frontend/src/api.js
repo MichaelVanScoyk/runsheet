@@ -151,6 +151,9 @@ export const getAidDirections = () => api.get('/lookups/neris/aid-directions');
 // Generic NERIS category lookup - for conditional module dropdowns
 export const getNerisCategory = (category) => api.get(`/neris-codes/categories/${category}`);
 
+// ALL NERIS dropdowns in one call - reduces 25+ API calls to 1
+export const getAllNerisDropdowns = () => api.get('/lookups/neris/all-dropdowns');
+
 // ============================================================================
 // CAD TYPE MAPPINGS
 // ============================================================================

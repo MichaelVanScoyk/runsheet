@@ -17,6 +17,51 @@ router = APIRouter()
 
 
 # ============================================================================
+# ALL NERIS CODES - SINGLE ENDPOINT
+# ============================================================================
+
+@router.get("/neris/all-dropdowns")
+async def get_all_neris_dropdowns(db: Session = Depends(get_db)):
+    """
+    Get ALL NERIS dropdown codes in a single call.
+    This replaces 25+ individual API calls with one efficient query.
+    
+    Returns codes grouped by category for direct use in frontend dropdowns.
+    """
+    # Get all active codes in one query
+    result = db.execute(text("""
+        SELECT category, id, value, 
+               COALESCE(description, value) as description,
+               value_1, value_2, value_3,
+               description_1, description_2, description_3
+        FROM neris_codes 
+        WHERE active = true
+        ORDER BY category, COALESCE(display_order, 9999), value_1, value_2, value_3, value
+    """))
+    
+    # Group by category
+    categories = {}
+    for row in result:
+        cat = row[0]
+        if cat not in categories:
+            categories[cat] = []
+        
+        categories[cat].append({
+            "id": row[1],
+            "value": row[2],
+            "description": row[3],
+            "value_1": row[4],
+            "value_2": row[5],
+            "value_3": row[6],
+            "description_1": row[7],
+            "description_2": row[8],
+            "description_3": row[9],
+        })
+    
+    return {"categories": categories}
+
+
+# ============================================================================
 # PYDANTIC SCHEMAS
 # ============================================================================
 
