@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getApparatus, createApparatus, updateApparatus, deleteApparatus, reactivateApparatus, hardDeleteApparatus } from '../api';
 
-const API_BASE = 'http://71.185.249.212:8001';
+const API_BASE = '';
 
 // Unit category definitions
 // APPARATUS: Physical CAD units - engines, trucks, chief vehicles (configurable crew slots)

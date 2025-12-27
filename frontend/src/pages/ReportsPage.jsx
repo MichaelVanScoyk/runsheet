@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import './ReportsPage.css';
 
-const API_BASE = 'http://71.185.249.212:8001';
+const API_BASE = '';
 
 function ReportsPage() {
   // Date range state

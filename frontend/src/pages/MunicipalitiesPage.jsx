@@ -26,7 +26,7 @@ function MunicipalitiesPage() {
       
       // Try to get subdivision label setting
       try {
-        const settingsRes = await fetch('http://71.185.249.212:8001/api/settings/subdivision_label');
+        const settingsRes = await fetch('/api/settings/subdivision_label');
         if (settingsRes.ok) {
           const data = await settingsRes.json();
           setSubdivisionLabel(data.value || 'Township');
