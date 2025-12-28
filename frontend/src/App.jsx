@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink, useNavigate, useParams } from 'react-router-dom';
+import { setStationTimezone } from './utils/timeUtils';
 import IncidentsPage from './pages/IncidentsPage';
 import PersonnelPage from './pages/PersonnelPage';
 import ApparatusPage from './pages/ApparatusPage';
@@ -88,14 +89,25 @@ function AppContent() {
 
   const navigate = useNavigate();
 
-  // Load personnel list
+  // Load personnel list and timezone setting
   useEffect(() => {
+    // Load personnel
     getPersonnel()
       .then(res => {
         setPersonnel(res.data);
         setPersonnelLoaded(true);
       })
       .catch(err => console.error('Failed to load personnel:', err));
+    
+    // Load timezone setting
+    fetch('/api/settings/station/timezone')
+      .then(res => res.json())
+      .then(data => {
+        if (data.value) {
+          setStationTimezone(data.value);
+        }
+      })
+      .catch(err => console.error('Failed to load timezone:', err));
   }, []);
 
   // Refresh session state periodically

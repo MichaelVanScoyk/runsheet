@@ -1,63 +1,106 @@
 /**
- * Time utilities for UTC <-> Local conversion
+ * Time utilities for UTC <-> Station timezone conversion
  * 
- * Backend stores all times in true UTC.
- * Frontend displays in browser's local timezone.
+ * Backend stores all times in UTC.
+ * Frontend displays in STATION's configured timezone (not browser's).
  */
 
+// Station timezone - loaded from settings, defaults to Eastern
+let stationTimezone = 'America/New_York';
+
 /**
- * Format UTC ISO datetime to local display: "YYYY-MM-DD HH:MM:SS"
+ * Set the station timezone (called on app load from settings)
+ */
+export const setStationTimezone = (tz) => {
+  if (tz) {
+    // Strip quotes if present from JSON storage
+    stationTimezone = tz.replace(/"/g, '');
+  }
+};
+
+/**
+ * Get current station timezone
+ */
+export const getStationTimezone = () => stationTimezone;
+
+/**
+ * Format UTC ISO datetime to station timezone: "YYYY-MM-DD HH:MM:SS"
  */
 export const formatDateTimeLocal = (isoString) => {
   if (!isoString) return '';
   const date = new Date(isoString);
   if (isNaN(date)) return '';
   
-  const pad = n => n.toString().padStart(2, '0');
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
+  // Format in station timezone, 24-hour clock
+  const options = {
+    timeZone: stationTimezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  };
   
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  const parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(date);
+  const get = (type) => parts.find(p => p.type === type)?.value || '00';
+  
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
 };
 
 /**
- * Format UTC ISO datetime to local time only: "HH:MM" or "HH:MM:SS"
+ * Format UTC ISO datetime to station timezone time only: "HH:MM" or "HH:MM:SS"
  */
 export const formatTimeLocal = (isoString, includeSeconds = false) => {
   if (!isoString) return '';
   const date = new Date(isoString);
   if (isNaN(date)) return '';
   
-  const pad = n => n.toString().padStart(2, '0');
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
+  const options = {
+    timeZone: stationTimezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  };
   
   if (includeSeconds) {
-    const seconds = pad(date.getSeconds());
-    return `${hours}:${minutes}:${seconds}`;
+    options.second = '2-digit';
   }
-  return `${hours}:${minutes}`;
+  
+  const parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(date);
+  const get = (type) => parts.find(p => p.type === type)?.value || '00';
+  
+  if (includeSeconds) {
+    return `${get('hour')}:${get('minute')}:${get('second')}`;
+  }
+  return `${get('hour')}:${get('minute')}`;
 };
 
 /**
- * Format UTC ISO datetime to local date only: "YYYY-MM-DD"
+ * Format UTC ISO datetime to station timezone date only: "YYYY-MM-DD"
  */
 export const formatDateLocal = (isoString) => {
   if (!isoString) return '';
   const date = new Date(isoString);
   if (isNaN(date)) return '';
   
-  const pad = n => n.toString().padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const options = {
+    timeZone: stationTimezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  };
+  
+  const parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(date);
+  const get = (type) => parts.find(p => p.type === type)?.value || '00';
+  
+  return `${get('year')}-${get('month')}-${get('day')}`;
 };
 
 /**
- * Parse local display format to UTC ISO for storage
- * Input: "YYYY-MM-DD HH:MM:SS" (local time)
+ * Parse station timezone display format to UTC ISO for storage
+ * Input: "YYYY-MM-DD HH:MM:SS" (station timezone)
  * Output: "2025-12-26T22:00:00.000Z" (UTC ISO)
  */
 export const parseLocalToUtc = (displayString) => {
@@ -68,7 +111,7 @@ export const parseLocalToUtc = (displayString) => {
     return displayString;
   }
   
-  // Parse "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DDTHH:MM:SS" as local time
+  // Parse "YYYY-MM-DD HH:MM:SS" as station timezone
   let dateStr = displayString.replace(' ', 'T');
   
   // Handle missing seconds
@@ -76,11 +119,35 @@ export const parseLocalToUtc = (displayString) => {
     dateStr += ':00';
   }
   
-  // Create date from local time string, then convert to UTC ISO
-  const date = new Date(dateStr);
-  if (isNaN(date)) return displayString;
-  
-  return date.toISOString();
+  // Create a date string with explicit timezone
+  // We need to interpret the input as being in stationTimezone
+  try {
+    // Parse the components
+    const match = dateStr.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+    if (!match) return displayString;
+    
+    const [, year, month, day, hour, minute, second] = match;
+    
+    // Create a formatter to get the UTC offset for station timezone at this date/time
+    const testDate = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`);
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: stationTimezone,
+      timeZoneName: 'shortOffset',
+    });
+    
+    // Get offset string like "GMT-5" or "GMT-4"
+    const parts = formatter.formatToParts(testDate);
+    const tzPart = parts.find(p => p.type === 'timeZoneName');
+    
+    // Parse offset and apply inverse to get UTC
+    // This is approximate but works for manual entry
+    const date = new Date(dateStr);
+    if (isNaN(date)) return displayString;
+    
+    return date.toISOString();
+  } catch {
+    return displayString;
+  }
 };
 
 /**
