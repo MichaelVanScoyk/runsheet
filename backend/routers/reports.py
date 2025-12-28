@@ -409,18 +409,15 @@ async def get_monthly_trend(
     
     result = db.execute(text("""
         SELECT 
-            EXTRACT(MONTH FROM COALESCE(incident_date, created_at::date))::int AS month,
+            EXTRACT(MONTH FROM COALESCE(i.incident_date, i.created_at::date))::int AS month,
             COUNT(*) AS incident_count,
-            (SELECT COUNT(*) FROM incident_personnel ip 
-             JOIN incidents i2 ON ip.incident_id = i2.id 
-             WHERE EXTRACT(YEAR FROM COALESCE(i2.incident_date, i2.created_at::date)) = :year 
-               AND EXTRACT(MONTH FROM COALESCE(i2.incident_date, i2.created_at::date)) = EXTRACT(MONTH FROM COALESCE(i.incident_date, i.created_at::date))
-               AND i2.deleted_at IS NULL
-            ) AS personnel_responses
+            COALESCE(SUM(
+                (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id)
+            ), 0) AS personnel_responses
         FROM incidents i
-        WHERE EXTRACT(YEAR FROM COALESCE(incident_date, created_at::date)) = :year
-          AND deleted_at IS NULL
-        GROUP BY EXTRACT(MONTH FROM COALESCE(incident_date, created_at::date))
+        WHERE EXTRACT(YEAR FROM COALESCE(i.incident_date, i.created_at::date)) = :year
+          AND i.deleted_at IS NULL
+        GROUP BY EXTRACT(MONTH FROM COALESCE(i.incident_date, i.created_at::date))
         ORDER BY month
     """), {"year": year})
     
