@@ -907,12 +907,13 @@ async def generate_pdf_report(
 async def generate_monthly_pdf_report(
     year: int = Query(...),
     month: int = Query(...),
+    category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Generate Monthly Chiefs Report PDF matching the UI format"""
     
     # Get monthly report data
-    report = await get_monthly_chiefs_report(year, month, db)
+    report = await get_monthly_chiefs_report(year, month, category, db)
     
     try:
         from reportlab.lib import colors
@@ -935,7 +936,8 @@ async def generate_monthly_pdf_report(
         
         # Title
         elements.append(Paragraph("GLEN MOORE FIRE CO. MONTHLY REPORT", title_style))
-        elements.append(Paragraph(f"{report['month_name']} {report['year']}", subtitle_style))
+        cat_label = f" ({category.upper()})" if category else ""
+        elements.append(Paragraph(f"{report['month_name']} {report['year']}{cat_label}", subtitle_style))
         
         # =================================================================
         # CALL SUMMARY

@@ -184,6 +184,15 @@ class IncidentUpdate(BaseModel):
     problems_issues: Optional[str] = None
     
     # ==========================================================================
+    # CHIEFS REPORT FIELDS
+    # Simple values for traditional monthly reporting
+    # ==========================================================================
+    property_value_at_risk: Optional[int] = None   # In cents (divide by 100)
+    fire_damages_estimate: Optional[int] = None    # In cents (divide by 100)
+    ff_injuries_count: Optional[int] = None        # Firefighter injuries
+    civilian_injuries_count: Optional[int] = None  # Civilian injuries
+    
+    # ==========================================================================
     # NERIS CLASSIFICATION - TEXT CODES (not integers!)
     # ==========================================================================
     
@@ -796,6 +805,12 @@ async def get_incident(
         "narrative": incident.narrative,
         "equipment_used": incident.equipment_used,
         "problems_issues": incident.problems_issues,
+        
+        # Chiefs Report Fields
+        "property_value_at_risk": getattr(incident, 'property_value_at_risk', 0),
+        "fire_damages_estimate": getattr(incident, 'fire_damages_estimate', 0),
+        "ff_injuries_count": getattr(incident, 'ff_injuries_count', 0),
+        "civilian_injuries_count": getattr(incident, 'civilian_injuries_count', 0),
         
         # NERIS Classification - TEXT codes
         "neris_incident_type_codes": incident.neris_incident_type_codes,

@@ -7,6 +7,7 @@ import {
   TimeFields,
   CallerInfo,
   NarrativeSection,
+  DamageAssessment,
   CADUnitsTable,
   PersonnelGrid,
   VirtualUnits,
@@ -43,6 +44,7 @@ function RunSheetContent() {
       </div>
       
       <NarrativeSection />
+      <DamageAssessment />
       <CADUnitsTable />
       <PersonnelGrid />
       <VirtualUnits />

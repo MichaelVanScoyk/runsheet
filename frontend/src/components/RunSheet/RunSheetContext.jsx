@@ -173,6 +173,12 @@ const initialFormData = {
   neris_rr_cooking_suppression: null,
   neris_rr_cooking_suppression_type: [],
   cad_units: [],
+  // Chiefs Report Fields
+  property_value_at_risk: 0,
+  fire_damages_estimate: 0,
+  ff_injuries_count: 0,
+  civilian_injuries_count: 0,
+  // Timestamps
   created_at: null,
   updated_at: null,
   closed_at: null,
@@ -413,6 +419,12 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
           neris_rr_cooking_suppression: incident.neris_rr_cooking_suppression || null,
           neris_rr_cooking_suppression_type: incident.neris_rr_cooking_suppression_type || [],
           cad_units: incident.cad_units || [],
+          // Chiefs Report Fields
+          property_value_at_risk: incident.property_value_at_risk ?? 0,
+          fire_damages_estimate: incident.fire_damages_estimate ?? 0,
+          ff_injuries_count: incident.ff_injuries_count ?? 0,
+          civilian_injuries_count: incident.civilian_injuries_count ?? 0,
+          // Timestamps
           created_at: incident.created_at,
           updated_at: incident.updated_at,
           closed_at: incident.closed_at,

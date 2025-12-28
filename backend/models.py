@@ -501,6 +501,15 @@ class Incident(Base):
     neris_last_validated_at = Column(TIMESTAMP(timezone=True))
     
     # =========================================================================
+    # CHIEFS REPORT FIELDS
+    # Simple fields for traditional monthly reporting (separate from NERIS)
+    # =========================================================================
+    property_value_at_risk = Column(Integer, default=0)    # In cents (divide by 100)
+    fire_damages_estimate = Column(Integer, default=0)     # In cents (divide by 100)
+    ff_injuries_count = Column(Integer, default=0)         # Firefighter injuries
+    civilian_injuries_count = Column(Integer, default=0)   # Civilian injuries
+    
+    # =========================================================================
     # REVIEW / AUDIT
     # =========================================================================
     officer_in_charge = Column(Integer, ForeignKey("personnel.id"))
