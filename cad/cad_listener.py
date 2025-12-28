@@ -617,7 +617,11 @@ class CADListener:
             local_dt = dt.replace(tzinfo=local_tz)
             utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
             
-            return utc_dt.isoformat()
+            # Log the conversion
+            logger.info(f"Datetime conversion: {dt_str} local -> {utc_dt.strftime('%Y-%m-%dT%H:%M:%SZ')} UTC")
+            
+            # Return with explicit Z suffix
+            return utc_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
         except ValueError:
             try:
                 # Try just time HH:MM:SS (use today's date as fallback)
@@ -625,6 +629,9 @@ class CADListener:
             except:
                 logger.warning(f"Could not parse datetime: {dt_str}")
                 return None
+        except Exception as e:
+            logger.error(f"Unexpected error parsing datetime {dt_str}: {e}")
+            return None
     
     def _parse_cad_time(self, time_str: str, incident_date: str = None, dispatch_time_str: str = None) -> Optional[str]:
         """
@@ -637,7 +644,7 @@ class CADListener:
             dispatch_time_str: The dispatch time in HH:MM:SS format (for midnight detection)
         
         Returns:
-            ISO format datetime string in UTC, or None if parsing fails
+            ISO format datetime string in UTC with Z suffix, or None if parsing fails
         """
         if not time_str:
             return None
@@ -672,9 +679,16 @@ class CADListener:
             local_dt = dt.replace(tzinfo=local_tz)
             utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
             
-            return utc_dt.isoformat()
-        except ValueError:
-            logger.warning(f"Could not parse time: {time_str}")
+            # Log the conversion for debugging
+            logger.info(f"Time conversion: {time_str} on {incident_date} local -> {utc_dt.strftime('%Y-%m-%dT%H:%M:%SZ')} UTC")
+            
+            # Return with explicit Z suffix to ensure UTC is clear
+            return utc_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        except ValueError as e:
+            logger.warning(f"Could not parse time: {time_str} - {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error parsing time {time_str}: {e}")
             return None
     
     def get_stats(self) -> dict:
