@@ -186,6 +186,15 @@ def get_weather_enabled() -> bool:
     return get_setting('weather', 'auto_fetch', True)
 
 
+def get_timezone() -> str:
+    """Get configured timezone (IANA format like 'America/New_York')"""
+    tz = get_setting('station', 'timezone', 'America/New_York')
+    # Strip quotes if present (JSON string storage)
+    if isinstance(tz, str):
+        tz = tz.strip('"')
+    return tz
+
+
 # Test
 if __name__ == "__main__":
     print("Settings from database:")

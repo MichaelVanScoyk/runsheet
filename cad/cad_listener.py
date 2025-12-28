@@ -24,7 +24,7 @@ from cad_parser import parse_cad_html, report_to_dict
 # Import settings from database
 import sys
 sys.path.insert(0, '/opt/runsheet/backend')
-from settings_helper import get_unit_info, get_api_url, get_cad_port
+from settings_helper import get_unit_info, get_api_url, get_cad_port, get_timezone
 
 # Configure logging
 logging.basicConfig(
@@ -598,10 +598,8 @@ class CADListener:
         """
         Get the configured local timezone for CAD data.
         CAD times arrive as local time (what the wall clock said).
-        TODO: Load from settings table for multi-tenant support.
         """
-        # For now, hardcoded to Eastern. Future: load from settings
-        return ZoneInfo("America/New_York")
+        return ZoneInfo(get_timezone())
     
     def _parse_cad_datetime(self, dt_str: str) -> Optional[str]:
         """

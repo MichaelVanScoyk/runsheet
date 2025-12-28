@@ -19,9 +19,13 @@ import os
 import sys
 
 from database import get_db
+from settings_helper import get_timezone
 
-# Default timezone for CAD data - TODO: load from tenant settings
-LOCAL_TIMEZONE = ZoneInfo("America/New_York")
+
+def get_local_timezone() -> ZoneInfo:
+    """Get configured local timezone from settings"""
+    return ZoneInfo(get_timezone())
+
 
 router = APIRouter()
 
@@ -456,7 +460,8 @@ def build_datetime_with_midnight_crossing(base_date, time_str: str, dispatch_tim
     
     # Build local datetime then convert to UTC
     local_dt = datetime.combine(result_date, dt_time(hours, minutes, seconds))
-    local_dt = local_dt.replace(tzinfo=LOCAL_TIMEZONE)
+    local_tz = get_local_timezone()
+    local_dt = local_dt.replace(tzinfo=local_tz)
     utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
     
     return utc_dt
