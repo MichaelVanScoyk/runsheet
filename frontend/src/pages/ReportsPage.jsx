@@ -15,7 +15,6 @@ function ReportsPage() {
   const [query, setQuery] = useState('');
   const [queryLoading, setQueryLoading] = useState(false);
   const [queryResult, setQueryResult] = useState(null);
-  const [savedQueries, setSavedQueries] = useState([]);
   
   // Report selection
   const [activeReport, setActiveReport] = useState('chiefs'); // chiefs, overview, personnel, unit, custom
@@ -201,6 +200,8 @@ function ReportsPage() {
         title: `Chiefs Report - ${data.month_name} ${data.year} (${cat})`,
         data,
         query: naturalQuery,
+        // Store params for PDF download
+        pdfParams: { year, month, category: cat },
       };
     }
     
@@ -272,13 +273,13 @@ function ReportsPage() {
   };
 
   // =========================================================================
-  // PDF DOWNLOAD
+  // PDF DOWNLOAD - Shared function that works for both direct and query results
   // =========================================================================
 
-  const downloadPdf = async () => {
+  const downloadPdf = async (year, month, category) => {
     setGenerating(true);
     try {
-      const url = `${API_BASE}/api/reports/pdf/monthly?year=${reportYear}&month=${reportMonth}&category=${categoryFilter}`;
+      const url = `${API_BASE}/api/reports/pdf/monthly?year=${year}&month=${month}&category=${category}`;
       const response = await fetch(url);
       
       if (!response.ok) {
@@ -291,8 +292,8 @@ function ReportsPage() {
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
-      const monthName = new Date(reportYear, reportMonth - 1, 1).toLocaleString('default', { month: 'long' });
-      a.download = `chiefs_report_${categoryFilter.toLowerCase()}_${reportYear}_${String(reportMonth).padStart(2, '0')}_${monthName}.pdf`;
+      const monthName = new Date(year, month - 1, 1).toLocaleString('default', { month: 'long' });
+      a.download = `chiefs_report_${category.toLowerCase()}_${year}_${String(month).padStart(2, '0')}_${monthName}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(blobUrl);
@@ -306,15 +307,6 @@ function ReportsPage() {
   };
 
   // =========================================================================
-  // RENDER HELPERS
-  // =========================================================================
-
-  const formatCurrency = (cents) => {
-    if (!cents) return '$0';
-    return '$' + (cents / 100).toLocaleString();
-  };
-
-  // =========================================================================
   // RENDER
   // =========================================================================
 
@@ -325,7 +317,7 @@ function ReportsPage() {
         <div className="max-w-7xl mx-auto">
           <h1 className="text-2xl font-bold">Reports</h1>
           <p className="text-gray-400 text-sm mt-1">
-            Generate reports, analyze data, or ask questions in plain English
+            Generate monthly chiefs reports or ask questions in plain English
           </p>
         </div>
       </div>
@@ -393,7 +385,7 @@ function ReportsPage() {
                   : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
               }`}
             >
-              📋 Chiefs Report
+              📋 Monthly Report
             </button>
             <button
               onClick={() => setActiveReport('overview')}
@@ -403,7 +395,7 @@ function ReportsPage() {
                   : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
               }`}
             >
-              📊 Overview
+              📊 Date Range
             </button>
             <button
               onClick={() => setActiveReport('personnel')}
@@ -481,8 +473,9 @@ function ReportsPage() {
                 category={categoryFilter}
                 onMonthChange={setReportMonth}
                 onYearChange={setReportYear}
-                onDownloadPdf={downloadPdf}
+                onDownloadPdf={() => downloadPdf(reportYear, reportMonth, categoryFilter)}
                 generating={generating}
+                showControls={true}
               />
             )}
 
@@ -524,7 +517,11 @@ function ReportsPage() {
 
             {/* Custom Query Result */}
             {activeReport === 'custom' && queryResult && (
-              <CustomQueryResult result={queryResult} />
+              <CustomQueryResult 
+                result={queryResult} 
+                onDownloadPdf={downloadPdf}
+                generating={generating}
+              />
             )}
           </>
         )}
@@ -538,59 +535,62 @@ function ReportsPage() {
 // CHIEFS REPORT VIEW - Matches Paper Format
 // =============================================================================
 
-function ChiefsReportView({ report, month, year, category, onMonthChange, onYearChange, onDownloadPdf, generating }) {
+function ChiefsReportView({ report, month, year, category, onMonthChange, onYearChange, onDownloadPdf, generating, showControls = false }) {
   if (!report) return null;
 
   const cs = report.call_summary || {};
+  const isFireReport = category === 'FIRE';
   
   return (
     <div className="space-y-6">
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-4 bg-gray-800 rounded-lg p-4">
-        <div className="flex items-center gap-2">
-          <label className="text-gray-400 text-sm">Month:</label>
-          <select
-            value={month}
-            onChange={(e) => onMonthChange(parseInt(e.target.value))}
-            className="bg-gray-900 border border-gray-600 rounded px-3 py-2"
-          >
-            {[...Array(12)].map((_, i) => (
-              <option key={i + 1} value={i + 1}>
-                {new Date(2000, i, 1).toLocaleString('default', { month: 'long' })}
-              </option>
-            ))}
-          </select>
+      {/* Controls - only shown for main view, not embedded */}
+      {showControls && (
+        <div className="flex flex-wrap items-center gap-4 bg-gray-800 rounded-lg p-4">
+          <div className="flex items-center gap-2">
+            <label className="text-gray-400 text-sm">Month:</label>
+            <select
+              value={month}
+              onChange={(e) => onMonthChange(parseInt(e.target.value))}
+              className="bg-gray-900 border border-gray-600 rounded px-3 py-2"
+            >
+              {[...Array(12)].map((_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {new Date(2000, i, 1).toLocaleString('default', { month: 'long' })}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-gray-400 text-sm">Year:</label>
+            <select
+              value={year}
+              onChange={(e) => onYearChange(parseInt(e.target.value))}
+              className="bg-gray-900 border border-gray-600 rounded px-3 py-2"
+            >
+              {[...Array(5)].map((_, i) => {
+                const y = new Date().getFullYear() - i;
+                return <option key={y} value={y}>{y}</option>;
+              })}
+            </select>
+          </div>
+          <div className="ml-auto">
+            <button
+              onClick={onDownloadPdf}
+              disabled={generating}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 rounded-lg font-medium transition-colors flex items-center gap-2"
+            >
+              {generating ? (
+                <>
+                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                  Generating...
+                </>
+              ) : (
+                <>📄 Download PDF</>
+              )}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-gray-400 text-sm">Year:</label>
-          <select
-            value={year}
-            onChange={(e) => onYearChange(parseInt(e.target.value))}
-            className="bg-gray-900 border border-gray-600 rounded px-3 py-2"
-          >
-            {[...Array(5)].map((_, i) => {
-              const y = new Date().getFullYear() - i;
-              return <option key={y} value={y}>{y}</option>;
-            })}
-          </select>
-        </div>
-        <div className="ml-auto">
-          <button
-            onClick={onDownloadPdf}
-            disabled={generating}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 rounded-lg font-medium transition-colors flex items-center gap-2"
-          >
-            {generating ? (
-              <>
-                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                Generating...
-              </>
-            ) : (
-              <>📄 Download PDF</>
-            )}
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Report Header */}
       <div className="text-center bg-gray-800 rounded-lg p-6">
@@ -622,25 +622,27 @@ function ChiefsReportView({ report, month, year, category, onMonthChange, onYear
           </div>
         </div>
         
-        {/* Damage/Injury Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-          <div className="bg-gray-900 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-orange-400">${((cs.property_at_risk || 0) / 100).toLocaleString()}</div>
-            <div className="text-gray-400 text-sm">Property at Risk</div>
+        {/* Damage/Injury Stats - FIRE ONLY */}
+        {isFireReport && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+            <div className="bg-gray-900 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-orange-400">${((cs.property_at_risk || 0) / 100).toLocaleString()}</div>
+              <div className="text-gray-400 text-sm">Property at Risk</div>
+            </div>
+            <div className="bg-gray-900 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-red-400">${((cs.fire_damages || 0) / 100).toLocaleString()}</div>
+              <div className="text-gray-400 text-sm">Fire Damages</div>
+            </div>
+            <div className="bg-gray-900 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-yellow-500">{cs.ff_injuries || 0}</div>
+              <div className="text-gray-400 text-sm">FF Injuries</div>
+            </div>
+            <div className="bg-gray-900 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-pink-400">{cs.civilian_injuries || 0}</div>
+              <div className="text-gray-400 text-sm">Civilian Injuries</div>
+            </div>
           </div>
-          <div className="bg-gray-900 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-red-400">${((cs.fire_damages || 0) / 100).toLocaleString()}</div>
-            <div className="text-gray-400 text-sm">Fire Damages</div>
-          </div>
-          <div className="bg-gray-900 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-yellow-500">{cs.ff_injuries || 0}</div>
-            <div className="text-gray-400 text-sm">FF Injuries</div>
-          </div>
-          <div className="bg-gray-900 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-pink-400">{cs.civilian_injuries || 0}</div>
-            <div className="text-gray-400 text-sm">Civilian Injuries</div>
-          </div>
-        </div>
+        )}
         
         {/* YoY Comparison */}
         <div className="mt-4 flex items-center justify-center gap-2 text-sm">
@@ -663,10 +665,14 @@ function ChiefsReportView({ report, month, year, category, onMonthChange, onYear
                   <th className="text-left pb-2">Municipality</th>
                   <th className="text-right pb-2">Calls</th>
                   <th className="text-right pb-2">Man Hrs</th>
-                  <th className="text-right pb-2">Prop Risk</th>
-                  <th className="text-right pb-2">Damages</th>
-                  <th className="text-right pb-2">FF Inj</th>
-                  <th className="text-right pb-2">Civ Inj</th>
+                  {isFireReport && (
+                    <>
+                      <th className="text-right pb-2">Prop Risk</th>
+                      <th className="text-right pb-2">Damages</th>
+                      <th className="text-right pb-2">FF Inj</th>
+                      <th className="text-right pb-2">Civ Inj</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -675,14 +681,18 @@ function ChiefsReportView({ report, month, year, category, onMonthChange, onYear
                     <td className="py-2">{m.municipality}</td>
                     <td className="py-2 text-right font-mono">{m.calls}</td>
                     <td className="py-2 text-right font-mono">{m.manhours?.toFixed(1)}</td>
-                    <td className="py-2 text-right font-mono text-orange-400">${((m.property_at_risk || 0) / 100).toLocaleString()}</td>
-                    <td className="py-2 text-right font-mono text-red-400">${((m.fire_damages || 0) / 100).toLocaleString()}</td>
-                    <td className="py-2 text-right font-mono text-yellow-500">{m.ff_injuries || 0}</td>
-                    <td className="py-2 text-right font-mono text-pink-400">{m.civilian_injuries || 0}</td>
+                    {isFireReport && (
+                      <>
+                        <td className="py-2 text-right font-mono text-orange-400">${((m.property_at_risk || 0) / 100).toLocaleString()}</td>
+                        <td className="py-2 text-right font-mono text-red-400">${((m.fire_damages || 0) / 100).toLocaleString()}</td>
+                        <td className="py-2 text-right font-mono text-yellow-500">{m.ff_injuries || 0}</td>
+                        <td className="py-2 text-right font-mono text-pink-400">{m.civilian_injuries || 0}</td>
+                      </>
+                    )}
                   </tr>
                 ))}
                 {(!report.municipalities || report.municipalities.length === 0) && (
-                  <tr><td colSpan="7" className="py-4 text-center text-gray-500">No data</td></tr>
+                  <tr><td colSpan={isFireReport ? 7 : 3} className="py-4 text-center text-gray-500">No data</td></tr>
                 )}
               </tbody>
             </table>
@@ -737,29 +747,31 @@ function ChiefsReportView({ report, month, year, category, onMonthChange, onYear
           </table>
         </div>
 
-        {/* Mutual Aid */}
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-4">MUTUAL AID ASSIST TO</h3>
-          <table className="w-full">
-            <thead>
-              <tr className="text-gray-400 text-sm">
-                <th className="text-left pb-2">Station</th>
-                <th className="text-right pb-2">Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(report.mutual_aid || []).map((ma, i) => (
-                <tr key={i} className="border-t border-gray-700">
-                  <td className="py-2">{ma.station}</td>
-                  <td className="py-2 text-right font-mono">{ma.count}</td>
+        {/* Mutual Aid - FIRE ONLY */}
+        {isFireReport && (
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-4">MUTUAL AID ASSIST TO</h3>
+            <table className="w-full">
+              <thead>
+                <tr className="text-gray-400 text-sm">
+                  <th className="text-left pb-2">Station</th>
+                  <th className="text-right pb-2">Count</th>
                 </tr>
-              ))}
-              {(!report.mutual_aid || report.mutual_aid.length === 0) && (
-                <tr><td colSpan="2" className="py-4 text-center text-gray-500">None</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {(report.mutual_aid || []).map((ma, i) => (
+                  <tr key={i} className="border-t border-gray-700">
+                    <td className="py-2">{ma.station}</td>
+                    <td className="py-2 text-right font-mono">{ma.count}</td>
+                  </tr>
+                ))}
+                {(!report.mutual_aid || report.mutual_aid.length === 0) && (
+                  <tr><td colSpan="2" className="py-4 text-center text-gray-500">None</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Response Times */}
@@ -1021,7 +1033,7 @@ function UnitReport({ data, startDate, endDate, onStartDateChange, onEndDateChan
 // CUSTOM QUERY RESULT
 // =============================================================================
 
-function CustomQueryResult({ result }) {
+function CustomQueryResult({ result, onDownloadPdf, generating }) {
   if (!result) return null;
 
   if (result.error) {
@@ -1035,13 +1047,33 @@ function CustomQueryResult({ result }) {
 
   return (
     <div className="space-y-6">
-      {/* Query Info */}
+      {/* Query Info + PDF Button for chiefs reports */}
       <div className="bg-purple-900/30 border border-purple-700 rounded-lg p-4">
-        <div className="flex items-center gap-2 text-purple-300">
-          <span>✨</span>
-          <span className="font-medium">{result.title}</span>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-purple-300">
+              <span>✨</span>
+              <span className="font-medium">{result.title}</span>
+            </div>
+            <p className="text-gray-400 text-sm mt-1">Query: "{result.query}"</p>
+          </div>
+          {result.type === 'chiefs' && result.pdfParams && (
+            <button
+              onClick={() => onDownloadPdf(result.pdfParams.year, result.pdfParams.month, result.pdfParams.category)}
+              disabled={generating}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 rounded-lg font-medium transition-colors flex items-center gap-2"
+            >
+              {generating ? (
+                <>
+                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                  Generating...
+                </>
+              ) : (
+                <>📄 Download PDF</>
+              )}
+            </button>
+          )}
         </div>
-        <p className="text-gray-400 text-sm mt-1">Query: "{result.query}"</p>
       </div>
 
       {/* Result based on type */}
@@ -1053,8 +1085,9 @@ function CustomQueryResult({ result }) {
           category={result.data.category_filter || 'FIRE'}
           onMonthChange={() => {}}
           onYearChange={() => {}}
-          onDownloadPdf={() => {}}
-          generating={false}
+          onDownloadPdf={() => onDownloadPdf(result.pdfParams.year, result.pdfParams.month, result.pdfParams.category)}
+          generating={generating}
+          showControls={false}
         />
       )}
 

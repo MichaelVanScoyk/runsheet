@@ -608,23 +608,35 @@ async def get_monthly_chiefs_report(
     change = current_count - prev_count
     pct_change = round((change / prev_count * 100), 0) if prev_count > 0 else 0
     
-    # =========================================================================
-    # DAMAGE/INJURY TOTALS - Only for OUR incidents (not mutual aid given)
-    # =========================================================================
-    damage_result = db.execute(text(f"""
-        SELECT 
-            COALESCE(SUM(property_value_at_risk), 0) AS total_property_at_risk,
-            COALESCE(SUM(fire_damages_estimate), 0) AS total_fire_damages,
-            COALESCE(SUM(ff_injuries_count), 0) AS total_ff_injuries,
-            COALESCE(SUM(civilian_injuries_count), 0) AS total_civilian_injuries
-        FROM incidents i
-        WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
-          AND i.deleted_at IS NULL
-          AND (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
-          {cat_filter}
-    """), {"start_date": start_date, "end_date": end_date})
+    # Determine if this is a FIRE report (damage/injury/mutual aid only for FIRE)
+    is_fire_report = category and category.upper() == 'FIRE'
     
-    damage_row = damage_result.fetchone()
+    # =========================================================================
+    # DAMAGE/INJURY TOTALS - Only for FIRE reports, only OUR incidents
+    # =========================================================================
+    if is_fire_report:
+        damage_result = db.execute(text(f"""
+            SELECT 
+                COALESCE(SUM(property_value_at_risk), 0) AS total_property_at_risk,
+                COALESCE(SUM(fire_damages_estimate), 0) AS total_fire_damages,
+                COALESCE(SUM(ff_injuries_count), 0) AS total_ff_injuries,
+                COALESCE(SUM(civilian_injuries_count), 0) AS total_civilian_injuries
+            FROM incidents i
+            WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
+              AND i.deleted_at IS NULL
+              AND (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
+              {cat_filter}
+        """), {"start_date": start_date, "end_date": end_date})
+        
+        damage_row = damage_result.fetchone()
+        damage_stats = {
+            "property_at_risk": int(damage_row[0] or 0),
+            "fire_damages": int(damage_row[1] or 0),
+            "ff_injuries": int(damage_row[2] or 0),
+            "civilian_injuries": int(damage_row[3] or 0),
+        }
+    else:
+        damage_stats = {}
     
     call_summary = {
         "number_of_calls": current_count,
@@ -634,64 +646,96 @@ async def get_monthly_chiefs_report(
         "previous_year_calls": prev_count,
         "change": change,
         "percent_change": pct_change,
-        "property_at_risk": int(damage_row[0] or 0),
-        "fire_damages": int(damage_row[1] or 0),
-        "ff_injuries": int(damage_row[2] or 0),
-        "civilian_injuries": int(damage_row[3] or 0),
+        **damage_stats,  # Only included for FIRE
     }
     
     # =========================================================================
-    # MUNICIPALITY SUMMARY - with damage/injury for OUR incidents only
+    # MUNICIPALITY SUMMARY - damage/injury only for FIRE reports
     # =========================================================================
-    muni_result = db.execute(text(f"""
-        WITH incident_data AS (
+    if is_fire_report:
+        muni_result = db.execute(text(f"""
+            WITH incident_data AS (
+                SELECT 
+                    i.id,
+                    COALESCE(m.display_name, i.municipality_code, 'Unknown') AS municipality,
+                    EXTRACT(EPOCH FROM (
+                        COALESCE(i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
+                    )) / 3600.0 AS duration_hours,
+                    (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count,
+                    -- Only include damage/injury for OUR incidents
+                    CASE WHEN (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
+                         THEN COALESCE(i.property_value_at_risk, 0) ELSE 0 END AS property_at_risk,
+                    CASE WHEN (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
+                         THEN COALESCE(i.fire_damages_estimate, 0) ELSE 0 END AS fire_damages,
+                    CASE WHEN (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
+                         THEN COALESCE(i.ff_injuries_count, 0) ELSE 0 END AS ff_injuries,
+                    CASE WHEN (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
+                         THEN COALESCE(i.civilian_injuries_count, 0) ELSE 0 END AS civilian_injuries
+                FROM incidents i
+                LEFT JOIN municipalities m ON i.municipality_code = m.code
+                WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
+                  AND i.deleted_at IS NULL
+                  {cat_filter}
+            )
             SELECT 
-                i.id,
-                COALESCE(m.display_name, i.municipality_code, 'Unknown') AS municipality,
-                EXTRACT(EPOCH FROM (
-                    COALESCE(i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
-                )) / 3600.0 AS duration_hours,
-                (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count,
-                -- Only include damage/injury for OUR incidents
-                CASE WHEN (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
-                     THEN COALESCE(i.property_value_at_risk, 0) ELSE 0 END AS property_at_risk,
-                CASE WHEN (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
-                     THEN COALESCE(i.fire_damages_estimate, 0) ELSE 0 END AS fire_damages,
-                CASE WHEN (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
-                     THEN COALESCE(i.ff_injuries_count, 0) ELSE 0 END AS ff_injuries,
-                CASE WHEN (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
-                     THEN COALESCE(i.civilian_injuries_count, 0) ELSE 0 END AS civilian_injuries
-            FROM incidents i
-            LEFT JOIN municipalities m ON i.municipality_code = m.code
-            WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
-              AND i.deleted_at IS NULL
-              {cat_filter}
-        )
-        SELECT 
-            municipality,
-            COUNT(*) AS calls,
-            COALESCE(SUM(CASE WHEN duration_hours > 0 AND duration_hours < 24 
-                         THEN duration_hours * personnel_count ELSE 0 END), 0) AS manhours,
-            SUM(property_at_risk) AS property_at_risk,
-            SUM(fire_damages) AS fire_damages,
-            SUM(ff_injuries) AS ff_injuries,
-            SUM(civilian_injuries) AS civilian_injuries
-        FROM incident_data
-        GROUP BY municipality
-        ORDER BY calls DESC, municipality
-    """), {"start_date": start_date, "end_date": end_date})
-    
-    municipalities = []
-    for row in muni_result:
-        municipalities.append({
-            "municipality": row[0],
-            "calls": row[1],
-            "manhours": round(float(row[2] or 0), 2),
-            "property_at_risk": int(row[3] or 0),
-            "fire_damages": int(row[4] or 0),
-            "ff_injuries": int(row[5] or 0),
-            "civilian_injuries": int(row[6] or 0)
-        })
+                municipality,
+                COUNT(*) AS calls,
+                COALESCE(SUM(CASE WHEN duration_hours > 0 AND duration_hours < 24 
+                             THEN duration_hours * personnel_count ELSE 0 END), 0) AS manhours,
+                SUM(property_at_risk) AS property_at_risk,
+                SUM(fire_damages) AS fire_damages,
+                SUM(ff_injuries) AS ff_injuries,
+                SUM(civilian_injuries) AS civilian_injuries
+            FROM incident_data
+            GROUP BY municipality
+            ORDER BY calls DESC, municipality
+        """), {"start_date": start_date, "end_date": end_date})
+        
+        municipalities = []
+        for row in muni_result:
+            municipalities.append({
+                "municipality": row[0],
+                "calls": row[1],
+                "manhours": round(float(row[2] or 0), 2),
+                "property_at_risk": int(row[3] or 0),
+                "fire_damages": int(row[4] or 0),
+                "ff_injuries": int(row[5] or 0),
+                "civilian_injuries": int(row[6] or 0)
+            })
+    else:
+        # EMS: Simple municipality query without damage/injury
+        muni_result = db.execute(text(f"""
+            WITH incident_data AS (
+                SELECT 
+                    i.id,
+                    COALESCE(m.display_name, i.municipality_code, 'Unknown') AS municipality,
+                    EXTRACT(EPOCH FROM (
+                        COALESCE(i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
+                    )) / 3600.0 AS duration_hours,
+                    (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count
+                FROM incidents i
+                LEFT JOIN municipalities m ON i.municipality_code = m.code
+                WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
+                  AND i.deleted_at IS NULL
+                  {cat_filter}
+            )
+            SELECT 
+                municipality,
+                COUNT(*) AS calls,
+                COALESCE(SUM(CASE WHEN duration_hours > 0 AND duration_hours < 24 
+                             THEN duration_hours * personnel_count ELSE 0 END), 0) AS manhours
+            FROM incident_data
+            GROUP BY municipality
+            ORDER BY calls DESC, municipality
+        """), {"start_date": start_date, "end_date": end_date})
+        
+        municipalities = []
+        for row in muni_result:
+            municipalities.append({
+                "municipality": row[0],
+                "calls": row[1],
+                "manhours": round(float(row[2] or 0), 2)
+            })
     
     # =========================================================================
     # TYPE OF INCIDENT
@@ -743,31 +787,35 @@ async def get_monthly_chiefs_report(
         })
     
     # =========================================================================
-    # MUTUAL AID GIVEN (Assist To) - Uses incident-level NERIS fields
+    # MUTUAL AID GIVEN (Assist To) - FIRE ONLY
     # neris_aid_direction = 'GIVEN' means we responded to help another station
     # neris_aid_departments contains the station(s) we assisted
     # =========================================================================
-    mutual_aid_result = db.execute(text(f"""
-        SELECT 
-            unnest(neris_aid_departments) AS assisted_station,
-            COUNT(*) AS count
-        FROM incidents i
-        WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
-          AND i.deleted_at IS NULL
-          AND i.neris_aid_direction = 'GIVEN'
-          AND i.neris_aid_departments IS NOT NULL
-          AND array_length(i.neris_aid_departments, 1) > 0
-          {cat_filter}
-        GROUP BY unnest(neris_aid_departments)
-        ORDER BY count DESC
-    """), {"start_date": start_date, "end_date": end_date})
-    
-    mutual_aid = []
-    for row in mutual_aid_result:
-        mutual_aid.append({
-            "station": row[0],
-            "count": row[1]
-        })
+    if is_fire_report:
+        mutual_aid_result = db.execute(text(f"""
+            SELECT 
+                unnest(neris_aid_departments) AS assisted_station,
+                COUNT(*) AS count
+            FROM incidents i
+            WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
+              AND i.deleted_at IS NULL
+              AND i.neris_aid_direction = 'GIVEN'
+              AND i.neris_aid_departments IS NOT NULL
+              AND array_length(i.neris_aid_departments, 1) > 0
+              {cat_filter}
+            GROUP BY unnest(neris_aid_departments)
+            ORDER BY count DESC
+        """), {"start_date": start_date, "end_date": end_date})
+        
+        mutual_aid = []
+        for row in mutual_aid_result:
+            mutual_aid.append({
+                "station": row[0],
+                "count": row[1]
+            })
+    else:
+        # EMS: No mutual aid tracking
+        mutual_aid = []
     
     # =========================================================================
     # RESPONSE TIMES
@@ -952,10 +1000,17 @@ async def generate_monthly_pdf_report(
     category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Generate Monthly Chiefs Report PDF matching the UI format"""
+    """Generate Monthly Chiefs Report PDF matching the UI format
+    
+    FIRE reports include: damage/injury stats, mutual aid tracking
+    EMS reports: simplified without damage/injury/mutual aid sections
+    """
     
     # Get monthly report data
     report = await get_monthly_chiefs_report(year, month, category, db)
+    
+    # Determine if this is a FIRE report (damage/injury/mutual aid only for FIRE)
+    is_fire_report = category and category.upper() == 'FIRE'
     
     try:
         from reportlab.lib import colors
@@ -992,17 +1047,23 @@ async def generate_monthly_pdf_report(
         def fmt_currency(cents):
             return f"${cents / 100:,.0f}"
         
+        # Base summary data (all reports)
         summary_data = [
             ["Number of Calls for Month", str(cs['number_of_calls'])],
             ["Number of Men", str(cs['number_of_men'])],
             ["Hours", f"{cs['hours']:.2f}"],
             ["Man Hours", f"{cs['man_hours']:.2f}"],
             ["vs. Same Month Last Year", f"{'+' if cs['change'] >= 0 else ''}{cs['change']} ({'+' if cs['percent_change'] >= 0 else ''}{cs['percent_change']:.0f}%)"],
-            ["Property at Risk", fmt_currency(cs.get('property_at_risk', 0))],
-            ["Fire Damages", fmt_currency(cs.get('fire_damages', 0))],
-            ["FF Injuries", str(cs.get('ff_injuries', 0))],
-            ["Civilian Injuries", str(cs.get('civilian_injuries', 0))],
         ]
+        
+        # Add damage/injury stats only for FIRE reports
+        if is_fire_report:
+            summary_data.extend([
+                ["Property at Risk", fmt_currency(cs.get('property_at_risk', 0))],
+                ["Fire Damages", fmt_currency(cs.get('fire_damages', 0))],
+                ["FF Injuries", str(cs.get('ff_injuries', 0))],
+                ["Civilian Injuries", str(cs.get('civilian_injuries', 0))],
+            ])
         
         summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
         summary_table.setStyle(TableStyle([
@@ -1016,25 +1077,41 @@ async def generate_monthly_pdf_report(
         elements.append(Spacer(1, 0.25*inch))
         
         # =================================================================
-        # TWO-COLUMN: MUNICIPALITY SUMMARY | RESPONSES PER UNIT
+        # MUNICIPALITY SUMMARY
         # =================================================================
+        elements.append(Paragraph("MUNICIPALITY SUMMARY", section_style))
         
-        # Municipality data with damage/injury breakdown
-        muni_data = [["Municipality", "Calls", "Man Hrs", "Prop Risk", "Damages", "FF Inj", "Civ Inj"]]
-        for m in report['municipalities'][:12]:
-            muni_data.append([
-                m['municipality'], 
-                str(m['calls']), 
-                f"{m['manhours']:.1f}",
-                fmt_currency(m.get('property_at_risk', 0)),
-                fmt_currency(m.get('fire_damages', 0)),
-                str(m.get('ff_injuries', 0)),
-                str(m.get('civilian_injuries', 0))
-            ])
-        if not report['municipalities']:
-            muni_data.append(["No data", "", "", "", "", "", ""])
+        if is_fire_report:
+            # FIRE: Full table with damage/injury columns
+            muni_data = [["Municipality", "Calls", "Man Hrs", "Prop Risk", "Damages", "FF Inj", "Civ Inj"]]
+            for m in report['municipalities'][:12]:
+                muni_data.append([
+                    m['municipality'], 
+                    str(m['calls']), 
+                    f"{m['manhours']:.1f}",
+                    fmt_currency(m.get('property_at_risk', 0)),
+                    fmt_currency(m.get('fire_damages', 0)),
+                    str(m.get('ff_injuries', 0)),
+                    str(m.get('civilian_injuries', 0))
+                ])
+            if not report['municipalities']:
+                muni_data.append(["No data", "", "", "", "", "", ""])
+            
+            muni_table = Table(muni_data, colWidths=[1.4*inch, 0.4*inch, 0.6*inch, 0.7*inch, 0.7*inch, 0.5*inch, 0.5*inch])
+        else:
+            # EMS: Simple table without damage/injury columns
+            muni_data = [["Municipality", "Calls", "Man Hours"]]
+            for m in report['municipalities'][:12]:
+                muni_data.append([
+                    m['municipality'], 
+                    str(m['calls']), 
+                    f"{m['manhours']:.1f}"
+                ])
+            if not report['municipalities']:
+                muni_data.append(["No data", "", ""])
+            
+            muni_table = Table(muni_data, colWidths=[3*inch, 1*inch, 1*inch])
         
-        muni_table = Table(muni_data, colWidths=[1.4*inch, 0.4*inch, 0.6*inch, 0.7*inch, 0.7*inch, 0.5*inch, 0.5*inch])
         muni_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -1043,8 +1120,14 @@ async def generate_monthly_pdf_report(
             ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
         ]))
+        elements.append(muni_table)
+        elements.append(Spacer(1, 0.2*inch))
         
-        # Unit data
+        # =================================================================
+        # RESPONSES PER UNIT
+        # =================================================================
+        elements.append(Paragraph("RESPONSES PER UNIT", section_style))
+        
         unit_data = [["Unit", "Responses"]]
         for u in report['responses_per_unit'][:12]:
             unit_data.append([u['unit_name'] or u['unit'], str(u['responses'])])
@@ -1060,21 +1143,14 @@ async def generate_monthly_pdf_report(
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('ALIGN', (1, 0), (1, -1), 'CENTER'),
         ]))
-        
-        # Side by side layout
-        elements.append(Paragraph("MUNICIPALITY SUMMARY", section_style))
-        elements.append(muni_table)
-        elements.append(Spacer(1, 0.2*inch))
-        
-        elements.append(Paragraph("RESPONSES PER UNIT", section_style))
         elements.append(unit_table)
         elements.append(Spacer(1, 0.2*inch))
         
         # =================================================================
-        # TWO-COLUMN: TYPE OF INCIDENT | MUTUAL AID
+        # TYPE OF INCIDENT
         # =================================================================
+        elements.append(Paragraph("TYPE OF INCIDENT", section_style))
         
-        # Type data
         type_data = [["Type", "Count"]]
         for t in report['incident_types'][:15]:
             type_data.append([t['type'], str(t['count'])])
@@ -1090,32 +1166,33 @@ async def generate_monthly_pdf_report(
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('ALIGN', (1, 0), (1, -1), 'CENTER'),
         ]))
-        
-        # Mutual aid data
-        ma_data = [["Station", "Count"]]
-        if report['mutual_aid']:
-            for ma in report['mutual_aid'][:10]:
-                ma_data.append([ma['station'], str(ma['count'])])
-        else:
-            ma_data.append(["None", ""])
-        
-        ma_table = Table(ma_data, colWidths=[2*inch, 0.6*inch])
-        ma_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('PADDING', (0, 0), (-1, -1), 4),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('ALIGN', (1, 0), (1, -1), 'CENTER'),
-        ]))
-        
-        elements.append(Paragraph("TYPE OF INCIDENT", section_style))
         elements.append(type_table)
         elements.append(Spacer(1, 0.2*inch))
         
-        elements.append(Paragraph("MUTUAL AID ASSIST TO", section_style))
-        elements.append(ma_table)
-        elements.append(Spacer(1, 0.2*inch))
+        # =================================================================
+        # MUTUAL AID - FIRE ONLY
+        # =================================================================
+        if is_fire_report:
+            elements.append(Paragraph("MUTUAL AID ASSIST TO", section_style))
+            
+            ma_data = [["Station", "Count"]]
+            if report['mutual_aid']:
+                for ma in report['mutual_aid'][:10]:
+                    ma_data.append([ma['station'], str(ma['count'])])
+            else:
+                ma_data.append(["None", ""])
+            
+            ma_table = Table(ma_data, colWidths=[2*inch, 0.6*inch])
+            ma_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('PADDING', (0, 0), (-1, -1), 4),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+            ]))
+            elements.append(ma_table)
+            elements.append(Spacer(1, 0.2*inch))
         
         # =================================================================
         # RESPONSE TIMES

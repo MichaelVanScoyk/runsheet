@@ -18,7 +18,9 @@ import { NERISSection } from './neris';
 import { CADDataModal, RestorePreviewModal } from './modals';
 
 function RunSheetContent() {
-  const { loading } = useRunSheet();
+  const { loading, formData } = useRunSheet();
+  
+  const isFireCall = formData.call_category === 'FIRE';
   
   if (loading) {
     return (
@@ -45,8 +47,11 @@ function RunSheetContent() {
       </div>
       
       <NarrativeSection />
-      <DamageAssessment />
-      <MutualAidSection />
+      
+      {/* Fire-only sections */}
+      {isFireCall && <DamageAssessment />}
+      {isFireCall && <MutualAidSection />}
+      
       <CADUnitsTable />
       <PersonnelGrid />
       <VirtualUnits />
