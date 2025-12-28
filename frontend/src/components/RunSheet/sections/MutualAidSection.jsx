@@ -6,18 +6,7 @@ import { useRunSheet } from '../RunSheetContext';
  * then exposes NERIS fields for direction, type, and station.
  */
 export default function MutualAidSection() {
-  const { formData, handleChange, aidTypes, aidDirections } = useRunSheet();
-  
-  // Common mutual aid stations for quick selection
-  const commonStations = [
-    { code: '33', name: 'Station 33 - Elverson' },
-    { code: '47', name: 'Station 47 - Lionville' },
-    { code: '49', name: 'Station 49 - Honey Brook' },
-    { code: '69', name: 'Station 69 - Ludwig\'s Corner' },
-    { code: '73', name: 'Station 73 - Exton' },
-    { code: '39', name: 'Station 39 - West Brandywine' },
-    { code: '45', name: 'Station 45 - Westwood' },
-  ];
+  const { formData, handleChange } = useRunSheet();
   
   // Check if mutual aid is active (direction is GIVEN or RECEIVED)
   const isMutualAid = formData.neris_aid_direction === 'GIVEN' || formData.neris_aid_direction === 'RECEIVED';
@@ -39,42 +28,15 @@ export default function MutualAidSection() {
   // Handle direction change
   const handleDirectionChange = (direction) => {
     handleChange('neris_aid_direction', direction);
-    // Clear departments when switching direction
-    handleChange('neris_aid_departments', []);
   };
   
-  // Handle station selection for GIVEN
-  const handleStationSelect = (stationCode) => {
-    if (!stationCode) {
-      handleChange('neris_aid_departments', []);
-      return;
-    }
-    const station = commonStations.find(s => s.code === stationCode);
-    const stationName = station ? station.name : `Station ${stationCode}`;
-    handleChange('neris_aid_departments', [stationName]);
-  };
-  
-  // Handle custom department input for RECEIVED
-  const handleDepartmentInput = (value) => {
+  // Handle station input - store as array for NERIS compatibility
+  const handleStationInput = (value) => {
     if (!value.trim()) {
       handleChange('neris_aid_departments', []);
       return;
     }
-    // Split by comma for multiple departments
-    const depts = value.split(',').map(d => d.trim()).filter(Boolean);
-    handleChange('neris_aid_departments', depts);
-  };
-  
-  // Get current station code from departments array
-  const getCurrentStationCode = () => {
-    if (!formData.neris_aid_departments || formData.neris_aid_departments.length === 0) return '';
-    const dept = formData.neris_aid_departments[0];
-    // Try to extract station code
-    const match = dept.match(/Station (\d+)/i);
-    if (match) return match[1];
-    // Check if it matches a known station
-    const known = commonStations.find(s => s.name === dept || s.code === dept);
-    return known ? known.code : 'other';
+    handleChange('neris_aid_departments', [value.trim()]);
   };
   
   return (
@@ -138,7 +100,7 @@ export default function MutualAidSection() {
             </div>
             <p className="text-xs text-gray-500 mt-1">
               {formData.neris_aid_direction === 'GIVEN' 
-                ? 'We responded to assist another station' 
+                ? 'We assisted another station' 
                 : 'Another station assisted us'}
             </p>
           </div>
@@ -161,47 +123,18 @@ export default function MutualAidSection() {
             </p>
           </div>
           
-          {/* Station/Department */}
+          {/* Station */}
           <div className="flex flex-col gap-1">
-            {formData.neris_aid_direction === 'GIVEN' ? (
-              <>
-                <label className="text-gray-400 text-xs">Station Assisted</label>
-                <select
-                  value={getCurrentStationCode()}
-                  onChange={(e) => handleStationSelect(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none"
-                >
-                  <option value="">Select station...</option>
-                  {commonStations.map(s => (
-                    <option key={s.code} value={s.code}>{s.name}</option>
-                  ))}
-                  <option value="other">Other...</option>
-                </select>
-                {getCurrentStationCode() === 'other' && (
-                  <input
-                    type="text"
-                    placeholder="Enter station/department name"
-                    value={formData.neris_aid_departments?.[0] || ''}
-                    onChange={(e) => handleChange('neris_aid_departments', e.target.value ? [e.target.value] : [])}
-                    className="mt-2 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-                  />
-                )}
-              </>
-            ) : (
-              <>
-                <label className="text-gray-400 text-xs">Aid Received From</label>
-                <input
-                  type="text"
-                  placeholder="e.g., Station 49, Station 69"
-                  value={formData.neris_aid_departments?.join(', ') || ''}
-                  onChange={(e) => handleDepartmentInput(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Separate multiple with commas
-                </p>
-              </>
-            )}
+            <label className="text-gray-400 text-xs">
+              {formData.neris_aid_direction === 'GIVEN' ? 'Station Assisted' : 'Aid From Station'}
+            </label>
+            <input
+              type="text"
+              placeholder="e.g., 49"
+              value={formData.neris_aid_departments?.[0] || ''}
+              onChange={(e) => handleStationInput(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+            />
           </div>
         </div>
       )}
