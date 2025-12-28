@@ -122,10 +122,13 @@ function ReportsPage() {
   // Reload reports when category changes
   useEffect(() => {
     loadReports();
-    if (monthlyReport) {
-      loadMonthlyReport();
-    }
+    loadMonthlyReport();
   }, [categoryFilter]);
+
+  // Reload monthly report when month/year changes
+  useEffect(() => {
+    loadMonthlyReport();
+  }, [reportMonth, reportYear]);
 
   const downloadPdf = async () => {
     setGenerating(true);
@@ -393,9 +396,6 @@ function ReportsPage() {
                   🚑 EMS
                 </button>
               </div>
-              <button onClick={loadMonthlyReport} disabled={loading}>
-                {loading ? 'Loading...' : 'Load Report'}
-              </button>
             </div>
 
             {monthlyReport && (
