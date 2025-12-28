@@ -1,12 +1,12 @@
 import { useRunSheet } from '../RunSheetContext';
-import { formatLocalDateTime } from '../../../utils/timeUtils';
+import { formatDateTimeLocal } from '../../../utils/timeUtils';
 
 // Format time fields for display - convert UTC to local
 function formatFieldValue(field, value) {
   if (!value) return value;
   // Check if this is a time field
   if (field && field.startsWith('time_')) {
-    return formatLocalDateTime(value);
+    return formatDateTimeLocal(value);
   }
   return value;
 }
