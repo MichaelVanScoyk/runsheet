@@ -647,3 +647,39 @@
     color: black;
   }
 }
+
+/* Category Toggle Buttons */
+.category-toggle {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: 0.5rem;
+}
+
+.toggle-btn {
+  min-width: 70px;
+  padding: 0.5rem 1rem;
+  border: 2px solid #444;
+  background: #2a2a2a;
+  color: #888;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+}
+
+.toggle-btn:hover {
+  background: #3a3a3a;
+  color: #aaa;
+}
+
+.toggle-btn.active.fire {
+  background: #e74c3c;
+  border-color: #e74c3c;
+  color: white;
+}
+
+.toggle-btn.active.ems {
+  background: #3498db;
+  border-color: #3498db;
+  color: white;
+}
