@@ -1,4 +1,15 @@
 import { useRunSheet } from '../RunSheetContext';
+import { formatLocalDateTime } from '../../../utils/timeUtils';
+
+// Format time fields for display - convert UTC to local
+function formatFieldValue(field, value) {
+  if (!value) return value;
+  // Check if this is a time field
+  if (field && field.startsWith('time_')) {
+    return formatLocalDateTime(value);
+  }
+  return value;
+}
 
 export default function RestorePreviewModal() {
   const { 
@@ -83,10 +94,10 @@ export default function RestorePreviewModal() {
                     <tr key={idx} className="border-b border-dark-border">
                       <td className="px-3 py-2 text-gray-300 font-medium">{change.field}</td>
                       <td className={`px-3 py-2 ${restoreComplete ? 'text-gray-500 line-through' : 'text-status-error'}`}>
-                        {change.current || <span className="text-gray-600 italic">empty</span>}
+                        {formatFieldValue(change.field, change.current) || <span className="text-gray-600 italic">empty</span>}
                       </td>
                       <td className="px-3 py-2 text-status-open">
-                        {change.cad || <span className="text-gray-600 italic">empty</span>}
+                        {formatFieldValue(change.field, change.cad) || <span className="text-gray-600 italic">empty</span>}
                       </td>
                     </tr>
                   ))}
