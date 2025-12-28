@@ -241,16 +241,34 @@ function ReportsPage() {
               onChange={(e) => setEndDate(e.target.value)} 
             />
             {/* Category Filter - Fire or EMS only */}
-            <div className="category-toggle">
+            <div style={{ display: 'flex', gap: '4px', marginLeft: '1rem' }}>
               <button
-                className={`toggle-btn ${categoryFilter === 'FIRE' ? 'active fire' : ''}`}
                 onClick={() => setCategoryFilter('FIRE')}
+                style={{ 
+                  minWidth: '80px',
+                  padding: '0.5rem 1rem',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '500',
+                  backgroundColor: categoryFilter === 'FIRE' ? '#e74c3c' : '#3a3a3a',
+                  color: categoryFilter === 'FIRE' ? 'white' : '#888',
+                }}
               >
                 🔥 Fire
               </button>
               <button
-                className={`toggle-btn ${categoryFilter === 'EMS' ? 'active ems' : ''}`}
                 onClick={() => setCategoryFilter('EMS')}
+                style={{ 
+                  minWidth: '80px',
+                  padding: '0.5rem 1rem',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '500',
+                  backgroundColor: categoryFilter === 'EMS' ? '#3498db' : '#3a3a3a',
+                  color: categoryFilter === 'EMS' ? 'white' : '#888',
+                }}
               >
                 🚑 EMS
               </button>
@@ -343,16 +361,34 @@ function ReportsPage() {
                 })}
               </select>
               {/* Category Filter for Monthly */}
-              <div className="category-toggle">
+              <div style={{ display: 'flex', gap: '4px', marginLeft: '0.5rem' }}>
                 <button
-                  className={`toggle-btn ${categoryFilter === 'FIRE' ? 'active fire' : ''}`}
                   onClick={() => setCategoryFilter('FIRE')}
+                  style={{ 
+                    minWidth: '80px',
+                    padding: '0.5rem 1rem',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: '500',
+                    backgroundColor: categoryFilter === 'FIRE' ? '#e74c3c' : '#3a3a3a',
+                    color: categoryFilter === 'FIRE' ? 'white' : '#888',
+                  }}
                 >
                   🔥 Fire
                 </button>
                 <button
-                  className={`toggle-btn ${categoryFilter === 'EMS' ? 'active ems' : ''}`}
                   onClick={() => setCategoryFilter('EMS')}
+                  style={{ 
+                    minWidth: '80px',
+                    padding: '0.5rem 1rem',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: '500',
+                    backgroundColor: categoryFilter === 'EMS' ? '#3498db' : '#3a3a3a',
+                    color: categoryFilter === 'EMS' ? 'white' : '#888',
+                  }}
                 >
                   🚑 EMS
                 </button>
