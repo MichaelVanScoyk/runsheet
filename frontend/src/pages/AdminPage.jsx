@@ -7,6 +7,17 @@ import MunicipalitiesPage from './MunicipalitiesPage';
 
 const API_BASE = '';
 
+// US Timezone options for dropdown
+const US_TIMEZONES = [
+  { value: 'America/New_York', label: 'Eastern Time (ET)' },
+  { value: 'America/Chicago', label: 'Central Time (CT)' },
+  { value: 'America/Denver', label: 'Mountain Time (MT)' },
+  { value: 'America/Phoenix', label: 'Arizona (no DST)' },
+  { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
+  { value: 'America/Anchorage', label: 'Alaska Time (AKT)' },
+  { value: 'Pacific/Honolulu', label: 'Hawaii Time (HT)' },
+];
+
 // ============================================================================
 // SETTINGS TAB COMPONENT
 // ============================================================================
@@ -120,6 +131,29 @@ function SettingsTab() {
           <small style={{ color: '#666', marginTop: '0.5rem', display: 'block' }}>
             Standard NFIRS codes. Contact admin to modify.
           </small>
+        </div>
+      );
+    }
+    
+    // Timezone dropdown
+    if (setting.key === 'timezone') {
+      // Strip quotes from stored value if present
+      const currentValue = (setting.raw_value || '').replace(/"/g, '');
+      return (
+        <div key={setting.key} className="setting-item">
+          <div className="setting-header">
+            <label>{formatLabel(setting.key)}</label>
+            <span className="setting-desc">Station timezone for CAD time parsing</span>
+          </div>
+          <select
+            value={currentValue}
+            onChange={(e) => updateSetting(setting.category, setting.key, e.target.value)}
+            disabled={isSaving}
+          >
+            {US_TIMEZONES.map(tz => (
+              <option key={tz.value} value={tz.value}>{tz.label}</option>
+            ))}
+          </select>
         </div>
       );
     }
