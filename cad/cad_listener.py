@@ -197,6 +197,18 @@ class CADListener:
             for u in existing_incident['cad_units']:
                 existing_units[u['unit_id']] = u
         
+        # Get incident date from dispatch_time for proper timestamp conversion
+        # dispatch_time format: "12-07-25 14:09:18" (MM-DD-YY HH:MM:SS)
+        incident_date_str = None
+        dispatch_time_str = None
+        if report.get('dispatch_time'):
+            try:
+                dt = datetime.strptime(report['dispatch_time'], '%m-%d-%y %H:%M:%S')
+                incident_date_str = dt.strftime('%Y-%m-%d')
+                dispatch_time_str = dt.strftime('%H:%M:%S')
+            except ValueError:
+                pass
+        
         for unit in report.get('responding_units', []):
             unit_id = unit.get('unit_id')
             if not unit_id:
@@ -207,6 +219,14 @@ class CADListener:
             
             # Use canonical unit_designator if available (normalizes aliases like 48QRS -> QRS48)
             canonical_unit_id = unit_info['unit_designator'] or unit_id
+            
+            # Convert unit dispatch time to proper UTC format
+            # unit.get('time') is raw HH:MM:SS from CAD
+            unit_dispatch_time = None
+            if unit.get('time') and incident_date_str:
+                unit_dispatch_time = self._parse_cad_time(
+                    unit.get('time'), incident_date_str, dispatch_time_str
+                )
             
             # Merge with existing data, but ALWAYS update unit config from current apparatus table
             if canonical_unit_id in existing_units:
@@ -226,7 +246,7 @@ class CADListener:
                     'apparatus_id': unit_info['apparatus_id'],
                     'unit_category': unit_info['category'],
                     'counts_for_response_times': unit_info['counts_for_response_times'],
-                    'time_dispatched': unit.get('time'),
+                    'time_dispatched': unit_dispatch_time,  # Now proper UTC ISO format
                     'time_enroute': None,
                     'time_arrived': None,
                     'time_available': None,
