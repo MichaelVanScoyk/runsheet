@@ -622,6 +622,26 @@ function ChiefsReportView({ report, month, year, category, onMonthChange, onYear
           </div>
         </div>
         
+        {/* Damage/Injury Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+          <div className="bg-gray-900 rounded-lg p-4 text-center">
+            <div className="text-2xl font-bold text-orange-400">${((cs.property_at_risk || 0) / 100).toLocaleString()}</div>
+            <div className="text-gray-400 text-sm">Property at Risk</div>
+          </div>
+          <div className="bg-gray-900 rounded-lg p-4 text-center">
+            <div className="text-2xl font-bold text-red-400">${((cs.fire_damages || 0) / 100).toLocaleString()}</div>
+            <div className="text-gray-400 text-sm">Fire Damages</div>
+          </div>
+          <div className="bg-gray-900 rounded-lg p-4 text-center">
+            <div className="text-2xl font-bold text-yellow-500">{cs.ff_injuries || 0}</div>
+            <div className="text-gray-400 text-sm">FF Injuries</div>
+          </div>
+          <div className="bg-gray-900 rounded-lg p-4 text-center">
+            <div className="text-2xl font-bold text-pink-400">{cs.civilian_injuries || 0}</div>
+            <div className="text-gray-400 text-sm">Civilian Injuries</div>
+          </div>
+        </div>
+        
         {/* YoY Comparison */}
         <div className="mt-4 flex items-center justify-center gap-2 text-sm">
           <span className="text-gray-400">vs Same Month Last Year:</span>
@@ -636,27 +656,37 @@ function ChiefsReportView({ report, month, year, category, onMonthChange, onYear
         {/* Municipality Summary */}
         <div className="bg-gray-800 rounded-lg p-6">
           <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-4">MUNICIPALITY SUMMARY</h3>
-          <table className="w-full">
-            <thead>
-              <tr className="text-gray-400 text-sm">
-                <th className="text-left pb-2">Municipality</th>
-                <th className="text-right pb-2">Calls</th>
-                <th className="text-right pb-2">Man Hrs</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(report.municipalities || []).map((m, i) => (
-                <tr key={i} className="border-t border-gray-700">
-                  <td className="py-2">{m.municipality}</td>
-                  <td className="py-2 text-right font-mono">{m.calls}</td>
-                  <td className="py-2 text-right font-mono">{m.manhours?.toFixed(2)}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-400">
+                  <th className="text-left pb-2">Municipality</th>
+                  <th className="text-right pb-2">Calls</th>
+                  <th className="text-right pb-2">Man Hrs</th>
+                  <th className="text-right pb-2">Prop Risk</th>
+                  <th className="text-right pb-2">Damages</th>
+                  <th className="text-right pb-2">FF Inj</th>
+                  <th className="text-right pb-2">Civ Inj</th>
                 </tr>
-              ))}
-              {(!report.municipalities || report.municipalities.length === 0) && (
-                <tr><td colSpan="3" className="py-4 text-center text-gray-500">No data</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(report.municipalities || []).map((m, i) => (
+                  <tr key={i} className="border-t border-gray-700">
+                    <td className="py-2">{m.municipality}</td>
+                    <td className="py-2 text-right font-mono">{m.calls}</td>
+                    <td className="py-2 text-right font-mono">{m.manhours?.toFixed(1)}</td>
+                    <td className="py-2 text-right font-mono text-orange-400">${((m.property_at_risk || 0) / 100).toLocaleString()}</td>
+                    <td className="py-2 text-right font-mono text-red-400">${((m.fire_damages || 0) / 100).toLocaleString()}</td>
+                    <td className="py-2 text-right font-mono text-yellow-500">{m.ff_injuries || 0}</td>
+                    <td className="py-2 text-right font-mono text-pink-400">{m.civilian_injuries || 0}</td>
+                  </tr>
+                ))}
+                {(!report.municipalities || report.municipalities.length === 0) && (
+                  <tr><td colSpan="7" className="py-4 text-center text-gray-500">No data</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Responses Per Unit */}

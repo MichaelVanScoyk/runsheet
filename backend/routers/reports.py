@@ -608,6 +608,24 @@ async def get_monthly_chiefs_report(
     change = current_count - prev_count
     pct_change = round((change / prev_count * 100), 0) if prev_count > 0 else 0
     
+    # =========================================================================
+    # DAMAGE/INJURY TOTALS - Only for OUR incidents (not mutual aid given)
+    # =========================================================================
+    damage_result = db.execute(text(f"""
+        SELECT 
+            COALESCE(SUM(property_value_at_risk), 0) AS total_property_at_risk,
+            COALESCE(SUM(fire_damages_estimate), 0) AS total_fire_damages,
+            COALESCE(SUM(ff_injuries_count), 0) AS total_ff_injuries,
+            COALESCE(SUM(civilian_injuries_count), 0) AS total_civilian_injuries
+        FROM incidents i
+        WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
+          AND i.deleted_at IS NULL
+          AND (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
+          {cat_filter}
+    """), {"start_date": start_date, "end_date": end_date})
+    
+    damage_row = damage_result.fetchone()
+    
     call_summary = {
         "number_of_calls": current_count,
         "number_of_men": int(summary_row[1] or 0),
@@ -616,10 +634,14 @@ async def get_monthly_chiefs_report(
         "previous_year_calls": prev_count,
         "change": change,
         "percent_change": pct_change,
+        "property_at_risk": int(damage_row[0] or 0),
+        "fire_damages": int(damage_row[1] or 0),
+        "ff_injuries": int(damage_row[2] or 0),
+        "civilian_injuries": int(damage_row[3] or 0),
     }
     
     # =========================================================================
-    # MUNICIPALITY SUMMARY
+    # MUNICIPALITY SUMMARY - with damage/injury for OUR incidents only
     # =========================================================================
     muni_result = db.execute(text(f"""
         WITH incident_data AS (
@@ -629,7 +651,16 @@ async def get_monthly_chiefs_report(
                 EXTRACT(EPOCH FROM (
                     COALESCE(i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
                 )) / 3600.0 AS duration_hours,
-                (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count
+                (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count,
+                -- Only include damage/injury for OUR incidents
+                CASE WHEN (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
+                     THEN COALESCE(i.property_value_at_risk, 0) ELSE 0 END AS property_at_risk,
+                CASE WHEN (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
+                     THEN COALESCE(i.fire_damages_estimate, 0) ELSE 0 END AS fire_damages,
+                CASE WHEN (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
+                     THEN COALESCE(i.ff_injuries_count, 0) ELSE 0 END AS ff_injuries,
+                CASE WHEN (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN')
+                     THEN COALESCE(i.civilian_injuries_count, 0) ELSE 0 END AS civilian_injuries
             FROM incidents i
             LEFT JOIN municipalities m ON i.municipality_code = m.code
             WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
@@ -640,7 +671,11 @@ async def get_monthly_chiefs_report(
             municipality,
             COUNT(*) AS calls,
             COALESCE(SUM(CASE WHEN duration_hours > 0 AND duration_hours < 24 
-                         THEN duration_hours * personnel_count ELSE 0 END), 0) AS manhours
+                         THEN duration_hours * personnel_count ELSE 0 END), 0) AS manhours,
+            SUM(property_at_risk) AS property_at_risk,
+            SUM(fire_damages) AS fire_damages,
+            SUM(ff_injuries) AS ff_injuries,
+            SUM(civilian_injuries) AS civilian_injuries
         FROM incident_data
         GROUP BY municipality
         ORDER BY calls DESC, municipality
@@ -651,7 +686,11 @@ async def get_monthly_chiefs_report(
         municipalities.append({
             "municipality": row[0],
             "calls": row[1],
-            "manhours": round(float(row[2] or 0), 2)
+            "manhours": round(float(row[2] or 0), 2),
+            "property_at_risk": int(row[3] or 0),
+            "fire_damages": int(row[4] or 0),
+            "ff_injuries": int(row[5] or 0),
+            "civilian_injuries": int(row[6] or 0)
         })
     
     # =========================================================================
@@ -948,12 +987,21 @@ async def generate_monthly_pdf_report(
         elements.append(Paragraph("CALL SUMMARY", section_style))
         
         cs = report['call_summary']
+        
+        # Format currency values (stored in cents)
+        def fmt_currency(cents):
+            return f"${cents / 100:,.0f}"
+        
         summary_data = [
             ["Number of Calls for Month", str(cs['number_of_calls'])],
             ["Number of Men", str(cs['number_of_men'])],
             ["Hours", f"{cs['hours']:.2f}"],
             ["Man Hours", f"{cs['man_hours']:.2f}"],
             ["vs. Same Month Last Year", f"{'+' if cs['change'] >= 0 else ''}{cs['change']} ({'+' if cs['percent_change'] >= 0 else ''}{cs['percent_change']:.0f}%)"],
+            ["Property at Risk", fmt_currency(cs.get('property_at_risk', 0))],
+            ["Fire Damages", fmt_currency(cs.get('fire_damages', 0))],
+            ["FF Injuries", str(cs.get('ff_injuries', 0))],
+            ["Civilian Injuries", str(cs.get('civilian_injuries', 0))],
         ]
         
         summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
@@ -971,20 +1019,28 @@ async def generate_monthly_pdf_report(
         # TWO-COLUMN: MUNICIPALITY SUMMARY | RESPONSES PER UNIT
         # =================================================================
         
-        # Municipality data
-        muni_data = [["Municipality", "Calls", "Man Hrs"]]
+        # Municipality data with damage/injury breakdown
+        muni_data = [["Municipality", "Calls", "Man Hrs", "Prop Risk", "Damages", "FF Inj", "Civ Inj"]]
         for m in report['municipalities'][:12]:
-            muni_data.append([m['municipality'], str(m['calls']), f"{m['manhours']:.2f}"])
+            muni_data.append([
+                m['municipality'], 
+                str(m['calls']), 
+                f"{m['manhours']:.1f}",
+                fmt_currency(m.get('property_at_risk', 0)),
+                fmt_currency(m.get('fire_damages', 0)),
+                str(m.get('ff_injuries', 0)),
+                str(m.get('civilian_injuries', 0))
+            ])
         if not report['municipalities']:
-            muni_data.append(["No data", "", ""])
+            muni_data.append(["No data", "", "", "", "", "", ""])
         
-        muni_table = Table(muni_data, colWidths=[1.8*inch, 0.6*inch, 0.8*inch])
+        muni_table = Table(muni_data, colWidths=[1.4*inch, 0.4*inch, 0.6*inch, 0.7*inch, 0.7*inch, 0.5*inch, 0.5*inch])
         muni_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('PADDING', (0, 0), (-1, -1), 4),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('PADDING', (0, 0), (-1, -1), 3),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
         ]))
         
