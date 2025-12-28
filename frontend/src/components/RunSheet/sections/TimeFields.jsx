@@ -1,70 +1,12 @@
 import { useRunSheet } from '../RunSheetContext';
-
-// Format ISO datetime to display format: "YYYY-MM-DD HH:MM:SS" (24-hour)
-const formatForDisplay = (isoString) => {
-  if (!isoString) return '';
-  // Handle both "2025-12-23T15:48:26" and "2025-12-23T15:48:26+00:00" formats
-  const match = isoString.match(/(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
-  if (match) {
-    return `${match[1]} ${match[2]}`;
-  }
-  // Fallback for HH:MM without seconds
-  const matchNoSec = isoString.match(/(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
-  if (matchNoSec) {
-    return `${matchNoSec[1]} ${matchNoSec[2]}:00`;
-  }
-  return isoString;
-};
-
-// Parse display format back to ISO for storage: "YYYY-MM-DDTHH:MM:SS"
-const parseToIso = (displayString) => {
-  if (!displayString) return '';
-  // Already ISO format
-  if (displayString.includes('T')) return displayString;
-  // Convert "YYYY-MM-DD HH:MM:SS" to "YYYY-MM-DDTHH:MM:SS"
-  const match = displayString.match(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})/);
-  if (match) {
-    return `${match[1]}T${match[2]}`;
-  }
-  // Handle "YYYY-MM-DD HH:MM" (no seconds)
-  const matchNoSec = displayString.match(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/);
-  if (matchNoSec) {
-    return `${matchNoSec[1]}T${matchNoSec[2]}:00`;
-  }
-  return displayString;
-};
-
-// Calculate duration between two ISO timestamps
-const calculateDuration = (startIso, endIso) => {
-  if (!startIso || !endIso) return '';
-  try {
-    const start = new Date(startIso);
-    const end = new Date(endIso);
-    const diffMs = end - start;
-    if (diffMs < 0) return '';
-    
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}m ${seconds}s`;
-    } else if (minutes > 0) {
-      return `${minutes}m ${seconds}s`;
-    } else {
-      return `${seconds}s`;
-    }
-  } catch {
-    return '';
-  }
-};
+import { formatDateTimeLocal, parseLocalToUtc, calculateDuration } from '../../../utils/timeUtils';
 
 // Per context doc: labels inline LEFT of field, not above
 export default function TimeFields() {
   const { formData, handleChange } = useRunSheet();
   
   const handleTimeChange = (key, displayValue) => {
-    const isoValue = parseToIso(displayValue);
+    const isoValue = parseLocalToUtc(displayValue);
     handleChange(key, isoValue);
   };
   
@@ -87,7 +29,7 @@ export default function TimeFields() {
           <input 
             type="text"
             placeholder="YYYY-MM-DD HH:MM:SS"
-            value={formatForDisplay(formData[key])} 
+            value={formatDateTimeLocal(formData[key])} 
             onChange={(e) => handleTimeChange(key, e.target.value)}
             className="flex-1 font-mono text-sm"
             pattern="\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}"

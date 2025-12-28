@@ -1,4 +1,5 @@
 import { useRunSheet } from '../RunSheetContext';
+import { formatTimeLocal } from '../../../utils/timeUtils';
 
 export default function CADUnitsTable() {
   const { formData } = useRunSheet();
@@ -7,7 +8,7 @@ export default function CADUnitsTable() {
   
   const formatTime = (isoString) => {
     if (!isoString) return '-';
-    return isoString.split('T')[1]?.substring(0, 8) || '-';
+    return formatTimeLocal(isoString, true) || '-';  // Include seconds
   };
   
   // Check if a unit's time matches the incident metric time

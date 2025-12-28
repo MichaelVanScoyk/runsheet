@@ -1108,20 +1108,7 @@ async def update_incident(
         if hasattr(incident, field):
             old_value = getattr(incident, field)
             if old_value != new_value:
-                # Normalize datetime comparison to avoid false positives from timezone formatting
-                # e.g., "2025-12-26 23:01:31+00:00" vs "2025-12-26 23:01:31" are the same
-                values_equal = False
-                if hasattr(old_value, 'replace') and hasattr(new_value, 'replace'):
-                    # Both are datetime-like, compare without timezone
-                    try:
-                        old_naive = old_value.replace(tzinfo=None) if old_value else None
-                        new_naive = new_value.replace(tzinfo=None) if new_value else None
-                        values_equal = (old_naive == new_naive)
-                    except:
-                        pass
-                
-                if not values_equal:
-                    changes[field] = {"old": str(old_value) if old_value else None, "new": str(new_value) if new_value else None}
+                changes[field] = {"old": str(old_value) if old_value else None, "new": str(new_value) if new_value else None}
     
     # Auto-fetch weather if enabled
     weather_auto_fetch = True

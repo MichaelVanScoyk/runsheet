@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getIncidents, getIncident } from '../api';
 import RunSheetForm from '../components/RunSheetForm';
+import { formatTimeLocal } from '../utils/timeUtils';
 
 const FILTER_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -256,7 +257,7 @@ function IncidentsPage() {
                       {i.incident_date}
                       {i.time_dispatched && (
                         <span style={{ color: '#888', marginLeft: '0.5rem' }}>
-                          {i.time_dispatched.split('T')[1]?.slice(0, 5)}
+                          {formatTimeLocal(i.time_dispatched)}
                         </span>
                       )}
                     </td>

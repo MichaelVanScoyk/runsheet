@@ -17,6 +17,7 @@ import json
 import requests
 from datetime import datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from cad_parser import parse_cad_html, report_to_dict
 
@@ -343,12 +344,23 @@ class CADListener:
         incident_date = incident.get('incident_date')  # Format: YYYY-MM-DD
         
         # Also get the dispatch time to detect midnight crossover
+        # IMPORTANT: Convert stored UTC back to local time for comparison
+        # because clear report times arrive as local wall clock times
         dispatch_time_str = None
         if incident.get('time_dispatched'):
-            # Extract just the time portion from ISO format
             try:
-                dispatch_time_str = incident['time_dispatched'].split('T')[1][:8]  # HH:MM:SS
-            except:
+                # Parse the stored UTC timestamp
+                stored_dt_str = incident['time_dispatched']
+                # Handle both 'Z' and '+00:00' UTC suffixes
+                if stored_dt_str.endswith('Z'):
+                    stored_dt_str = stored_dt_str[:-1] + '+00:00'
+                utc_dt = datetime.fromisoformat(stored_dt_str)
+                # Convert to local timezone to get original wall clock time
+                local_tz = self._get_local_timezone()
+                local_dt = utc_dt.astimezone(local_tz)
+                dispatch_time_str = local_dt.strftime('%H:%M:%S')
+            except Exception as e:
+                logger.warning(f"Could not parse dispatch time for midnight detection: {e}")
                 pass
         
         # If we don't have incident_date, try to extract from time_dispatched
@@ -582,14 +594,32 @@ class CADListener:
             return 'EMS'
         return 'FIRE'
     
+    def _get_local_timezone(self) -> ZoneInfo:
+        """
+        Get the configured local timezone for CAD data.
+        CAD times arrive as local time (what the wall clock said).
+        TODO: Load from settings table for multi-tenant support.
+        """
+        # For now, hardcoded to Eastern. Future: load from settings
+        return ZoneInfo("America/New_York")
+    
     def _parse_cad_datetime(self, dt_str: str) -> Optional[str]:
-        """Parse CAD datetime format: 12-07-25 14:09:18 (24-hour clock)"""
+        """
+        Parse CAD datetime format: 12-07-25 14:09:18 (24-hour clock)
+        Converts local time to UTC for storage.
+        """
         if not dt_str:
             return None
         try:
             # Try MM-DD-YY HH:MM:SS format (24-hour)
             dt = datetime.strptime(dt_str, '%m-%d-%y %H:%M:%S')
-            return dt.isoformat()
+            
+            # CAD sends local time - convert to UTC
+            local_tz = self._get_local_timezone()
+            local_dt = dt.replace(tzinfo=local_tz)
+            utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
+            
+            return utc_dt.isoformat()
         except ValueError:
             try:
                 # Try just time HH:MM:SS (use today's date as fallback)
@@ -601,6 +631,7 @@ class CADListener:
     def _parse_cad_time(self, time_str: str, incident_date: str = None, dispatch_time_str: str = None) -> Optional[str]:
         """
         Parse CAD time format: 14:09:18 (24-hour clock)
+        Converts local time to UTC for storage.
         
         Args:
             time_str: Time string in HH:MM:SS format
@@ -608,7 +639,7 @@ class CADListener:
             dispatch_time_str: The dispatch time in HH:MM:SS format (for midnight detection)
         
         Returns:
-            ISO format datetime string, or None if parsing fails
+            ISO format datetime string in UTC, or None if parsing fails
         """
         if not time_str:
             return None
@@ -622,7 +653,7 @@ class CADListener:
                 # Fallback to today if no incident_date provided
                 base_date = datetime.now().date()
             
-            # Combine date and time
+            # Combine date and time (still local)
             dt = datetime.combine(base_date, time_part)
             
             # Check for midnight crossover (24-hour clock logic)
@@ -638,7 +669,12 @@ class CADListener:
                 except:
                     pass
             
-            return dt.isoformat()
+            # CAD sends local time - convert to UTC
+            local_tz = self._get_local_timezone()
+            local_dt = dt.replace(tzinfo=local_tz)
+            utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
+            
+            return utc_dt.isoformat()
         except ValueError:
             logger.warning(f"Could not parse time: {time_str}")
             return None

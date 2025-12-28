@@ -12,12 +12,16 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional, Dict, Any, List
 from datetime import datetime, date, time as dt_time, timedelta
+from zoneinfo import ZoneInfo
 import json
 import io
 import os
 import sys
 
 from database import get_db
+
+# Default timezone for CAD data - TODO: load from tenant settings
+LOCAL_TIMEZONE = ZoneInfo("America/New_York")
 
 router = APIRouter()
 
@@ -415,14 +419,15 @@ def build_datetime_with_midnight_crossing(base_date, time_str: str, dispatch_tim
     """
     Build datetime from date and time, handling midnight crossing.
     If time < dispatch time, assume it crossed midnight (add 1 day).
+    Converts local time to UTC for storage.
     
     Args:
         base_date: date object or YYYY-MM-DD string
-        time_str: HH:MM:SS time string from CAD
+        time_str: HH:MM:SS time string from CAD (local time)
         dispatch_time_str: HH:MM:SS dispatch time for reference
     
     Returns:
-        datetime object or None
+        datetime object in UTC, or None
     """
     time_parts = parse_time_str(time_str)
     if not time_parts:
@@ -449,7 +454,12 @@ def build_datetime_with_midnight_crossing(base_date, time_str: str, dispatch_tim
             if this_total < disp_total:
                 result_date = base_date + timedelta(days=1)
     
-    return datetime.combine(result_date, dt_time(hours, minutes, seconds))
+    # Build local datetime then convert to UTC
+    local_dt = datetime.combine(result_date, dt_time(hours, minutes, seconds))
+    local_dt = local_dt.replace(tzinfo=LOCAL_TIMEZONE)
+    utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
+    
+    return utc_dt
 
 
 def calculate_response_times_from_units(

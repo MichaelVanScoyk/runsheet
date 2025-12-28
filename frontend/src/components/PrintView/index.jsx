@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getIncident, getApparatus, getPersonnel, getPrintSettings } from '../../api';
+import { formatTimeLocal } from '../../utils/timeUtils';
 import './PrintView.css';
 
 // Default print settings - will be overridden by API config
@@ -82,8 +83,7 @@ export default function PrintView({ incidentId, onClose }) {
 
   const formatTime = (isoString) => {
     if (!isoString) return '';
-    const match = isoString.match(/(\d{2}:\d{2}:\d{2})/);
-    return match ? match[1] : '';
+    return formatTimeLocal(isoString, true);  // Include seconds
   };
 
   const formatDate = (dateStr) => {
