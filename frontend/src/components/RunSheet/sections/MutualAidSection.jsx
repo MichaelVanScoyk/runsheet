@@ -2,32 +2,33 @@ import { useRunSheet } from '../RunSheetContext';
 
 /**
  * Mutual Aid Section
- * Simple toggle to indicate if incident was mutual aid,
- * then exposes NERIS fields for direction, type, and station.
+ * 
+ * Three explicit options:
+ * - NONE: Not a mutual aid call (our first due)
+ * - GIVEN: We gave aid to another station (their first due)
+ * - RECEIVED: We received aid from another station (our first due)
+ * 
+ * Damage Assessment only shows after this is answered, and only if NOT 'GIVEN'
  */
 export default function MutualAidSection() {
   const { formData, handleChange } = useRunSheet();
   
-  // Check if mutual aid is active (direction is GIVEN or RECEIVED)
-  const isMutualAid = formData.neris_aid_direction === 'GIVEN' || formData.neris_aid_direction === 'RECEIVED';
+  const direction = formData.neris_aid_direction;
+  const hasAnswered = direction === 'NONE' || direction === 'GIVEN' || direction === 'RECEIVED';
+  const isMutualAid = direction === 'GIVEN' || direction === 'RECEIVED';
   
-  // Toggle mutual aid on/off
-  const handleToggle = () => {
-    if (isMutualAid) {
-      // Turn off - clear all fields
-      handleChange('neris_aid_direction', null);
+  // Handle direction selection
+  const handleDirectionSelect = (newDirection) => {
+    handleChange('neris_aid_direction', newDirection);
+    
+    // Clear aid type and departments if not mutual aid
+    if (newDirection === 'NONE') {
       handleChange('neris_aid_type', null);
       handleChange('neris_aid_departments', []);
-    } else {
-      // Turn on - default to GIVEN since that's most common for reporting
-      handleChange('neris_aid_direction', 'GIVEN');
+    } else if (!formData.neris_aid_type) {
+      // Default aid type when selecting Given/Received
       handleChange('neris_aid_type', 'MUTUAL');
     }
-  };
-  
-  // Handle direction change
-  const handleDirectionChange = (direction) => {
-    handleChange('neris_aid_direction', direction);
   };
   
   // Handle station input - store as array for NERIS compatibility
@@ -47,64 +48,56 @@ export default function MutualAidSection() {
         <span className="text-xs text-gray-500 font-normal ml-auto">For Chiefs Report & NERIS</span>
       </h3>
       
-      {/* Main Toggle */}
-      <div className="flex items-center gap-4 mb-4">
-        <span className="text-gray-400 text-sm">Was this a mutual aid incident?</span>
-        <button
-          type="button"
-          onClick={handleToggle}
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-            isMutualAid ? 'bg-blue-600' : 'bg-gray-600'
-          }`}
-        >
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              isMutualAid ? 'translate-x-6' : 'translate-x-1'
+      {/* Main Question */}
+      <div className="mb-4">
+        <p className="text-gray-300 text-sm mb-3">Was mutual aid given or received on this call?</p>
+        
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => handleDirectionSelect('NONE')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              direction === 'NONE'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
             }`}
-          />
-        </button>
-        <span className={`text-sm font-medium ${isMutualAid ? 'text-blue-400' : 'text-gray-500'}`}>
-          {isMutualAid ? 'Yes' : 'No'}
-        </span>
+          >
+            No - Our First Due
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDirectionSelect('GIVEN')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              direction === 'GIVEN'
+                ? 'bg-green-600 text-white'
+                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+            }`}
+          >
+            Yes - We Gave Aid
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDirectionSelect('RECEIVED')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              direction === 'RECEIVED'
+                ? 'bg-orange-600 text-white'
+                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+            }`}
+          >
+            Yes - We Received Aid
+          </button>
+        </div>
+        
+        {!hasAnswered && (
+          <p className="text-xs text-yellow-500 mt-2">
+            ⚠️ Please answer to continue with damage assessment
+          </p>
+        )}
       </div>
       
-      {/* Expanded Fields when Mutual Aid is ON */}
+      {/* Expanded Fields when Mutual Aid (Given or Received) */}
       {isMutualAid && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-gray-700">
-          {/* Direction */}
-          <div className="flex flex-col gap-1">
-            <label className="text-gray-400 text-xs">Direction</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => handleDirectionChange('GIVEN')}
-                className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
-                  formData.neris_aid_direction === 'GIVEN'
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                }`}
-              >
-                Given
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDirectionChange('RECEIVED')}
-                className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
-                  formData.neris_aid_direction === 'RECEIVED'
-                    ? 'bg-orange-600 text-white'
-                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                }`}
-              >
-                Received
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              {formData.neris_aid_direction === 'GIVEN' 
-                ? 'We assisted another station' 
-                : 'Another station assisted us'}
-            </p>
-          </div>
-          
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-gray-700">
           {/* Type */}
           <div className="flex flex-col gap-1">
             <label className="text-gray-400 text-xs">Aid Type</label>
@@ -126,7 +119,7 @@ export default function MutualAidSection() {
           {/* Station */}
           <div className="flex flex-col gap-1">
             <label className="text-gray-400 text-xs">
-              {formData.neris_aid_direction === 'GIVEN' ? 'Station Assisted' : 'Aid From Station'}
+              {direction === 'GIVEN' ? 'Station We Assisted' : 'Station That Assisted Us'}
             </label>
             <input
               type="text"
@@ -137,6 +130,15 @@ export default function MutualAidSection() {
             />
           </div>
         </div>
+      )}
+      
+      {/* Contextual help text */}
+      {hasAnswered && (
+        <p className="text-xs text-gray-500 mt-3">
+          {direction === 'NONE' && '✓ This is our incident - damage assessment applies'}
+          {direction === 'GIVEN' && '✓ We assisted another station - they track damage for their report'}
+          {direction === 'RECEIVED' && '✓ This is our incident with assistance - damage assessment applies'}
+        </p>
       )}
     </div>
   );

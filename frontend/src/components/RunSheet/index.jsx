@@ -24,9 +24,15 @@ function RunSheetContent() {
   
   // Show Damage Assessment only if:
   // - It's a FIRE call AND
-  // - NOT giving mutual aid (i.e., it's our first due area)
-  // If we're giving aid, it's someone else's incident - they track damage
-  const showDamageAssessment = isFireCall && formData.neris_aid_direction !== 'GIVEN';
+  // - Mutual aid question has been answered (NONE, GIVEN, or RECEIVED) AND
+  // - Direction is NOT 'GIVEN' (i.e., it's our first due area)
+  // 
+  // NONE = not mutual aid (our call)
+  // RECEIVED = we got help (still our call)
+  // GIVEN = we helped them (their call - they track damage)
+  const mutualAidAnswered = ['NONE', 'GIVEN', 'RECEIVED'].includes(formData.neris_aid_direction);
+  const isOurIncident = formData.neris_aid_direction === 'NONE' || formData.neris_aid_direction === 'RECEIVED';
+  const showDamageAssessment = isFireCall && mutualAidAnswered && isOurIncident;
   
   if (loading) {
     return (
