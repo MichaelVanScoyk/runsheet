@@ -8,6 +8,7 @@ import {
   CallerInfo,
   NarrativeSection,
   DamageAssessment,
+  MutualAidSection,
   CADUnitsTable,
   PersonnelGrid,
   VirtualUnits,
@@ -45,6 +46,7 @@ function RunSheetContent() {
       
       <NarrativeSection />
       <DamageAssessment />
+      <MutualAidSection />
       <CADUnitsTable />
       <PersonnelGrid />
       <VirtualUnits />

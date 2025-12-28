@@ -6,6 +6,7 @@ export { default as TimeFields } from './TimeFields';
 export { default as CallerInfo } from './CallerInfo';
 export { default as NarrativeSection } from './NarrativeSection';
 export { default as DamageAssessment } from './DamageAssessment';
+export { default as MutualAidSection } from './MutualAidSection';
 export { default as CADUnitsTable } from './CADUnitsTable';
 export { default as PersonnelGrid } from './PersonnelGrid';
 export { default as VirtualUnits } from './VirtualUnits';

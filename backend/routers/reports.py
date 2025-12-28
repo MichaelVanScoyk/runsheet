@@ -704,19 +704,22 @@ async def get_monthly_chiefs_report(
         })
     
     # =========================================================================
-    # MUTUAL AID GIVEN (Assist To)
+    # MUTUAL AID GIVEN (Assist To) - Uses incident-level NERIS fields
+    # neris_aid_direction = 'GIVEN' means we responded to help another station
+    # neris_aid_departments contains the station(s) we assisted
     # =========================================================================
     mutual_aid_result = db.execute(text(f"""
         SELECT 
-            COALESCE(iu.cad_unit_id, 'Unknown') AS assisted_station,
-            COUNT(DISTINCT iu.incident_id) AS count
-        FROM incident_units iu
-        JOIN incidents i ON iu.incident_id = i.id
+            unnest(neris_aid_departments) AS assisted_station,
+            COUNT(*) AS count
+        FROM incidents i
         WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
           AND i.deleted_at IS NULL
-          AND iu.is_mutual_aid = true
+          AND i.neris_aid_direction = 'GIVEN'
+          AND i.neris_aid_departments IS NOT NULL
+          AND array_length(i.neris_aid_departments, 1) > 0
           {cat_filter}
-        GROUP BY COALESCE(iu.cad_unit_id, 'Unknown')
+        GROUP BY unnest(neris_aid_departments)
         ORDER BY count DESC
     """), {"start_date": start_date, "end_date": end_date})
     
