@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useRunSheet } from '../RunSheetContext';
 
 export default function IncidentInfo() {
@@ -5,10 +6,26 @@ export default function IncidentInfo() {
     incident, 
     formData, 
     handleChange, 
-    municipalities
+    municipalities,
+    userSession,
   } = useRunSheet();
   
   const isLocked = !!incident;
+  const isAdmin = userSession?.role === 'ADMIN';
+  
+  // Track which locked fields have been unlocked by admin
+  const [unlockedFields, setUnlockedFields] = useState({});
+  
+  const toggleUnlock = (field) => {
+    setUnlockedFields(prev => ({
+      ...prev,
+      [field]: !prev[field]
+    }));
+  };
+  
+  const isFieldLocked = (field) => {
+    return isLocked && !unlockedFields[field];
+  };
   
   return (
     <div className="flex flex-col gap-2">
@@ -42,15 +59,28 @@ export default function IncidentInfo() {
         <div className="flex flex-col gap-0.5">
           <label className="text-gray-400 text-xs flex items-center gap-1">
             CAD #
-            {isLocked && <span className="text-[10px]" title="Cannot change after creation">🔒</span>}
+            {isLocked && (
+              isAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => toggleUnlock('cad_event_number')}
+                  className="text-[10px] hover:text-yellow-400 transition-colors"
+                  title={unlockedFields.cad_event_number ? "Lock field" : "Admin: Click to unlock"}
+                >
+                  {unlockedFields.cad_event_number ? '🔓' : '🔒'}
+                </button>
+              ) : (
+                <span className="text-[10px]" title="Cannot change after creation">🔒</span>
+              )
+            )}
           </label>
           <input 
             type="text" 
             value={formData.cad_event_number} 
             onChange={(e) => handleChange('cad_event_number', e.target.value)} 
             placeholder="F25000000"
-            disabled={isLocked}
-            className={isLocked ? 'opacity-60' : ''}
+            disabled={isFieldLocked('cad_event_number')}
+            className={isFieldLocked('cad_event_number') ? 'opacity-60' : ''}
           />
         </div>
       </div>
