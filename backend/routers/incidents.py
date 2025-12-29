@@ -132,6 +132,7 @@ class IncidentUpdate(BaseModel):
     """Update incident - all NERIS fields use TEXT codes"""
     
     # CAD fields (informational, not sent to NERIS)
+    cad_event_number: Optional[str] = None  # Admin can update this
     cad_event_type: Optional[str] = None
     cad_event_subtype: Optional[str] = None
     cad_raw_dispatch: Optional[str] = None
@@ -1060,8 +1061,8 @@ async def update_incident(
     
     update_data = data.model_dump(exclude_unset=True)
     
-    # IMMUTABLE FIELDS - cannot change after creation
-    IMMUTABLE_FIELDS = ['incident_date', 'internal_incident_number', 'cad_event_number', 'created_at', 'neris_id']
+    # IMMUTABLE FIELDS - cannot change after creation (admin can change cad_event_number via unlock)
+    IMMUTABLE_FIELDS = ['incident_date', 'internal_incident_number', 'created_at', 'neris_id']
     for field in IMMUTABLE_FIELDS:
         update_data.pop(field, None)
     
