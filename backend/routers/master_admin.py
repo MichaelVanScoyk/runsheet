@@ -9,6 +9,7 @@ Handles:
 """
 
 from fastapi import APIRouter, HTTPException, Request, Response, Depends
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
@@ -16,8 +17,14 @@ import secrets
 import bcrypt
 import subprocess
 import os
+import json
+import logging
+import tempfile
+import psycopg2
 
 from master_database import get_master_db, MasterDBSession
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -106,12 +113,14 @@ def log_audit(db: MasterDBSession, admin_id: int, admin_email: str, action: str,
               target_type: str = None, target_id: int = None, target_name: str = None,
               details: dict = None, ip_address: str = None):
     """Log admin action to audit table"""
+    # Convert dict to JSON string for JSONB column
+    details_json = json.dumps(details) if details else None
     db.execute("""
         INSERT INTO master_audit_log 
         (admin_id, admin_email, action, target_type, target_id, target_name, details, ip_address)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """, (admin_id, admin_email, action, target_type, target_id, target_name, 
-          details if details else None, ip_address))
+          details_json, ip_address))
     db.commit()
 
 
@@ -843,6 +852,29 @@ PSQL = '/usr/bin/psql'
 CREATEDB = '/usr/bin/createdb'
 DROPDB = '/usr/bin/dropdb'
 
+# Database credentials for subprocess commands
+DB_USER = 'dashboard'
+DB_PASSWORD = 'dashboard'
+DB_HOST = 'localhost'
+
+
+def get_pg_env():
+    """Get environment with PGPASSWORD set for subprocess commands"""
+    env = os.environ.copy()
+    env['PGPASSWORD'] = DB_PASSWORD
+    return env
+
+
+def run_pg_command(cmd: list, check_success: bool = True) -> subprocess.CompletedProcess:
+    """Run a PostgreSQL command with proper credentials"""
+    env = get_pg_env()
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    if check_success and result.returncode != 0:
+        logger.error(f"PG command failed: {' '.join(cmd)}")
+        logger.error(f"stderr: {result.stderr}")
+        logger.error(f"stdout: {result.stdout}")
+    return result
+
 
 def format_size(size_bytes):
     """Format bytes to human readable"""
@@ -860,8 +892,6 @@ async def list_databases(
     admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
 ):
     """List all tenant databases with status"""
-    import psycopg2
-    
     with get_master_db() as db:
         tenants = db.fetchall("""
             SELECT id, slug, name, database_name, status
@@ -892,8 +922,7 @@ async def list_databases(
             conn.close()
         except Exception as e:
             # Log the actual error for debugging
-            import logging
-            logging.getLogger(__name__).warning(f"DB check failed for {db_name}: {e}")
+            logger.warning(f"DB check failed for {db_name}: {e}")
         
         # Check last backup
         last_backup = None
@@ -978,22 +1007,14 @@ async def provision_database(
     
     try:
         # Create database
-        result = subprocess.run(
-            [CREATEDB, db_name],
-            capture_output=True,
-            text=True
-        )
+        result = run_pg_command([CREATEDB, '-U', DB_USER, '-h', DB_HOST, db_name])
         if result.returncode != 0 and 'already exists' not in result.stderr:
             raise HTTPException(status_code=500, detail=f"Failed to create database: {result.stderr}")
         
         # Run initial schema migration
         schema_file = os.path.join(MIGRATIONS_DIR, '001_initial_schema.sql')
         if os.path.exists(schema_file):
-            result = subprocess.run(
-                [PSQL, db_name, '-f', schema_file],
-                capture_output=True,
-                text=True
-            )
+            result = run_pg_command([PSQL, '-U', DB_USER, '-h', DB_HOST, db_name, '-f', schema_file])
             if result.returncode != 0:
                 raise HTTPException(status_code=500, detail=f"Migration failed: {result.stderr}")
         
@@ -1024,8 +1045,6 @@ async def backup_database(
     admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
 ):
     """Create a backup of tenant database"""
-    from datetime import datetime
-    
     with get_master_db() as db:
         result = db.fetchone("""
             SELECT slug, name, database_name FROM tenants WHERE id = %s
@@ -1038,7 +1057,10 @@ async def backup_database(
         db_name = database_name or f"runsheet_{slug}"
     
     # Ensure backup directory exists
-    os.makedirs(BACKUP_DIR, exist_ok=True)
+    try:
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Cannot create backup directory: {e}")
     
     # Generate filename with timestamp
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -1046,14 +1068,17 @@ async def backup_database(
     filepath = os.path.join(BACKUP_DIR, filename)
     
     try:
-        # Run pg_dump
-        result = subprocess.run(
-            [PG_DUMP, '-Fp', '-f', filepath, db_name],
-            capture_output=True,
-            text=True
-        )
+        # Run pg_dump with credentials
+        result = run_pg_command([PG_DUMP, '-U', DB_USER, '-h', DB_HOST, '-Fp', '-f', filepath, db_name])
         if result.returncode != 0:
+            # Clean up partial file if exists
+            if os.path.exists(filepath):
+                os.unlink(filepath)
             raise HTTPException(status_code=500, detail=f"Backup failed: {result.stderr}")
+        
+        # Verify file was created
+        if not os.path.exists(filepath):
+            raise HTTPException(status_code=500, detail="Backup file was not created")
         
         # Log audit
         with get_master_db() as db:
@@ -1078,8 +1103,6 @@ async def download_backup(
     admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
 ):
     """Download a backup file"""
-    from fastapi.responses import FileResponse
-    
     # Sanitize filename
     if '..' in filename or '/' in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
@@ -1128,17 +1151,13 @@ async def restore_database(
     
     try:
         # Drop and recreate database
-        subprocess.run([DROPDB, '--if-exists', db_name], capture_output=True)
-        result = subprocess.run([CREATEDB, db_name], capture_output=True, text=True)
+        run_pg_command([DROPDB, '-U', DB_USER, '-h', DB_HOST, '--if-exists', db_name], check_success=False)
+        result = run_pg_command([CREATEDB, '-U', DB_USER, '-h', DB_HOST, db_name])
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"Failed to create database: {result.stderr}")
         
         # Restore from backup
-        result = subprocess.run(
-            [PSQL, db_name, '-f', filepath],
-            capture_output=True,
-            text=True
-        )
+        result = run_pg_command([PSQL, '-U', DB_USER, '-h', DB_HOST, db_name, '-f', filepath])
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"Restore failed: {result.stderr}")
         
@@ -1169,8 +1188,6 @@ async def get_tenant_users(
     admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN', 'SUPPORT']))
 ):
     """Get all users for a tenant"""
-    import psycopg2
-    
     with get_master_db() as db:
         result = db.fetchone("""
             SELECT slug, name, database_name FROM tenants WHERE id = %s
@@ -1219,8 +1236,6 @@ async def disable_tenant_user(
     admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
 ):
     """Disable a user in a tenant database"""
-    import psycopg2
-    
     with get_master_db() as db:
         result = db.fetchone("""
             SELECT slug, name, database_name FROM tenants WHERE id = %s
@@ -1268,8 +1283,6 @@ async def enable_tenant_user(
     admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
 ):
     """Enable a user in a tenant database"""
-    import psycopg2
-    
     with get_master_db() as db:
         result = db.fetchone("""
             SELECT slug, name, database_name FROM tenants WHERE id = %s
@@ -1316,9 +1329,6 @@ async def restore_database_upload(
     admin: dict = Depends(require_role(['SUPER_ADMIN']))
 ):
     """Restore database from uploaded backup file"""
-    from fastapi import UploadFile, File
-    import tempfile
-    
     with get_master_db() as db:
         result = db.fetchone("""
             SELECT slug, name, database_name FROM tenants WHERE id = %s
@@ -1344,18 +1354,14 @@ async def restore_database_upload(
             tmp_path = tmp.name
         
         # Drop and recreate database
-        subprocess.run([DROPDB, '--if-exists', db_name], capture_output=True)
-        result = subprocess.run([CREATEDB, db_name], capture_output=True, text=True)
+        run_pg_command([DROPDB, '-U', DB_USER, '-h', DB_HOST, '--if-exists', db_name], check_success=False)
+        result = run_pg_command([CREATEDB, '-U', DB_USER, '-h', DB_HOST, db_name])
         if result.returncode != 0:
             os.unlink(tmp_path)
             raise HTTPException(status_code=500, detail=f"Failed to create database: {result.stderr}")
         
         # Restore from backup
-        result = subprocess.run(
-            [PSQL, db_name, '-f', tmp_path],
-            capture_output=True,
-            text=True
-        )
+        result = run_pg_command([PSQL, '-U', DB_USER, '-h', DB_HOST, db_name, '-f', tmp_path])
         os.unlink(tmp_path)  # Clean up temp file
         
         if result.returncode != 0:
