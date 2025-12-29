@@ -23,3 +23,4 @@ test_data.zip
 raw_adi_log_samples.txt
 test_cad_samples.txt
 *.sql
+data/
