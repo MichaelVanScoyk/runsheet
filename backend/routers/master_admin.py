@@ -352,11 +352,15 @@ async def approve_tenant(
         # Assign CAD port if not provided
         cad_port = data.cad_port
         if cad_port is None:
-            # Get next available port
+            # Get next available port from JSONB config
             config = db.fetchone("SELECT value FROM system_config WHERE key = 'next_cad_port'")
-            cad_port = int(config[0]) if config else 19117
+            if config and config[0] is not None:
+                # JSONB returns int directly if stored as number, or str if stored as string
+                cad_port = int(config[0]) if not isinstance(config[0], int) else config[0]
+            else:
+                cad_port = 19117
             db.execute(
-                "UPDATE system_config SET value = %s, updated_at = NOW() WHERE key = 'next_cad_port'",
+                "UPDATE system_config SET value = %s::jsonb, updated_at = NOW() WHERE key = 'next_cad_port'",
                 (str(cad_port + 1),)
             )
         
@@ -610,16 +614,16 @@ async def create_tenant(
         cad_port = data.cad_port
         if cad_port is None:
             config = db.fetchone("SELECT value FROM system_config WHERE key = 'next_cad_port'")
-            if config:
-                cad_port = int(config[0])
+            if config and config[0] is not None:
+                cad_port = int(config[0]) if not isinstance(config[0], int) else config[0]
                 db.execute(
-                    "UPDATE system_config SET value = %s, updated_at = NOW() WHERE key = 'next_cad_port'",
+                    "UPDATE system_config SET value = %s::jsonb, updated_at = NOW() WHERE key = 'next_cad_port'",
                     (str(cad_port + 1),)
                 )
             else:
                 cad_port = 19118  # Start at 19118 for new tenants
                 db.execute(
-                    "INSERT INTO system_config (key, value) VALUES ('next_cad_port', '19119')"
+                    "INSERT INTO system_config (key, value) VALUES ('next_cad_port', '19119'::jsonb)"
                 )
         
         password_hash = hash_password(data.password)

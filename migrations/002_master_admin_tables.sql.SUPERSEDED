@@ -1,0 +1,105 @@
+-- Master Admin Tables for cadreport_master
+-- Run this against the cadreport_master database
+
+-- Master administrators (CADReport staff)
+CREATE TABLE IF NOT EXISTS master_admins (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(200) UNIQUE NOT NULL,
+    password_hash VARCHAR(200) NOT NULL,
+    name VARCHAR(100),
+    role VARCHAR(20) DEFAULT 'ADMIN',  -- SUPER_ADMIN, ADMIN, SUPPORT, READONLY
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_login TIMESTAMP
+);
+
+-- Master admin sessions
+CREATE TABLE IF NOT EXISTS master_sessions (
+    id SERIAL PRIMARY KEY,
+    admin_id INTEGER REFERENCES master_admins(id) ON DELETE CASCADE,
+    session_token VARCHAR(100) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP NOT NULL,
+    ip_address VARCHAR(45)
+);
+
+-- Master audit log (admin actions)
+CREATE TABLE IF NOT EXISTS master_audit_log (
+    id SERIAL PRIMARY KEY,
+    admin_id INTEGER REFERENCES master_admins(id),
+    admin_email VARCHAR(200),
+    action VARCHAR(50) NOT NULL,  -- APPROVE_TENANT, SUSPEND_TENANT, CREATE_ADMIN, etc.
+    target_type VARCHAR(50),      -- TENANT, ADMIN, SYSTEM
+    target_id INTEGER,
+    target_name VARCHAR(200),
+    details JSONB,
+    ip_address VARCHAR(45),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- System configuration
+CREATE TABLE IF NOT EXISTS system_config (
+    key VARCHAR(100) PRIMARY KEY,
+    value JSONB,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Add columns to tenants table if they don't exist
+DO $$ 
+BEGIN
+    -- CAD port assignment
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tenants' AND column_name = 'cad_port') THEN
+        ALTER TABLE tenants ADD COLUMN cad_port INTEGER;
+    END IF;
+    
+    -- CAD format (parser type)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tenants' AND column_name = 'cad_format') THEN
+        ALTER TABLE tenants ADD COLUMN cad_format VARCHAR(50) DEFAULT 'chester_county';
+    END IF;
+    
+    -- Approval tracking
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tenants' AND column_name = 'approved_by') THEN
+        ALTER TABLE tenants ADD COLUMN approved_by INTEGER;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tenants' AND column_name = 'approved_at') THEN
+        ALTER TABLE tenants ADD COLUMN approved_at TIMESTAMP;
+    END IF;
+    
+    -- Suspension tracking
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tenants' AND column_name = 'suspended_by') THEN
+        ALTER TABLE tenants ADD COLUMN suspended_by INTEGER;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tenants' AND column_name = 'suspended_at') THEN
+        ALTER TABLE tenants ADD COLUMN suspended_at TIMESTAMP;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tenants' AND column_name = 'suspended_reason') THEN
+        ALTER TABLE tenants ADD COLUMN suspended_reason TEXT;
+    END IF;
+    
+    -- Notes
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tenants' AND column_name = 'notes') THEN
+        ALTER TABLE tenants ADD COLUMN notes TEXT;
+    END IF;
+END $$;
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_master_sessions_token ON master_sessions(session_token);
+CREATE INDEX IF NOT EXISTS idx_master_sessions_expires ON master_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_master_audit_created ON master_audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants(status);
+
+-- Insert default super admin (password: changeme123)
+-- You should change this immediately after first login
+INSERT INTO master_admins (email, password_hash, name, role)
+VALUES ('admin@cadreport.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYA.qVuJVKJy', 'System Admin', 'SUPER_ADMIN')
+ON CONFLICT (email) DO NOTHING;
+
+-- Insert default system config
+INSERT INTO system_config (key, value) VALUES
+    ('next_cad_port', '19117'),
+    ('backup_retention_days', '365'),
+    ('session_timeout_hours', '24')
+ON CONFLICT (key) DO NOTHING;
