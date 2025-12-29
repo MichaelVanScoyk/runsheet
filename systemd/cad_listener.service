@@ -1,0 +1,23 @@
+[Unit]
+Description=RunSheet CAD Listener
+After=network.target postgresql.service runsheet.service
+Wants=runsheet.service
+
+[Service]
+Type=simple
+User=dashboard
+WorkingDirectory=/opt/runsheet/cad
+ExecStart=/opt/runsheet/runsheet_env/bin/python cad_listener.py --port 19117 --tenant glenmoorefc --production
+Restart=always
+RestartSec=5
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cad_listener
+
+[Install]
+WantedBy=multi-user.target
