@@ -1418,6 +1418,199 @@ function DataExportTab() {
 
 
 // ============================================================================
+// BRANDING TAB COMPONENT
+// ============================================================================
+
+function BrandingTab() {
+  const [logo, setLogo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    loadLogo();
+  }, []);
+
+  const loadLogo = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/settings/branding/logo`);
+      const data = await res.json();
+      setLogo(data);
+    } catch (err) {
+      console.error('Failed to load logo:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!['image/png', 'image/jpeg', 'image/gif'].includes(file.type)) {
+      setMessage({ type: 'error', text: 'Please select a PNG, JPEG, or GIF image' });
+      return;
+    }
+
+    // Validate file size (max 500KB)
+    if (file.size > 500 * 1024) {
+      setMessage({ type: 'error', text: 'Image must be under 500KB' });
+      return;
+    }
+
+    setUploading(true);
+    setMessage(null);
+
+    try {
+      // Read file as base64
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64 = event.target.result;
+        
+        // Upload to server
+        const res = await fetch(`${API_BASE}/api/settings/branding/logo`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: base64, filename: file.name })
+        });
+
+        if (res.ok) {
+          setMessage({ type: 'success', text: 'Logo uploaded successfully' });
+          loadLogo();
+        } else {
+          const err = await res.json();
+          setMessage({ type: 'error', text: err.detail || 'Upload failed' });
+        }
+        setUploading(false);
+      };
+      reader.onerror = () => {
+        setMessage({ type: 'error', text: 'Failed to read file' });
+        setUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Upload failed: ' + err.message });
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Remove the department logo?')) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/settings/branding/logo`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Logo removed' });
+        setLogo({ has_logo: false });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to delete logo' });
+    }
+  };
+
+  if (loading) return <div className="loading">Loading...</div>;
+
+  return (
+    <div className="branding-tab">
+      <h3>Department Branding</h3>
+      <p className="tab-intro">
+        Upload your department's logo. It will appear on reports and other official documents.
+      </p>
+
+      {message && (
+        <div className={`message ${message.type}`} style={{ marginBottom: '1rem' }}>
+          {message.text}
+        </div>
+      )}
+
+      <div className="branding-logo-section" style={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        gap: '1rem',
+        maxWidth: '400px'
+      }}>
+        {/* Current Logo Preview */}
+        <div className="logo-preview" style={{
+          background: '#2a2a2a',
+          borderRadius: '8px',
+          padding: '1.5rem',
+          textAlign: 'center',
+          border: '2px dashed #444'
+        }}>
+          {logo?.has_logo ? (
+            <>
+              <img 
+                src={`data:${logo.mime_type};base64,${logo.data}`}
+                alt="Department Logo"
+                style={{ maxWidth: '200px', maxHeight: '200px', objectFit: 'contain' }}
+              />
+              <p style={{ marginTop: '0.5rem', color: '#888', fontSize: '0.85rem' }}>
+                Current logo
+              </p>
+            </>
+          ) : (
+            <div style={{ color: '#666', padding: '2rem' }}>
+              <span style={{ fontSize: '3rem' }}>🏛️</span>
+              <p style={{ marginTop: '0.5rem' }}>No logo uploaded</p>
+            </div>
+          )}
+        </div>
+
+        {/* Upload Controls */}
+        <div className="logo-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="image/png,image/jpeg,image/gif"
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+          />
+          <button
+            className="btn btn-primary"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            style={{ flex: 1 }}
+          >
+            {uploading ? 'Uploading...' : (logo?.has_logo ? '📤 Replace Logo' : '📤 Upload Logo')}
+          </button>
+          {logo?.has_logo && (
+            <button
+              className="btn btn-danger"
+              onClick={handleDelete}
+              disabled={uploading}
+            >
+              🗑️ Remove
+            </button>
+          )}
+        </div>
+
+        {/* Upload Guidelines */}
+        <div style={{ 
+          background: '#1e1e1e', 
+          borderRadius: '4px', 
+          padding: '0.75rem 1rem',
+          fontSize: '0.85rem',
+          color: '#888'
+        }}>
+          <strong style={{ color: '#ccc' }}>Guidelines:</strong>
+          <ul style={{ margin: '0.5rem 0 0 1.2rem', padding: 0 }}>
+            <li>PNG recommended (supports transparency)</li>
+            <li>Max size: 500KB</li>
+            <li>Square or shield-shaped logos work best</li>
+            <li>Will appear on monthly reports</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ============================================================================
 // PRINT SETTINGS TAB COMPONENT
 // ============================================================================
 
@@ -1680,6 +1873,12 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         >
           🖨️ Print Layout
         </button>
+        <button 
+          className={activeTab === 'branding' ? 'active' : ''} 
+          onClick={() => setActiveTab('branding')}
+        >
+          🏛️ Branding
+        </button>
       </div>
 
       <div className="admin-content">
@@ -1694,6 +1893,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'password' && <PasswordTab />}
         {activeTab === 'export' && <DataExportTab />}
         {activeTab === 'print' && <PrintSettingsTab />}
+        {activeTab === 'branding' && <BrandingTab />}
       </div>
     </div>
   );

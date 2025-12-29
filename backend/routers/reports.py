@@ -3,7 +3,7 @@ Reports router - Generate incident reports and statistics
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from typing import Optional, List
@@ -738,26 +738,52 @@ async def get_monthly_chiefs_report(
             })
     
     # =========================================================================
-    # TYPE OF INCIDENT
+    # TYPE OF INCIDENT (with subtypes grouped)
     # =========================================================================
     type_result = db.execute(text(f"""
         SELECT 
             COALESCE(cad_event_type, 'Unknown') AS incident_type,
+            COALESCE(cad_event_subtype, 'Unspecified') AS incident_subtype,
             COUNT(*) AS count
         FROM incidents i
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
           AND deleted_at IS NULL
           {cat_filter}
-        GROUP BY COALESCE(cad_event_type, 'Unknown')
-        ORDER BY count DESC, incident_type
+        GROUP BY COALESCE(cad_event_type, 'Unknown'), COALESCE(cad_event_subtype, 'Unspecified')
+        ORDER BY incident_type, count DESC
     """), {"start_date": start_date, "end_date": end_date})
     
-    incident_types = []
+    # Group subtypes under their parent types
+    incident_types_grouped = {}
     for row in type_result:
-        incident_types.append({
-            "type": row[0],
-            "count": row[1]
+        type_name = row[0]
+        subtype_name = row[1]
+        count = row[2]
+        
+        if type_name not in incident_types_grouped:
+            incident_types_grouped[type_name] = {
+                "type": type_name,
+                "count": 0,
+                "subtypes": []
+            }
+        incident_types_grouped[type_name]["count"] += count
+        incident_types_grouped[type_name]["subtypes"].append({
+            "subtype": subtype_name,
+            "count": count
         })
+    
+    # Sort by total count descending
+    incident_types_grouped = dict(sorted(
+        incident_types_grouped.items(), 
+        key=lambda x: x[1]["count"], 
+        reverse=True
+    ))
+    
+    # Flatten for backward compatibility
+    incident_types = [
+        {"type": v["type"], "count": v["count"]} 
+        for v in incident_types_grouped.values()
+    ]
     
     # =========================================================================
     # RESPONSES PER UNIT
@@ -834,10 +860,313 @@ async def get_monthly_chiefs_report(
         "call_summary": call_summary,
         "municipalities": municipalities,
         "incident_types": incident_types,
+        "incident_types_grouped": list(incident_types_grouped.values()),
         "responses_per_unit": responses_per_unit,
         "mutual_aid": mutual_aid,
         "response_times": times
     }
+
+
+@router.get("/html/monthly")
+async def get_monthly_html_report(
+    year: int = Query(...),
+    month: int = Query(...),
+    category: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate printable HTML report for Monthly Chiefs Report.
+    Opens in new window for browser printing.
+    """
+    # Get the report data
+    report = await get_monthly_chiefs_report(year, month, category, db)
+    
+    is_fire_report = category and category.upper() == 'FIRE'
+    cs = report['call_summary']
+    rt = report['response_times'] or {}
+    
+    # Get tenant logo from branding settings
+    logo_result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo'")
+    ).fetchone()
+    logo_mime_result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")
+    ).fetchone()
+    
+    if logo_result and logo_result[0]:
+        mime_type = logo_mime_result[0] if logo_mime_result else 'image/png'
+        logo_data_url = f"data:{mime_type};base64,{logo_result[0]}"
+    else:
+        # No logo uploaded - use empty placeholder
+        logo_data_url = ""
+    
+    def fmt_currency(cents):
+        return f"${(cents or 0) / 100:,.0f}"
+    
+    # Generate municipality rows
+    if is_fire_report:
+        muni_headers = '''<tr>
+            <th>Municipality</th>
+            <th class="text-center">Calls</th>
+            <th class="text-right">Man Hrs</th>
+            <th class="text-right">Prop Risk</th>
+            <th class="text-right">Damages</th>
+            <th class="text-center">FF Inj</th>
+            <th class="text-center">Civ Inj</th>
+        </tr>'''
+        muni_rows = '\n'.join([
+            f'''<tr>
+                <td>{m['municipality']}</td>
+                <td class="text-center">{m['calls']}</td>
+                <td class="text-right">{m['manhours']:.1f}</td>
+                <td class="text-right">{fmt_currency(m.get('property_at_risk', 0))}</td>
+                <td class="text-right">{fmt_currency(m.get('fire_damages', 0))}</td>
+                <td class="text-center">{m.get('ff_injuries', 0)}</td>
+                <td class="text-center">{m.get('civilian_injuries', 0)}</td>
+            </tr>'''
+            for m in report['municipalities']
+        ]) or '<tr><td colspan="7" class="text-center">No data</td></tr>'
+    else:
+        muni_headers = '''<tr>
+            <th>Municipality</th>
+            <th class="text-center">Calls</th>
+            <th class="text-right">Man Hrs</th>
+        </tr>'''
+        muni_rows = '\n'.join([
+            f'''<tr>
+                <td>{m['municipality']}</td>
+                <td class="text-center">{m['calls']}</td>
+                <td class="text-right">{m['manhours']:.1f}</td>
+            </tr>'''
+            for m in report['municipalities']
+        ]) or '<tr><td colspan="3" class="text-center">No data</td></tr>'
+    
+    # Generate unit rows
+    unit_rows = '\n'.join([
+        f'''<div class="unit-row">
+            <span class="unit-name">{u['unit_name'] or u['unit']}</span>
+            <span class="unit-count">{u['responses']}</span>
+        </div>'''
+        for u in report['responses_per_unit']
+    ]) or '<div class="unit-row"><span>No data</span></div>'
+    
+    # Generate incident type groups with subtypes
+    incident_groups = '\n'.join([
+        f'''<div class="incident-group">
+            <div class="incident-group-header">
+                <span>{grp['type']}</span>
+                <span class="count">{grp['count']}</span>
+            </div>
+            {''.join([f'<div class="incident-subtype"><span>{st["subtype"]}</span><span class="count">{st["count"]}</span></div>' for st in grp['subtypes']])}
+        </div>'''
+        for grp in report.get('incident_types_grouped', [])
+    ]) or '<div>No incidents</div>'
+    
+    # Mutual aid section (FIRE only)
+    mutual_aid_section = ''
+    if is_fire_report:
+        ma_rows = '\n'.join([
+            f'<tr><td>{ma["station"]}</td><td class="text-center">{ma["count"]}</td></tr>'
+            for ma in report.get('mutual_aid', [])
+        ]) or '<tr><td colspan="2" class="text-center">None</td></tr>'
+        mutual_aid_section = f'''
+        <div class="section">
+            <div class="section-title">Mutual Aid Given</div>
+            <table>
+                <thead><tr><th>Station</th><th class="text-center">Count</th></tr></thead>
+                <tbody>{ma_rows}</tbody>
+            </table>
+        </div>'''
+    
+    # Property/Safety section (FIRE only)
+    property_section = ''
+    if is_fire_report:
+        property_section = f'''
+        <div class="section full-width">
+            <div class="section-title">Property & Safety</div>
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-value">{fmt_currency(cs.get('property_at_risk', 0))}</div>
+                    <div class="stat-label">Property at Risk</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">{fmt_currency(cs.get('fire_damages', 0))}</div>
+                    <div class="stat-label">Fire Damages</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">{cs.get('ff_injuries', 0)}</div>
+                    <div class="stat-label">FF Injuries</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">{cs.get('civilian_injuries', 0)}</div>
+                    <div class="stat-label">Civilian Injuries</div>
+                </div>
+            </div>
+        </div>'''
+    
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glen Moore Fire Co. - Monthly Report</title>
+    <style>
+        @page {{ size: letter; margin: 0.4in; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 10px;
+            line-height: 1.25;
+            color: #1a1a1a;
+            max-width: 8.5in;
+            margin: 0 auto;
+            padding: 0.35in;
+            position: relative;
+        }}
+        .watermark {{
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0.06;
+            z-index: -1;
+            pointer-events: none;
+        }}
+        .watermark img {{ width: 5.5in; height: auto; }}
+        .header {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            border-bottom: 3px solid #1e6b35;
+            padding-bottom: 10px;
+            margin-bottom: 12px;
+        }}
+        .header-logo {{ width: 65px; height: auto; flex-shrink: 0; }}
+        .header-text {{ text-align: left; }}
+        .header h1 {{ font-size: 20px; font-weight: 700; color: #1a1a1a; letter-spacing: 1px; }}
+        .header .subtitle {{ font-size: 14px; color: #1e6b35; font-weight: 600; margin-top: 2px; }}
+        .content {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }}
+        .section {{ background: #fafafa; border: 1px solid #e0e0e0; border-radius: 4px; padding: 6px 8px; }}
+        .section-title {{ font-size: 9px; font-weight: 700; color: #1e6b35; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #ddd; padding-bottom: 3px; margin-bottom: 5px; }}
+        .full-width {{ grid-column: 1 / -1; }}
+        .stats-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }}
+        .stat-box {{ text-align: center; background: white; padding: 5px 3px; border-radius: 3px; border: 1px solid #e8e8e8; }}
+        .stat-value {{ font-size: 16px; font-weight: 700; color: #1a1a1a; }}
+        .stat-value.highlight {{ color: #1e6b35; }}
+        .stat-label {{ font-size: 7px; color: #666; text-transform: uppercase; letter-spacing: 0.3px; }}
+        .stat-compare {{ font-size: 8px; color: #666; margin-top: 1px; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 9px; }}
+        th {{ background: #f0f0f0; font-weight: 600; text-align: left; padding: 3px 5px; border-bottom: 1px solid #ddd; }}
+        td {{ padding: 2px 5px; border-bottom: 1px solid #eee; }}
+        tr:last-child td {{ border-bottom: none; }}
+        .text-right {{ text-align: right; }}
+        .text-center {{ text-align: center; }}
+        .response-times {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }}
+        .time-box {{ background: white; border: 1px solid #e8e8e8; border-radius: 3px; padding: 5px; text-align: center; }}
+        .time-value {{ font-size: 14px; font-weight: 700; color: #1a1a1a; }}
+        .time-label {{ font-size: 7px; color: #666; text-transform: uppercase; }}
+        .footer {{ margin-top: 8px; padding-top: 5px; border-top: 1px solid #ddd; display: flex; justify-content: space-between; font-size: 8px; color: #888; }}
+        .incident-group {{ margin-bottom: 6px; }}
+        .incident-group:last-child {{ margin-bottom: 0; }}
+        .incident-group-header {{ display: flex; justify-content: space-between; align-items: center; background: #1e6b35; color: white; padding: 3px 6px; border-radius: 2px; font-weight: 600; font-size: 9px; }}
+        .incident-group-header .count {{ background: rgba(255,255,255,0.3); padding: 1px 6px; border-radius: 10px; font-size: 8px; }}
+        .incident-subtype {{ display: flex; justify-content: space-between; padding: 2px 6px 2px 16px; font-size: 8px; color: #444; border-bottom: 1px dotted #ddd; }}
+        .incident-subtype:last-child {{ border-bottom: none; }}
+        .incident-subtype .count {{ font-weight: 600; color: #666; }}
+        .unit-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; }}
+        .unit-row {{ display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dotted #ddd; font-size: 9px; }}
+        .unit-name {{ font-weight: 500; }}
+        .unit-count {{ font-weight: 600; color: #1e6b35; }}
+        @media print {{ body {{ padding: 0; }} .section {{ break-inside: avoid; }} .watermark {{ position: fixed; }} }}
+    </style>
+</head>
+<body>
+    <div class="watermark">
+        <img src="{logo_data_url}" alt="">
+    </div>
+
+    <div class="header">
+        <img class="header-logo" src="{logo_data_url}" alt="Department Logo">
+        <div class="header-text">
+            <h1>GLEN MOORE FIRE COMPANY</h1>
+            <div class="subtitle">Monthly Activity Report — {report['month_name']} {report['year']}</div>
+        </div>
+    </div>
+    
+    <div class="content">
+        <div class="section full-width">
+            <div class="section-title">Call Summary</div>
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-value highlight">{cs['number_of_calls']}</div>
+                    <div class="stat-label">Total Calls</div>
+                    <div class="stat-compare">vs. last year: {'+' if cs['change'] >= 0 else ''}{cs['change']}</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">{cs['number_of_men']}</div>
+                    <div class="stat-label">Personnel</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">{cs['hours']:.1f}</div>
+                    <div class="stat-label">Total Hours</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">{cs['man_hours']:.1f}</div>
+                    <div class="stat-label">Man Hours</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section full-width">
+            <div class="section-title">Response Times</div>
+            <div class="response-times">
+                <div class="time-box">
+                    <div class="time-value">{rt.get('avg_turnout_minutes', 0) or 0:.1f}</div>
+                    <div class="time-label">Avg Turnout (min)</div>
+                </div>
+                <div class="time-box">
+                    <div class="time-value">{rt.get('avg_response_minutes', 0) or 0:.1f}</div>
+                    <div class="time-label">Avg Response (min)</div>
+                </div>
+                <div class="time-box">
+                    <div class="time-value">{rt.get('avg_on_scene_minutes', 0) or 0:.1f}</div>
+                    <div class="time-label">Avg On Scene (min)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Response by Municipality</div>
+            <table>
+                <thead>{muni_headers}</thead>
+                <tbody>{muni_rows}</tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Responses by Unit</div>
+            <div class="unit-grid">{unit_rows}</div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Incident Types</div>
+            {incident_groups}
+        </div>
+
+        {mutual_aid_section}
+
+        {property_section}
+    </div>
+
+    <div class="footer">
+        <span>Glen Moore Fire Company — Station 48</span>
+        <span>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</span>
+    </div>
+</body>
+</html>'''
+    
+    return HTMLResponse(content=html)
 
 
 @router.get("/pdf")

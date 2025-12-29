@@ -307,6 +307,15 @@ function ReportsPage() {
   };
 
   // =========================================================================
+  // HTML PRINT - Opens formatted HTML report in new window for browser printing
+  // =========================================================================
+
+  const openHtmlPrint = (year, month, category) => {
+    const url = `${API_BASE}/api/reports/html/monthly?year=${year}&month=${month}&category=${category}`;
+    window.open(url, '_blank', 'width=900,height=700');
+  };
+
+  // =========================================================================
   // RENDER
   // =========================================================================
 
@@ -474,6 +483,7 @@ function ReportsPage() {
                 onMonthChange={setReportMonth}
                 onYearChange={setReportYear}
                 onDownloadPdf={() => downloadPdf(reportYear, reportMonth, categoryFilter)}
+                onPrintHtml={() => openHtmlPrint(reportYear, reportMonth, categoryFilter)}
                 generating={generating}
                 showControls={true}
               />
@@ -535,7 +545,7 @@ function ReportsPage() {
 // CHIEFS REPORT VIEW - Matches Paper Format
 // =============================================================================
 
-function ChiefsReportView({ report, month, year, category, onMonthChange, onYearChange, onDownloadPdf, generating, showControls = false }) {
+function ChiefsReportView({ report, month, year, category, onMonthChange, onYearChange, onDownloadPdf, onPrintHtml, generating, showControls = false }) {
   if (!report) return null;
 
   const cs = report.call_summary || {};
@@ -573,7 +583,15 @@ function ChiefsReportView({ report, month, year, category, onMonthChange, onYear
               })}
             </select>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex gap-2">
+            {onPrintHtml && (
+              <button
+                onClick={onPrintHtml}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors flex items-center gap-2"
+              >
+                🖨️ Print
+              </button>
+            )}
             <button
               onClick={onDownloadPdf}
               disabled={generating}
