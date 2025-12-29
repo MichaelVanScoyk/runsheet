@@ -346,7 +346,7 @@ async def approve_tenant(
         
         tenant_id, slug, name, status, database_name = result
         
-        if status != 'PENDING':
+        if status.upper() != 'PENDING':
             raise HTTPException(status_code=400, detail=f"Tenant is not pending (status: {status})")
         
         # Assign CAD port if not provided
@@ -417,7 +417,7 @@ async def suspend_tenant(
         
         slug, name, status = result
         
-        if status == 'SUSPENDED':
+        if status.upper() == 'SUSPENDED':
             raise HTTPException(status_code=400, detail="Tenant is already suspended")
         
         db.execute("""
@@ -455,7 +455,7 @@ async def reactivate_tenant(
         
         slug, name, status = result
         
-        if status != 'SUSPENDED':
+        if status.upper() != 'SUSPENDED':
             raise HTTPException(status_code=400, detail="Tenant is not suspended")
         
         db.execute("""
@@ -492,7 +492,7 @@ async def reject_tenant(
         
         slug, name, status = result
         
-        if status != 'PENDING':
+        if status.upper() != 'PENDING':
             raise HTTPException(status_code=400, detail="Can only reject pending tenants")
         
         db.execute("UPDATE tenants SET status = 'REJECTED' WHERE id = %s", (tenant_id,))
@@ -732,12 +732,12 @@ async def get_system_stats(
     with get_master_db() as db:
         stats = {}
         
-        # Tenant counts
+        # Tenant counts (case-insensitive status comparison)
         result = db.fetchone("""
             SELECT 
-                COUNT(*) FILTER (WHERE status = 'ACTIVE') as active,
-                COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
-                COUNT(*) FILTER (WHERE status = 'SUSPENDED') as suspended,
+                COUNT(*) FILTER (WHERE UPPER(status) = 'ACTIVE') as active,
+                COUNT(*) FILTER (WHERE UPPER(status) = 'PENDING') as pending,
+                COUNT(*) FILTER (WHERE UPPER(status) = 'SUSPENDED') as suspended,
                 COUNT(*) as total
             FROM tenants
         """)
@@ -752,7 +752,7 @@ async def get_system_stats(
         result = db.fetchall("""
             SELECT slug, name, created_at
             FROM tenants
-            WHERE status = 'PENDING'
+            WHERE UPPER(status) = 'PENDING'
             ORDER BY created_at DESC
             LIMIT 5
         """)
@@ -861,7 +861,7 @@ async def list_databases(
         tenants = db.fetchall("""
             SELECT id, slug, name, database_name, status
             FROM tenants
-            WHERE status IN ('ACTIVE', 'PENDING', 'SUSPENDED')
+            WHERE UPPER(status) IN ('ACTIVE', 'PENDING', 'SUSPENDED')
             ORDER BY name
         """)
     

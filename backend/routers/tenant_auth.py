@@ -17,6 +17,7 @@ import secrets
 import bcrypt
 import logging
 
+from sqlalchemy import func
 from master_database import get_master_session
 from master_models import Tenant, TenantRequest, TenantSession
 
@@ -103,7 +104,7 @@ def get_tenant_from_session(request: Request, db: Session) -> Optional[Tenant]:
     
     tenant = db.query(Tenant).filter(
         Tenant.id == session.tenant_id,
-        Tenant.status == 'active'
+        func.upper(Tenant.status) == 'ACTIVE'
     ).first()
     
     if tenant:
@@ -137,7 +138,7 @@ async def tenant_login(
     if not tenant:
         raise HTTPException(status_code=401, detail="Invalid department or password")
     
-    if tenant.status != 'active':
+    if tenant.status.upper() != 'ACTIVE':
         raise HTTPException(status_code=403, detail=f"Account is {tenant.status}")
     
     if not verify_tenant_password(data.password, tenant.password_hash):
@@ -231,7 +232,7 @@ async def submit_signup_request(
     
     pending = db.query(TenantRequest).filter(
         TenantRequest.requested_slug == slug,
-        TenantRequest.status == 'pending'
+        func.upper(TenantRequest.status) == 'PENDING'
     ).first()
     if pending:
         raise HTTPException(status_code=400, detail="A request for this subdomain is already pending")
@@ -245,7 +246,7 @@ async def submit_signup_request(
         county=data.county,
         state=data.state,
         notes=data.notes,
-        status='pending',
+        status='PENDING',
     )
     db.add(tenant_request)
     db.commit()
@@ -303,7 +304,7 @@ async def approve_tenant_request(
     if not tenant_request:
         raise HTTPException(status_code=404, detail="Request not found")
     
-    if tenant_request.status != 'pending':
+    if tenant_request.status.upper() != 'PENDING':
         raise HTTPException(status_code=400, detail=f"Request is already {tenant_request.status}")
     
     database_name = f"runsheet_{tenant_request.requested_slug}"
@@ -315,12 +316,12 @@ async def approve_tenant_request(
         database_name=database_name,
         admin_email=tenant_request.contact_email,
         admin_name=tenant_request.contact_name,
-        status='active',
+        status='ACTIVE',
     )
     db.add(tenant)
     db.flush()
     
-    tenant_request.status = 'approved'
+    tenant_request.status = 'APPROVED'
     tenant_request.reviewed_by = admin_name
     tenant_request.reviewed_at = datetime.now(timezone.utc)
     tenant_request.tenant_id = tenant.id
@@ -351,10 +352,10 @@ async def reject_tenant_request(
     if not tenant_request:
         raise HTTPException(status_code=404, detail="Request not found")
     
-    if tenant_request.status != 'pending':
+    if tenant_request.status.upper() != 'PENDING':
         raise HTTPException(status_code=400, detail=f"Request is already {tenant_request.status}")
     
-    tenant_request.status = 'rejected'
+    tenant_request.status = 'REJECTED'
     tenant_request.reviewed_by = admin_name
     tenant_request.reviewed_at = datetime.now(timezone.utc)
     tenant_request.rejection_reason = reason
