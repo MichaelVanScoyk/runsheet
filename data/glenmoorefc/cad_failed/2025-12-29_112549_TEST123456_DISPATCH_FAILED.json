@@ -1,0 +1,12 @@
+{
+  "event_number": "TEST123456",
+  "report_type": "DISPATCH",
+  "backup_file": "/opt/runsheet/data/glenmoorefc/cad_backup/2025-12-29_112548_TEST123456_DISPATCH.html",
+  "error": "API returned 401: {\"detail\":\"Not authenticated - no session\"}",
+  "timestamp": "2025-12-29_112549",
+  "report_summary": {
+    "address": "123 TEST LANE",
+    "municipality": "WNANT",
+    "event_type": "FIRE"
+  }
+}
