@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { tenantLogin } from '../api';
+import MasterAdminDashboard from './MasterAdminDashboard';
 
 /**
  * Tenant Login Form
@@ -12,6 +13,7 @@ function TenantLogin({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showMasterAdmin, setShowMasterAdmin] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,6 +29,11 @@ function TenantLogin({ onLogin }) {
       setLoading(false);
     }
   };
+
+  // Show master admin dashboard
+  if (showMasterAdmin) {
+    return <MasterAdminDashboard onExit={() => setShowMasterAdmin(false)} />;
+  }
 
   return (
     <div className="tenant-login-container">
@@ -73,6 +80,12 @@ function TenantLogin({ onLogin }) {
 
         <div className="tenant-login-footer">
           <p>Don't have access? Contact your fire company officer.</p>
+        </div>
+
+        <div className="admin-link">
+          <button onClick={() => setShowMasterAdmin(true)} className="admin-button">
+            🔧 System Admin
+          </button>
         </div>
       </div>
 
@@ -188,6 +201,27 @@ function TenantLogin({ onLogin }) {
           color: #666;
           font-size: 0.85rem;
           margin: 0;
+        }
+
+        .admin-link {
+          margin-top: 30px;
+          padding-top: 20px;
+          border-top: 1px solid #333;
+          text-align: center;
+        }
+
+        .admin-button {
+          background: none;
+          border: none;
+          color: #666;
+          font-size: 0.85rem;
+          cursor: pointer;
+          padding: 8px 16px;
+          transition: color 0.2s;
+        }
+
+        .admin-button:hover {
+          color: #f39c12;
         }
       `}</style>
     </div>

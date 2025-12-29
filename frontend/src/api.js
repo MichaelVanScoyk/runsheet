@@ -277,4 +277,47 @@ export const checkTenantSession = () =>
 export const submitTenantSignupRequest = (data) => 
   api.post('/tenant/signup-request', data);
 
+// ============================================================================
+// MASTER ADMIN (System administration)
+// ============================================================================
+
+export const masterAdminLogin = (email, password) =>
+  api.post('/master/login', { email, password }, { withCredentials: true });
+
+export const masterAdminLogout = () =>
+  api.post('/master/logout', {}, { withCredentials: true });
+
+export const masterAdminGetMe = () =>
+  api.get('/master/me', { withCredentials: true });
+
+export const masterAdminGetTenants = (status = null) =>
+  api.get('/master/tenants', { params: status ? { status } : {}, withCredentials: true });
+
+export const masterAdminGetTenant = (tenantId) =>
+  api.get(`/master/tenants/${tenantId}`, { withCredentials: true });
+
+export const masterAdminApproveTenant = (tenantId, data) =>
+  api.post(`/master/tenants/${tenantId}/approve`, data, { withCredentials: true });
+
+export const masterAdminSuspendTenant = (tenantId, reason) =>
+  api.post(`/master/tenants/${tenantId}/suspend`, { reason }, { withCredentials: true });
+
+export const masterAdminReactivateTenant = (tenantId) =>
+  api.post(`/master/tenants/${tenantId}/reactivate`, {}, { withCredentials: true });
+
+export const masterAdminRejectTenant = (tenantId) =>
+  api.post(`/master/tenants/${tenantId}/reject`, {}, { withCredentials: true });
+
+export const masterAdminGetStats = () =>
+  api.get('/master/system/stats', { withCredentials: true });
+
+export const masterAdminGetAuditLog = (limit = 50) =>
+  api.get('/master/audit-log', { params: { limit }, withCredentials: true });
+
+export const masterAdminGetAdmins = () =>
+  api.get('/master/admins', { withCredentials: true });
+
+export const masterAdminCreateAdmin = (data) =>
+  api.post('/master/admins', data, { withCredentials: true });
+
 export default api;
