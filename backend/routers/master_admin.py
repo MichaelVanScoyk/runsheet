@@ -931,7 +931,8 @@ async def list_databases(
             if backups:
                 backups.sort(reverse=True)
                 backup_path = os.path.join(BACKUP_DIR, backups[0])
-                last_backup = os.path.getmtime(backup_path)
+                # Multiply by 1000 to convert seconds to milliseconds for JavaScript
+                last_backup = os.path.getmtime(backup_path) * 1000
         
         databases.append({
             'tenant_id': tenant_id,
@@ -978,7 +979,8 @@ async def list_backups(
             'tenant_id': tenant_info['id'],
             'tenant_name': tenant_info['name'],
             'size': format_size(stat.st_size),
-            'created_at': stat.st_mtime
+            # Multiply by 1000 to convert seconds to milliseconds for JavaScript
+            'created_at': stat.st_mtime * 1000
         })
     
     # Sort by date descending
@@ -1116,6 +1118,37 @@ async def download_backup(
         media_type='application/sql',
         filename=filename
     )
+
+
+@router.delete("/backups/{filename}")
+async def delete_backup(
+    filename: str,
+    request: Request,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """Delete a backup file"""
+    # Sanitize filename
+    if '..' in filename or '/' in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    filepath = os.path.join(BACKUP_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Backup not found")
+    
+    try:
+        os.unlink(filepath)
+        
+        # Log audit
+        with get_master_db() as db:
+            log_audit(
+                db, admin['id'], admin['email'], 'DELETE_BACKUP',
+                'BACKUP', None, filename,
+                ip_address=get_client_ip(request)
+            )
+        
+        return {'status': 'ok'}
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete backup: {e}")
 
 
 class RestoreRequest(BaseModel):

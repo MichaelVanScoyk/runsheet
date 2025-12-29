@@ -2080,6 +2080,7 @@
                             <td class="db-actions">
                                 <button onclick="downloadBackup('${b.filename}')" class="btn btn-outline btn-small">⬇️ Download</button>
                                 <button onclick="restoreBackup(${b.tenant_id}, '${b.filename}')" class="btn btn-danger btn-small">↩️ Restore</button>
+                                <button onclick="deleteBackup('${b.filename}')" class="btn btn-secondary btn-small">🗑️ Delete</button>
                             </td>
                         </tr>
                     `).join('');
@@ -2140,6 +2141,25 @@
 
         async function downloadBackup(filename) {
             window.open(`/api/master/backups/${filename}/download`, '_blank');
+        }
+
+        async function deleteBackup(filename) {
+            if (!confirm(`Delete backup ${filename}?`)) return;
+            try {
+                const res = await fetch(`/api/master/backups/${filename}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    loadBackups();
+                    loadDbStatus();
+                } else {
+                    const err = await res.json();
+                    alert('Failed: ' + (err.detail || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Connection error');
+            }
         }
 
         async function restoreBackup(tenantId, filename) {
