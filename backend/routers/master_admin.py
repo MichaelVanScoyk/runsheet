@@ -375,7 +375,7 @@ async def approve_tenant(
         # Update tenant
         db.execute("""
             UPDATE tenants SET
-                status = 'ACTIVE',
+                status = 'active',
                 cad_port = %s,
                 cad_format = %s,
                 notes = %s,
@@ -430,7 +430,7 @@ async def suspend_tenant(
         
         db.execute("""
             UPDATE tenants SET
-                status = 'SUSPENDED',
+                status = 'suspended',
                 suspended_at = NOW(),
                 suspended_by = %s,
                 suspended_reason = %s
@@ -468,7 +468,7 @@ async def reactivate_tenant(
         
         db.execute("""
             UPDATE tenants SET
-                status = 'ACTIVE',
+                status = 'active',
                 suspended_at = NULL,
                 suspended_by = NULL,
                 suspended_reason = NULL
@@ -503,7 +503,7 @@ async def reject_tenant(
         if status.upper() != 'PENDING':
             raise HTTPException(status_code=400, detail="Can only reject pending tenants")
         
-        db.execute("UPDATE tenants SET status = 'REJECTED' WHERE id = %s", (tenant_id,))
+        db.execute("UPDATE tenants SET status = 'rejected' WHERE id = %s", (tenant_id,))
         db.commit()
         
         log_audit(
@@ -641,7 +641,7 @@ async def create_tenant(
                 slug, name, password_hash, status, cad_port,
                 contact_name, contact_email, county, state,
                 approved_at, approved_by
-            ) VALUES (%s, %s, %s, 'ACTIVE', %s, %s, %s, %s, %s, NOW(), %s)
+            ) VALUES (%s, %s, %s, 'active', %s, %s, %s, %s, %s, NOW(), %s)
         """, (
             slug, data.name, password_hash, cad_port,
             data.contact_name, data.contact_email,
