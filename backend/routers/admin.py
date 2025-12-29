@@ -11,6 +11,7 @@ import bcrypt
 
 from database import get_db
 from models import AuditLog, Setting
+from settings_helper import format_utc_iso
 
 router = APIRouter()
 
@@ -155,7 +156,7 @@ async def get_audit_log(
             "entity_display": log.entity_display,
             "summary": log.summary,
             "fields_changed": log.fields_changed,
-            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "created_at": format_utc_iso(log.created_at),
         }
         for log in logs
     ]

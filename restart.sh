@@ -3,12 +3,13 @@ set -e
 
 echo "=== Stopping everything ==="
 pkill -9 -f vite 2>/dev/null || true
+pkill -f "cad_listener.py" 2>/dev/null || true
 sudo systemctl stop runsheet 2>/dev/null || true
-sleep 2
+sleep 3
 
 echo "=== Starting backend ==="
 sudo systemctl start runsheet
-sleep 2
+sleep 3
 
 # Verify backend is up
 if ! curl -s http://127.0.0.1:8001/health > /dev/null 2>&1; then
@@ -35,6 +36,26 @@ if ! curl -s http://127.0.0.1:5173 > /dev/null 2>&1; then
 fi
 echo "Frontend running on :5173"
 
+echo "=== Starting CAD listener ==="
+cd /opt/runsheet/cad
+nohup /opt/runsheet/runsheet_env/bin/python cad_listener.py --port 19117 > /opt/runsheet/cad/listener.log 2>&1 &
+disown
+sleep 3
+
+# Verify CAD listener is up
+if ! netstat -tlnp 2>/dev/null | grep -q 19117; then
+    if ! ss -tlnp | grep -q 19117; then
+        echo "ERROR: CAD listener failed to start"
+        tail -20 /opt/runsheet/cad/listener.log
+        exit 1
+    fi
+fi
+echo "CAD listener running on :19117"
+
 echo ""
 echo "=== READY ==="
-echo "http://192.168.1.189:5173"
+echo "App:          http://192.168.1.189:5173"
+echo "API:          http://192.168.1.189:8001"
+echo "CAD Listener: port 19117"
+echo ""
+echo "CAD log: tail -f /opt/runsheet/cad/listener.log"

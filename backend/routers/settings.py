@@ -12,6 +12,21 @@ import json
 
 from database import get_db
 
+# Import UTC formatting helper
+try:
+    from settings_helper import format_utc_iso
+except ImportError:
+    # Fallback if settings_helper not available (shouldn't happen)
+    def format_utc_iso(dt):
+        if dt is None:
+            return None
+        if hasattr(dt, 'isoformat'):
+            iso = dt.isoformat()
+            if not iso.endswith('Z') and '+' not in iso:
+                iso += 'Z'
+            return iso
+        return str(dt)
+
 router = APIRouter()
 
 
@@ -53,7 +68,7 @@ async def list_all_settings(db: Session = Depends(get_db)):
             "raw_value": row[3],
             "value_type": row[4],
             "description": row[5],
-            "updated_at": row[6].isoformat() if row[6] else None,
+            "updated_at": format_utc_iso(row[6]),
         })
     
     return settings
@@ -77,7 +92,7 @@ async def list_settings_flat(db: Session = Depends(get_db)):
             "raw_value": row[3],
             "value_type": row[4],
             "description": row[5],
-            "updated_at": row[6].isoformat() if row[6] else None,
+            "updated_at": format_utc_iso(row[6]),
         }
         for row in result
     ]

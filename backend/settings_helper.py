@@ -83,6 +83,55 @@ def _parse_value(value: str, value_type: str) -> Any:
 
 
 # =============================================================================
+# UTC ISO FORMATTING - USE THIS EVERYWHERE FOR DATETIME OUTPUT
+# =============================================================================
+
+def format_utc_iso(dt) -> str:
+    """
+    Format datetime as ISO 8601 with explicit Z suffix for UTC.
+    
+    This MUST be used for ALL datetime output to JSON/API responses.
+    JavaScript needs the Z suffix to know it's UTC and convert to local time.
+    
+    Without Z: "2025-12-28T23:52:36" - JS treats as LOCAL time (WRONG!)
+    With Z:    "2025-12-28T23:52:36Z" - JS treats as UTC (CORRECT!)
+    
+    Args:
+        dt: datetime object (assumed to be UTC) or None
+    
+    Returns:
+        ISO string with Z suffix, or None if input is None
+    """
+    if dt is None:
+        return None
+    if hasattr(dt, 'isoformat'):
+        iso = dt.isoformat()
+        # Add Z suffix if not already present and no timezone offset
+        if not iso.endswith('Z') and '+' not in iso and '-' not in iso[-6:]:
+            iso += 'Z'
+        return iso
+    return str(dt)
+
+
+def iso_or_none(obj, attr: str) -> str:
+    """
+    Get attribute from object and format as UTC ISO string.
+    
+    Usage in API responses:
+        "time_dispatched": iso_or_none(incident, 'time_dispatched'),
+    
+    Args:
+        obj: Object to get attribute from
+        attr: Attribute name
+    
+    Returns:
+        ISO string with Z suffix, or None
+    """
+    val = getattr(obj, attr, None)
+    return format_utc_iso(val)
+
+
+# =============================================================================
 # UNIT LOOKUP
 # =============================================================================
 
@@ -212,3 +261,10 @@ if __name__ == "__main__":
     print(f"  AMB891: {get_unit_info('AMB891')}")
     print(f"  QRS48:  {get_unit_info('QRS48')}")
     print(f"\nStation coords: {get_station_coords()}")
+    
+    # Test UTC formatting
+    from datetime import datetime, timezone
+    print(f"\nUTC Format test:")
+    now = datetime.now(timezone.utc)
+    print(f"  Input:  {now}")
+    print(f"  Output: {format_utc_iso(now)}")

@@ -1,4 +1,5 @@
 import { useRunSheet } from '../RunSheetContext';
+import { formatDateTimeLocal } from '../../../utils/timeUtils';
 
 export default function AuditTrail() {
   const { 
@@ -60,7 +61,7 @@ export default function AuditTrail() {
           <span className="text-gray-400">{auditLog[0]?.summary}</span>
           {' — '}
           <span className="text-gray-500">
-            {auditLog[0]?.created_at ? new Date(auditLog[0].created_at).toLocaleString() : ''}
+            {formatDateTimeLocal(auditLog[0]?.created_at)}
           </span>
         </div>
         <span className="text-gray-500">
@@ -88,7 +89,7 @@ export default function AuditTrail() {
                     )}
                   </div>
                   <span className="text-gray-500 text-[11px] whitespace-nowrap ml-2">
-                    {entry.created_at ? new Date(entry.created_at).toLocaleString() : ''}
+                    {formatDateTimeLocal(entry.created_at)}
                   </span>
                 </div>
                 

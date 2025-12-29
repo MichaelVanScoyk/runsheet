@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings } from '../api';
+import { formatDateTimeLocal } from '../utils/timeUtils';
 import './AdminPage.css';
 import PersonnelPage from './PersonnelPage';
 import ApparatusPage from './ApparatusPage';
@@ -1206,8 +1207,7 @@ function AuditLogTab() {
 
   const formatDate = (isoString) => {
     if (!isoString) return '-';
-    const d = new Date(isoString);
-    return d.toLocaleString();
+    return formatDateTimeLocal(isoString);
   };
 
   return (

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from database import get_db
 from models import CadTypeMapping
+from settings_helper import format_utc_iso
 
 router = APIRouter()
 
@@ -629,8 +630,8 @@ async def list_cad_type_mappings(db: Session = Depends(get_db)):
                 "cad_event_subtype": m.cad_event_subtype,
                 "call_category": m.call_category,
                 "auto_created": m.auto_created,
-                "created_at": m.created_at.isoformat() if m.created_at else None,
-                "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+                "created_at": format_utc_iso(m.created_at),
+                "updated_at": format_utc_iso(m.updated_at),
             }
             for m in mappings
         ]

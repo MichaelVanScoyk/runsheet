@@ -14,6 +14,7 @@ import {
   getUserSession,
   getIncidentAuditLog,
 } from '../../api';
+import { formatDateTimeLocal } from '../../utils/timeUtils';
 
 const RunSheetContext = createContext(null);
 
@@ -717,13 +718,10 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
 
   const formatTimestamp = (isoString) => {
     if (!isoString) return '-';
-    const d = new Date(isoString);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const hours = String(d.getHours()).padStart(2, '0');
-    const mins = String(d.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${mins}`;
+    // Use station timezone from timeUtils for consistent display
+    const formatted = formatDateTimeLocal(isoString);
+    // Remove seconds for cleaner display (YYYY-MM-DD HH:MM)
+    return formatted ? formatted.slice(0, 16) : '-';
   };
 
   const value = {

@@ -19,7 +19,7 @@ import os
 import sys
 
 from database import get_db
-from settings_helper import get_timezone
+from settings_helper import get_timezone, format_utc_iso
 
 
 def get_local_timezone() -> ZoneInfo:
@@ -1005,11 +1005,15 @@ async def preview_restore_from_cad(
     field_changes = []
     
     def format_time(val):
-        """Format datetime for display"""
+        """Format datetime as ISO with Z suffix so frontend knows it's UTC"""
         if val is None:
             return None
-        if hasattr(val, 'strftime'):
-            return val.strftime('%Y-%m-%d %H:%M:%S')
+        if hasattr(val, 'isoformat'):
+            # Ensure we return ISO format with Z suffix for UTC
+            iso = val.isoformat()
+            if not iso.endswith('Z') and '+' not in iso:
+                iso += 'Z'
+            return iso
         return str(val)
     
     def times_differ(current, new):
@@ -1177,18 +1181,18 @@ async def export_cad_data(
             "call_category": row[2],
             "cad_event_number": row[3],
             "cad_event_type": row[4],
-            "incident_date": row[5].isoformat() if row[5] else None,
+            "incident_date": row[5].isoformat() if row[5] else None,  # DATE only, no Z needed
             "address": row[6],
             "municipality_code": row[7],
-            "time_dispatched": row[8].isoformat() if row[8] else None,
-            "time_first_enroute": row[9].isoformat() if row[9] else None,
-            "time_first_on_scene": row[10].isoformat() if row[10] else None,
-            "time_last_cleared": row[11].isoformat() if row[11] else None,
+            "time_dispatched": format_utc_iso(row[8]),
+            "time_first_enroute": format_utc_iso(row[9]),
+            "time_first_on_scene": format_utc_iso(row[10]),
+            "time_last_cleared": format_utc_iso(row[11]),
             "cad_raw_dispatch": row[12],
             "cad_raw_updates": row[13] or [],
             "cad_raw_clear": row[14],
-            "created_at": row[15].isoformat() if row[15] else None,
-            "updated_at": row[16].isoformat() if row[16] else None,
+            "created_at": format_utc_iso(row[15]),
+            "updated_at": format_utc_iso(row[16]),
         })
     
     return {
@@ -1252,8 +1256,12 @@ async def export_full_incidents(
         incident_dict = {}
         for i, col in enumerate(columns):
             val = row[i]
+            # Use format_utc_iso for datetime fields, regular isoformat for date fields
             if hasattr(val, 'isoformat'):
-                val = val.isoformat()
+                if hasattr(val, 'hour'):  # It's a datetime, not a date
+                    val = format_utc_iso(val)
+                else:  # It's a date
+                    val = val.isoformat()
             incident_dict[col] = val
         
         incident_id = incident_dict['id']
@@ -1294,8 +1302,12 @@ async def export_full_incidents(
             unit_dict = {}
             for i, col in enumerate(unit_cols):
                 val = urow[i]
+                # Use format_utc_iso for datetime fields
                 if hasattr(val, 'isoformat'):
-                    val = val.isoformat()
+                    if hasattr(val, 'hour'):  # It's a datetime
+                        val = format_utc_iso(val)
+                    else:  # It's a date
+                        val = val.isoformat()
                 unit_dict[col] = val
             units.append(unit_dict)
         incident_dict['units'] = units

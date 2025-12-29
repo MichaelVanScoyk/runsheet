@@ -20,6 +20,7 @@ from models import (
     Municipality, Apparatus, Personnel, Rank, AuditLog,
     CadTypeMapping
 )
+from settings_helper import format_utc_iso, iso_or_none
 
 # Weather service (optional)
 try:
@@ -476,7 +477,7 @@ async def list_incidents(
             "address": i.address,
             "municipality_code": i.municipality_code,
             "municipality_display_name": muni_display,
-            "time_dispatched": i.time_dispatched.isoformat() if i.time_dispatched else None,
+            "time_dispatched": format_utc_iso(i.time_dispatched),
             "neris_incident_type_codes": i.neris_incident_type_codes,
         })
     
@@ -512,7 +513,7 @@ async def get_incident_by_cad(
         "incident_date": incident.incident_date.isoformat() if incident.incident_date else None,
         "address": incident.address,
         "municipality_code": incident.municipality_code,
-        "time_dispatched": incident.time_dispatched.isoformat() if incident.time_dispatched else None,
+        "time_dispatched": format_utc_iso(incident.time_dispatched),
         "cad_units": incident.cad_units or [],
     }
 
@@ -771,23 +772,23 @@ async def get_incident(
         "longitude": getattr(incident, 'longitude', None),
         "neris_location": incident.neris_location,
         
-        # Core times
-        "time_dispatched": incident.time_dispatched.isoformat() if incident.time_dispatched else None,
-        "time_first_enroute": incident.time_first_enroute.isoformat() if incident.time_first_enroute else None,
-        "time_first_on_scene": incident.time_first_on_scene.isoformat() if incident.time_first_on_scene else None,
-        "time_last_cleared": incident.time_last_cleared.isoformat() if incident.time_last_cleared else None,
-        "time_in_service": incident.time_in_service.isoformat() if incident.time_in_service else None,
+        # Core times - ALL UTC with Z suffix
+        "time_dispatched": format_utc_iso(incident.time_dispatched),
+        "time_first_enroute": format_utc_iso(incident.time_first_enroute),
+        "time_first_on_scene": format_utc_iso(incident.time_first_on_scene),
+        "time_last_cleared": format_utc_iso(incident.time_last_cleared),
+        "time_in_service": format_utc_iso(incident.time_in_service),
         
-        # Tactic timestamps
-        "time_command_established": _iso_or_none(incident, 'time_command_established'),
-        "time_sizeup_completed": _iso_or_none(incident, 'time_sizeup_completed'),
-        "time_primary_search_begin": _iso_or_none(incident, 'time_primary_search_begin'),
-        "time_primary_search_complete": _iso_or_none(incident, 'time_primary_search_complete'),
-        "time_water_on_fire": _iso_or_none(incident, 'time_water_on_fire'),
-        "time_fire_under_control": incident.time_fire_under_control.isoformat() if incident.time_fire_under_control else None,
-        "time_fire_knocked_down": _iso_or_none(incident, 'time_fire_knocked_down'),
-        "time_suppression_complete": _iso_or_none(incident, 'time_suppression_complete'),
-        "time_extrication_complete": incident.time_extrication_complete.isoformat() if incident.time_extrication_complete else None,
+        # Tactic timestamps - ALL UTC with Z suffix
+        "time_command_established": iso_or_none(incident, 'time_command_established'),
+        "time_sizeup_completed": iso_or_none(incident, 'time_sizeup_completed'),
+        "time_primary_search_begin": iso_or_none(incident, 'time_primary_search_begin'),
+        "time_primary_search_complete": iso_or_none(incident, 'time_primary_search_complete'),
+        "time_water_on_fire": iso_or_none(incident, 'time_water_on_fire'),
+        "time_fire_under_control": format_utc_iso(incident.time_fire_under_control),
+        "time_fire_knocked_down": iso_or_none(incident, 'time_fire_knocked_down'),
+        "time_suppression_complete": iso_or_none(incident, 'time_suppression_complete'),
+        "time_extrication_complete": format_utc_iso(incident.time_extrication_complete),
         
         # Caller
         "caller_name": incident.caller_name,
@@ -881,7 +882,7 @@ async def get_incident(
         "neris_rr_cooking_suppression_type": getattr(incident, 'neris_rr_cooking_suppression_type', []),
         
         # Submission status
-        "neris_submitted_at": _iso_or_none(incident, 'neris_submitted_at'),
+        "neris_submitted_at": iso_or_none(incident, 'neris_submitted_at'),
         "neris_submission_id": getattr(incident, 'neris_submission_id', None),
         "neris_validation_errors": getattr(incident, 'neris_validation_errors', None),
         
@@ -889,7 +890,7 @@ async def get_incident(
         "officer_in_charge": incident.officer_in_charge,
         "completed_by": incident.completed_by,
         "reviewed_by": getattr(incident, 'reviewed_by', None),
-        "reviewed_at": _iso_or_none(incident, 'reviewed_at'),
+        "reviewed_at": iso_or_none(incident, 'reviewed_at'),
         
         # Assignments
         "personnel_assignments": personnel_assignments,
@@ -900,16 +901,10 @@ async def get_incident(
         "cad_raw_updates": incident.cad_raw_updates or [],
         "cad_raw_clear": incident.cad_raw_clear,
         
-        # Timestamps
-        "created_at": incident.created_at.isoformat() if incident.created_at else None,
-        "updated_at": incident.updated_at.isoformat() if incident.updated_at else None,
+        # Timestamps - ALL UTC with Z suffix
+        "created_at": format_utc_iso(incident.created_at),
+        "updated_at": format_utc_iso(incident.updated_at),
     }
-
-
-def _iso_or_none(obj, attr):
-    """Helper to get ISO format datetime or None"""
-    val = getattr(obj, attr, None)
-    return val.isoformat() if val else None
 
 
 # =============================================================================
@@ -1433,7 +1428,7 @@ async def get_incident_audit_log(
                 "personnel_name": e.personnel_name,
                 "summary": e.summary,
                 "fields_changed": e.fields_changed,
-                "created_at": e.created_at.isoformat() if e.created_at else None,
+                "created_at": format_utc_iso(e.created_at),
             }
             for e in entries
         ]
