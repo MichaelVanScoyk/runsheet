@@ -1,27 +1,31 @@
 import { useState } from 'react';
 import { tenantLogin } from '../api';
-import MasterAdminDashboard from './MasterAdminDashboard';
 
 /**
  * Tenant Login Form
  * 
- * Shown when user is not logged in at department level.
- * After successful login, sets cookie and calls onLogin callback.
+ * Shown on subdomain (e.g., glenmoorefc.cadreport.com) when not logged in.
+ * NO master admin link here - that's on the main landing page.
  */
 function TenantLogin({ onLogin }) {
   const [slug, setSlug] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showMasterAdmin, setShowMasterAdmin] = useState(false);
+
+  // Pre-fill slug from subdomain
+  const subdomain = window.location.hostname.split('.')[0];
+  const isSubdomain = subdomain && subdomain !== 'cadreport' && subdomain !== 'www';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
+    const loginSlug = isSubdomain ? subdomain : slug.toLowerCase().trim();
+
     try {
-      const response = await tenantLogin(slug.toLowerCase().trim(), password);
+      const response = await tenantLogin(loginSlug, password);
       onLogin(response.data);
     } catch (err) {
       setError(err.response?.data?.detail || 'Login failed');
@@ -29,11 +33,6 @@ function TenantLogin({ onLogin }) {
       setLoading(false);
     }
   };
-
-  // Show master admin dashboard
-  if (showMasterAdmin) {
-    return <MasterAdminDashboard onExit={() => setShowMasterAdmin(false)} />;
-  }
 
   return (
     <div className="tenant-login-container">
@@ -44,19 +43,27 @@ function TenantLogin({ onLogin }) {
         </div>
 
         <form onSubmit={handleSubmit} className="tenant-login-form">
-          <div className="form-group">
-            <label htmlFor="slug">Department Code</label>
-            <input
-              type="text"
-              id="slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              placeholder="e.g., glenmoorefc"
-              required
-              autoFocus
-              autoComplete="username"
-            />
-          </div>
+          {!isSubdomain && (
+            <div className="form-group">
+              <label htmlFor="slug">Department Code</label>
+              <input
+                type="text"
+                id="slug"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder="e.g., glenmoorefc"
+                required
+                autoFocus
+                autoComplete="username"
+              />
+            </div>
+          )}
+
+          {isSubdomain && (
+            <div className="subdomain-info">
+              Logging in to <strong>{subdomain}</strong>
+            </div>
+          )}
 
           <div className="form-group">
             <label htmlFor="password">Password</label>
@@ -67,6 +74,7 @@ function TenantLogin({ onLogin }) {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Department password"
               required
+              autoFocus={isSubdomain}
               autoComplete="current-password"
             />
           </div>
@@ -80,12 +88,6 @@ function TenantLogin({ onLogin }) {
 
         <div className="tenant-login-footer">
           <p>Don't have access? Contact your fire company officer.</p>
-        </div>
-
-        <div className="admin-link">
-          <button onClick={() => setShowMasterAdmin(true)} className="admin-button">
-            🔧 System Admin
-          </button>
         </div>
       </div>
 
@@ -123,6 +125,19 @@ function TenantLogin({ onLogin }) {
           color: #888;
           margin: 0;
           font-size: 0.95rem;
+        }
+
+        .subdomain-info {
+          text-align: center;
+          padding: 12px;
+          background: #2a3a2a;
+          border-radius: 6px;
+          color: #4a9;
+          margin-bottom: 10px;
+        }
+
+        .subdomain-info strong {
+          color: #6c6;
         }
 
         .tenant-login-form {
@@ -201,27 +216,6 @@ function TenantLogin({ onLogin }) {
           color: #666;
           font-size: 0.85rem;
           margin: 0;
-        }
-
-        .admin-link {
-          margin-top: 30px;
-          padding-top: 20px;
-          border-top: 1px solid #333;
-          text-align: center;
-        }
-
-        .admin-button {
-          background: none;
-          border: none;
-          color: #666;
-          font-size: 0.85rem;
-          cursor: pointer;
-          padding: 8px 16px;
-          transition: color 0.2s;
-        }
-
-        .admin-button:hover {
-          color: #f39c12;
         }
       `}</style>
     </div>

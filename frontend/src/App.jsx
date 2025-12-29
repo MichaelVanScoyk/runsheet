@@ -8,6 +8,7 @@ import MunicipalitiesPage from './pages/MunicipalitiesPage';
 import AdminPage from './pages/AdminPage';
 import ReportsPage from './pages/ReportsPage';
 import TenantLogin from './components/TenantLogin';
+import LandingPage from './components/LandingPage';
 import { 
   isAdminAuthenticated, 
   setAdminAuthenticated, 
@@ -550,6 +551,10 @@ function App() {
     setTenantSession(null);
   };
 
+  // Detect if we're on main domain or subdomain
+  const hostname = window.location.hostname;
+  const isMainDomain = hostname === 'cadreport.com' || hostname === 'www.cadreport.com' || hostname === 'localhost';
+
   // Show loading while checking session
   if (checkingSession) {
     return (
@@ -566,7 +571,12 @@ function App() {
     );
   }
 
-  // Show login if no tenant session
+  // On main domain: show landing page with master admin
+  if (isMainDomain && !tenantSession) {
+    return <LandingPage />;
+  }
+
+  // On subdomain without session: show tenant login
   if (!tenantSession) {
     return <TenantLogin onLogin={handleTenantLogin} />;
   }
