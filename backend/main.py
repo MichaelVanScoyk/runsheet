@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
-from routers import incidents, lookups, apparatus, personnel, settings, reports, neris_codes, admin, backup, tenant_auth
+from routers import incidents, lookups, apparatus, personnel, settings, reports, neris_codes, admin, backup, tenant_auth, master_admin
 from database import engine, Base
 from master_database import MasterSessionLocal
 from master_models import TenantSession, Tenant
@@ -22,6 +22,10 @@ PUBLIC_PATHS = [
     "/api/tenant/logout",
     "/api/tenant/session",
     "/api/tenant/signup-request",
+    # Master admin routes (have their own auth)
+    "/api/master/login",
+    "/api/master/logout",
+    "/api/master/me",
 ]
 
 
@@ -64,6 +68,10 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         
         # Allow public paths
         if path in PUBLIC_PATHS or not path.startswith("/api"):
+            return await call_next(request)
+        
+        # Allow all master admin routes (they have their own auth)
+        if path.startswith("/api/master"):
             return await call_next(request)
         
         # Allow internal requests (CAD listener, etc.)
@@ -168,6 +176,7 @@ app.include_router(neris_codes.router, prefix="/api/neris-codes", tags=["NERIS C
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(backup.router, prefix="/api/backup", tags=["Backup"])
 app.include_router(tenant_auth.router, prefix="/api/tenant", tags=["Tenant Auth"])
+app.include_router(master_admin.router, prefix="/api/master", tags=["Master Admin"])
 
 @app.get("/")
 async def root():

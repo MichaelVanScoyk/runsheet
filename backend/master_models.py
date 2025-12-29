@@ -43,18 +43,38 @@ class Tenant(MasterBase):
     cad_connection_type = Column(String(20))
     cad_connection_config = Column(JSONB, default={})
     cad_port = Column(Integer)
+    cad_format = Column(String(50), default='chester_county')
     
     # Settings
     timezone = Column(String(50), default='America/New_York')
     settings = Column(JSONB, default={})
     
     # Status
-    status = Column(String(20), default='active')  # active, suspended, trial
+    status = Column(String(20), default='active')  # active, suspended, pending, rejected
     trial_ends_at = Column(DateTime(timezone=True))
     
     # Contact
+    contact_name = Column(String(100))
+    contact_email = Column(String(255))
+    contact_phone = Column(String(20))
     admin_email = Column(String(255))
     admin_name = Column(String(100))
+    
+    # Location
+    county = Column(String(100))
+    state = Column(String(2), default='PA')
+    
+    # Notes
+    notes = Column(Text)
+    
+    # Approval tracking
+    approved_at = Column(DateTime(timezone=True))
+    approved_by = Column(Integer)
+    
+    # Suspension tracking
+    suspended_at = Column(DateTime(timezone=True))
+    suspended_by = Column(Integer)
+    suspended_reason = Column(Text)
     
     # Audit
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -118,6 +138,7 @@ class TenantSession(MasterBase):
     
     tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False)
     session_token = Column(String(255), unique=True, nullable=False)
+    user_id = Column(Integer)  # Optional: specific user within tenant
     
     # Session info
     ip_address = Column(String(45))
@@ -129,3 +150,64 @@ class TenantSession(MasterBase):
     # Audit
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_used_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class MasterAdmin(MasterBase):
+    """
+    System administrator account for CADReport platform.
+    
+    These are CADReport staff who manage tenants, not fire department users.
+    """
+    __tablename__ = "master_admins"
+    
+    id = Column(Integer, primary_key=True)
+    email = Column(String(200), unique=True, nullable=False)
+    password_hash = Column(String(200), nullable=False)
+    name = Column(String(100))
+    role = Column(String(20), default='ADMIN')  # SUPER_ADMIN, ADMIN, SUPPORT, READONLY
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_login = Column(DateTime(timezone=True))
+
+
+class MasterSession(MasterBase):
+    """
+    Active master admin login session.
+    """
+    __tablename__ = "master_sessions"
+    
+    id = Column(Integer, primary_key=True)
+    admin_id = Column(Integer, ForeignKey('master_admins.id', ondelete='CASCADE'), nullable=False)
+    session_token = Column(String(100), unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    ip_address = Column(String(45))
+
+
+class MasterAuditLog(MasterBase):
+    """
+    Audit log for master admin actions.
+    """
+    __tablename__ = "master_audit_log"
+    
+    id = Column(Integer, primary_key=True)
+    admin_id = Column(Integer, ForeignKey('master_admins.id'))
+    admin_email = Column(String(200))
+    action = Column(String(50), nullable=False)
+    target_type = Column(String(50))
+    target_id = Column(Integer)
+    target_name = Column(String(200))
+    details = Column(JSONB)
+    ip_address = Column(String(45))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SystemConfig(MasterBase):
+    """
+    System-wide configuration settings.
+    """
+    __tablename__ = "system_config"
+    
+    key = Column(String(100), primary_key=True)
+    value = Column(JSONB)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
