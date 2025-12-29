@@ -38,7 +38,12 @@ echo "Frontend running on :5173"
 
 echo "=== Starting CAD listener ==="
 cd /opt/runsheet/cad
-nohup /opt/runsheet/runsheet_env/bin/python cad_listener.py --port 19117 --tenant glenmoorefc > /opt/runsheet/cad/listener.log 2>&1 &
+nohup /opt/runsheet/runsheet_env/bin/python cad_listener.py \
+    --port 19117 \
+    --tenant glenmoorefc \
+    --api-url https://glenmoorefc.cadreport.com \
+    --timezone America/New_York \
+    > /opt/runsheet/cad/listener.log 2>&1 &
 disown
 sleep 3
 

@@ -158,6 +158,69 @@ async def list_categories():
     ]
 
 
+@router.get("/lookup")
+async def lookup_apparatus(
+    unit_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Look up apparatus/unit by CAD unit ID.
+    
+    Used by CAD listener to resolve unit info from CAD identifiers.
+    Searches: unit_designator, cad_unit_id, cad_unit_aliases
+    
+    Returns unit info needed for CAD processing:
+    - unit_designator: Canonical identifier
+    - apparatus_id: Database ID
+    - category: Unit category (APPARATUS, DIRECT, STATION)
+    - is_ours: Whether this is our department's unit
+    - counts_for_response_times: Whether to include in response metrics
+    """
+    # Normalize input
+    unit_id_upper = unit_id.upper().strip()
+    
+    # Search by unit_designator first (exact match)
+    apparatus = db.query(Apparatus).filter(
+        Apparatus.unit_designator == unit_id_upper,
+        Apparatus.active == True
+    ).first()
+    
+    # Search by cad_unit_id if not found
+    if not apparatus:
+        apparatus = db.query(Apparatus).filter(
+            Apparatus.cad_unit_id == unit_id_upper,
+            Apparatus.active == True
+        ).first()
+    
+    # Search by cad_unit_aliases if not found
+    if not apparatus:
+        all_apparatus = db.query(Apparatus).filter(Apparatus.active == True).all()
+        for a in all_apparatus:
+            aliases = getattr(a, 'cad_unit_aliases', []) or []
+            if unit_id_upper in [alias.upper() for alias in aliases]:
+                apparatus = a
+                break
+    
+    if apparatus:
+        category = getattr(apparatus, 'unit_category', 'APPARATUS')
+        return {
+            'unit_designator': apparatus.unit_designator,
+            'apparatus_id': apparatus.id,
+            'category': category,
+            'is_ours': True,  # Found in our apparatus table = our unit
+            'counts_for_response_times': getattr(apparatus, 'counts_for_response_times', True),
+        }
+    else:
+        # Unknown unit - treat as mutual aid
+        return {
+            'unit_designator': unit_id_upper,
+            'apparatus_id': None,
+            'category': None,
+            'is_ours': False,
+            'counts_for_response_times': False,
+        }
+
+
 @router.get("/{id}")
 async def get_apparatus(id: int, db: Session = Depends(get_db)):
     """Get single apparatus/unit by ID"""
