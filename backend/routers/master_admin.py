@@ -873,12 +873,13 @@ async def list_databases(
         exists = False
         size = None
         try:
-            conn = psycopg2.connect(dbname=db_name, host='localhost', user='dashboard')
+            # Use same credentials as master database
+            conn = psycopg2.connect(f'postgresql://dashboard:dashboard@localhost/{db_name}')
             conn.close()
             exists = True
             
             # Get size
-            conn = psycopg2.connect(dbname='postgres', host='localhost', user='dashboard')
+            conn = psycopg2.connect('postgresql://dashboard:dashboard@localhost/postgres')
             cur = conn.cursor()
             cur.execute("SELECT pg_database_size(%s)", (db_name,))
             size = cur.fetchone()[0]
@@ -1177,7 +1178,7 @@ async def get_tenant_users(
     
     users = []
     try:
-        conn = psycopg2.connect(dbname=db_name, host='localhost', user='dashboard')
+        conn = psycopg2.connect(f'postgresql://dashboard:dashboard@localhost/{db_name}')
         cur = conn.cursor()
         cur.execute("""
             SELECT id, email, name, role, active, last_login, created_at
@@ -1226,7 +1227,7 @@ async def disable_tenant_user(
         db_name = database_name or f"runsheet_{slug}"
     
     try:
-        conn = psycopg2.connect(dbname=db_name, host='localhost', user='dashboard')
+        conn = psycopg2.connect(f'postgresql://dashboard:dashboard@localhost/{db_name}')
         cur = conn.cursor()
         cur.execute("UPDATE users SET active = FALSE WHERE id = %s RETURNING email", (user_id,))
         user_email = cur.fetchone()
@@ -1275,7 +1276,7 @@ async def enable_tenant_user(
         db_name = database_name or f"runsheet_{slug}"
     
     try:
-        conn = psycopg2.connect(dbname=db_name, host='localhost', user='dashboard')
+        conn = psycopg2.connect(f'postgresql://dashboard:dashboard@localhost/{db_name}')
         cur = conn.cursor()
         cur.execute("UPDATE users SET active = TRUE WHERE id = %s RETURNING email", (user_id,))
         user_email = cur.fetchone()
