@@ -25,11 +25,38 @@ PUBLIC_PATHS = [
 ]
 
 
+def is_internal_ip(ip: str) -> bool:
+    """Check if IP is localhost or private network (CAD listener, etc.)"""
+    if not ip:
+        return False
+    
+    # Localhost
+    if ip in ("127.0.0.1", "::1", "localhost"):
+        return True
+    
+    # Private networks (RFC 1918)
+    if ip.startswith("192.168."):
+        return True
+    if ip.startswith("10."):
+        return True
+    if ip.startswith("172."):
+        # 172.16.0.0 - 172.31.255.255
+        try:
+            second_octet = int(ip.split(".")[1])
+            if 16 <= second_octet <= 31:
+                return True
+        except:
+            pass
+    
+    return False
+
+
 class TenantAuthMiddleware(BaseHTTPMiddleware):
     """
     Middleware to enforce tenant authentication on all API routes.
     
     Checks for valid tenant_session cookie before allowing access.
+    Allows internal requests from localhost/LAN (CAD listener, etc.) without auth.
     """
     
     async def dispatch(self, request: Request, call_next):
@@ -37,6 +64,11 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         
         # Allow public paths
         if path in PUBLIC_PATHS or not path.startswith("/api"):
+            return await call_next(request)
+        
+        # Allow internal requests (CAD listener, etc.)
+        client_ip = request.client.host if request.client else None
+        if is_internal_ip(client_ip):
             return await call_next(request)
         
         # Check for session cookie
