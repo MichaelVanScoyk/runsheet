@@ -260,4 +260,20 @@ export const isSessionExpired = () => {
   }
 };
 
+// ============================================================================
+// TENANT AUTH (Department-level login)
+// ============================================================================
+
+export const tenantLogin = (slug, password) => 
+  api.post('/tenant/login', { slug, password }, { withCredentials: true });
+
+export const tenantLogout = () => 
+  api.post('/tenant/logout', {}, { withCredentials: true });
+
+export const checkTenantSession = () => 
+  api.get('/tenant/session', { withCredentials: true });
+
+export const submitTenantSignupRequest = (data) => 
+  api.post('/tenant/signup-request', data);
+
 export default api;

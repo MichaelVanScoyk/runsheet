@@ -7,6 +7,7 @@ import ApparatusPage from './pages/ApparatusPage';
 import MunicipalitiesPage from './pages/MunicipalitiesPage';
 import AdminPage from './pages/AdminPage';
 import ReportsPage from './pages/ReportsPage';
+import TenantLogin from './components/TenantLogin';
 import { 
   isAdminAuthenticated, 
   setAdminAuthenticated, 
@@ -21,6 +22,8 @@ import {
   personnelVerifyEmail,
   personnelSetPassword,
   personnelGetAuthStatus,
+  checkTenantSession,
+  tenantLogout,
 } from './api';
 import PrintView from './components/PrintView';
 import './App.css';
@@ -69,7 +72,7 @@ function SessionManager({ userSession, onSessionExpired }) {
   return null;
 }
 
-function AppContent() {
+function AppContent({ tenant, onTenantLogout }) {
   const [adminAuth, setAdminAuth] = useState(isAdminAuthenticated());
   const [userSession, setUserSessionState] = useState(getUserSession());
   const [personnel, setPersonnel] = useState([]);
@@ -265,7 +268,35 @@ function AppContent() {
       <nav className="sidebar">
         <div className="logo">
           <h1>RunSheet</h1>
-          <span>Station 48</span>
+          <span>{tenant?.name || 'Station 48'}</span>
+        </div>
+        
+        {/* Tenant info */}
+        <div style={{ 
+          padding: '8px 10px', 
+          background: '#1a3a1a', 
+          margin: '0 10px 5px', 
+          borderRadius: '4px',
+          fontSize: '0.8rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <span style={{ color: '#4a9' }}>🏢 {tenant?.slug}</span>
+          <button 
+            onClick={onTenantLogout}
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              color: '#666', 
+              cursor: 'pointer',
+              fontSize: '0.75rem',
+              padding: '2px 5px'
+            }}
+            title="Switch department"
+          >
+            Switch
+          </button>
         </div>
         
         {/* User session / login area */}
@@ -482,13 +513,72 @@ function AppContent() {
 }
 
 function App() {
+  const [tenantSession, setTenantSession] = useState(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  // Check tenant session on load
+  useEffect(() => {
+    checkTenantSession()
+      .then(res => {
+        if (res.data.authenticated) {
+          setTenantSession(res.data);
+        }
+      })
+      .catch(err => {
+        console.log('No tenant session:', err.message);
+      })
+      .finally(() => {
+        setCheckingSession(false);
+      });
+  }, []);
+
+  const handleTenantLogin = (data) => {
+    setTenantSession({
+      authenticated: true,
+      tenant_id: data.tenant_id,
+      slug: data.slug,
+      name: data.name,
+    });
+  };
+
+  const handleTenantLogout = async () => {
+    try {
+      await tenantLogout();
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+    setTenantSession(null);
+  };
+
+  // Show loading while checking session
+  if (checkingSession) {
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        background: '#1a1a2e',
+        color: '#888'
+      }}>
+        Loading...
+      </div>
+    );
+  }
+
+  // Show login if no tenant session
+  if (!tenantSession) {
+    return <TenantLogin onLogin={handleTenantLogin} />;
+  }
+
+  // Show app with tenant context
   return (
     <Router>
       <Routes>
         {/* Print route - standalone, no app shell */}
         <Route path="/print/:id" element={<PrintPage />} />
         {/* All other routes use the app shell */}
-        <Route path="/*" element={<AppContent />} />
+        <Route path="/*" element={<AppContent tenant={tenantSession} onTenantLogout={handleTenantLogout} />} />
       </Routes>
     </Router>
   );
