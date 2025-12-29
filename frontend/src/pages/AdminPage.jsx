@@ -1449,8 +1449,8 @@ function BrandingTab() {
     if (!file) return;
 
     // Validate file type
-    if (!['image/png', 'image/jpeg', 'image/gif'].includes(file.type)) {
-      setMessage({ type: 'error', text: 'Please select a PNG, JPEG, or GIF image' });
+    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+      setMessage({ type: 'error', text: 'Please select a PNG, JPEG, GIF, or WebP image' });
       return;
     }
 
@@ -1565,7 +1565,7 @@ function BrandingTab() {
           <input
             type="file"
             ref={fileInputRef}
-            accept="image/png,image/jpeg,image/gif"
+            accept="image/png,image/jpeg,image/gif,image/webp"
             onChange={handleFileSelect}
             style={{ display: 'none' }}
           />
@@ -1598,7 +1598,7 @@ function BrandingTab() {
         }}>
           <strong style={{ color: '#ccc' }}>Guidelines:</strong>
           <ul style={{ margin: '0.5rem 0 0 1.2rem', padding: 0 }}>
-            <li>PNG recommended (supports transparency)</li>
+            <li>PNG or WebP recommended (supports transparency)</li>
             <li>Max size: 500KB</li>
             <li>Square or shield-shaped logos work best</li>
             <li>Will appear on monthly reports</li>

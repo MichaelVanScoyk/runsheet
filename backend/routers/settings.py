@@ -436,8 +436,9 @@ async def upload_branding_logo(
         # Basic image validation - check for common headers
         if not (decoded[:8].startswith(b'\x89PNG') or  # PNG
                 decoded[:2] == b'\xff\xd8' or          # JPEG
-                decoded[:6] in (b'GIF87a', b'GIF89a')): # GIF
-            raise HTTPException(status_code=400, detail="Invalid image format. Supported: PNG, JPEG, GIF")
+                decoded[:6] in (b'GIF87a', b'GIF89a') or # GIF
+                decoded[:4] == b'RIFF'):                # WebP
+            raise HTTPException(status_code=400, detail="Invalid image format. Supported: PNG, JPEG, GIF, WebP")
     except Exception as e:
         if "Invalid image format" in str(e):
             raise
