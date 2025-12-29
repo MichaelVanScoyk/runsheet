@@ -51,6 +51,30 @@ class TenantSuspendRequest(BaseModel):
     reason: str
 
 
+class TenantUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    county: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TenantCreateRequest(BaseModel):
+    name: str
+    slug: str
+    password: str
+    cad_port: Optional[int] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    county: Optional[str] = 'Chester'
+    state: Optional[str] = 'PA'
+
+
+class TenantPasswordResetRequest(BaseModel):
+    password: str
+
+
 class SystemConfigUpdate(BaseModel):
     key: str
     value: dict
@@ -477,6 +501,157 @@ async def reject_tenant(
         )
         
         return {'status': 'ok', 'message': f'Tenant {name} rejected'}
+
+
+@router.put("/tenants/{tenant_id}")
+async def update_tenant(
+    tenant_id: int,
+    data: TenantUpdateRequest,
+    request: Request,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """Update tenant details"""
+    with get_master_db() as db:
+        result = db.fetchone("SELECT slug, name FROM tenants WHERE id = %s", (tenant_id,))
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        slug, old_name = result
+        
+        # Build update query dynamically
+        updates = []
+        values = []
+        if data.name is not None:
+            updates.append("name = %s")
+            values.append(data.name)
+        if data.contact_name is not None:
+            updates.append("contact_name = %s")
+            values.append(data.contact_name)
+        if data.contact_email is not None:
+            updates.append("contact_email = %s")
+            values.append(data.contact_email)
+        if data.contact_phone is not None:
+            updates.append("contact_phone = %s")
+            values.append(data.contact_phone)
+        if data.county is not None:
+            updates.append("county = %s")
+            values.append(data.county)
+        if data.notes is not None:
+            updates.append("notes = %s")
+            values.append(data.notes)
+        
+        if updates:
+            values.append(tenant_id)
+            db.execute(f"UPDATE tenants SET {', '.join(updates)} WHERE id = %s", tuple(values))
+            db.commit()
+        
+        log_audit(
+            db, admin['id'], admin['email'], 'UPDATE_TENANT',
+            'TENANT', tenant_id, data.name or old_name,
+            ip_address=get_client_ip(request)
+        )
+        
+        return {'status': 'ok', 'message': 'Tenant updated'}
+
+
+@router.post("/tenants/{tenant_id}/reset-password")
+async def reset_tenant_password(
+    tenant_id: int,
+    data: TenantPasswordResetRequest,
+    request: Request,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """Reset tenant password"""
+    if len(data.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    
+    with get_master_db() as db:
+        result = db.fetchone("SELECT slug, name FROM tenants WHERE id = %s", (tenant_id,))
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        slug, name = result
+        password_hash = hash_password(data.password)
+        
+        db.execute("UPDATE tenants SET password_hash = %s WHERE id = %s", (password_hash, tenant_id))
+        db.commit()
+        
+        log_audit(
+            db, admin['id'], admin['email'], 'RESET_PASSWORD',
+            'TENANT', tenant_id, name,
+            ip_address=get_client_ip(request)
+        )
+        
+        return {'status': 'ok', 'message': f'Password reset for {name}'}
+
+
+@router.post("/tenants")
+async def create_tenant(
+    data: TenantCreateRequest,
+    request: Request,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """Create a new tenant directly (bypassing signup request)"""
+    slug = data.slug.lower().strip()
+    
+    # Validate slug
+    if not slug.isalnum():
+        raise HTTPException(status_code=400, detail="Slug must be alphanumeric")
+    
+    with get_master_db() as db:
+        # Check if slug exists
+        existing = db.fetchone("SELECT id FROM tenants WHERE slug = %s", (slug,))
+        if existing:
+            raise HTTPException(status_code=400, detail="Slug already exists")
+        
+        # Assign CAD port if not provided
+        cad_port = data.cad_port
+        if cad_port is None:
+            config = db.fetchone("SELECT value FROM system_config WHERE key = 'next_cad_port'")
+            if config:
+                cad_port = int(config[0])
+                db.execute(
+                    "UPDATE system_config SET value = %s, updated_at = NOW() WHERE key = 'next_cad_port'",
+                    (str(cad_port + 1),)
+                )
+            else:
+                cad_port = 19118  # Start at 19118 for new tenants
+                db.execute(
+                    "INSERT INTO system_config (key, value) VALUES ('next_cad_port', '19119')"
+                )
+        
+        password_hash = hash_password(data.password)
+        
+        db.execute("""
+            INSERT INTO tenants (
+                slug, name, password_hash, status, cad_port,
+                contact_name, contact_email, county, state,
+                approved_at, approved_by
+            ) VALUES (%s, %s, %s, 'ACTIVE', %s, %s, %s, %s, %s, NOW(), %s)
+        """, (
+            slug, data.name, password_hash, cad_port,
+            data.contact_name, data.contact_email,
+            data.county, data.state, admin['id']
+        ))
+        db.commit()
+        
+        new_id = db.fetchone("SELECT id FROM tenants WHERE slug = %s", (slug,))[0]
+        
+        log_audit(
+            db, admin['id'], admin['email'], 'CREATE_TENANT',
+            'TENANT', new_id, data.name,
+            {'slug': slug, 'cad_port': cad_port},
+            get_client_ip(request)
+        )
+        
+        return {
+            'status': 'ok',
+            'id': new_id,
+            'slug': slug,
+            'cad_port': cad_port
+        }
 
 
 # =============================================================================

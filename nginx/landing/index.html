@@ -732,23 +732,147 @@
 
             <div class="admin-stats" id="adminStats"></div>
 
-            <div class="admin-content">
-                <div class="admin-section">
-                    <div class="admin-section-header">
-                        <h2>Tenants</h2>
-                        <select id="tenantFilter" onchange="loadTenants()">
-                            <option value="">All</option>
-                            <option value="PENDING">Pending</option>
-                            <option value="ACTIVE">Active</option>
-                            <option value="SUSPENDED">Suspended</option>
-                        </select>
-                    </div>
-                    <div id="tenantsList" class="tenants-list"></div>
-                </div>
+            <!-- Tabs -->
+            <div class="admin-tabs">
+                <button class="admin-tab active" onclick="switchTab('tenants')">🏢 Tenants</button>
+                <button class="admin-tab" onclick="switchTab('create')">➕ Create Tenant</button>
+                <button class="admin-tab" onclick="switchTab('admins')">👤 Admins</button>
+                <button class="admin-tab" onclick="switchTab('audit')">📋 Audit Log</button>
+            </div>
 
-                <div class="admin-section" id="tenantDetail" style="display: none;">
-                    <h2>Tenant Details</h2>
-                    <div id="tenantDetailContent"></div>
+            <!-- Tab Content: Tenants -->
+            <div id="tab-tenants" class="tab-content active">
+                <div class="admin-content">
+                    <div class="admin-section">
+                        <div class="admin-section-header">
+                            <h2>Tenants</h2>
+                            <select id="tenantFilter" onchange="loadTenants()">
+                                <option value="">All</option>
+                                <option value="PENDING">Pending</option>
+                                <option value="ACTIVE">Active</option>
+                                <option value="SUSPENDED">Suspended</option>
+                            </select>
+                        </div>
+                        <div id="tenantsList" class="tenants-list"></div>
+                    </div>
+
+                    <div class="admin-section" id="tenantDetail" style="display: none;">
+                        <h2>Tenant Details</h2>
+                        <div id="tenantDetailContent"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Create Tenant -->
+            <div id="tab-create" class="tab-content">
+                <div class="admin-form-container">
+                    <h2>Create New Tenant</h2>
+                    <p class="form-subtitle">Directly create a tenant without going through signup request</p>
+                    <form id="createTenantForm" onsubmit="createTenant(event)">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Department Name *</label>
+                                <input type="text" id="newTenantName" required placeholder="Glen Moore Fire Company">
+                            </div>
+                            <div class="form-group">
+                                <label>Subdomain Slug *</label>
+                                <input type="text" id="newTenantSlug" required placeholder="glenmoorefc" pattern="[a-z0-9]+">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Password *</label>
+                                <input type="password" id="newTenantPassword" required placeholder="Department password">
+                            </div>
+                            <div class="form-group">
+                                <label>CAD Port</label>
+                                <input type="number" id="newTenantPort" placeholder="Auto-assign if empty">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Contact Name</label>
+                                <input type="text" id="newTenantContact" placeholder="Chief Smith">
+                            </div>
+                            <div class="form-group">
+                                <label>Contact Email</label>
+                                <input type="email" id="newTenantEmail" placeholder="chief@example.com">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>County</label>
+                                <input type="text" id="newTenantCounty" value="Chester">
+                            </div>
+                            <div class="form-group">
+                                <label>State</label>
+                                <input type="text" id="newTenantState" value="PA" maxlength="2">
+                            </div>
+                        </div>
+                        <div id="createTenantError" class="admin-error" style="display:none;"></div>
+                        <div id="createTenantSuccess" class="admin-success" style="display:none;"></div>
+                        <button type="submit" class="btn btn-primary">Create Tenant</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Tab Content: Admins -->
+            <div id="tab-admins" class="tab-content">
+                <div class="admin-form-container">
+                    <h2>System Administrators</h2>
+                    <div id="adminsList" class="admins-list"></div>
+                    
+                    <h3 style="margin-top: 2rem;">Create New Admin</h3>
+                    <form id="createAdminForm" onsubmit="createAdmin(event)">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Name *</label>
+                                <input type="text" id="newAdminName" required placeholder="John Smith">
+                            </div>
+                            <div class="form-group">
+                                <label>Email *</label>
+                                <input type="email" id="newAdminEmail" required placeholder="admin@cadreport.com">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Password *</label>
+                                <input type="password" id="newAdminPassword" required placeholder="Password">
+                            </div>
+                            <div class="form-group">
+                                <label>Role *</label>
+                                <select id="newAdminRole">
+                                    <option value="ADMIN">Admin</option>
+                                    <option value="SUPER_ADMIN">Super Admin</option>
+                                    <option value="SUPPORT">Support</option>
+                                    <option value="READONLY">Read Only</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="createAdminError" class="admin-error" style="display:none;"></div>
+                        <div id="createAdminSuccess" class="admin-success" style="display:none;"></div>
+                        <button type="submit" class="btn btn-primary">Create Admin</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Tab Content: Audit Log -->
+            <div id="tab-audit" class="tab-content">
+                <div class="admin-form-container" style="max-width: 1200px;">
+                    <h2>Audit Log</h2>
+                    <table class="audit-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Admin</th>
+                                <th>Action</th>
+                                <th>Target</th>
+                                <th>Details</th>
+                                <th>IP</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditLogBody"></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -809,9 +933,38 @@
             color: var(--text-secondary);
             font-size: 0.85rem;
         }
+        .admin-tabs {
+            display: flex;
+            gap: 0;
+            background: var(--bg-card);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding: 0 2rem;
+        }
+        .admin-tab {
+            padding: 1rem 1.5rem;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            font-size: 0.95rem;
+        }
+        .admin-tab:hover {
+            color: var(--text-primary);
+        }
+        .admin-tab.active {
+            color: var(--text-primary);
+            border-bottom-color: #f39c12;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
         .admin-content {
             display: grid;
-            grid-template-columns: 1fr 400px;
+            grid-template-columns: 1fr 450px;
             gap: 2rem;
             padding: 2rem;
             max-width: 1400px;
@@ -859,6 +1012,7 @@
         }
         .tenant-card.selected {
             border-left-color: var(--accent-blue);
+            background: var(--bg-card-hover);
         }
         .tenant-card.status-pending { border-left-color: #f39c12; }
         .tenant-card.status-active { border-left-color: #22c55e; }
@@ -886,14 +1040,25 @@
             display: flex;
             padding: 0.5rem 0;
             border-bottom: 1px solid rgba(255,255,255,0.05);
+            align-items: center;
         }
         .detail-row label {
             width: 120px;
             color: var(--text-secondary);
             font-size: 0.9rem;
+            flex-shrink: 0;
         }
         .detail-row span {
             flex: 1;
+        }
+        .detail-row input {
+            flex: 1;
+            padding: 0.4rem 0.6rem;
+            background: var(--bg-dark);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
         }
         .detail-actions {
             display: flex;
@@ -901,6 +1066,7 @@
             margin-top: 1.5rem;
             padding-top: 1rem;
             border-top: 1px solid rgba(255,255,255,0.1);
+            flex-wrap: wrap;
         }
         .btn-approve { background: #22c55e; color: #fff; }
         .btn-approve:hover { background: #16a34a; }
@@ -909,16 +1075,133 @@
         .btn-suspend { background: #f39c12; color: #fff; }
         .btn-suspend:hover { background: #d97706; }
         .btn-reactivate { background: var(--accent-blue); color: #fff; }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-secondary { background: #666; color: #fff; }
         .admin-error {
             background: rgba(239,68,68,0.1);
             border: 1px solid rgba(239,68,68,0.3);
             color: #ef4444;
             padding: 0.75rem;
             border-radius: 6px;
-            margin-top: 1rem;
+            margin: 1rem 0;
+        }
+        .admin-success {
+            background: rgba(34,197,94,0.1);
+            border: 1px solid rgba(34,197,94,0.3);
+            color: #22c55e;
+            padding: 0.75rem;
+            border-radius: 6px;
+            margin: 1rem 0;
+        }
+        .admin-form-container {
+            max-width: 700px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: var(--bg-card);
+            border-radius: 12px;
+        }
+        .admin-form-container h2 {
+            margin-bottom: 0.5rem;
+        }
+        .admin-form-container h3 {
+            margin-bottom: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        .form-subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .form-group label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+        .form-group input, .form-group select {
+            padding: 0.75rem;
+            background: var(--bg-dark);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+        .admins-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .admin-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: var(--bg-dark);
+            border-radius: 8px;
+        }
+        .admin-card-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .admin-card-name {
+            font-weight: 600;
+        }
+        .admin-card-email {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+        .admin-card-role {
+            padding: 0.25rem 0.5rem;
+            background: rgba(243,156,18,0.2);
+            color: #f39c12;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .audit-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        .audit-table th, .audit-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .audit-table th {
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+        .audit-table td {
+            color: var(--text-primary);
+        }
+        .audit-action {
+            padding: 0.2rem 0.5rem;
+            background: rgba(59,130,246,0.2);
+            color: var(--accent-blue);
+            border-radius: 4px;
+            font-size: 0.8rem;
         }
         @media (max-width: 900px) {
             .admin-content {
+                grid-template-columns: 1fr;
+            }
+            .form-row {
                 grid-template-columns: 1fr;
             }
         }
@@ -1070,6 +1353,20 @@
         let selectedTenantId = null;
         let tenantsCache = [];
 
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById('tab-' + tabName).classList.add('active');
+            
+            // Load data for specific tabs
+            if (tabName === 'admins') loadAdmins();
+            if (tabName === 'audit') loadAuditLog();
+        }
+
         function showAdminDashboard(admin) {
             currentAdmin = admin;
             
@@ -1153,45 +1450,110 @@
             `).join('');
         }
 
-        function selectTenant(id) {
+        async function selectTenant(id) {
             selectedTenantId = id;
             renderTenantsList();
             
-            const tenant = tenantsCache.find(t => t.id === id);
-            if (!tenant) return;
-            
-            const detail = document.getElementById('tenantDetail');
-            detail.style.display = 'block';
-            
-            let actions = '';
-            if (tenant.status === 'PENDING') {
-                actions = `
-                    <button onclick="approveTenant(${id})" class="btn btn-approve">✓ Approve</button>
-                    <button onclick="rejectTenant(${id})" class="btn btn-reject">✕ Reject</button>
+            // Fetch full tenant details
+            try {
+                const res = await fetch(`/api/master/tenants/${id}`, { credentials: 'include' });
+                if (!res.ok) return;
+                const tenant = await res.json();
+                
+                const detail = document.getElementById('tenantDetail');
+                detail.style.display = 'block';
+                
+                let actions = '';
+                if (tenant.status === 'PENDING') {
+                    actions = `
+                        <button onclick="approveTenant(${id})" class="btn btn-approve btn-small">✓ Approve</button>
+                        <button onclick="rejectTenant(${id})" class="btn btn-reject btn-small">✕ Reject</button>
+                    `;
+                } else if (tenant.status === 'ACTIVE') {
+                    actions = `
+                        <button onclick="resetTenantPassword(${id})" class="btn btn-secondary btn-small">🔑 Reset Password</button>
+                        <button onclick="suspendTenant(${id})" class="btn btn-suspend btn-small">⏸ Suspend</button>
+                    `;
+                } else if (tenant.status === 'SUSPENDED') {
+                    actions = `<button onclick="reactivateTenant(${id})" class="btn btn-reactivate btn-small">▶ Reactivate</button>`;
+                }
+                
+                document.getElementById('tenantDetailContent').innerHTML = `
+                    <div class="detail-row"><label>Name:</label><input type="text" id="edit-name" value="${tenant.name || ''}"></div>
+                    <div class="detail-row"><label>Subdomain:</label><span>${tenant.slug}.cadreport.com</span></div>
+                    <div class="detail-row"><label>Status:</label><span class="tenant-status ${(tenant.status || '').toLowerCase()}">${tenant.status}</span></div>
+                    <div class="detail-row"><label>Contact:</label><input type="text" id="edit-contact" value="${tenant.contact_name || ''}"></div>
+                    <div class="detail-row"><label>Email:</label><input type="email" id="edit-email" value="${tenant.contact_email || ''}"></div>
+                    <div class="detail-row"><label>Phone:</label><input type="tel" id="edit-phone" value="${tenant.contact_phone || ''}"></div>
+                    <div class="detail-row"><label>County:</label><input type="text" id="edit-county" value="${tenant.county || ''}"></div>
+                    <div class="detail-row"><label>CAD Port:</label><span>${tenant.cad_port || 'Not assigned'}</span></div>
+                    <div class="detail-row"><label>Database:</label><span>${tenant.database_name || 'Not created'}</span></div>
+                    <div class="detail-row"><label>Created:</label><span>${tenant.created_at ? new Date(tenant.created_at).toLocaleString() : '-'}</span></div>
+                    ${tenant.notes ? `<div class="detail-row"><label>Notes:</label><span>${tenant.notes}</span></div>` : ''}
+                    <div id="tenantActionError"></div>
+                    <div class="detail-actions">
+                        <button onclick="saveTenantDetails(${id})" class="btn btn-primary btn-small">💾 Save Changes</button>
+                        ${actions}
+                    </div>
                 `;
-            } else if (tenant.status === 'ACTIVE') {
-                actions = `<button onclick="suspendTenant(${id})" class="btn btn-suspend">⏸ Suspend</button>`;
-            } else if (tenant.status === 'SUSPENDED') {
-                actions = `<button onclick="reactivateTenant(${id})" class="btn btn-reactivate">▶ Reactivate</button>`;
+            } catch (err) {
+                console.error('Failed to load tenant:', err);
             }
-            
-            document.getElementById('tenantDetailContent').innerHTML = `
-                <div class="detail-row"><label>Name:</label><span>${tenant.name || '-'}</span></div>
-                <div class="detail-row"><label>Subdomain:</label><span>${tenant.slug}.cadreport.com</span></div>
-                <div class="detail-row"><label>Status:</label><span class="tenant-status ${(tenant.status || '').toLowerCase()}">${tenant.status}</span></div>
-                <div class="detail-row"><label>Contact:</label><span>${tenant.contact_name || '-'}</span></div>
-                <div class="detail-row"><label>Email:</label><span>${tenant.contact_email || '-'}</span></div>
-                <div class="detail-row"><label>Phone:</label><span>${tenant.contact_phone || '-'}</span></div>
-                <div class="detail-row"><label>County:</label><span>${tenant.county || '-'}, ${tenant.state || 'PA'}</span></div>
-                <div class="detail-row"><label>CAD Port:</label><span>${tenant.cad_port || 'Not assigned'}</span></div>
-                <div class="detail-row"><label>Created:</label><span>${tenant.created_at ? new Date(tenant.created_at).toLocaleDateString() : '-'}</span></div>
-                <div id="tenantActionError"></div>
-                <div class="detail-actions">${actions}</div>
-            `;
+        }
+
+        async function saveTenantDetails(id) {
+            const data = {
+                name: document.getElementById('edit-name').value,
+                contact_name: document.getElementById('edit-contact').value,
+                contact_email: document.getElementById('edit-email').value,
+                contact_phone: document.getElementById('edit-phone').value,
+                county: document.getElementById('edit-county').value,
+            };
+            try {
+                const res = await fetch(`/api/master/tenants/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    loadTenants();
+                    showTenantSuccess('Tenant updated successfully');
+                } else {
+                    const err = await res.json();
+                    showTenantError(err.detail || 'Failed to update');
+                }
+            } catch (err) {
+                showTenantError('Connection error');
+            }
+        }
+
+        async function resetTenantPassword(id) {
+            const newPassword = prompt('Enter new password for this department:');
+            if (!newPassword || newPassword.length < 6) {
+                alert('Password must be at least 6 characters');
+                return;
+            }
+            try {
+                const res = await fetch(`/api/master/tenants/${id}/reset-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: newPassword }),
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    showTenantSuccess('Password reset successfully');
+                } else {
+                    const err = await res.json();
+                    showTenantError(err.detail || 'Failed to reset password');
+                }
+            } catch (err) {
+                showTenantError('Connection error');
+            }
         }
 
         async function approveTenant(id) {
-            if (!confirm('Approve this tenant? This will create their database.')) return;
+            if (!confirm('Approve this tenant?')) return;
             try {
                 const res = await fetch(`/api/master/tenants/${id}/approve`, {
                     method: 'POST',
@@ -1279,6 +1641,151 @@
         function showTenantError(msg) {
             const el = document.getElementById('tenantActionError');
             el.innerHTML = `<div class="admin-error">${msg}</div>`;
+        }
+
+        function showTenantSuccess(msg) {
+            const el = document.getElementById('tenantActionError');
+            el.innerHTML = `<div class="admin-success">${msg}</div>`;
+            setTimeout(() => el.innerHTML = '', 3000);
+        }
+
+        // ===== CREATE TENANT =====
+        async function createTenant(event) {
+            event.preventDefault();
+            const errorEl = document.getElementById('createTenantError');
+            const successEl = document.getElementById('createTenantSuccess');
+            errorEl.style.display = 'none';
+            successEl.style.display = 'none';
+            
+            const data = {
+                name: document.getElementById('newTenantName').value,
+                slug: document.getElementById('newTenantSlug').value.toLowerCase(),
+                password: document.getElementById('newTenantPassword').value,
+                cad_port: document.getElementById('newTenantPort').value || null,
+                contact_name: document.getElementById('newTenantContact').value || null,
+                contact_email: document.getElementById('newTenantEmail').value || null,
+                county: document.getElementById('newTenantCounty').value || 'Chester',
+                state: document.getElementById('newTenantState').value || 'PA',
+            };
+            
+            try {
+                const res = await fetch('/api/master/tenants', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    const result = await res.json();
+                    successEl.textContent = `Tenant created: ${result.slug}.cadreport.com`;
+                    successEl.style.display = 'block';
+                    document.getElementById('createTenantForm').reset();
+                    document.getElementById('newTenantCounty').value = 'Chester';
+                    document.getElementById('newTenantState').value = 'PA';
+                    loadStats();
+                    loadTenants();
+                } else {
+                    const err = await res.json();
+                    errorEl.textContent = err.detail || 'Failed to create tenant';
+                    errorEl.style.display = 'block';
+                }
+            } catch (err) {
+                errorEl.textContent = 'Connection error';
+                errorEl.style.display = 'block';
+            }
+        }
+
+        // ===== ADMINS =====
+        async function loadAdmins() {
+            try {
+                const res = await fetch('/api/master/admins', { credentials: 'include' });
+                if (res.ok) {
+                    const data = await res.json();
+                    const list = document.getElementById('adminsList');
+                    if (!data.admins || data.admins.length === 0) {
+                        list.innerHTML = '<div style="color: var(--text-muted);">No admins found</div>';
+                        return;
+                    }
+                    list.innerHTML = data.admins.map(a => `
+                        <div class="admin-card">
+                            <div class="admin-card-info">
+                                <span class="admin-card-name">${a.name || 'Unnamed'}</span>
+                                <span class="admin-card-email">${a.email}</span>
+                            </div>
+                            <div>
+                                <span class="admin-card-role">${a.role}</span>
+                                ${a.active ? '' : ' <span style="color:#ef4444;">(Disabled)</span>'}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (err) {
+                console.error('Failed to load admins:', err);
+            }
+        }
+
+        async function createAdmin(event) {
+            event.preventDefault();
+            const errorEl = document.getElementById('createAdminError');
+            const successEl = document.getElementById('createAdminSuccess');
+            errorEl.style.display = 'none';
+            successEl.style.display = 'none';
+            
+            const data = {
+                name: document.getElementById('newAdminName').value,
+                email: document.getElementById('newAdminEmail').value.toLowerCase(),
+                password: document.getElementById('newAdminPassword').value,
+                role: document.getElementById('newAdminRole').value,
+            };
+            
+            try {
+                const res = await fetch('/api/master/admins', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    successEl.textContent = 'Admin created successfully';
+                    successEl.style.display = 'block';
+                    document.getElementById('createAdminForm').reset();
+                    loadAdmins();
+                } else {
+                    const err = await res.json();
+                    errorEl.textContent = err.detail || 'Failed to create admin';
+                    errorEl.style.display = 'block';
+                }
+            } catch (err) {
+                errorEl.textContent = 'Connection error';
+                errorEl.style.display = 'block';
+            }
+        }
+
+        // ===== AUDIT LOG =====
+        async function loadAuditLog() {
+            try {
+                const res = await fetch('/api/master/audit-log?limit=100', { credentials: 'include' });
+                if (res.ok) {
+                    const data = await res.json();
+                    const body = document.getElementById('auditLogBody');
+                    if (!data.entries || data.entries.length === 0) {
+                        body.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No audit log entries</td></tr>';
+                        return;
+                    }
+                    body.innerHTML = data.entries.map(e => `
+                        <tr>
+                            <td>${e.created_at ? new Date(e.created_at).toLocaleString() : '-'}</td>
+                            <td>${e.admin_email || '-'}</td>
+                            <td><span class="audit-action">${e.action}</span></td>
+                            <td>${e.target_name || e.target_type || '-'}</td>
+                            <td style="font-size:0.8rem; color:var(--text-secondary);">${e.details ? JSON.stringify(e.details) : '-'}</td>
+                            <td style="font-size:0.8rem;">${e.ip_address || '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (err) {
+                console.error('Failed to load audit log:', err);
+            }
         }
 
         async function adminLogout() {
