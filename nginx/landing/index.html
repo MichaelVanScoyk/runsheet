@@ -736,6 +736,8 @@
             <div class="admin-tabs">
                 <button class="admin-tab active" onclick="switchTab('tenants')">🏢 Tenants</button>
                 <button class="admin-tab" onclick="switchTab('create')">➕ Create Tenant</button>
+                <button class="admin-tab" onclick="switchTab('users')">👥 Users</button>
+                <button class="admin-tab" onclick="switchTab('database')">💾 Database</button>
                 <button class="admin-tab" onclick="switchTab('admins')">👤 Admins</button>
                 <button class="admin-tab" onclick="switchTab('audit')">📋 Audit Log</button>
             </div>
@@ -813,6 +815,104 @@
                         <div id="createTenantSuccess" class="admin-success" style="display:none;"></div>
                         <button type="submit" class="btn btn-primary">Create Tenant</button>
                     </form>
+                </div>
+            </div>
+
+            <!-- Tab Content: Users -->
+            <div id="tab-users" class="tab-content">
+                <div class="admin-form-container" style="max-width: 1000px;">
+                    <h2>Tenant Users</h2>
+                    <p class="form-subtitle">View and manage firefighters registered at each department</p>
+                    
+                    <div class="form-row" style="margin-bottom: 1.5rem;">
+                        <div class="form-group">
+                            <label>Select Tenant</label>
+                            <select id="usersTenantSelect" onchange="loadTenantUsers()">
+                                <option value="">Choose a department...</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="display: flex; align-items: flex-end;">
+                            <span id="usersCount" style="color: var(--text-secondary);"></span>
+                        </div>
+                    </div>
+                    
+                    <table class="db-table" id="usersTable">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Last Login</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersBody">
+                            <tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Select a tenant to view users</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tab Content: Database -->
+            <div id="tab-database" class="tab-content">
+                <div class="admin-form-container" style="max-width: 1000px;">
+                    <h2>Database Management</h2>
+                    <p class="form-subtitle">Provision, backup, and restore tenant databases</p>
+                    
+                    <!-- Database Status -->
+                    <div class="db-section">
+                        <h3>Tenant Databases</h3>
+                        <table class="db-table">
+                            <thead>
+                                <tr>
+                                    <th>Tenant</th>
+                                    <th>Database</th>
+                                    <th>Status</th>
+                                    <th>Size</th>
+                                    <th>Last Backup</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dbStatusBody"></tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Recent Backups -->
+                    <div class="db-section">
+                        <h3>Recent Backups</h3>
+                        <table class="db-table">
+                            <thead>
+                                <tr>
+                                    <th>Tenant</th>
+                                    <th>Filename</th>
+                                    <th>Size</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="backupsBody"></tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Manual Restore -->
+                    <div class="db-section">
+                        <h3>Restore from File</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">Upload a .sql backup file to restore a tenant database</p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Tenant</label>
+                                <select id="restoreTenant"></select>
+                            </div>
+                            <div class="form-group">
+                                <label>Backup File (.sql)</label>
+                                <input type="file" id="restoreFile" accept=".sql">
+                            </div>
+                        </div>
+                        <div id="restoreError" class="admin-error" style="display:none;"></div>
+                        <div id="restoreSuccess" class="admin-success" style="display:none;"></div>
+                        <button onclick="restoreFromFile()" class="btn btn-danger">⚠️ Restore Database</button>
+                    </div>
                 </div>
             </div>
 
@@ -1197,6 +1297,51 @@
             border-radius: 4px;
             font-size: 0.8rem;
         }
+        .db-section {
+            margin-bottom: 2rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .db-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        .db-section h3 {
+            margin-bottom: 1rem;
+            font-size: 1rem;
+        }
+        .db-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        .db-table th, .db-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .db-table th {
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+        .db-status {
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .db-status.exists { background: rgba(34,197,94,0.2); color: #22c55e; }
+        .db-status.missing { background: rgba(239,68,68,0.2); color: #ef4444; }
+        .db-status.provisioning { background: rgba(243,156,18,0.2); color: #f39c12; }
+        .db-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .db-actions button {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.75rem;
+        }
         @media (max-width: 900px) {
             .admin-content {
                 grid-template-columns: 1fr;
@@ -1365,6 +1510,8 @@
             // Load data for specific tabs
             if (tabName === 'admins') loadAdmins();
             if (tabName === 'audit') loadAuditLog();
+            if (tabName === 'database') loadDatabaseTab();
+            if (tabName === 'users') loadUsersTenantSelect();
         }
 
         function showAdminDashboard(admin) {
@@ -1785,6 +1932,284 @@
                 }
             } catch (err) {
                 console.error('Failed to load audit log:', err);
+            }
+        }
+
+        // ===== USERS MANAGEMENT =====
+        function loadUsersTenantSelect() {
+            const select = document.getElementById('usersTenantSelect');
+            select.innerHTML = '<option value="">Choose a department...</option>';
+            tenantsCache.forEach(t => {
+                if (t.status === 'ACTIVE') {
+                    select.innerHTML += `<option value="${t.id}">${t.name} (${t.slug})</option>`;
+                }
+            });
+        }
+
+        async function loadTenantUsers() {
+            const tenantId = document.getElementById('usersTenantSelect').value;
+            const body = document.getElementById('usersBody');
+            const countEl = document.getElementById('usersCount');
+            
+            if (!tenantId) {
+                body.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Select a tenant to view users</td></tr>';
+                countEl.textContent = '';
+                return;
+            }
+            
+            body.innerHTML = '<tr><td colspan="6" style="text-align:center;">Loading...</td></tr>';
+            
+            try {
+                const res = await fetch(`/api/master/tenants/${tenantId}/users`, { credentials: 'include' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.users || data.users.length === 0) {
+                        body.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No users found</td></tr>';
+                        countEl.textContent = '0 users';
+                        return;
+                    }
+                    countEl.textContent = `${data.users.length} user${data.users.length !== 1 ? 's' : ''}`;
+                    body.innerHTML = data.users.map(u => `
+                        <tr>
+                            <td>${u.name || '-'}</td>
+                            <td>${u.email || '-'}</td>
+                            <td><span class="admin-card-role">${u.role || 'USER'}</span></td>
+                            <td><span class="db-status ${u.active ? 'exists' : 'missing'}">${u.active ? 'Active' : 'Disabled'}</span></td>
+                            <td>${u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</td>
+                            <td class="db-actions">
+                                ${u.active ? `<button onclick="disableUser(${tenantId}, ${u.id})" class="btn btn-danger btn-small">❌ Disable</button>` : `<button onclick="enableUser(${tenantId}, ${u.id})" class="btn btn-primary btn-small">✅ Enable</button>`}
+                            </td>
+                        </tr>
+                    `).join('');
+                } else {
+                    body.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--accent-red);">Failed to load users</td></tr>';
+                }
+            } catch (err) {
+                console.error('Failed to load users:', err);
+                body.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--accent-red);">Connection error</td></tr>';
+            }
+        }
+
+        async function disableUser(tenantId, userId) {
+            if (!confirm('Disable this user?')) return;
+            try {
+                const res = await fetch(`/api/master/tenants/${tenantId}/users/${userId}/disable`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    loadTenantUsers();
+                } else {
+                    const err = await res.json();
+                    alert('Failed: ' + (err.detail || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Connection error');
+            }
+        }
+
+        async function enableUser(tenantId, userId) {
+            try {
+                const res = await fetch(`/api/master/tenants/${tenantId}/users/${userId}/enable`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    loadTenantUsers();
+                } else {
+                    const err = await res.json();
+                    alert('Failed: ' + (err.detail || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Connection error');
+            }
+        }
+
+        // ===== DATABASE MANAGEMENT =====
+        async function loadDatabaseTab() {
+            loadDbStatus();
+            loadBackups();
+            loadRestoreTenantSelect();
+        }
+
+        async function loadDbStatus() {
+            try {
+                const res = await fetch('/api/master/databases', { credentials: 'include' });
+                if (res.ok) {
+                    const data = await res.json();
+                    const body = document.getElementById('dbStatusBody');
+                    if (!data.databases || data.databases.length === 0) {
+                        body.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No tenant databases</td></tr>';
+                        return;
+                    }
+                    body.innerHTML = data.databases.map(db => `
+                        <tr>
+                            <td>${db.tenant_name}</td>
+                            <td><code>${db.database_name || 'Not set'}</code></td>
+                            <td><span class="db-status ${db.exists ? 'exists' : 'missing'}">${db.exists ? 'Exists' : 'Missing'}</span></td>
+                            <td>${db.size || '-'}</td>
+                            <td>${db.last_backup ? new Date(db.last_backup).toLocaleString() : 'Never'}</td>
+                            <td class="db-actions">
+                                ${!db.exists ? `<button onclick="provisionDb(${db.tenant_id})" class="btn btn-primary btn-small">🛠️ Provision</button>` : ''}
+                                ${db.exists ? `<button onclick="backupDb(${db.tenant_id})" class="btn btn-secondary btn-small">💾 Backup</button>` : ''}
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (err) {
+                console.error('Failed to load db status:', err);
+            }
+        }
+
+        async function loadBackups() {
+            try {
+                const res = await fetch('/api/master/backups', { credentials: 'include' });
+                if (res.ok) {
+                    const data = await res.json();
+                    const body = document.getElementById('backupsBody');
+                    if (!data.backups || data.backups.length === 0) {
+                        body.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">No backups found</td></tr>';
+                        return;
+                    }
+                    body.innerHTML = data.backups.map(b => `
+                        <tr>
+                            <td>${b.tenant_name}</td>
+                            <td><code>${b.filename}</code></td>
+                            <td>${b.size}</td>
+                            <td>${new Date(b.created_at).toLocaleString()}</td>
+                            <td class="db-actions">
+                                <button onclick="downloadBackup('${b.filename}')" class="btn btn-outline btn-small">⬇️ Download</button>
+                                <button onclick="restoreBackup(${b.tenant_id}, '${b.filename}')" class="btn btn-danger btn-small">↩️ Restore</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (err) {
+                console.error('Failed to load backups:', err);
+            }
+        }
+
+        async function loadRestoreTenantSelect() {
+            const select = document.getElementById('restoreTenant');
+            select.innerHTML = '<option value="">Select tenant...</option>';
+            tenantsCache.forEach(t => {
+                if (t.status === 'ACTIVE') {
+                    select.innerHTML += `<option value="${t.id}">${t.name} (${t.slug})</option>`;
+                }
+            });
+        }
+
+        async function provisionDb(tenantId) {
+            if (!confirm('Provision database for this tenant? This will create a new database and run migrations.')) return;
+            try {
+                const res = await fetch(`/api/master/tenants/${tenantId}/provision`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    alert('Database provisioned successfully');
+                    loadDbStatus();
+                } else {
+                    const err = await res.json();
+                    alert('Failed: ' + (err.detail || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Connection error');
+            }
+        }
+
+        async function backupDb(tenantId) {
+            try {
+                const res = await fetch(`/api/master/tenants/${tenantId}/backup`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    alert(`Backup created: ${data.filename}`);
+                    loadBackups();
+                    loadDbStatus();
+                } else {
+                    const err = await res.json();
+                    alert('Failed: ' + (err.detail || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Connection error');
+            }
+        }
+
+        async function downloadBackup(filename) {
+            window.open(`/api/master/backups/${filename}/download`, '_blank');
+        }
+
+        async function restoreBackup(tenantId, filename) {
+            if (!confirm(`⚠️ WARNING: This will OVERWRITE all data in the database!\n\nRestore ${filename}?`)) return;
+            if (!confirm('Are you SURE? This cannot be undone!')) return;
+            
+            try {
+                const res = await fetch(`/api/master/tenants/${tenantId}/restore`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename }),
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    alert('Database restored successfully');
+                    loadDbStatus();
+                } else {
+                    const err = await res.json();
+                    alert('Failed: ' + (err.detail || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Connection error');
+            }
+        }
+
+        async function restoreFromFile() {
+            const tenantId = document.getElementById('restoreTenant').value;
+            const fileInput = document.getElementById('restoreFile');
+            const errorEl = document.getElementById('restoreError');
+            const successEl = document.getElementById('restoreSuccess');
+            
+            errorEl.style.display = 'none';
+            successEl.style.display = 'none';
+            
+            if (!tenantId) {
+                errorEl.textContent = 'Please select a tenant';
+                errorEl.style.display = 'block';
+                return;
+            }
+            if (!fileInput.files.length) {
+                errorEl.textContent = 'Please select a backup file';
+                errorEl.style.display = 'block';
+                return;
+            }
+            
+            if (!confirm('⚠️ WARNING: This will OVERWRITE all data in the database!')) return;
+            if (!confirm('Are you SURE? This cannot be undone!')) return;
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            try {
+                const res = await fetch(`/api/master/tenants/${tenantId}/restore-upload`, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    successEl.textContent = 'Database restored successfully';
+                    successEl.style.display = 'block';
+                    fileInput.value = '';
+                    loadDbStatus();
+                } else {
+                    const err = await res.json();
+                    errorEl.textContent = err.detail || 'Restore failed';
+                    errorEl.style.display = 'block';
+                }
+            } catch (err) {
+                errorEl.textContent = 'Connection error';
+                errorEl.style.display = 'block';
             }
         }
 

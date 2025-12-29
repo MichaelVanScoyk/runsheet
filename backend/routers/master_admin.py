@@ -829,3 +829,542 @@ async def get_audit_log(
                 'created_at': r[7].isoformat() if r[7] else None,
             } for r in results]
         }
+
+
+# =============================================================================
+# DATABASE MANAGEMENT
+# =============================================================================
+
+BACKUP_DIR = '/opt/runsheet/backups'
+MIGRATIONS_DIR = '/opt/runsheet/migrations'
+
+
+def format_size(size_bytes):
+    """Format bytes to human readable"""
+    if size_bytes is None:
+        return '-'
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} TB"
+
+
+@router.get("/databases")
+async def list_databases(
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """List all tenant databases with status"""
+    import psycopg2
+    
+    with get_master_db() as db:
+        tenants = db.fetchall("""
+            SELECT id, slug, name, database_name, status
+            FROM tenants
+            WHERE status IN ('ACTIVE', 'PENDING', 'SUSPENDED')
+            ORDER BY name
+        """)
+    
+    databases = []
+    for t in tenants:
+        tenant_id, slug, name, database_name, status = t
+        db_name = database_name or f"runsheet_{slug}"
+        
+        # Check if database exists and get size
+        exists = False
+        size = None
+        try:
+            conn = psycopg2.connect(dbname=db_name, host='localhost')
+            conn.close()
+            exists = True
+            
+            # Get size
+            conn = psycopg2.connect(dbname='postgres', host='localhost')
+            cur = conn.cursor()
+            cur.execute("SELECT pg_database_size(%s)", (db_name,))
+            size = cur.fetchone()[0]
+            conn.close()
+        except:
+            pass
+        
+        # Check last backup
+        last_backup = None
+        if os.path.exists(BACKUP_DIR):
+            backups = [f for f in os.listdir(BACKUP_DIR) if f.startswith(f"{slug}_") and f.endswith('.sql')]
+            if backups:
+                backups.sort(reverse=True)
+                backup_path = os.path.join(BACKUP_DIR, backups[0])
+                last_backup = os.path.getmtime(backup_path)
+        
+        databases.append({
+            'tenant_id': tenant_id,
+            'tenant_name': name,
+            'slug': slug,
+            'database_name': db_name,
+            'exists': exists,
+            'size': format_size(size) if size else None,
+            'last_backup': last_backup,
+            'status': status
+        })
+    
+    return {'databases': databases}
+
+
+@router.get("/backups")
+async def list_backups(
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """List all backup files"""
+    if not os.path.exists(BACKUP_DIR):
+        return {'backups': []}
+    
+    # Get tenant mapping
+    with get_master_db() as db:
+        tenants = db.fetchall("SELECT id, slug, name FROM tenants")
+    tenant_map = {t[1]: {'id': t[0], 'name': t[2]} for t in tenants}
+    
+    backups = []
+    for filename in os.listdir(BACKUP_DIR):
+        if not filename.endswith('.sql'):
+            continue
+        
+        filepath = os.path.join(BACKUP_DIR, filename)
+        stat = os.stat(filepath)
+        
+        # Parse tenant from filename (format: slug_YYYYMMDD_HHMMSS.sql)
+        parts = filename.rsplit('_', 2)
+        slug = parts[0] if len(parts) >= 3 else filename.replace('.sql', '')
+        tenant_info = tenant_map.get(slug, {'id': None, 'name': slug})
+        
+        backups.append({
+            'filename': filename,
+            'tenant_id': tenant_info['id'],
+            'tenant_name': tenant_info['name'],
+            'size': format_size(stat.st_size),
+            'created_at': stat.st_mtime
+        })
+    
+    # Sort by date descending
+    backups.sort(key=lambda x: x['created_at'], reverse=True)
+    
+    return {'backups': backups[:50]}  # Limit to 50 most recent
+
+
+@router.post("/tenants/{tenant_id}/provision")
+async def provision_database(
+    tenant_id: int,
+    request: Request,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """Create database and run migrations for a tenant"""
+    with get_master_db() as db:
+        result = db.fetchone("""
+            SELECT slug, name, database_name FROM tenants WHERE id = %s
+        """, (tenant_id,))
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        slug, name, database_name = result
+        db_name = database_name or f"runsheet_{slug}"
+    
+    try:
+        # Create database
+        result = subprocess.run(
+            ['createdb', db_name],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0 and 'already exists' not in result.stderr:
+            raise HTTPException(status_code=500, detail=f"Failed to create database: {result.stderr}")
+        
+        # Run initial schema migration
+        schema_file = os.path.join(MIGRATIONS_DIR, '001_initial_schema.sql')
+        if os.path.exists(schema_file):
+            result = subprocess.run(
+                ['psql', db_name, '-f', schema_file],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode != 0:
+                raise HTTPException(status_code=500, detail=f"Migration failed: {result.stderr}")
+        
+        # Update tenant record with database name
+        with get_master_db() as db:
+            db.execute("UPDATE tenants SET database_name = %s WHERE id = %s", (db_name, tenant_id))
+            db.commit()
+            
+            log_audit(
+                db, admin['id'], admin['email'], 'PROVISION_DATABASE',
+                'TENANT', tenant_id, name,
+                {'database': db_name},
+                get_client_ip(request)
+            )
+        
+        return {'status': 'ok', 'database_name': db_name}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tenants/{tenant_id}/backup")
+async def backup_database(
+    tenant_id: int,
+    request: Request,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """Create a backup of tenant database"""
+    from datetime import datetime
+    
+    with get_master_db() as db:
+        result = db.fetchone("""
+            SELECT slug, name, database_name FROM tenants WHERE id = %s
+        """, (tenant_id,))
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        slug, name, database_name = result
+        db_name = database_name or f"runsheet_{slug}"
+    
+    # Ensure backup directory exists
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    
+    # Generate filename with timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"{slug}_{timestamp}.sql"
+    filepath = os.path.join(BACKUP_DIR, filename)
+    
+    try:
+        # Run pg_dump
+        result = subprocess.run(
+            ['pg_dump', '-Fp', '-f', filepath, db_name],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Backup failed: {result.stderr}")
+        
+        # Log audit
+        with get_master_db() as db:
+            log_audit(
+                db, admin['id'], admin['email'], 'BACKUP_DATABASE',
+                'TENANT', tenant_id, name,
+                {'filename': filename},
+                get_client_ip(request)
+            )
+        
+        return {'status': 'ok', 'filename': filename}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/backups/{filename}/download")
+async def download_backup(
+    filename: str,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """Download a backup file"""
+    from fastapi.responses import FileResponse
+    
+    # Sanitize filename
+    if '..' in filename or '/' in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    filepath = os.path.join(BACKUP_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Backup not found")
+    
+    return FileResponse(
+        filepath,
+        media_type='application/sql',
+        filename=filename
+    )
+
+
+class RestoreRequest(BaseModel):
+    filename: str
+
+
+@router.post("/tenants/{tenant_id}/restore")
+async def restore_database(
+    tenant_id: int,
+    data: RestoreRequest,
+    request: Request,
+    admin: dict = Depends(require_role(['SUPER_ADMIN']))
+):
+    """Restore database from existing backup file"""
+    with get_master_db() as db:
+        result = db.fetchone("""
+            SELECT slug, name, database_name FROM tenants WHERE id = %s
+        """, (tenant_id,))
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        slug, name, database_name = result
+        db_name = database_name or f"runsheet_{slug}"
+    
+    # Sanitize filename
+    if '..' in data.filename or '/' in data.filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    filepath = os.path.join(BACKUP_DIR, data.filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Backup file not found")
+    
+    try:
+        # Drop and recreate database
+        subprocess.run(['dropdb', '--if-exists', db_name], capture_output=True)
+        result = subprocess.run(['createdb', db_name], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to create database: {result.stderr}")
+        
+        # Restore from backup
+        result = subprocess.run(
+            ['psql', db_name, '-f', filepath],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Restore failed: {result.stderr}")
+        
+        # Log audit
+        with get_master_db() as db:
+            log_audit(
+                db, admin['id'], admin['email'], 'RESTORE_DATABASE',
+                'TENANT', tenant_id, name,
+                {'filename': data.filename},
+                get_client_ip(request)
+            )
+        
+        return {'status': 'ok'}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# TENANT USERS MANAGEMENT
+# =============================================================================
+
+@router.get("/tenants/{tenant_id}/users")
+async def get_tenant_users(
+    tenant_id: int,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN', 'SUPPORT']))
+):
+    """Get all users for a tenant"""
+    import psycopg2
+    
+    with get_master_db() as db:
+        result = db.fetchone("""
+            SELECT slug, name, database_name FROM tenants WHERE id = %s
+        """, (tenant_id,))
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        slug, name, database_name = result
+        db_name = database_name or f"runsheet_{slug}"
+    
+    users = []
+    try:
+        conn = psycopg2.connect(dbname=db_name, host='localhost')
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, email, name, role, active, last_login, created_at
+            FROM users
+            ORDER BY name
+        """)
+        rows = cur.fetchall()
+        conn.close()
+        
+        for r in rows:
+            users.append({
+                'id': r[0],
+                'email': r[1],
+                'name': r[2],
+                'role': r[3],
+                'active': r[4],
+                'last_login': r[5].isoformat() if r[5] else None,
+                'created_at': r[6].isoformat() if r[6] else None,
+            })
+    except Exception as e:
+        # Database may not exist or users table may not exist
+        pass
+    
+    return {'users': users}
+
+
+@router.post("/tenants/{tenant_id}/users/{user_id}/disable")
+async def disable_tenant_user(
+    tenant_id: int,
+    user_id: int,
+    request: Request,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """Disable a user in a tenant database"""
+    import psycopg2
+    
+    with get_master_db() as db:
+        result = db.fetchone("""
+            SELECT slug, name, database_name FROM tenants WHERE id = %s
+        """, (tenant_id,))
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        slug, tenant_name, database_name = result
+        db_name = database_name or f"runsheet_{slug}"
+    
+    try:
+        conn = psycopg2.connect(dbname=db_name, host='localhost')
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET active = FALSE WHERE id = %s RETURNING email", (user_id,))
+        user_email = cur.fetchone()
+        conn.commit()
+        conn.close()
+        
+        if not user_email:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Log audit
+        with get_master_db() as db:
+            log_audit(
+                db, admin['id'], admin['email'], 'DISABLE_USER',
+                'USER', user_id, user_email[0],
+                {'tenant': tenant_name},
+                get_client_ip(request)
+            )
+        
+        return {'status': 'ok'}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tenants/{tenant_id}/users/{user_id}/enable")
+async def enable_tenant_user(
+    tenant_id: int,
+    user_id: int,
+    request: Request,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """Enable a user in a tenant database"""
+    import psycopg2
+    
+    with get_master_db() as db:
+        result = db.fetchone("""
+            SELECT slug, name, database_name FROM tenants WHERE id = %s
+        """, (tenant_id,))
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        slug, tenant_name, database_name = result
+        db_name = database_name or f"runsheet_{slug}"
+    
+    try:
+        conn = psycopg2.connect(dbname=db_name, host='localhost')
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET active = TRUE WHERE id = %s RETURNING email", (user_id,))
+        user_email = cur.fetchone()
+        conn.commit()
+        conn.close()
+        
+        if not user_email:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Log audit
+        with get_master_db() as db:
+            log_audit(
+                db, admin['id'], admin['email'], 'ENABLE_USER',
+                'USER', user_id, user_email[0],
+                {'tenant': tenant_name},
+                get_client_ip(request)
+            )
+        
+        return {'status': 'ok'}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tenants/{tenant_id}/restore-upload")
+async def restore_database_upload(
+    tenant_id: int,
+    request: Request,
+    admin: dict = Depends(require_role(['SUPER_ADMIN']))
+):
+    """Restore database from uploaded backup file"""
+    from fastapi import UploadFile, File
+    import tempfile
+    
+    with get_master_db() as db:
+        result = db.fetchone("""
+            SELECT slug, name, database_name FROM tenants WHERE id = %s
+        """, (tenant_id,))
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        slug, name, database_name = result
+        db_name = database_name or f"runsheet_{slug}"
+    
+    # Get uploaded file from form data
+    form = await request.form()
+    file = form.get('file')
+    if not file:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+    
+    try:
+        # Save uploaded file to temp location
+        content = await file.read()
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.sql', delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        
+        # Drop and recreate database
+        subprocess.run(['dropdb', '--if-exists', db_name], capture_output=True)
+        result = subprocess.run(['createdb', db_name], capture_output=True, text=True)
+        if result.returncode != 0:
+            os.unlink(tmp_path)
+            raise HTTPException(status_code=500, detail=f"Failed to create database: {result.stderr}")
+        
+        # Restore from backup
+        result = subprocess.run(
+            ['psql', db_name, '-f', tmp_path],
+            capture_output=True,
+            text=True
+        )
+        os.unlink(tmp_path)  # Clean up temp file
+        
+        if result.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Restore failed: {result.stderr}")
+        
+        # Log audit
+        with get_master_db() as db:
+            log_audit(
+                db, admin['id'], admin['email'], 'RESTORE_DATABASE_UPLOAD',
+                'TENANT', tenant_id, name,
+                {'uploaded_file': file.filename},
+                get_client_ip(request)
+            )
+        
+        return {'status': 'ok'}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
