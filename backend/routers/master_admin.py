@@ -874,18 +874,20 @@ async def list_databases(
         exists = False
         size = None
         try:
-            conn = psycopg2.connect(dbname=db_name, host='localhost')
+            conn = psycopg2.connect(dbname=db_name, host='localhost', user='dashboard')
             conn.close()
             exists = True
             
             # Get size
-            conn = psycopg2.connect(dbname='postgres', host='localhost')
+            conn = psycopg2.connect(dbname='postgres', host='localhost', user='dashboard')
             cur = conn.cursor()
             cur.execute("SELECT pg_database_size(%s)", (db_name,))
             size = cur.fetchone()[0]
             conn.close()
-        except:
-            pass
+        except Exception as e:
+            # Log the actual error for debugging
+            import logging
+            logging.getLogger(__name__).warning(f"DB check failed for {db_name}: {e}")
         
         # Check last backup
         last_backup = None
@@ -1176,7 +1178,7 @@ async def get_tenant_users(
     
     users = []
     try:
-        conn = psycopg2.connect(dbname=db_name, host='localhost')
+        conn = psycopg2.connect(dbname=db_name, host='localhost', user='dashboard')
         cur = conn.cursor()
         cur.execute("""
             SELECT id, email, name, role, active, last_login, created_at
@@ -1225,7 +1227,7 @@ async def disable_tenant_user(
         db_name = database_name or f"runsheet_{slug}"
     
     try:
-        conn = psycopg2.connect(dbname=db_name, host='localhost')
+        conn = psycopg2.connect(dbname=db_name, host='localhost', user='dashboard')
         cur = conn.cursor()
         cur.execute("UPDATE users SET active = FALSE WHERE id = %s RETURNING email", (user_id,))
         user_email = cur.fetchone()
@@ -1274,7 +1276,7 @@ async def enable_tenant_user(
         db_name = database_name or f"runsheet_{slug}"
     
     try:
-        conn = psycopg2.connect(dbname=db_name, host='localhost')
+        conn = psycopg2.connect(dbname=db_name, host='localhost', user='dashboard')
         cur = conn.cursor()
         cur.execute("UPDATE users SET active = TRUE WHERE id = %s RETURNING email", (user_id,))
         user_email = cur.fetchone()
