@@ -17,7 +17,7 @@ import secrets
 import bcrypt
 import logging
 
-from master_database import get_master_db
+from master_database import get_master_session
 from master_models import Tenant, TenantRequest, TenantSession
 
 logger = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ def get_tenant_from_session(request: Request, db: Session) -> Optional[Tenant]:
 
 async def require_tenant_auth(
     request: Request,
-    db: Session = Depends(get_master_db)
+    db: Session = Depends(get_master_session)
 ) -> Tenant:
     tenant = get_tenant_from_session(request, db)
     if not tenant:
@@ -128,7 +128,7 @@ async def tenant_login(
     data: TenantLoginRequest,
     request: Request,
     response: Response,
-    db: Session = Depends(get_master_db)
+    db: Session = Depends(get_master_session)
 ):
     tenant = db.query(Tenant).filter(
         Tenant.slug == data.slug.lower().strip()
@@ -183,7 +183,7 @@ async def tenant_login(
 async def tenant_logout(
     request: Request,
     response: Response,
-    db: Session = Depends(get_master_db)
+    db: Session = Depends(get_master_session)
 ):
     session = get_session_from_cookie(request, db)
     
@@ -200,7 +200,7 @@ async def tenant_logout(
 @router.get("/session", response_model=SessionCheckResponse)
 async def check_session(
     request: Request,
-    db: Session = Depends(get_master_db)
+    db: Session = Depends(get_master_session)
 ):
     tenant = get_tenant_from_session(request, db)
     
@@ -218,7 +218,7 @@ async def check_session(
 @router.post("/signup-request")
 async def submit_signup_request(
     data: TenantSignupRequest,
-    db: Session = Depends(get_master_db)
+    db: Session = Depends(get_master_session)
 ):
     slug = data.requested_slug.lower().strip()
     
@@ -262,7 +262,7 @@ async def submit_signup_request(
 @router.get("/requests")
 async def list_tenant_requests(
     status: Optional[str] = None,
-    db: Session = Depends(get_master_db)
+    db: Session = Depends(get_master_session)
 ):
     query = db.query(TenantRequest).order_by(TenantRequest.created_at.desc())
     
@@ -294,7 +294,7 @@ async def approve_tenant_request(
     request_id: int,
     initial_password: str,
     admin_name: str = "System",
-    db: Session = Depends(get_master_db)
+    db: Session = Depends(get_master_session)
 ):
     tenant_request = db.query(TenantRequest).filter(
         TenantRequest.id == request_id
@@ -342,7 +342,7 @@ async def reject_tenant_request(
     request_id: int,
     reason: str,
     admin_name: str = "System",
-    db: Session = Depends(get_master_db)
+    db: Session = Depends(get_master_session)
 ):
     tenant_request = db.query(TenantRequest).filter(
         TenantRequest.id == request_id
