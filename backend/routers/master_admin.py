@@ -199,7 +199,7 @@ async def master_login(data: MasterLoginRequest, request: Request, response: Res
             key='master_session',
             value=session_token,
             httponly=True,
-            secure=True,
+            secure=False,  # Set True in production with HTTPS
             samesite='lax',
             max_age=SESSION_HOURS * 3600,
             domain='.cadreport.com'
