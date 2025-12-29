@@ -1329,7 +1329,7 @@ async def generate_monthly_pdf_report(
     category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Generate Monthly Chiefs Report PDF matching the UI format
+    """Generate Monthly Chiefs Report PDF with logo and proper template formatting
     
     FIRE reports include: damage/injury stats, mutual aid tracking
     EMS reports: simplified without damage/injury/mutual aid sections
@@ -1338,7 +1338,7 @@ async def generate_monthly_pdf_report(
     # Get monthly report data
     report = await get_monthly_chiefs_report(year, month, category, db)
     
-    # Determine if this is a FIRE report (damage/injury/mutual aid only for FIRE)
+    # Determine if this is a FIRE report
     is_fire_report = category and category.upper() == 'FIRE'
     
     try:
@@ -1346,209 +1346,310 @@ async def generate_monthly_pdf_report(
         from reportlab.lib.pagesizes import letter
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import inch
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
-        from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+        from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+        import base64
         
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
-        styles = getSampleStyleSheet()
+        doc = SimpleDocTemplate(
+            buffer, 
+            pagesize=letter, 
+            topMargin=0.4*inch, 
+            bottomMargin=0.4*inch,
+            leftMargin=0.5*inch,
+            rightMargin=0.5*inch
+        )
         
-        # Custom styles
-        title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=16, alignment=TA_CENTER, spaceAfter=4)
-        subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], fontSize=14, alignment=TA_CENTER, textColor=colors.grey, spaceAfter=20)
-        section_style = ParagraphStyle('Section', parent=styles['Heading2'], fontSize=12, spaceAfter=8, textColor=colors.HexColor('#333333'))
+        # Brand color
+        brand_green = colors.HexColor('#1e6b35')
+        dark_header = colors.HexColor('#2c3e50')
+        light_bg = colors.HexColor('#f8f8f8')
+        
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('Title', fontSize=18, fontName='Helvetica-Bold', textColor=colors.black)
+        subtitle_style = ParagraphStyle('Subtitle', fontSize=12, fontName='Helvetica-Bold', textColor=brand_green)
+        section_style = ParagraphStyle('Section', fontSize=10, fontName='Helvetica-Bold', textColor=brand_green, spaceBefore=10, spaceAfter=4)
         
         elements = []
         
-        # Title
-        elements.append(Paragraph("GLEN MOORE FIRE CO. MONTHLY REPORT", title_style))
-        cat_label = f" ({category.upper()})" if category else ""
-        elements.append(Paragraph(f"{report['month_name']} {report['year']}{cat_label}", subtitle_style))
+        # Get logo from branding settings
+        logo_result = db.execute(
+            text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo'")
+        ).fetchone()
+        
+        logo_image = None
+        if logo_result and logo_result[0]:
+            try:
+                logo_bytes = base64.b64decode(logo_result[0])
+                logo_buffer = io.BytesIO(logo_bytes)
+                logo_image = Image(logo_buffer, width=0.55*inch, height=0.55*inch)
+            except:
+                pass
+        
+        # Header with logo
+        cat_label = f" — {'Fire' if category and category.upper() == 'FIRE' else 'EMS'}" if category else ""
+        
+        if logo_image:
+            header_data = [[
+                logo_image,
+                [
+                    Paragraph("GLEN MOORE FIRE COMPANY", title_style),
+                    Paragraph(f"Monthly Activity Report — {report['month_name']} {report['year']}{cat_label}", subtitle_style)
+                ]
+            ]]
+            header_table = Table(header_data, colWidths=[0.7*inch, 6.8*inch])
+            header_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            elements.append(header_table)
+        else:
+            elements.append(Paragraph("GLEN MOORE FIRE COMPANY", title_style))
+            elements.append(Spacer(1, 2))
+            elements.append(Paragraph(f"Monthly Activity Report — {report['month_name']} {report['year']}{cat_label}", subtitle_style))
+        
+        # Green header line
+        line_table = Table([['']], colWidths=[7.5*inch])
+        line_table.setStyle(TableStyle([
+            ('LINEABOVE', (0, 0), (-1, 0), 2, brand_green),
+        ]))
+        elements.append(Spacer(1, 4))
+        elements.append(line_table)
+        elements.append(Spacer(1, 8))
         
         # =================================================================
-        # CALL SUMMARY
+        # CALL SUMMARY - 4-column grid
         # =================================================================
         elements.append(Paragraph("CALL SUMMARY", section_style))
         
-        cs = report['call_summary']
-        
-        # Format currency values (stored in cents)
+        # Helper for currency
         def fmt_currency(cents):
-            return f"${cents / 100:,.0f}"
+            return f"${(cents or 0) / 100:,.0f}"
         
-        # Base summary data (all reports)
+        cs = report['call_summary']
+        rt = report['response_times'] or {}
+        
         summary_data = [
-            ["Number of Calls for Month", str(cs['number_of_calls'])],
-            ["Number of Men", str(cs['number_of_men'])],
-            ["Hours", f"{cs['hours']:.2f}"],
-            ["Man Hours", f"{cs['man_hours']:.2f}"],
-            ["vs. Same Month Last Year", f"{'+' if cs['change'] >= 0 else ''}{cs['change']} ({'+' if cs['percent_change'] >= 0 else ''}{cs['percent_change']:.0f}%)"],
+            [
+                Paragraph("<b>Total Calls</b>", styles['Normal']),
+                Paragraph("<b>Personnel</b>", styles['Normal']),
+                Paragraph("<b>Hours</b>", styles['Normal']),
+                Paragraph("<b>Man Hours</b>", styles['Normal']),
+            ],
+            [
+                Paragraph(f"<font size=16><b>{cs['number_of_calls']}</b></font>", styles['Normal']),
+                Paragraph(f"<font size=16><b>{cs['number_of_men']}</b></font>", styles['Normal']),
+                Paragraph(f"<font size=16><b>{cs['hours']:.1f}</b></font>", styles['Normal']),
+                Paragraph(f"<font size=16><b>{cs['man_hours']:.1f}</b></font>", styles['Normal']),
+            ],
+            [
+                Paragraph(f"<font size=8>vs last year: {'+' if cs['change'] >= 0 else ''}{cs['change']}</font>", styles['Normal']),
+                "", "", ""
+            ],
         ]
         
-        # Add damage/injury stats only for FIRE reports
-        if is_fire_report:
-            summary_data.extend([
-                ["Property at Risk", fmt_currency(cs.get('property_at_risk', 0))],
-                ["Fire Damages", fmt_currency(cs.get('fire_damages', 0))],
-                ["FF Injuries", str(cs.get('ff_injuries', 0))],
-                ["Civilian Injuries", str(cs.get('civilian_injuries', 0))],
-            ])
-        
-        summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
+        summary_table = Table(summary_data, colWidths=[1.875*inch]*4)
         summary_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('PADDING', (0, 0), (-1, -1), 6),
-            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, 0), (-1, -1), light_bg),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('INNERGRID', (0, 0), (-1, 1), 0.5, colors.grey),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ]))
         elements.append(summary_table)
-        elements.append(Spacer(1, 0.25*inch))
         
         # =================================================================
-        # MUNICIPALITY SUMMARY
+        # RESPONSE TIMES - 3-column
         # =================================================================
-        elements.append(Paragraph("MUNICIPALITY SUMMARY", section_style))
+        elements.append(Paragraph("RESPONSE TIMES", section_style))
         
+        rt_data = [
+            [
+                Paragraph("<b>Avg Turnout</b>", styles['Normal']),
+                Paragraph("<b>Avg Response</b>", styles['Normal']),
+                Paragraph("<b>Avg On Scene</b>", styles['Normal']),
+            ],
+            [
+                Paragraph(f"<font size=14><b>{rt.get('avg_turnout_minutes', 0) or 0:.1f} min</b></font>", styles['Normal']),
+                Paragraph(f"<font size=14><b>{rt.get('avg_response_minutes', 0) or 0:.1f} min</b></font>", styles['Normal']),
+                Paragraph(f"<font size=14><b>{rt.get('avg_on_scene_minutes', 0) or 0:.1f} min</b></font>", styles['Normal']),
+            ],
+        ]
+        
+        rt_table = Table(rt_data, colWidths=[2.5*inch]*3)
+        rt_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), light_bg),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(rt_table)
+        elements.append(Spacer(1, 8))
+        
+        # =================================================================
+        # TWO-COLUMN LAYOUT: Municipalities | Units
+        # =================================================================
+        
+        # Municipality table
         if is_fire_report:
-            # FIRE: Full table with damage/injury columns
-            muni_data = [["Municipality", "Calls", "Man Hrs", "Prop Risk", "Damages", "FF Inj", "Civ Inj"]]
-            for m in report['municipalities'][:12]:
+            muni_headers = ["Municipality", "Calls", "Man Hrs", "Prop Risk", "Damages"]
+            muni_widths = [1.1*inch, 0.4*inch, 0.5*inch, 0.6*inch, 0.6*inch]
+            muni_data = [muni_headers]
+            for m in report['municipalities'][:8]:
                 muni_data.append([
-                    m['municipality'], 
-                    str(m['calls']), 
-                    f"{m['manhours']:.1f}",
+                    m['municipality'][:15],
+                    str(m['calls']),
+                    f"{m['manhours']:.0f}",
                     fmt_currency(m.get('property_at_risk', 0)),
                     fmt_currency(m.get('fire_damages', 0)),
-                    str(m.get('ff_injuries', 0)),
-                    str(m.get('civilian_injuries', 0))
                 ])
-            if not report['municipalities']:
-                muni_data.append(["No data", "", "", "", "", "", ""])
-            
-            muni_table = Table(muni_data, colWidths=[1.4*inch, 0.4*inch, 0.6*inch, 0.7*inch, 0.7*inch, 0.5*inch, 0.5*inch])
         else:
-            # EMS: Simple table without damage/injury columns
-            muni_data = [["Municipality", "Calls", "Man Hours"]]
-            for m in report['municipalities'][:12]:
+            muni_headers = ["Municipality", "Calls", "Man Hours"]
+            muni_widths = [1.8*inch, 0.6*inch, 0.8*inch]
+            muni_data = [muni_headers]
+            for m in report['municipalities'][:10]:
                 muni_data.append([
-                    m['municipality'], 
-                    str(m['calls']), 
-                    f"{m['manhours']:.1f}"
+                    m['municipality'][:20],
+                    str(m['calls']),
+                    f"{m['manhours']:.1f}",
                 ])
-            if not report['municipalities']:
-                muni_data.append(["No data", "", ""])
-            
-            muni_table = Table(muni_data, colWidths=[3*inch, 1*inch, 1*inch])
         
+        if len(muni_data) == 1:
+            muni_data.append(["No data", "", ""] if not is_fire_report else ["No data", "", "", "", ""])
+        
+        muni_table = Table(muni_data, colWidths=muni_widths)
         muni_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('BACKGROUND', (0, 0), (-1, 0), dark_header),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('PADDING', (0, 0), (-1, -1), 3),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
         ]))
-        elements.append(muni_table)
-        elements.append(Spacer(1, 0.2*inch))
         
-        # =================================================================
-        # RESPONSES PER UNIT
-        # =================================================================
-        elements.append(Paragraph("RESPONSES PER UNIT", section_style))
-        
-        unit_data = [["Unit", "Responses"]]
-        for u in report['responses_per_unit'][:12]:
-            unit_data.append([u['unit_name'] or u['unit'], str(u['responses'])])
-        if not report['responses_per_unit']:
+        # Unit table
+        unit_data = [["Unit", "Resp"]]
+        for u in report['responses_per_unit'][:10]:
+            unit_data.append([
+                (u['unit_name'] or u['unit'])[:18],
+                str(u['responses'])
+            ])
+        if len(unit_data) == 1:
             unit_data.append(["No data", ""])
         
-        unit_table = Table(unit_data, colWidths=[2.2*inch, 0.8*inch])
+        unit_table = Table(unit_data, colWidths=[1.4*inch, 0.5*inch])
         unit_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('BACKGROUND', (0, 0), (-1, 0), dark_header),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('PADDING', (0, 0), (-1, -1), 4),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
         ]))
-        elements.append(unit_table)
-        elements.append(Spacer(1, 0.2*inch))
+        
+        # Combine into two-column layout
+        two_col = Table([
+            [
+                [Paragraph("RESPONSE BY MUNICIPALITY", section_style), muni_table],
+                [Paragraph("RESPONSES BY UNIT", section_style), unit_table]
+            ]
+        ], colWidths=[3.9*inch, 3.6*inch])
+        two_col.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        elements.append(two_col)
         
         # =================================================================
-        # TYPE OF INCIDENT
+        # INCIDENT TYPES
         # =================================================================
-        elements.append(Paragraph("TYPE OF INCIDENT", section_style))
+        elements.append(Paragraph("INCIDENT TYPES", section_style))
         
         type_data = [["Type", "Count"]]
-        for t in report['incident_types'][:15]:
-            type_data.append([t['type'], str(t['count'])])
-        if not report['incident_types']:
+        for t in report['incident_types'][:12]:
+            type_data.append([t['type'][:35], str(t['count'])])
+        if len(type_data) == 1:
             type_data.append(["No data", ""])
         
-        type_table = Table(type_data, colWidths=[2.8*inch, 0.6*inch])
+        type_table = Table(type_data, colWidths=[3.2*inch, 0.5*inch])
         type_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('BACKGROUND', (0, 0), (-1, 0), dark_header),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('PADDING', (0, 0), (-1, -1), 4),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
         ]))
         elements.append(type_table)
-        elements.append(Spacer(1, 0.2*inch))
         
         # =================================================================
-        # MUTUAL AID - FIRE ONLY
+        # FIRE ONLY: Mutual Aid + Property/Safety
         # =================================================================
         if is_fire_report:
-            elements.append(Paragraph("MUTUAL AID ASSIST TO", section_style))
-            
+            # Mutual Aid
+            elements.append(Paragraph("MUTUAL AID GIVEN", section_style))
             ma_data = [["Station", "Count"]]
             if report['mutual_aid']:
-                for ma in report['mutual_aid'][:10]:
+                for ma in report['mutual_aid'][:6]:
                     ma_data.append([ma['station'], str(ma['count'])])
             else:
                 ma_data.append(["None", ""])
             
-            ma_table = Table(ma_data, colWidths=[2*inch, 0.6*inch])
+            ma_table = Table(ma_data, colWidths=[2*inch, 0.5*inch])
             ma_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                ('BACKGROUND', (0, 0), (-1, 0), dark_header),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('PADDING', (0, 0), (-1, -1), 4),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
                 ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
             ]))
             elements.append(ma_table)
-            elements.append(Spacer(1, 0.2*inch))
-        
-        # =================================================================
-        # RESPONSE TIMES
-        # =================================================================
-        rt = report['response_times']
-        if rt:
-            elements.append(Paragraph("RESPONSE TIMES", section_style))
-            rt_data = [
-                ["Avg Turnout Time", f"{rt['avg_turnout_minutes']:.1f} min" if rt['avg_turnout_minutes'] else "-"],
-                ["Avg Response Time", f"{rt['avg_response_minutes']:.1f} min" if rt['avg_response_minutes'] else "-"],
-                ["Avg On Scene Time", f"{rt['avg_on_scene_minutes']:.1f} min" if rt['avg_on_scene_minutes'] else "-"],
-            ]
             
-            rt_table = Table(rt_data, colWidths=[2*inch, 1.5*inch])
-            rt_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+            # Property & Safety summary
+            elements.append(Paragraph("PROPERTY & SAFETY", section_style))
+            safety_data = [
+                ["Property at Risk", "Fire Damages", "FF Injuries", "Civilian Injuries"],
+                [
+                    fmt_currency(cs.get('property_at_risk', 0)),
+                    fmt_currency(cs.get('fire_damages', 0)),
+                    str(cs.get('ff_injuries', 0)),
+                    str(cs.get('civilian_injuries', 0))
+                ]
+            ]
+            safety_table = Table(safety_data, colWidths=[1.875*inch]*4)
+            safety_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), dark_header),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('FONTSIZE', (0, 1), (-1, 1), 12),
+                ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('PADDING', (0, 0), (-1, -1), 6),
-                ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-                ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
             ]))
-            elements.append(rt_table)
+            elements.append(safety_table)
         
         # Footer
         elements.append(Spacer(1, 0.3*inch))
-        elements.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", 
-                                  ParagraphStyle('Footer', fontSize=8, textColor=colors.grey, alignment=TA_CENTER)))
+        footer_style = ParagraphStyle('Footer', fontSize=8, textColor=colors.grey, alignment=TA_CENTER)
+        elements.append(Paragraph(f"Glen Moore Fire Company — Station 48 | Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", footer_style))
         
         doc.build(elements)
         buffer.seek(0)

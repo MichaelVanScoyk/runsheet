@@ -1478,7 +1478,8 @@ function BrandingTab() {
 
         if (res.ok) {
           setMessage({ type: 'success', text: 'Logo uploaded successfully' });
-          loadLogo();
+          // Reload logo after successful upload
+          await loadLogo();
         } else {
           const err = await res.json();
           setMessage({ type: 'error', text: err.detail || 'Upload failed' });

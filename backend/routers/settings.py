@@ -429,15 +429,20 @@ async def upload_branding_logo(
         except:
             pass
     
-    # Validate it's valid base64
+    # Validate it's valid base64 and detect actual mime type from bytes
     import base64
     try:
         decoded = base64.b64decode(data)
-        # Basic image validation - check for common headers
-        if not (decoded[:8].startswith(b'\x89PNG') or  # PNG
-                decoded[:2] == b'\xff\xd8' or          # JPEG
-                decoded[:6] in (b'GIF87a', b'GIF89a') or # GIF
-                decoded[:4] == b'RIFF'):                # WebP
+        # Detect actual mime type from magic bytes (not from data URL header)
+        if decoded[:8].startswith(b'\x89PNG'):
+            logo.mime_type = 'image/png'
+        elif decoded[:2] == b'\xff\xd8':
+            logo.mime_type = 'image/jpeg'
+        elif decoded[:6] in (b'GIF87a', b'GIF89a'):
+            logo.mime_type = 'image/gif'
+        elif decoded[:4] == b'RIFF':
+            logo.mime_type = 'image/webp'
+        else:
             raise HTTPException(status_code=400, detail="Invalid image format. Supported: PNG, JPEG, GIF, WebP")
     except Exception as e:
         if "Invalid image format" in str(e):
