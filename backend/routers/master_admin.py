@@ -194,15 +194,14 @@ async def master_login(data: MasterLoginRequest, request: Request, response: Res
         # Log
         log_audit(db, admin_id, email, 'LOGIN', 'ADMIN', admin_id, name, ip_address=ip_address)
         
-        # Set cookie
+        # Set cookie - no domain restriction for master admin (only used on main domain)
         response.set_cookie(
             key='master_session',
             value=session_token,
             httponly=True,
             secure=False,  # Set True in production with HTTPS
             samesite='lax',
-            max_age=SESSION_HOURS * 3600,
-            domain='.cadreport.com'
+            max_age=SESSION_HOURS * 3600
         )
         
         return {
@@ -225,7 +224,7 @@ async def master_logout(request: Request, response: Response):
             db.execute("DELETE FROM master_sessions WHERE session_token = %s", (session_token,))
             db.commit()
     
-    response.delete_cookie('master_session', domain='.cadreport.com')
+    response.delete_cookie('master_session')
     return {'status': 'ok'}
 
 

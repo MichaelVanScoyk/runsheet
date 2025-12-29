@@ -2219,6 +2219,22 @@
             } catch (err) {}
             window.location.reload();
         }
+
+        // Check for existing master admin session on page load
+        async function checkExistingSession() {
+            try {
+                const res = await fetch('/api/master/me', { credentials: 'include' });
+                if (res.ok) {
+                    const admin = await res.json();
+                    showAdminDashboard(admin);
+                }
+            } catch (err) {
+                // No valid session, show landing page
+            }
+        }
+
+        // Run on page load
+        document.addEventListener('DOMContentLoaded', checkExistingSession);
     </script>
 </body>
 </html>
