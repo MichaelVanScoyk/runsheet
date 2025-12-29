@@ -41,7 +41,7 @@ cd /opt/runsheet/cad
 nohup /opt/runsheet/runsheet_env/bin/python cad_listener.py \
     --port 19117 \
     --tenant glenmoorefc \
-    --api-url https://glenmoorefc.cadreport.com \
+    --api-url http://127.0.0.1:8001 \
     --timezone America/New_York \
     > /opt/runsheet/cad/listener.log 2>&1 &
 disown
