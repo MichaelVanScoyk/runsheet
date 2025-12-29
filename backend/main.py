@@ -3,11 +3,100 @@ RunSheet - Fire Incident Reporting System
 Station 48 - Glen Moore Fire Company
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 from routers import incidents, lookups, apparatus, personnel, settings, reports, neris_codes, admin, backup, tenant_auth
 from database import engine, Base
+from master_database import MasterSessionLocal
+from master_models import TenantSession, Tenant
+from datetime import datetime, timezone
+
+# Routes that don't require tenant authentication
+PUBLIC_PATHS = [
+    "/",
+    "/health",
+    "/api/tenant/login",
+    "/api/tenant/logout",
+    "/api/tenant/session",
+    "/api/tenant/signup-request",
+]
+
+
+class TenantAuthMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware to enforce tenant authentication on all API routes.
+    
+    Checks for valid tenant_session cookie before allowing access.
+    """
+    
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        
+        # Allow public paths
+        if path in PUBLIC_PATHS or not path.startswith("/api"):
+            return await call_next(request)
+        
+        # Check for session cookie
+        session_token = request.cookies.get("tenant_session")
+        
+        if not session_token:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Not authenticated - no session"}
+            )
+        
+        # Validate session against database
+        db = MasterSessionLocal()
+        try:
+            session = db.query(TenantSession).filter(
+                TenantSession.session_token == session_token
+            ).first()
+            
+            if not session:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Not authenticated - invalid session"}
+                )
+            
+            # Check expiration (if set)
+            if session.expires_at and session.expires_at < datetime.now(timezone.utc):
+                db.delete(session)
+                db.commit()
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Session expired"}
+                )
+            
+            # Check tenant is active
+            tenant = db.query(Tenant).filter(
+                Tenant.id == session.tenant_id,
+                Tenant.status == 'active'
+            ).first()
+            
+            if not tenant:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Tenant not found or inactive"}
+                )
+            
+            # Update last used timestamp
+            session.last_used_at = datetime.now(timezone.utc)
+            db.commit()
+            
+            # Store tenant info in request state for use by routes
+            request.state.tenant = tenant
+            request.state.tenant_id = tenant.id
+            request.state.tenant_slug = tenant.slug
+            
+        finally:
+            db.close()
+        
+        # Continue to the actual route
+        return await call_next(request)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,6 +112,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Add tenant auth middleware BEFORE CORS
+app.add_middleware(TenantAuthMiddleware)
 
 # CORS
 app.add_middleware(

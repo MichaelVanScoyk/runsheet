@@ -5,6 +5,7 @@ const API_BASE = '/api';
 
 const api = axios.create({
   baseURL: API_BASE,
+  withCredentials: true,  // Send cookies with every request for tenant auth
 });
 
 // ============================================================================
