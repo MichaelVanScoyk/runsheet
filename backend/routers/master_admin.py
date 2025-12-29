@@ -837,6 +837,12 @@ async def get_audit_log(
 BACKUP_DIR = '/opt/runsheet/backups'
 MIGRATIONS_DIR = '/opt/runsheet/migrations'
 
+# PostgreSQL tool paths (Ubuntu default)
+PG_DUMP = '/usr/bin/pg_dump'
+PSQL = '/usr/bin/psql'
+CREATEDB = '/usr/bin/createdb'
+DROPDB = '/usr/bin/dropdb'
+
 
 def format_size(size_bytes):
     """Format bytes to human readable"""
@@ -973,7 +979,7 @@ async def provision_database(
     try:
         # Create database
         result = subprocess.run(
-            ['createdb', db_name],
+            [CREATEDB, db_name],
             capture_output=True,
             text=True
         )
@@ -984,7 +990,7 @@ async def provision_database(
         schema_file = os.path.join(MIGRATIONS_DIR, '001_initial_schema.sql')
         if os.path.exists(schema_file):
             result = subprocess.run(
-                ['psql', db_name, '-f', schema_file],
+                [PSQL, db_name, '-f', schema_file],
                 capture_output=True,
                 text=True
             )
@@ -1042,7 +1048,7 @@ async def backup_database(
     try:
         # Run pg_dump
         result = subprocess.run(
-            ['pg_dump', '-Fp', '-f', filepath, db_name],
+            [PG_DUMP, '-Fp', '-f', filepath, db_name],
             capture_output=True,
             text=True
         )
@@ -1122,14 +1128,14 @@ async def restore_database(
     
     try:
         # Drop and recreate database
-        subprocess.run(['dropdb', '--if-exists', db_name], capture_output=True)
-        result = subprocess.run(['createdb', db_name], capture_output=True, text=True)
+        subprocess.run([DROPDB, '--if-exists', db_name], capture_output=True)
+        result = subprocess.run([CREATEDB, db_name], capture_output=True, text=True)
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"Failed to create database: {result.stderr}")
         
         # Restore from backup
         result = subprocess.run(
-            ['psql', db_name, '-f', filepath],
+            [PSQL, db_name, '-f', filepath],
             capture_output=True,
             text=True
         )
@@ -1338,15 +1344,15 @@ async def restore_database_upload(
             tmp_path = tmp.name
         
         # Drop and recreate database
-        subprocess.run(['dropdb', '--if-exists', db_name], capture_output=True)
-        result = subprocess.run(['createdb', db_name], capture_output=True, text=True)
+        subprocess.run([DROPDB, '--if-exists', db_name], capture_output=True)
+        result = subprocess.run([CREATEDB, db_name], capture_output=True, text=True)
         if result.returncode != 0:
             os.unlink(tmp_path)
             raise HTTPException(status_code=500, detail=f"Failed to create database: {result.stderr}")
         
         # Restore from backup
         result = subprocess.run(
-            ['psql', db_name, '-f', tmp_path],
+            [PSQL, db_name, '-f', tmp_path],
             capture_output=True,
             text=True
         )
