@@ -1,25 +1,55 @@
 <html>
 <head><title>Dispatch Report</title></head>
 <body>
-<h2>Chester County Department of Emergency Services</h2>
-<h3>CAD Dispatch Report</h3>
-<table border="1">
-<tr><td><b>Event Number:</b></td><td>TEST123456</td></tr>
-<tr><td><b>Event Type:</b></td><td>FIRE-STRUCTURE</td></tr>
-<tr><td><b>Event Subtype:</b></td><td>DWELLING</td></tr>
-<tr><td><b>Address:</b></td><td>123 TEST LANE</td></tr>
-<tr><td><b>Municipality:</b></td><td>WEST VINCENT TWP</td></tr>
-<tr><td><b>Cross Streets:</b></td><td>MAIN ST / OAK AVE</td></tr>
-<tr><td><b>ESZ:</b></td><td>48001</td></tr>
-<tr><td><b>Caller Name:</b></td><td>JOHN DOE</td></tr>
-<tr><td><b>Caller Phone:</b></td><td>610-555-1234</td></tr>
-<tr><td><b>Dispatch Time:</b></td><td>12-29-25 12:30:00</td></tr>
+<table><tr><td class="Title">Dispatch Report</td></tr></table>
+
+<table class="EventInfo">
+<tr>
+<td>Event ID:</td><td>3972999</td>
+<td>Event:</td><td>TEST123456</td>
+</tr>
+<tr>
+<td>Dispatch Time:</td><td>12-29-25 12:30:00</td>
+<td>Event Type:</td><td>FIRE</td>
+</tr>
+<tr>
+<td>Sub-Type:</td><td>STRUCTURE</td>
+<td>Agency:</td><td>FIRE</td>
+</tr>
+<tr>
+<td>Dispatch Group:</td><td>48FD</td>
+<td></td><td></td>
+</tr>
 </table>
-<h3>Responding Units</h3>
-<table border="1">
-<tr><th>Unit</th><th>Station</th><th>Agency</th><th>Time</th></tr>
-<tr><td>ENG481</td><td>48</td><td>GLEN MOORE FC</td><td>12:30:15</td></tr>
-<tr><td>TWR48</td><td>48</td><td>GLEN MOORE FC</td><td>12:30:20</td></tr>
+
+<table><tr><td class="Header">Location</td></tr></table>
+<table class="EventInfo">
+<tr>
+<td>Address:</td><td>123 TEST LANE</td>
+</tr>
+<tr>
+<td>Cross Streets:</td><td>MAIN ST / OAK AVE</td>
+</tr>
+<tr>
+<td>Municipality:</td><td>WNANT</td>
+<td>ESZ:</td><td>4801</td>
+</tr>
 </table>
+
+<table><tr><td class="Header">Caller Information</td></tr></table>
+<table class="EventInfo">
+<tr>
+<td>Caller Name:</td><td>JOHN DOE</td>
+<td>Caller Phone:</td><td>(610) 555-1234</td>
+</tr>
+</table>
+
+<table><tr><td class="Header">Responding Units</td></tr></table>
+<table class="EventUnits">
+<tr><th>Unit</th><th>Station</th><th>Agency</th><th>Status</th><th>Time</th></tr>
+<tr><td>ENG481</td><td>48</td><td>GLEN MOORE</td><td>DP</td><td>12:30:15</td></tr>
+<tr><td>TWR48</td><td>48</td><td>GLEN MOORE</td><td>DP</td><td>12:30:20</td></tr>
+</table>
+
 </body>
 </html>
