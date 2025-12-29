@@ -662,8 +662,10 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
         await updateIncident(incident.id, cleanData, editedBy);
         incidentId = incident.id;
       } else {
+        // Use provided CAD number, or generate MANUAL- only if completely empty
+        const cadNumber = formData.cad_event_number?.trim() || `MANUAL-${Date.now()}`;
         const res = await createIncident({
-          cad_event_number: cleanData.cad_event_number || `MANUAL-${Date.now()}`,
+          cad_event_number: cadNumber,
           cad_event_type: cleanData.cad_event_type,
           cad_event_subtype: cleanData.cad_event_subtype,
           address: cleanData.address,
