@@ -39,7 +39,7 @@ function ReportsPage() {
   
   // Loading/UI
   const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
+
   const queryInputRef = useRef(null);
 
   // =========================================================================
@@ -276,34 +276,10 @@ function ReportsPage() {
   // PDF DOWNLOAD - Shared function that works for both direct and query results
   // =========================================================================
 
-  const downloadPdf = async (year, month, category) => {
-    setGenerating(true);
-    try {
-      const url = `${API_BASE}/api/reports/pdf/monthly?year=${year}&month=${month}&category=${category}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        const err = await response.json();
-        alert(err.detail || 'Failed to generate PDF');
-        return;
-      }
-      
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      const monthName = new Date(year, month - 1, 1).toLocaleString('default', { month: 'long' });
-      a.download = `chiefs_report_${category.toLowerCase()}_${year}_${String(month).padStart(2, '0')}_${monthName}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(blobUrl);
-      a.remove();
-    } catch (err) {
-      console.error('Failed to download PDF:', err);
-      alert('Failed to generate PDF');
-    } finally {
-      setGenerating(false);
-    }
+  const openPrintableReport = (year, month, category) => {
+    // Open HTML report in new window for printing
+    const url = `${API_BASE}/api/reports/html/monthly?year=${year}&month=${month}&category=${category}`;
+    window.open(url, '_blank');
   };
 
 
@@ -475,8 +451,7 @@ function ReportsPage() {
                 category={categoryFilter}
                 onMonthChange={setReportMonth}
                 onYearChange={setReportYear}
-                onDownloadPdf={() => downloadPdf(reportYear, reportMonth, categoryFilter)}
-                generating={generating}
+                onOpenPrint={() => openPrintableReport(reportYear, reportMonth, categoryFilter)}
                 showControls={true}
               />
             )}
@@ -521,8 +496,7 @@ function ReportsPage() {
             {activeReport === 'custom' && queryResult && (
               <CustomQueryResult 
                 result={queryResult} 
-                onDownloadPdf={downloadPdf}
-                generating={generating}
+                onOpenPrint={openPrintableReport}
               />
             )}
           </>
@@ -537,7 +511,7 @@ function ReportsPage() {
 // CHIEFS REPORT VIEW - Matches Paper Format
 // =============================================================================
 
-function ChiefsReportView({ report, month, year, category, onMonthChange, onYearChange, onDownloadPdf, generating, showControls = false }) {
+function ChiefsReportView({ report, month, year, category, onMonthChange, onYearChange, onOpenPrint, showControls = false }) {
   if (!report) return null;
 
   const cs = report.call_summary || {};
@@ -577,18 +551,10 @@ function ChiefsReportView({ report, month, year, category, onMonthChange, onYear
           </div>
           <div className="ml-auto flex gap-2">
             <button
-              onClick={onDownloadPdf}
-              disabled={generating}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 rounded-lg font-medium transition-colors flex items-center gap-2"
+              onClick={onOpenPrint}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors flex items-center gap-2"
             >
-              {generating ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                  Generating...
-                </>
-              ) : (
-                <>📄 Download PDF</>
-              )}
+              🖨️ Print Report
             </button>
           </div>
         </div>
@@ -1035,7 +1001,7 @@ function UnitReport({ data, startDate, endDate, onStartDateChange, onEndDateChan
 // CUSTOM QUERY RESULT
 // =============================================================================
 
-function CustomQueryResult({ result, onDownloadPdf, generating }) {
+function CustomQueryResult({ result, onOpenPrint }) {
   if (!result) return null;
 
   if (result.error) {
@@ -1061,18 +1027,10 @@ function CustomQueryResult({ result, onDownloadPdf, generating }) {
           </div>
           {result.type === 'chiefs' && result.pdfParams && (
             <button
-              onClick={() => onDownloadPdf(result.pdfParams.year, result.pdfParams.month, result.pdfParams.category)}
-              disabled={generating}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 rounded-lg font-medium transition-colors flex items-center gap-2"
+              onClick={() => onOpenPrint(result.pdfParams.year, result.pdfParams.month, result.pdfParams.category)}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors flex items-center gap-2"
             >
-              {generating ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                  Generating...
-                </>
-              ) : (
-                <>📄 Download PDF</>
-              )}
+              🖨️ Print Report
             </button>
           )}
         </div>
@@ -1087,8 +1045,7 @@ function CustomQueryResult({ result, onDownloadPdf, generating }) {
           category={result.data.category_filter || 'FIRE'}
           onMonthChange={() => {}}
           onYearChange={() => {}}
-          onDownloadPdf={() => onDownloadPdf(result.pdfParams.year, result.pdfParams.month, result.pdfParams.category)}
-          generating={generating}
+          onOpenPrint={() => onOpenPrint(result.pdfParams.year, result.pdfParams.month, result.pdfParams.category)}
           showControls={false}
         />
       )}
