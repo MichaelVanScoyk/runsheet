@@ -1396,8 +1396,8 @@ async def get_incident_html_report(
     personnel_lookup = {p[0]: f"{p[2]}, {p[1]}" for p in personnel_rows}
     
     # Apparatus lookup
-    apparatus_rows = db.execute(text("SELECT id, unit_designator, name, slot_count FROM apparatus WHERE active = true ORDER BY unit_designator")).fetchall()
-    apparatus_list = [{'id': a[0], 'unit_designator': a[1], 'name': a[2], 'slot_count': a[3] or 6} for a in apparatus_rows]
+    apparatus_rows = db.execute(text("SELECT id, unit_designator, name, ff_slots FROM apparatus WHERE active = true ORDER BY unit_designator")).fetchall()
+    apparatus_list = [{'id': a[0], 'unit_designator': a[1], 'name': a[2], 'ff_slots': a[3] or 4} for a in apparatus_rows]
     apparatus_lookup = {a['unit_designator']: a for a in apparatus_list}
     
     def fmt_time(dt):
