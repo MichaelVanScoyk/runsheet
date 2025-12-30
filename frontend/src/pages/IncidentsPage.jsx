@@ -281,10 +281,8 @@ function IncidentsPage() {
                         <button
                           className="btn btn-secondary btn-sm"
                           onClick={() => handlePrintIncident(i.id)}
-                          title="Print View"
-                          style={{ padding: '0.25rem 0.5rem' }}
                         >
-                          🖨️
+                          Print
                         </button>
                         <button
                           className="btn btn-secondary btn-sm"

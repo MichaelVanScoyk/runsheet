@@ -57,10 +57,8 @@ export default function ActionBar() {
             type="button" 
             className="btn btn-secondary"
             onClick={handlePrint}
-            title="Print View"
-            style={{ padding: '0.25rem 0.5rem' }}
           >
-            🖨️
+            Print
           </button>
         )}
         

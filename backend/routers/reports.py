@@ -1361,517 +1361,116 @@ async def get_incident_html_report(
     incident_id: int,
     db: Session = Depends(get_db)
 ):
-    """
-    Generate printable HTML report for a single incident.
-    Uses WeasyPrint for consistent PDF output across all browsers.
+    """Generate printable HTML report for a single incident."""
+    from settings_helper import format_local_time, format_local_date, get_timezone
     
-    Times are converted from UTC to station timezone using settings_helper functions.
-    """
-    from settings_helper import format_local_time, format_local_datetime, format_local_date, get_timezone
-    
-    # Get incident
-    incident = db.execute(text("""
-        SELECT * FROM incidents WHERE id = :id AND deleted_at IS NULL
-    """), {"id": incident_id}).fetchone()
-    
+    incident = db.execute(text("SELECT * FROM incidents WHERE id = :id AND deleted_at IS NULL"), {"id": incident_id}).fetchone()
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     
-    # Convert to dict for easier access
     inc = dict(incident._mapping)
     
-    # Get print settings
-    print_settings_result = db.execute(text("""
-        SELECT value FROM settings WHERE category = 'print' AND key = 'settings'
-    """)).fetchone()
+    # Print settings
+    ps_result = db.execute(text("SELECT value FROM settings WHERE category = 'print' AND key = 'settings'")).fetchone()
+    ps = {'showHeader': True, 'showTimes': True, 'showLocation': True, 'showDispatchInfo': True, 'showSituationFound': True, 'showExtentOfDamage': True, 'showServicesProvided': True, 'showNarrative': True, 'showPersonnelGrid': True, 'showOfficerInfo': True, 'showProblemsIssues': True, 'showCadUnits': True, 'showCadUnitDetails': False, 'showWeather': True, 'showCrossStreets': True}
+    if ps_result and ps_result[0]:
+        try: ps.update(json.loads(ps_result[0]))
+        except: pass
     
-    print_settings = {
-        'showHeader': True,
-        'showTimes': True,
-        'showLocation': True,
-        'showDispatchInfo': True,
-        'showSituationFound': True,
-        'showExtentOfDamage': True,
-        'showServicesProvided': True,
-        'showNarrative': True,
-        'showPersonnelGrid': True,
-        'showEquipmentUsed': True,
-        'showOfficerInfo': True,
-        'showProblemsIssues': True,
-        'showCadUnits': True,
-        'showNerisInfo': False,
-        'showWeather': True,
-        'showCrossStreets': True,
-        'showCallerInfo': False,
-    }
+    # Tenant settings
+    station_name = (db.execute(text("SELECT value FROM settings WHERE category = 'station' AND key = 'name'")).fetchone() or ["Fire Department"])[0]
+    station_short = (db.execute(text("SELECT value FROM settings WHERE category = 'station' AND key = 'short_name'")).fetchone() or ["Station"])[0]
+    logo_result = db.execute(text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo'")).fetchone()
+    logo_mime = db.execute(text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")).fetchone()
+    logo_url = f"data:{logo_mime[0] if logo_mime else 'image/png'};base64,{logo_result[0]}" if logo_result and logo_result[0] else ""
     
-    if print_settings_result and print_settings_result[0]:
-        try:
-            loaded = json.loads(print_settings_result[0])
-            print_settings.update(loaded)
-        except:
-            pass
-    
-    # ==========================================================================
-    # TENANT SETTINGS
-    # ==========================================================================
-    station_name_result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'station' AND key = 'name'")
-    ).fetchone()
-    station_name = station_name_result[0] if station_name_result else "Fire Department"
-    
-    station_short_result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'station' AND key = 'short_name'")
-    ).fetchone()
-    station_short_name = station_short_result[0] if station_short_result else "Station"
-    
-    # Logo
-    logo_result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo'")
-    ).fetchone()
-    logo_mime_result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")
-    ).fetchone()
-    
-    if logo_result and logo_result[0]:
-        mime_type = logo_mime_result[0] if logo_mime_result else 'image/png'
-        logo_data_url = f"data:{mime_type};base64,{logo_result[0]}"
-    else:
-        logo_data_url = ""
-    
-    # Get municipality display name
-    muni_display = inc.get('municipality_code', '')
+    # Municipality
+    muni = inc.get('municipality_code', '')
     if inc.get('municipality_id'):
-        muni_result = db.execute(text("""
-            SELECT display_name, name, code FROM municipalities WHERE id = :id
-        """), {"id": inc['municipality_id']}).fetchone()
-        if muni_result:
-            muni_display = muni_result[0] or muni_result[1] or muni_result[2]
+        mr = db.execute(text("SELECT display_name, name, code FROM municipalities WHERE id = :id"), {"id": inc['municipality_id']}).fetchone()
+        if mr: muni = mr[0] or mr[1] or mr[2]
     
-    # Get personnel assignments
-    personnel_data = db.execute(text("""
-        SELECT 
-            ip.slot_index,
-            ip.personnel_first_name,
-            ip.personnel_last_name,
-            ip.rank_name_snapshot,
-            a.unit_designator,
-            a.name as apparatus_name
-        FROM incident_personnel ip
-        JOIN incident_units iu ON ip.incident_unit_id = iu.id
-        JOIN apparatus a ON iu.apparatus_id = a.id
-        WHERE ip.incident_id = :id
-        ORDER BY a.unit_designator, ip.slot_index
-    """), {"id": incident_id}).fetchall()
+    # Personnel by unit
+    pdata = db.execute(text("SELECT ip.personnel_first_name, ip.personnel_last_name, ip.rank_name_snapshot, a.unit_designator, a.name FROM incident_personnel ip JOIN incident_units iu ON ip.incident_unit_id = iu.id JOIN apparatus a ON iu.apparatus_id = a.id WHERE ip.incident_id = :id ORDER BY a.unit_designator, ip.slot_index"), {"id": incident_id}).fetchall()
+    pbu = {}
+    for p in pdata:
+        if p[3] not in pbu: pbu[p[3]] = {'name': p[4], 'people': []}
+        pbu[p[3]]['people'].append({'name': f"{p[0]} {p[1]}", 'rank': p[2]})
     
-    # Group by unit
-    personnel_by_unit = {}
-    for p in personnel_data:
-        unit = p[4]
-        if unit not in personnel_by_unit:
-            personnel_by_unit[unit] = {'name': p[5], 'personnel': []}
-        personnel_by_unit[unit]['personnel'].append({
-            'name': f"{p[1]} {p[2]}",
-            'rank': p[3]
-        })
-    
-    # Get officer names
-    officer_name = ""
-    completed_by_name = ""
+    # Officers
+    oic_name = ""
+    comp_name = ""
     if inc.get('officer_in_charge'):
-        oic = db.execute(text("""
-            SELECT first_name, last_name FROM personnel WHERE id = :id
-        """), {"id": inc['officer_in_charge']}).fetchone()
-        if oic:
-            officer_name = f"{oic[0]} {oic[1]}"
-    
+        o = db.execute(text("SELECT first_name, last_name FROM personnel WHERE id = :id"), {"id": inc['officer_in_charge']}).fetchone()
+        if o: oic_name = f"{o[0]} {o[1]}"
     if inc.get('completed_by'):
-        comp = db.execute(text("""
-            SELECT first_name, last_name FROM personnel WHERE id = :id
-        """), {"id": inc['completed_by']}).fetchone()
-        if comp:
-            completed_by_name = f"{comp[0]} {comp[1]}"
+        c = db.execute(text("SELECT first_name, last_name FROM personnel WHERE id = :id"), {"id": inc['completed_by']}).fetchone()
+        if c: comp_name = f"{c[0]} {c[1]}"
     
-    # ==========================================================================
-    # FORMAT TIMES - Use centralized helpers from settings_helper.py
-    # ==========================================================================
-    def fmt_time(dt_val):
-        """Format time for display using station timezone"""
-        return format_local_time(dt_val, include_seconds=True)
+    def fmt_time(dt): return format_local_time(dt, include_seconds=True) if dt else ""
+    def fmt_date(dt): return format_local_date(dt) if dt else ""
     
-    def fmt_datetime(dt_val):
-        """Format datetime for display using station timezone"""
-        return format_local_datetime(dt_val)
+    inc_date = str(inc.get('incident_date', '')) if inc.get('incident_date') else fmt_date(inc.get('time_dispatched'))
     
-    def fmt_date(dt_val):
-        """Format date for display using station timezone"""
-        return format_local_date(dt_val)
+    # Times box
+    times_rows = ""
+    for f, l in [('time_dispatched','Dispatched'),('time_first_enroute','Enroute'),('time_first_on_scene','On Scene'),('time_fire_under_control','Under Ctrl'),('time_last_cleared','Cleared')]:
+        if inc.get(f): times_rows += f'<tr><td class="tl">{l}:</td><td class="tv">{fmt_time(inc[f])}</td></tr>'
     
-    # Build times section HTML
-    times_html = ""
-    if print_settings.get('showTimes', True):
-        time_rows = []
-        time_fields = [
-            ('time_dispatched', 'Dispatched'),
-            ('time_first_enroute', 'First Enroute'),
-            ('time_first_on_scene', 'First On Scene'),
-            ('time_fire_under_control', 'Fire Under Control'),
-            ('time_last_cleared', 'Last Cleared'),
-            ('time_in_service', 'In Service'),
-        ]
-        for field, label in time_fields:
-            val = inc.get(field)
-            if val:
-                time_rows.append(f'<tr><td class="label">{label}</td><td>{fmt_time(val)}</td></tr>')
-        
-        if time_rows:
-            times_html = f'''
-            <div class="section">
-                <div class="section-title">Response Times</div>
-                <table class="info-table">
-                    {''.join(time_rows)}
-                </table>
-            </div>'''
+    # Units called
+    units_list = ", ".join([u.get('unit_id','') for u in inc.get('cad_units',[]) if u.get('unit_id')]) if inc.get('cad_units') else ""
     
-    # Build location section HTML
-    location_html = ""
-    if print_settings.get('showLocation', True):
-        loc_rows = [f'<tr><td class="label">Address</td><td>{inc.get("address", "") or ""}</td></tr>']
-        loc_rows.append(f'<tr><td class="label">Municipality</td><td>{muni_display}</td></tr>')
-        if print_settings.get('showCrossStreets', True) and inc.get('cross_streets'):
-            loc_rows.append(f'<tr><td class="label">Cross Streets</td><td>{inc.get("cross_streets", "")}</td></tr>')
-        if inc.get('esz_box'):
-            loc_rows.append(f'<tr><td class="label">ESZ/Box</td><td>{inc.get("esz_box", "")}</td></tr>')
-        
-        location_html = f'''
-        <div class="section">
-            <div class="section-title">Location</div>
-            <table class="info-table">
-                {''.join(loc_rows)}
-            </table>
-        </div>'''
+    # Personnel HTML
+    pers_html = ""
+    if ps.get('showPersonnelGrid') and pbu:
+        cols = ""
+        for uid, data in pbu.items():
+            names = '<br>'.join([f"{p['rank']} {p['name']}" if p['rank'] else p['name'] for p in data['people']])
+            cols += f'<td class="ucol"><div class="uhdr">{data["name"]}<br>({uid})</div><div class="unames">{names}</div></td>'
+        total = sum(len(d['people']) for d in pbu.values())
+        pers_html = f'<div class="sec"><div class="stitle">Personnel ({total})</div><table class="pgrid"><tr>{cols}</tr></table></div>'
     
-    # Build caller section HTML
-    caller_html = ""
-    if print_settings.get('showCallerInfo', False):
-        caller_rows = []
-        if inc.get('caller_name'):
-            caller_rows.append(f'<tr><td class="label">Caller Name</td><td>{inc.get("caller_name", "")}</td></tr>')
-        if inc.get('caller_phone'):
-            caller_rows.append(f'<tr><td class="label">Phone</td><td>{inc.get("caller_phone", "")}</td></tr>')
-        if inc.get('caller_source'):
-            caller_rows.append(f'<tr><td class="label">Source</td><td>{inc.get("caller_source", "")}</td></tr>')
-        
-        if caller_rows:
-            caller_html = f'''
-            <div class="section">
-                <div class="section-title">Caller Information</div>
-                <table class="info-table">
-                    {''.join(caller_rows)}
-                </table>
-            </div>'''
+    # CAD details (last page if enabled)
+    cad_html = ""
+    if ps.get('showCadUnitDetails') and inc.get('cad_units'):
+        rows = ""
+        for u in inc.get('cad_units', []):
+            rows += f'<tr><td>{u.get("unit_id","")}</td><td>{fmt_time(u.get("time_dispatched"))}</td><td>{fmt_time(u.get("time_enroute"))}</td><td>{fmt_time(u.get("time_arrived"))}</td><td>{fmt_time(u.get("time_cleared") or u.get("time_available"))}</td></tr>'
+        cad_html = f'<div class="pgbrk"></div><div class="sec"><div class="stitle">CAD Unit Details</div><table class="dtbl"><thead><tr><th>Unit</th><th>Dispatched</th><th>Enroute</th><th>Arrived</th><th>Cleared</th></tr></thead><tbody>{rows}</tbody></table></div>'
     
-    # Build weather section HTML
-    weather_html = ""
-    if print_settings.get('showWeather', True) and inc.get('weather_conditions'):
-        weather_html = f'''
-        <div class="section">
-            <div class="section-title">Weather</div>
-            <p>{inc.get("weather_conditions", "")}</p>
-        </div>'''
-    
-    # Build CAD units section HTML
-    cad_units_html = ""
-    if print_settings.get('showCadUnits', True) and inc.get('cad_units'):
-        cad_units = inc.get('cad_units', [])
-        if cad_units:
-            unit_rows = ['<tr><th>Unit</th><th>Dispatched</th><th>Enroute</th><th>Arrived</th><th>Cleared</th></tr>']
-            for u in cad_units:
-                unit_rows.append(f'''<tr>
-                    <td>{u.get("unit_id", "")}</td>
-                    <td>{fmt_time(u.get("time_dispatched"))}</td>
-                    <td>{fmt_time(u.get("time_enroute"))}</td>
-                    <td>{fmt_time(u.get("time_arrived"))}</td>
-                    <td>{fmt_time(u.get("time_cleared") or u.get("time_available"))}</td>
-                </tr>''')
-            
-            cad_units_html = f'''
-            <div class="section">
-                <div class="section-title">Responding Units</div>
-                <table class="data-table">
-                    {''.join(unit_rows)}
-                </table>
-            </div>'''
-    
-    # Build personnel section HTML
-    personnel_html = ""
-    if print_settings.get('showPersonnelGrid', True) and personnel_by_unit:
-        unit_sections = []
-        for unit_id, data in personnel_by_unit.items():
-            names = ', '.join([f"{p['rank']} {p['name']}" if p['rank'] else p['name'] for p in data['personnel']])
-            unit_sections.append(f'''
-                <div class="unit-row">
-                    <span class="unit-name">{data['name']} ({unit_id})</span>
-                    <span class="personnel-list">{names}</span>
-                </div>''')
-        
-        personnel_html = f'''
-        <div class="section">
-            <div class="section-title">Personnel</div>
-            {''.join(unit_sections)}
-        </div>'''
-    
-    # Build narrative sections
-    narrative_sections = []
-    
-    if print_settings.get('showSituationFound', True) and inc.get('situation_found'):
-        narrative_sections.append(f'''
-        <div class="section">
-            <div class="section-title">Situation Found</div>
-            <p>{inc.get("situation_found", "")}</p>
-        </div>''')
-    
-    if print_settings.get('showExtentOfDamage', True) and inc.get('extent_of_damage'):
-        narrative_sections.append(f'''
-        <div class="section">
-            <div class="section-title">Extent of Damage</div>
-            <p>{inc.get("extent_of_damage", "")}</p>
-        </div>''')
-    
-    if print_settings.get('showServicesProvided', True) and inc.get('services_provided'):
-        narrative_sections.append(f'''
-        <div class="section">
-            <div class="section-title">Services Provided</div>
-            <p>{inc.get("services_provided", "")}</p>
-        </div>''')
-    
-    if print_settings.get('showNarrative', True) and inc.get('narrative'):
-        narrative_sections.append(f'''
-        <div class="section">
-            <div class="section-title">Narrative</div>
-            <p>{inc.get("narrative", "")}</p>
-        </div>''')
-    
-    if print_settings.get('showEquipmentUsed', True) and inc.get('equipment_used'):
-        equipment = inc.get('equipment_used', [])
-        if equipment:
-            narrative_sections.append(f'''
-            <div class="section">
-                <div class="section-title">Equipment Used</div>
-                <p>{", ".join(equipment)}</p>
-            </div>''')
-    
-    if print_settings.get('showProblemsIssues', True) and inc.get('problems_issues'):
-        narrative_sections.append(f'''
-        <div class="section">
-            <div class="section-title">Problems / Issues</div>
-            <p>{inc.get("problems_issues", "")}</p>
-        </div>''')
-    
-    narrative_html = ''.join(narrative_sections)
-    
-    # Build NERIS section HTML
-    neris_html = ""
-    if print_settings.get('showNerisInfo', False):
-        neris_rows = []
-        
-        # Incident types
-        if inc.get('neris_incident_type_codes'):
-            types = inc.get('neris_incident_type_codes', [])
-            neris_rows.append(f'<tr><td class="label">Incident Type(s)</td><td>{", ".join(types)}</td></tr>')
-        
-        # Actions taken
-        if inc.get('neris_action_codes'):
-            actions = inc.get('neris_action_codes', [])
-            neris_rows.append(f'<tr><td class="label">Actions Taken</td><td>{", ".join(actions)}</td></tr>')
-        
-        # Location use
-        if inc.get('neris_location_use'):
-            loc_use = inc.get('neris_location_use', {})
-            use_desc = f"{loc_use.get('use_type', '')} / {loc_use.get('use_subtype', '')}"
-            neris_rows.append(f'<tr><td class="label">Location Use</td><td>{use_desc}</td></tr>')
-        
-        # Mutual aid
-        if inc.get('neris_aid_direction'):
-            neris_rows.append(f'<tr><td class="label">Mutual Aid</td><td>{inc.get("neris_aid_direction", "")}</td></tr>')
-        
-        if neris_rows:
-            neris_html = f'''
-            <div class="section">
-                <div class="section-title">NERIS Information</div>
-                <table class="info-table">
-                    {''.join(neris_rows)}
-                </table>
-            </div>'''
-    
-    # Build officer section HTML
-    officer_html = ""
-    if print_settings.get('showOfficerInfo', True):
-        officer_rows = []
-        if officer_name:
-            officer_rows.append(f'<tr><td class="label">Officer in Charge</td><td>{officer_name}</td></tr>')
-        if completed_by_name:
-            officer_rows.append(f'<tr><td class="label">Completed By</td><td>{completed_by_name}</td></tr>')
-        
-        if officer_rows:
-            officer_html = f'''
-            <div class="section">
-                <div class="section-title">Report Information</div>
-                <table class="info-table">
-                    {''.join(officer_rows)}
-                </table>
-            </div>'''
-    
-    # Format incident date
-    incident_date_display = ""
-    if inc.get('incident_date'):
-        incident_date_display = str(inc.get('incident_date'))
-    elif inc.get('time_dispatched'):
-        incident_date_display = fmt_date(inc.get('time_dispatched'))
-    
-    # Build full HTML
-    html = f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Incident Report - {inc.get("internal_incident_number", "")}</title>
-    <style>
-        @page {{ 
-            size: letter; 
-            margin: 0.5in;
-            @top-center {{
-                content: "{station_name} - Incident Report";
-                font-size: 8px;
-                color: #888;
-            }}
-            @bottom-center {{
-                content: "Page " counter(page) " of " counter(pages);
-                font-size: 8px;
-                color: #888;
-            }}
-        }}
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{
-            font-family: Arial, Helvetica, sans-serif;
-            font-size: 10px;
-            line-height: 1.4;
-            color: #1a1a1a;
-        }}
-        .header {{
-            display: table;
-            width: 100%;
-            border-bottom: 3px solid #1e6b35;
-            padding-bottom: 10px;
-            margin-bottom: 15px;
-        }}
-        .header-logo {{ display: table-cell; width: 70px; vertical-align: middle; }}
-        .header-logo img {{ width: 60px; height: auto; }}
-        .header-text {{ display: table-cell; vertical-align: middle; padding-left: 15px; }}
-        .header h1 {{ font-size: 18px; font-weight: 700; color: #1a1a1a; margin: 0; }}
-        .header .subtitle {{ font-size: 12px; color: #1e6b35; font-weight: 600; margin-top: 2px; }}
-        .header-meta {{ display: table-cell; text-align: right; vertical-align: middle; }}
-        .header-meta .incident-number {{ font-size: 16px; font-weight: 700; color: #1e6b35; }}
-        .header-meta .incident-date {{ font-size: 10px; color: #666; }}
-        .section {{ 
-            background: #f8f8f8; 
-            border: 1px solid #e0e0e0; 
-            border-radius: 4px; 
-            padding: 10px 12px; 
-            margin-bottom: 12px;
-            page-break-inside: avoid;
-        }}
-        .section-title {{ 
-            font-size: 9px; 
-            font-weight: 700; 
-            color: #1e6b35; 
-            text-transform: uppercase; 
-            letter-spacing: 0.5px; 
-            border-bottom: 1px solid #ddd; 
-            padding-bottom: 4px; 
-            margin-bottom: 8px; 
-        }}
-        .section p {{
-            margin: 0;
-            white-space: pre-wrap;
-        }}
-        .info-table {{ width: 100%; border-collapse: collapse; }}
-        .info-table td {{ padding: 3px 0; vertical-align: top; }}
-        .info-table td.label {{ font-weight: 600; width: 140px; color: #555; }}
-        .data-table {{ width: 100%; border-collapse: collapse; font-size: 9px; }}
-        .data-table th {{ 
-            background: #1e6b35; 
-            color: white; 
-            font-weight: 600; 
-            text-align: left; 
-            padding: 5px 8px; 
-        }}
-        .data-table td {{ padding: 4px 8px; border-bottom: 1px solid #e0e0e0; }}
-        .data-table tr:last-child td {{ border-bottom: none; }}
-        .unit-row {{ 
-            padding: 4px 0; 
-            border-bottom: 1px dotted #ccc; 
-        }}
-        .unit-row:last-child {{ border-bottom: none; }}
-        .unit-name {{ font-weight: 600; color: #1e6b35; }}
-        .personnel-list {{ margin-left: 10px; color: #333; }}
-        .two-column {{ display: table; width: 100%; }}
-        .two-column .col {{ display: table-cell; width: 48%; vertical-align: top; }}
-        .two-column .col:first-child {{ padding-right: 2%; }}
-        .two-column .col:last-child {{ padding-left: 2%; }}
-        .footer {{ 
-            margin-top: 20px; 
-            padding-top: 10px; 
-            border-top: 1px solid #ddd; 
-            font-size: 8px; 
-            color: #888; 
-            text-align: center;
-        }}
-    </style>
-</head>
-<body>
-    <!-- Watermark -->
-    <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.04; z-index: -1;">
-        <img src="{logo_data_url}" style="width: 400px; height: auto;" alt="">
-    </div>
-
-    <div class="header">
-        <div class="header-logo"><img src="{logo_data_url}" alt="Logo"></div>
-        <div class="header-text">
-            <h1>{station_name.upper()}</h1>
-            <div class="subtitle">Incident Report — {inc.get("cad_event_type", "")} {inc.get("cad_event_subtype", "") or ""}</div>
-        </div>
-        <div class="header-meta">
-            <div class="incident-number">{inc.get("internal_incident_number", "")}</div>
-            <div class="incident-date">{incident_date_display}</div>
-            <div class="incident-date">CAD: {inc.get("cad_event_number", "")}</div>
-        </div>
-    </div>
-    
-    <div class="content">
-        <div class="two-column">
-            <div class="col">
-                {location_html}
-                {times_html}
-            </div>
-            <div class="col">
-                {weather_html}
-                {caller_html}
-            </div>
-        </div>
-        
-        {cad_units_html}
-        {personnel_html}
-        {narrative_html}
-        {neris_html}
-        {officer_html}
-    </div>
-
-    <div class="footer">
-        {station_name} — {station_short_name} | Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Timezone: {get_timezone()}
-    </div>
-</body>
-</html>'''
+    html = f'''<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Incident {inc.get("internal_incident_number","")}</title>
+<style>
+@page{{size:letter;margin:0.5in}}*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;font-size:10px;line-height:1.4;color:#1a1a1a}}
+.hdr{{display:table;width:100%;border-bottom:3px solid #1e6b35;padding-bottom:10px;margin-bottom:12px}}
+.hlogo{{display:table-cell;width:65px;vertical-align:middle}}.hlogo img{{width:60px}}
+.htxt{{display:table-cell;vertical-align:middle;padding-left:12px}}.htxt h1{{font-size:16px;font-weight:700;margin:0}}.htxt .sub{{font-size:11px;color:#1e6b35;font-weight:600}}
+.hright{{display:table-cell;text-align:right;vertical-align:top;width:200px}}.inum{{font-size:14px;font-weight:700;color:#1e6b35}}.idate{{font-size:9px;color:#666}}
+.inforow{{display:table;width:100%;margin-bottom:12px}}.infoleft{{display:table-cell;width:55%;vertical-align:top}}.inforight{{display:table-cell;width:45%;vertical-align:top}}
+.iitem{{margin-bottom:3px;font-size:9px}}.ilbl{{font-weight:600;color:#555}}
+.tbox{{border:1px solid #ccc;border-collapse:collapse;float:right;font-size:9px}}.tbox td{{padding:2px 6px;border:1px solid #ddd}}.tl{{font-weight:600;text-align:right;background:#f5f5f5}}.tv{{font-family:monospace;font-size:10px}}
+.sec{{background:#f8f8f8;border:1px solid #e0e0e0;border-radius:4px;padding:8px 10px;margin-bottom:10px;page-break-inside:avoid}}
+.stitle{{font-size:9px;font-weight:700;color:#1e6b35;text-transform:uppercase;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:6px}}
+.sval{{margin:0}}.ssub{{margin:4px 0 0 0;font-size:9px;color:#555}}
+.pgrid{{width:100%;border-collapse:collapse}}.pgrid td{{vertical-align:top;padding:0 8px 0 0}}
+.ucol{{border:1px solid #ddd;padding:6px;background:white}}.uhdr{{background:#e94560;color:white;padding:4px 6px;font-weight:600;font-size:9px;margin:-6px -6px 6px -6px;text-align:center}}.unames{{font-size:9px;line-height:1.5}}
+.osec{{background:#e8f5e9;border-color:#c8e6c9;font-size:10px}}
+.dtbl{{width:100%;border-collapse:collapse;font-size:9px}}.dtbl th{{background:#1e6b35;color:white;padding:4px 6px;text-align:left}}.dtbl td{{padding:3px 6px;border-bottom:1px solid #e0e0e0}}
+.pgbrk{{page-break-before:always}}
+.ftr{{margin-top:15px;padding-top:8px;border-top:1px solid #ddd;font-size:8px;color:#888;text-align:center}}
+</style></head><body>
+<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.04;z-index:-1"><img src="{logo_url}" style="width:350px" alt=""></div>
+<div class="hdr"><div class="hlogo"><img src="{logo_url}" alt=""></div><div class="htxt"><h1>{station_name.upper()}</h1><div class="sub">Incident Report</div></div><div class="hright"><div class="inum">{inc.get("internal_incident_number","")}</div><div class="idate">{inc_date}</div><div class="idate">CAD: {inc.get("cad_event_number","")}</div></div></div>
+<div class="inforow"><div class="infoleft"><div class="iitem"><span class="ilbl">Municipality:</span> {muni}</div><div class="iitem"><span class="ilbl">Weather:</span> {inc.get("weather_conditions","") or "-"}</div><div class="iitem"><span class="ilbl">ESZ/Box:</span> {inc.get("esz_box","") or "-"}</div></div><div class="inforight"><table class="tbox">{times_rows}</table></div></div>
+<div class="sec"><div class="stitle">Location</div><p class="sval">{inc.get("address","") or "-"}</p>{"<p class='ssub'><strong>Cross Streets:</strong> "+inc.get("cross_streets","")+"</p>" if ps.get('showCrossStreets') and inc.get('cross_streets') else ""}</div>
+{"<div class='sec'><div class='stitle'>Units Called</div><p class='sval'>"+units_list+"</p></div>" if units_list else ""}
+{"<div class='sec'><div class='stitle'>Dispatched As</div><p class='sval'>"+inc.get('cad_event_type','')+((' / '+inc.get('cad_event_subtype')) if inc.get('cad_event_subtype') else '')+"</p></div>" if inc.get('cad_event_type') else ""}
+<div class="sec"><div class="stitle">Incident Details</div>{"<p><strong>Situation Found:</strong> "+inc.get("situation_found","")+"</p>" if ps.get('showSituationFound') and inc.get('situation_found') else ""}{"<p><strong>Extent of Damage:</strong> "+inc.get("extent_of_damage","")+"</p>" if ps.get('showExtentOfDamage') and inc.get('extent_of_damage') else ""}{"<p><strong>Services Provided:</strong> "+inc.get("services_provided","")+"</p>" if ps.get('showServicesProvided') and inc.get('services_provided') else ""}{"<p><strong>Narrative:</strong> "+inc.get("narrative","")+"</p>" if ps.get('showNarrative') and inc.get('narrative') else ""}</div>
+{pers_html}
+{"<div class='sec osec'><strong>Officer in Charge:</strong> "+oic_name+("&nbsp;&nbsp;|&nbsp;&nbsp;<strong>Completed By:</strong> "+comp_name if comp_name else "")+"</div>" if oic_name or comp_name else ""}
+<div class="sec"><div class="stitle">Problems / Issues</div><p class="sval">{inc.get("problems_issues","") or "None"}</p></div>
+<div class="ftr">{station_name} — {station_short} | Generated: {datetime.now().strftime('%m/%d/%Y %I:%M %p')} | {get_timezone()}</div>
+{cad_html}
+</body></html>'''
     
     return HTMLResponse(content=html)
 
