@@ -1465,48 +1465,50 @@ async def get_incident_html_report(
     # ==========================================================================
     
     def render_header(block):
-        return f'''<div class="header">
-            <h1>{escape_html(station_name)} — Station {escape_html(station_number)}</h1>
-            <h2>Incident Report</h2>
-        </div>'''
-    
-    def render_incident_info(block):
+        """Header includes: station name, incident #, date, municipality, ESZ, category badge"""
         weather_html = ''
         if inc.get('weather_conditions'):
             weather_html = f'<div class="field-row"><span class="label">Weather:</span><span class="value">{escape_html(inc.get("weather_conditions"))}</span></div>'
         
-        return f'''<div class="incident-info">
-            <div class="field-row">
-                <span class="label">Incident #:</span>
-                <span class="value value-bold">{escape_html(inc.get('internal_incident_number', ''))}</span>
-                <span class="badge badge-{call_category.lower()}">{escape_html(call_category)}</span>
+        return f'''<div class="header">
+            <h1>{escape_html(station_name)} — Station {escape_html(station_number)}</h1>
+            <h2>Incident Report</h2>
+        </div>
+        <div class="top-layout">
+            <div class="top-left">
+                <div class="field-row">
+                    <span class="label">Incident #:</span>
+                    <span class="value value-bold">{escape_html(inc.get('internal_incident_number', ''))}</span>
+                    <span class="badge badge-{call_category.lower()}">{escape_html(call_category)}</span>
+                </div>
+                <div class="field-row">
+                    <span class="label">Date:</span>
+                    <span class="value">{inc.get('incident_date', '') or ''}</span>
+                </div>
+                <div class="field-row">
+                    <span class="label">Municipality:</span>
+                    <span class="value">{escape_html(inc.get('municipality_code', ''))}</span>
+                </div>
+                {weather_html}
+                <div class="field-row">
+                    <span class="label">ESZ/Box:</span>
+                    <span class="value">{escape_html(inc.get('esz_box', ''))}</span>
+                </div>
             </div>
-            <div class="field-row">
-                <span class="label">Date:</span>
-                <span class="value">{inc.get('incident_date', '') or ''}</span>
-            </div>
-            <div class="field-row">
-                <span class="label">Municipality:</span>
-                <span class="value">{escape_html(inc.get('municipality_code', ''))}</span>
-            </div>
-            {weather_html}
-            <div class="field-row">
-                <span class="label">ESZ/Box:</span>
-                <span class="value">{escape_html(inc.get('esz_box', ''))}</span>
+            <div class="top-right">
+                <table class="times-table">
+                    <tr><td class="time-label">Dispatched:</td><td class="time-value">{fmt_time(inc.get('time_dispatched'))}</td></tr>
+                    <tr><td class="time-label">Enroute:</td><td class="time-value">{fmt_time(inc.get('time_first_enroute'))}</td></tr>
+                    <tr><td class="time-label">On Scene:</td><td class="time-value">{fmt_time(inc.get('time_first_on_scene'))}</td></tr>
+                    <tr><td class="time-label">Under Ctrl:</td><td class="time-value">{fmt_time(inc.get('time_fire_under_control'))}</td></tr>
+                    <tr><td class="time-label">Cleared:</td><td class="time-value">{fmt_time(inc.get('time_last_cleared'))}</td></tr>
+                    <tr><td class="time-label">In Service:</td><td class="time-value">{in_service}</td></tr>
+                </table>
             </div>
         </div>'''
     
-    def render_times(block):
-        return f'''<table class="times-table">
-            <tr><td class="time-label">Dispatched:</td><td class="time-value">{fmt_time(inc.get('time_dispatched'))}</td></tr>
-            <tr><td class="time-label">Enroute:</td><td class="time-value">{fmt_time(inc.get('time_first_enroute'))}</td></tr>
-            <tr><td class="time-label">On Scene:</td><td class="time-value">{fmt_time(inc.get('time_first_on_scene'))}</td></tr>
-            <tr><td class="time-label">Under Ctrl:</td><td class="time-value">{fmt_time(inc.get('time_fire_under_control'))}</td></tr>
-            <tr><td class="time-label">Cleared:</td><td class="time-value">{fmt_time(inc.get('time_last_cleared'))}</td></tr>
-            <tr><td class="time-label">In Service:</td><td class="time-value">{in_service}</td></tr>
-        </table>'''
-    
     def render_location(block):
+        """Location: address, cross streets"""
         address = escape_html(inc.get('address', ''))
         cross_streets = escape_html(inc.get('cross_streets', ''))
         if not address:
@@ -1518,61 +1520,103 @@ async def get_incident_html_report(
             {cross_html}
         </div>'''
     
-    def render_units_called(block):
-        cad_units_list = ', '.join([u.get('unit_id', '') for u in (inc.get('cad_units') or [])]) if inc.get('cad_units') else ''
-        if not cad_units_list:
-            return ''
-        return f'''<div class="section">
-            <div class="section-label">Units Called:</div>
-            <div class="section-value">{escape_html(cad_units_list)}</div>
-        </div>'''
-    
-    def render_dispatch_info(block):
+    def render_dispatchInfo(block):
+        """Dispatch Info: CAD type, subtype, units called"""
         event_type = inc.get('cad_event_type', '')
         event_subtype = inc.get('cad_event_subtype', '')
-        if not event_type:
-            return ''
-        subtype_html = f' / {escape_html(event_subtype)}' if event_subtype else ''
+        cad_units_list = ', '.join([u.get('unit_id', '') for u in (inc.get('cad_units') or [])]) if inc.get('cad_units') else ''
+        
+        parts = []
+        if cad_units_list:
+            parts.append(f'''<div class="section">
+                <div class="section-label">Units Called:</div>
+                <div class="section-value">{escape_html(cad_units_list)}</div>
+            </div>''')
+        
+        if event_type:
+            subtype_html = f' / {escape_html(event_subtype)}' if event_subtype else ''
+            parts.append(f'''<div class="section">
+                <div class="section-label">Dispatched As:</div>
+                <div class="section-value">{escape_html(event_type)}{subtype_html}</div>
+            </div>''')
+        
+        return '\n'.join(parts)
+    
+    def render_times(block):
+        """Response times - standalone (if not combined with header)"""
         return f'''<div class="section">
-            <div class="section-label">Dispatched As:</div>
-            <div class="section-value">{escape_html(event_type)}{subtype_html}</div>
+            <div class="section-label">Response Times:</div>
+            <table class="times-table">
+                <tr><td class="time-label">Dispatched:</td><td class="time-value">{fmt_time(inc.get('time_dispatched'))}</td></tr>
+                <tr><td class="time-label">Enroute:</td><td class="time-value">{fmt_time(inc.get('time_first_enroute'))}</td></tr>
+                <tr><td class="time-label">On Scene:</td><td class="time-value">{fmt_time(inc.get('time_first_on_scene'))}</td></tr>
+                <tr><td class="time-label">Under Ctrl:</td><td class="time-value">{fmt_time(inc.get('time_fire_under_control'))}</td></tr>
+                <tr><td class="time-label">Cleared:</td><td class="time-value">{fmt_time(inc.get('time_last_cleared'))}</td></tr>
+                <tr><td class="time-label">In Service:</td><td class="time-value">{in_service}</td></tr>
+            </table>
         </div>'''
     
-    def render_situation_found(block):
-        text = escape_html(inc.get('situation_found', ''))
-        if not text:
+    def render_callerWeather(block):
+        """Caller & Weather combined"""
+        caller_name = escape_html(inc.get('caller_name', ''))
+        caller_phone = escape_html(inc.get('caller_phone', ''))
+        weather = escape_html(inc.get('weather_conditions', ''))
+        
+        parts = []
+        if caller_name or caller_phone:
+            parts.append(f'<div class="field-row"><span class="label">Caller:</span><span class="value">{caller_name} {caller_phone}</span></div>')
+        if weather:
+            parts.append(f'<div class="field-row"><span class="label">Weather:</span><span class="value">{weather}</span></div>')
+        
+        if not parts:
             return ''
+        
         return f'''<div class="section">
-            <div class="section-label">Situation Found:</div>
-            <div class="section-value">{text}</div>
-        </div>'''
-    
-    def render_extent_damage(block):
-        text = escape_html(inc.get('extent_of_damage', ''))
-        if not text:
-            return ''
-        return f'''<div class="section">
-            <div class="section-label">Extent of Damage:</div>
-            <div class="section-value">{text}</div>
-        </div>'''
-    
-    def render_services(block):
-        text = escape_html(inc.get('services_provided', ''))
-        if not text:
-            return ''
-        return f'''<div class="section">
-            <div class="section-label">Services Provided:</div>
-            <div class="section-value">{text}</div>
+            {''.join(parts)}
         </div>'''
     
     def render_narrative(block):
-        text = escape_html(inc.get('narrative', ''))
-        return f'''<div class="section">
+        """Narrative block: situation found, extent of damage, services provided, narrative, problems"""
+        parts = []
+        
+        situation = escape_html(inc.get('situation_found', ''))
+        if situation:
+            parts.append(f'''<div class="section">
+                <div class="section-label">Situation Found:</div>
+                <div class="section-value">{situation}</div>
+            </div>''')
+        
+        extent = escape_html(inc.get('extent_of_damage', ''))
+        if extent:
+            parts.append(f'''<div class="section">
+                <div class="section-label">Extent of Damage:</div>
+                <div class="section-value">{extent}</div>
+            </div>''')
+        
+        services = escape_html(inc.get('services_provided', ''))
+        if services:
+            parts.append(f'''<div class="section">
+                <div class="section-label">Services Provided:</div>
+                <div class="section-value">{services}</div>
+            </div>''')
+        
+        narrative_text = escape_html(inc.get('narrative', ''))
+        parts.append(f'''<div class="section">
             <div class="section-label">Narrative:</div>
-            <div class="narrative-box">{text}</div>
-        </div>'''
+            <div class="narrative-box">{narrative_text}</div>
+        </div>''')
+        
+        problems = escape_html(inc.get('problems_issues', ''))
+        if problems:
+            parts.append(f'''<div class="section">
+                <div class="section-label">Problems/Issues:</div>
+                <div class="section-value">{problems}</div>
+            </div>''')
+        
+        return '\n'.join(parts)
     
-    def render_personnel(block):
+    def render_personnelGrid(block):
+        """Personnel assignments by apparatus"""
         if not assigned_units:
             return ''
         
@@ -1606,16 +1650,8 @@ async def get_incident_html_report(
             <div class="total-row">Total Personnel: {total_personnel}</div>
         </div>'''
     
-    def render_equipment(block):
-        equipment_list = ', '.join(inc.get('equipment_used', [])) if inc.get('equipment_used') else ''
-        if not equipment_list:
-            return ''
-        return f'''<div class="section">
-            <div class="section-label">Equipment Used:</div>
-            <div class="section-value">{escape_html(equipment_list)}</div>
-        </div>'''
-    
-    def render_officer_info(block):
+    def render_officers(block):
+        """Officer in Charge, Completed By"""
         oic_name = escape_html(get_personnel_name(inc.get('officer_in_charge'))) if inc.get('officer_in_charge') else ''
         completed_by_name = escape_html(get_personnel_name(inc.get('completed_by'))) if inc.get('completed_by') else ''
         return f'''<div class="section">
@@ -1625,26 +1661,8 @@ async def get_incident_html_report(
             </div>
         </div>'''
     
-    def render_problems(block):
-        text = escape_html(inc.get('problems_issues', ''))
-        if not text:
-            return ''
-        return f'''<div class="section">
-            <div class="section-label">Problems/Issues:</div>
-            <div class="section-value">{text}</div>
-        </div>'''
-    
-    def render_caller_info(block):
-        caller_name = escape_html(inc.get('caller_name', ''))
-        caller_phone = escape_html(inc.get('caller_phone', ''))
-        if not caller_name and not caller_phone:
-            return ''
-        return f'''<div class="section">
-            <div class="section-label">Caller Information:</div>
-            <div class="section-value">{caller_name} {caller_phone}</div>
-        </div>'''
-    
     def render_footer(block):
+        """Footer: CAD event #, status, printed time"""
         return f'''<div class="footer">
             <div class="footer-row">
                 <span class="footer-left">CAD Event: {escape_html(inc.get('cad_event_number', ''))}</span>
@@ -1653,109 +1671,115 @@ async def get_incident_html_report(
             </div>
         </div>'''
     
-    # NERIS module placeholders (for future implementation)
-    def render_neris_classification(block):
-        # TODO: Implement when NERIS fields are available
+    def render_damageAssessment(block):
+        """Damage assessment - FIRE only"""
+        # TODO: Implement when these fields are populated
         return ''
     
-    def render_neris_aid(block):
+    def render_mutualAid(block):
+        """Mutual aid info"""
+        # TODO: Implement
         return ''
     
-    def render_neris_exposures(block):
+    def render_cadUnitDetails(block):
+        """Full CAD unit timestamps"""
+        cad_units = inc.get('cad_units') or []
+        if not cad_units:
+            return ''
+        
+        rows = ''
+        for u in cad_units:
+            rows += f'''<tr>
+                <td>{escape_html(u.get('unit_id', ''))}</td>
+                <td>{escape_html(u.get('dispatched', ''))}</td>
+                <td>{escape_html(u.get('enroute', ''))}</td>
+                <td>{escape_html(u.get('arrived', ''))}</td>
+                <td>{escape_html(u.get('cleared', ''))}</td>
+            </tr>'''
+        
+        return f'''<div class="section">
+            <div class="section-label">CAD Unit Details:</div>
+            <table class="cad-units-table">
+                <thead><tr><th>Unit</th><th>Dispatched</th><th>Enroute</th><th>Arrived</th><th>Cleared</th></tr></thead>
+                <tbody>{rows}</tbody>
+            </table>
+        </div>'''
+    
+    # NERIS module placeholders
+    def render_nerisClassification(block):
+        return ''
+    def render_nerisRiskReduction(block):
+        return ''
+    def render_nerisEmergingHazards(block):
+        return ''
+    def render_nerisExposures(block):
+        return ''
+    def render_nerisFireModule(block):
+        return ''
+    def render_nerisMedicalModule(block):
+        return ''
+    def render_nerisHazmatModule(block):
+        return ''
+    def render_nerisNarratives(block):
         return ''
     
-    def render_neris_fire_module(block):
-        return ''
-    
-    def render_neris_medical_module(block):
-        return ''
-    
-    def render_neris_hazmat_module(block):
-        return ''
-    
-    def render_neris_narratives(block):
-        return ''
-    
-    # Block ID to render function mapping
+    # Block ID to render function mapping - MUST match settings.py DEFAULT_PRINT_LAYOUT
     BLOCK_RENDERERS = {
         'header': render_header,
-        'incidentInfo': render_incident_info,
-        'times': render_times,
         'location': render_location,
-        'unitsCalled': render_units_called,
-        'dispatchInfo': render_dispatch_info,
-        'situationFound': render_situation_found,
-        'extentDamage': render_extent_damage,
-        'services': render_services,
+        'dispatchInfo': render_dispatchInfo,
+        'times': render_times,
+        'callerWeather': render_callerWeather,
         'narrative': render_narrative,
-        'personnel': render_personnel,
-        'equipment': render_equipment,
-        'officerInfo': render_officer_info,
-        'problems': render_problems,
-        'callerInfo': render_caller_info,
+        'personnelGrid': render_personnelGrid,
+        'officers': render_officers,
         'footer': render_footer,
-        'nerisClassification': render_neris_classification,
-        'nerisAid': render_neris_aid,
-        'nerisExposures': render_neris_exposures,
-        'nerisFireModule': render_neris_fire_module,
-        'nerisMedicalModule': render_neris_medical_module,
-        'nerisHazmatModule': render_neris_hazmat_module,
-        'nerisNarratives': render_neris_narratives,
+        'damageAssessment': render_damageAssessment,
+        'mutualAid': render_mutualAid,
+        'cadUnitDetails': render_cadUnitDetails,
+        'nerisClassification': render_nerisClassification,
+        'nerisRiskReduction': render_nerisRiskReduction,
+        'nerisEmergingHazards': render_nerisEmergingHazards,
+        'nerisExposures': render_nerisExposures,
+        'nerisFireModule': render_nerisFireModule,
+        'nerisMedicalModule': render_nerisMedicalModule,
+        'nerisHazmatModule': render_nerisHazmatModule,
+        'nerisNarratives': render_nerisNarratives,
     }
     
     # ==========================================================================
     # RENDER BLOCKS FOR EACH PAGE
     # ==========================================================================
     
-    def render_page_blocks(blocks):
+    def render_page_blocks(blocks, skip_ids=None):
         """Render all blocks for a page in order."""
+        skip_ids = skip_ids or set()
         html_parts = []
         for block in blocks:
             block_id = block.get('id')
+            if block_id in skip_ids:
+                continue
             renderer = BLOCK_RENDERERS.get(block_id)
             if renderer:
                 html_parts.append(renderer(block))
         return '\n'.join(html_parts)
     
-    # Special handling: incident_info and times should be side-by-side
-    # Check if both are on page 1
-    page1_has_info = any(b['id'] == 'incidentInfo' for b in page1_blocks)
-    page1_has_times = any(b['id'] == 'times' for b in page1_blocks)
+    # Check if header block is enabled (it includes times in side-by-side layout)
+    header_enabled = any(b['id'] == 'header' for b in page1_blocks)
+    times_enabled = any(b['id'] == 'times' for b in page1_blocks)
     
-    # Build page 1 content
-    page1_html = ''
-    if page1_has_info and page1_has_times:
-        # Render header first if present
-        header_html = ''
-        other_blocks = []
-        for block in page1_blocks:
-            if block['id'] == 'header':
-                header_html = render_header(block)
-            elif block['id'] not in ('incidentInfo', 'times'):
-                other_blocks.append(block)
-        
-        # Side-by-side layout for info + times
-        info_block = next((b for b in page1_blocks if b['id'] == 'incidentInfo'), None)
-        times_block = next((b for b in page1_blocks if b['id'] == 'times'), None)
-        
-        top_layout_html = f'''<div class="top-layout">
-            <div class="top-left">{render_incident_info(info_block) if info_block else ''}</div>
-            <div class="top-right">{render_times(times_block) if times_block else ''}</div>
-        </div>'''
-        
-        page1_html = header_html + top_layout_html + render_page_blocks(other_blocks)
-    else:
-        page1_html = render_page_blocks(page1_blocks)
+    # If header is enabled, skip standalone times (times are rendered inside header)
+    skip_on_page1 = set()
+    if header_enabled and times_enabled:
+        skip_on_page1.add('times')
     
-    # Build page 2 content
+    # Build page content
+    page1_html = render_page_blocks(page1_blocks, skip_on_page1)
     page2_html = render_page_blocks(page2_blocks)
     
     # Determine if we need a page break
     has_page2_content = bool(page2_html.strip())
-    
-    page_break_html = ''
-    if has_page2_content:
-        page_break_html = '<div class="page-break"></div>'
+    page_break_html = '<div class="page-break"></div>' if has_page2_content else ''
     
     # ==========================================================================
     # FINAL HTML
@@ -1777,13 +1801,10 @@ async def get_incident_html_report(
         .header h1 {{ font-size: 14pt; margin: 0; font-weight: bold; }}
         .header h2 {{ font-size: 11pt; margin: 0; font-weight: normal; }}
         
-        /* Two-column layout using TABLE - WeasyPrint compatible */
+        /* Two-column layout */
         .top-layout {{ display: table; width: 100%; margin-bottom: 12px; }}
         .top-left {{ display: table-cell; vertical-align: top; width: 60%; }}
         .top-right {{ display: table-cell; vertical-align: top; width: 40%; padding-left: 15px; }}
-        
-        /* Incident info */
-        .incident-info {{ margin-bottom: 12px; }}
         
         /* Field rows */
         .field-row {{ margin-bottom: 4px; }}
@@ -1828,6 +1849,11 @@ async def get_incident_html_report(
         .role-header {{ width: 55px; }}
         .role-cell {{ font-weight: bold; background: {secondary_color}; width: 55px; }}
         .total-row {{ margin-top: 6px; font-weight: bold; font-size: 9pt; }}
+        
+        /* CAD units table */
+        .cad-units-table {{ width: 100%; border-collapse: collapse; font-size: 8pt; margin-top: 4px; }}
+        .cad-units-table th, .cad-units-table td {{ border: 1px solid #999; padding: 3px 5px; text-align: left; }}
+        .cad-units-table th {{ background: #f0f0f0; font-weight: bold; }}
         
         /* Officer info */
         .officer-row {{ display: table; width: 100%; }}
