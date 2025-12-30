@@ -421,6 +421,318 @@ DEFAULT_PRINT_SETTINGS = {
 }
 
 
+# =============================================================================
+# PRINT LAYOUT CONFIGURATION (v2 - Page-based block layout)
+# =============================================================================
+
+DEFAULT_PRINT_LAYOUT = {
+    "version": 2,
+    "blocks": [
+        # PAGE 1 - Core incident info
+        {
+            "id": "header",
+            "name": "Header",
+            "description": "Logo, station name, incident #, CAD #, date, category",
+            "enabled": True,
+            "page": 1,
+            "order": 1,
+            "locked": True,
+            "config": {
+                "showLogo": True,
+                "showIncidentNumber": True,
+                "showCadNumber": True,
+                "showDate": True,
+                "showCategory": True
+            }
+        },
+        {
+            "id": "location",
+            "name": "Location",
+            "description": "Address, municipality, ESZ, cross streets",
+            "enabled": True,
+            "page": 1,
+            "order": 2,
+            "locked": False,
+            "config": {
+                "showAddress": True,
+                "showMunicipality": True,
+                "showEsz": True,
+                "showCrossStreets": True
+            }
+        },
+        {
+            "id": "dispatchInfo",
+            "name": "Dispatch Info",
+            "description": "CAD type, subtype, units called",
+            "enabled": True,
+            "page": 1,
+            "order": 3,
+            "locked": False,
+            "config": {
+                "showCadType": True,
+                "showCadSubtype": True,
+                "showUnitsCalled": True
+            }
+        },
+        {
+            "id": "times",
+            "name": "Response Times",
+            "description": "Dispatched, enroute, on scene, under control, cleared, time in service",
+            "enabled": True,
+            "page": 1,
+            "order": 4,
+            "locked": False,
+            "config": {
+                "showDispatched": True,
+                "showEnroute": True,
+                "showOnScene": True,
+                "showUnderControl": True,
+                "showCleared": True,
+                "showTimeInService": True
+            }
+        },
+        {
+            "id": "callerWeather",
+            "name": "Caller & Weather",
+            "description": "Caller name, phone, weather conditions",
+            "enabled": True,
+            "page": 1,
+            "order": 5,
+            "locked": False,
+            "config": {
+                "showCallerName": True,
+                "showCallerPhone": True,
+                "showWeather": True
+            }
+        },
+        {
+            "id": "narrative",
+            "name": "Narrative",
+            "description": "Situation found, services provided, narrative, problems",
+            "enabled": True,
+            "page": 1,
+            "order": 6,
+            "locked": False,
+            "config": {
+                "showSituationFound": True,
+                "showExtentOfDamage": True,
+                "showServicesProvided": True,
+                "showNarrative": True,
+                "showProblems": True,
+                "overflowToPage2": True,
+                "minHeight": 1.5,
+                "maxHeight": 4.0
+            }
+        },
+        {
+            "id": "personnelGrid",
+            "name": "Personnel Grid",
+            "description": "Personnel assignments by apparatus",
+            "enabled": True,
+            "page": 1,
+            "order": 7,
+            "locked": False,
+            "config": {
+                "showRanks": True,
+                "showOnlyResponded": False,
+                "overflowToPage2": True
+            }
+        },
+        {
+            "id": "officers",
+            "name": "Officers",
+            "description": "Officer in Charge, Completed By",
+            "enabled": True,
+            "page": 1,
+            "order": 8,
+            "locked": False,
+            "config": {
+                "showOIC": True,
+                "showCompletedBy": True
+            }
+        },
+        # PAGE 2 - Extended details (optional)
+        {
+            "id": "damageAssessment",
+            "name": "Damage Assessment",
+            "description": "Property at risk, damages, injuries (FIRE only)",
+            "enabled": True,
+            "page": 2,
+            "order": 1,
+            "locked": False,
+            "fireOnly": True,
+            "config": {
+                "showPropertyAtRisk": True,
+                "showFireDamages": True,
+                "showFFInjuries": True,
+                "showCivilianInjuries": True
+            }
+        },
+        {
+            "id": "mutualAid",
+            "name": "Mutual Aid",
+            "description": "Aid direction, type, departments involved",
+            "enabled": True,
+            "page": 2,
+            "order": 2,
+            "locked": False,
+            "config": {
+                "showDirection": True,
+                "showType": True,
+                "showDepartments": True
+            }
+        },
+        {
+            "id": "cadUnitDetails",
+            "name": "CAD Unit Details",
+            "description": "Full unit timestamps table from CAD",
+            "enabled": True,
+            "page": 2,
+            "order": 3,
+            "locked": False,
+            "config": {
+                "showDispatchTime": True,
+                "showEnrouteTime": True,
+                "showArrivedTime": True,
+                "showClearedTime": True,
+                "showMutualAidFlag": True,
+                "highlightFirstTimes": True
+            }
+        },
+        {
+            "id": "nerisClassification",
+            "name": "NERIS - Classification",
+            "description": "Incident types, location use, actions taken",
+            "enabled": False,
+            "page": 2,
+            "order": 4,
+            "locked": False,
+            "fireOnly": True,
+            "config": {
+                "showIncidentTypes": True,
+                "showLocationUse": True,
+                "showActions": True,
+                "showNoActionReason": True,
+                "showPeoplePresent": True,
+                "showDisplaced": True
+            }
+        },
+        {
+            "id": "nerisRiskReduction",
+            "name": "NERIS - Risk Reduction",
+            "description": "Smoke alarms, fire alarms, sprinklers",
+            "enabled": False,
+            "page": 2,
+            "order": 5,
+            "locked": False,
+            "fireOnly": True,
+            "config": {
+                "showSmokeAlarms": True,
+                "showFireAlarms": True,
+                "showSprinklers": True,
+                "showCookingSuppression": True
+            }
+        },
+        {
+            "id": "nerisEmergingHazards",
+            "name": "NERIS - Emerging Hazards",
+            "description": "EV/battery, solar PV, CSST gas lines",
+            "enabled": False,
+            "page": 2,
+            "order": 6,
+            "locked": False,
+            "fireOnly": True,
+            "config": {
+                "showEvBattery": True,
+                "showSolarPv": True,
+                "showCsst": True
+            }
+        },
+        {
+            "id": "nerisExposures",
+            "name": "NERIS - Exposures",
+            "description": "Fire exposures to adjacent structures",
+            "enabled": False,
+            "page": 2,
+            "order": 7,
+            "locked": False,
+            "fireOnly": True,
+            "config": {}
+        },
+        {
+            "id": "nerisFireModule",
+            "name": "NERIS - Fire Module",
+            "description": "Investigation, arrival conditions, damage, cause",
+            "enabled": False,
+            "page": 2,
+            "order": 8,
+            "locked": False,
+            "fireOnly": True,
+            "config": {
+                "showInvestigation": True,
+                "showArrivalConditions": True,
+                "showStructureDamage": True,
+                "showFloorRoom": True,
+                "showCause": True
+            }
+        },
+        {
+            "id": "nerisMedicalModule",
+            "name": "NERIS - Medical Module",
+            "description": "Patient evaluation and care",
+            "enabled": False,
+            "page": 2,
+            "order": 9,
+            "locked": False,
+            "config": {
+                "showPatientCare": True
+            }
+        },
+        {
+            "id": "nerisHazmatModule",
+            "name": "NERIS - Hazmat Module",
+            "description": "Disposition, evacuations, chemicals",
+            "enabled": False,
+            "page": 2,
+            "order": 10,
+            "locked": False,
+            "config": {
+                "showDisposition": True,
+                "showEvacuated": True,
+                "showChemicals": True
+            }
+        },
+        {
+            "id": "nerisNarratives",
+            "name": "NERIS - Narratives",
+            "description": "Impedance and outcome narratives",
+            "enabled": False,
+            "page": 2,
+            "order": 11,
+            "locked": False,
+            "fireOnly": True,
+            "config": {
+                "showImpedance": True,
+                "showOutcome": True
+            }
+        },
+        {
+            "id": "footer",
+            "name": "Footer",
+            "description": "Station info, generation timestamp",
+            "enabled": True,
+            "page": 1,
+            "order": 99,
+            "locked": True,
+            "config": {
+                "showStationName": True,
+                "showGeneratedTime": True
+            }
+        }
+    ]
+}
+
+
 @router.get("/print")
 async def get_print_settings(db: Session = Depends(get_db)):
     """Get print settings as a combined object"""
@@ -470,6 +782,125 @@ async def update_print_settings(
     return {"status": "ok"}
 
 
+@router.get("/print/layout")
+async def get_print_layout(db: Session = Depends(get_db)):
+    """
+    Get the print layout configuration (v2 page-based blocks).
+    Returns stored layout or default if not configured.
+    """
+    result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'print' AND key = 'layout'")
+    ).fetchone()
+    
+    if result and result[0]:
+        try:
+            layout = json.loads(result[0])
+            # Merge with defaults to handle new blocks added after initial save
+            return _merge_layout_with_defaults(layout)
+        except json.JSONDecodeError:
+            pass
+    
+    # Return default layout
+    return dict(DEFAULT_PRINT_LAYOUT)
+
+
+@router.put("/print/layout")
+async def update_print_layout(
+    layout: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Update the print layout configuration.
+    Validates and stores the complete layout structure.
+    """
+    # Validate basic structure
+    if "version" not in layout or "blocks" not in layout:
+        raise HTTPException(status_code=400, detail="Invalid layout: missing version or blocks")
+    
+    if not isinstance(layout["blocks"], list):
+        raise HTTPException(status_code=400, detail="Invalid layout: blocks must be a list")
+    
+    # Validate each block has required fields
+    required_fields = ["id", "enabled", "page", "order"]
+    for block in layout["blocks"]:
+        for field in required_fields:
+            if field not in block:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Invalid block: missing '{field}' in block '{block.get('id', 'unknown')}'"
+                )
+        
+        # Validate page is 1 or 2
+        if block["page"] not in [1, 2]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid block: page must be 1 or 2 for block '{block['id']}'"
+            )
+        
+        # Validate locked blocks stay on page 1
+        if block.get("locked", False) and block["page"] != 1:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid block: locked block '{block['id']}' cannot be moved to page 2"
+            )
+    
+    # Store as JSON
+    layout_json = json.dumps(layout)
+    
+    exists = db.execute(
+        text("SELECT 1 FROM settings WHERE category = 'print' AND key = 'layout'")
+    ).fetchone()
+    
+    if exists:
+        db.execute(
+            text("UPDATE settings SET value = :value, value_type = 'json', updated_at = NOW() WHERE category = 'print' AND key = 'layout'"),
+            {"value": layout_json}
+        )
+    else:
+        db.execute(
+            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('print', 'layout', :value, 'json', 'Print layout configuration v2')"),
+            {"value": layout_json}
+        )
+    
+    db.commit()
+    return {"status": "ok", "message": "Layout saved successfully"}
+
+
+@router.post("/print/layout/reset")
+async def reset_print_layout(db: Session = Depends(get_db)):
+    """
+    Reset print layout to defaults.
+    Deletes stored layout, causing default to be returned on next GET.
+    """
+    db.execute(
+        text("DELETE FROM settings WHERE category = 'print' AND key = 'layout'")
+    )
+    db.commit()
+    return {"status": "ok", "message": "Layout reset to defaults"}
+
+
+def _merge_layout_with_defaults(stored_layout: dict) -> dict:
+    """
+    Merge stored layout with defaults to handle new blocks.
+    Preserves user's settings while adding any new default blocks.
+    """
+    result = dict(stored_layout)
+    result["version"] = DEFAULT_PRINT_LAYOUT["version"]
+    
+    # Get IDs of stored blocks
+    stored_ids = {b["id"] for b in result.get("blocks", [])}
+    
+    # Add any new default blocks that don't exist in stored layout
+    for default_block in DEFAULT_PRINT_LAYOUT["blocks"]:
+        if default_block["id"] not in stored_ids:
+            # Add new block with default disabled to not surprise users
+            new_block = dict(default_block)
+            new_block["enabled"] = False
+            result["blocks"].append(new_block)
+    
+    return result
+
+
 # =============================================================================
 # CONVENIENCE GETTERS (for use by other modules)
 # =============================================================================
@@ -506,4 +937,60 @@ def get_station_coords(db: Session) -> tuple:
     lat = get_setting_value(db, 'station', 'latitude', 40.0977)
     lon = get_setting_value(db, 'station', 'longitude', -75.7833)
     return (float(lat), float(lon))
+
+
+def get_print_layout(db: Session) -> dict:
+    """
+    Get print layout configuration for use by report generators.
+    Returns stored layout merged with defaults, or default layout.
+    """
+    result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'print' AND key = 'layout'")
+    ).fetchone()
+    
+    if result and result[0]:
+        try:
+            layout = json.loads(result[0])
+            return _merge_layout_with_defaults(layout)
+        except json.JSONDecodeError:
+            pass
+    
+    return dict(DEFAULT_PRINT_LAYOUT)
+
+
+def get_page_blocks(db: Session, page: int, call_category: str = 'FIRE') -> list:
+    """
+    Get enabled blocks for a specific page, filtered by call category.
+    Returns blocks sorted by order.
+    
+    Args:
+        db: Database session
+        page: Page number (1 or 2)
+        call_category: 'FIRE' or 'EMS' - filters fireOnly blocks
+    
+    Returns:
+        List of block configs for the specified page
+    """
+    layout = get_print_layout(db)
+    blocks = []
+    
+    for block in layout.get('blocks', []):
+        # Skip disabled blocks
+        if not block.get('enabled', True):
+            continue
+        
+        # Skip if not on requested page
+        if block.get('page') != page:
+            continue
+        
+        # Skip fireOnly blocks for EMS calls
+        if block.get('fireOnly', False) and call_category != 'FIRE':
+            continue
+        
+        blocks.append(block)
+    
+    # Sort by order
+    blocks.sort(key=lambda b: b.get('order', 99))
+    
+    return blocks
 

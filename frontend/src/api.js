@@ -179,6 +179,13 @@ export const getPrintSettings = () => api.get('/settings/print');
 
 export const updatePrintSettings = (settings) => api.put('/settings/print', settings);
 
+// Print Layout (v2 - page-based blocks)
+export const getPrintLayout = () => api.get('/settings/print/layout');
+
+export const updatePrintLayout = (layout) => api.put('/settings/print/layout', layout);
+
+export const resetPrintLayout = () => api.post('/settings/print/layout/reset');
+
 // ============================================================================
 // ADMIN
 // ============================================================================
