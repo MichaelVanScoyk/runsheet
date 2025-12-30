@@ -1032,21 +1032,17 @@ async def get_monthly_html_report(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{station_name} - Monthly Report</title>
     <style>
-        @page {{ size: letter; margin: 0.5in; }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         html, body {{
             width: 100%;
-            height: 100%;
+            height: auto;
         }}
         body {{
             font-family: 'Segoe UI', Arial, sans-serif;
-            font-size: 12px;
-            line-height: 1.3;
+            font-size: 14pt;
+            line-height: 1.4;
             color: #1a1a1a;
-            width: 7.5in;
-            min-height: 10in;
-            margin: 0 auto;
-            padding: 0;
+            padding: 0.4in;
             position: relative;
         }}
         .watermark {{
@@ -1058,56 +1054,55 @@ async def get_monthly_html_report(
             z-index: -1;
             pointer-events: none;
         }}
-        .watermark img {{ width: 6in; height: auto; }}
+        .watermark img {{ width: 80%; max-width: 500px; height: auto; }}
         .header {{
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 20px;
             border-bottom: 4px solid #1e6b35;
-            padding-bottom: 15px;
+            padding-bottom: 16px;
             margin-bottom: 20px;
         }}
-        .header-logo {{ width: 80px; height: auto; flex-shrink: 0; }}
+        .header-logo {{ width: 90px; height: auto; flex-shrink: 0; }}
         .header-text {{ text-align: left; }}
-        .header h1 {{ font-size: 26px; font-weight: 700; color: #1a1a1a; letter-spacing: 1.5px; }}
-        .header .subtitle {{ font-size: 16px; color: #1e6b35; font-weight: 600; margin-top: 4px; }}
-        .content {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
-        .section {{ background: #fafafa; border: 1px solid #d0d0d0; border-radius: 6px; padding: 12px 14px; }}
-        .section-title {{ font-size: 11px; font-weight: 700; color: #1e6b35; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #ddd; padding-bottom: 6px; margin-bottom: 10px; }}
+        .header h1 {{ font-size: 28pt; font-weight: 700; color: #1a1a1a; letter-spacing: 1.5px; }}
+        .header .subtitle {{ font-size: 14pt; color: #1e6b35; font-weight: 600; margin-top: 4px; }}
+        .content {{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }}
+        .section {{ background: #fafafa; border: 1px solid #d0d0d0; border-radius: 6px; padding: 14px 16px; }}
+        .section-title {{ font-size: 10pt; font-weight: 700; color: #1e6b35; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #ddd; padding-bottom: 6px; margin-bottom: 12px; }}
         .full-width {{ grid-column: 1 / -1; }}
-        .stats-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }}
-        .stat-box {{ text-align: center; background: white; padding: 12px 8px; border-radius: 4px; border: 1px solid #e0e0e0; }}
-        .stat-value {{ font-size: 28px; font-weight: 700; color: #1a1a1a; }}
+        .stats-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }}
+        .stat-box {{ text-align: center; background: white; padding: 14px 10px; border-radius: 4px; border: 1px solid #e0e0e0; }}
+        .stat-value {{ font-size: 32pt; font-weight: 700; color: #1a1a1a; }}
         .stat-value.highlight {{ color: #1e6b35; }}
-        .stat-label {{ font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 4px; }}
-        .stat-compare {{ font-size: 10px; color: #666; margin-top: 4px; }}
-        table {{ width: 100%; border-collapse: collapse; font-size: 11px; }}
-        th {{ background: #f0f0f0; font-weight: 600; text-align: left; padding: 6px 8px; border-bottom: 2px solid #ccc; }}
-        td {{ padding: 5px 8px; border-bottom: 1px solid #e0e0e0; }}
+        .stat-label {{ font-size: 8pt; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 4px; }}
+        .stat-compare {{ font-size: 9pt; color: #666; margin-top: 4px; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 11pt; }}
+        th {{ background: #f0f0f0; font-weight: 600; text-align: left; padding: 8px 10px; border-bottom: 2px solid #ccc; }}
+        td {{ padding: 6px 10px; border-bottom: 1px solid #e0e0e0; }}
         tr:last-child td {{ border-bottom: none; }}
         .text-right {{ text-align: right; }}
         .text-center {{ text-align: center; }}
-        .response-times {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }}
-        .time-box {{ background: white; border: 1px solid #e0e0e0; border-radius: 4px; padding: 12px 8px; text-align: center; }}
-        .time-value {{ font-size: 22px; font-weight: 700; color: #1a1a1a; }}
-        .time-label {{ font-size: 9px; color: #666; text-transform: uppercase; margin-top: 4px; }}
-        .footer {{ margin-top: 20px; padding-top: 10px; border-top: 2px solid #ddd; display: flex; justify-content: space-between; font-size: 10px; color: #888; }}
-        .incident-group {{ margin-bottom: 10px; }}
+        .response-times {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }}
+        .time-box {{ background: white; border: 1px solid #e0e0e0; border-radius: 4px; padding: 14px 10px; text-align: center; }}
+        .time-value {{ font-size: 24pt; font-weight: 700; color: #1a1a1a; }}
+        .time-label {{ font-size: 8pt; color: #666; text-transform: uppercase; margin-top: 4px; }}
+        .footer {{ margin-top: 24px; padding-top: 12px; border-top: 2px solid #ddd; display: flex; justify-content: space-between; font-size: 10pt; color: #888; }}
+        .incident-group {{ margin-bottom: 12px; }}
         .incident-group:last-child {{ margin-bottom: 0; }}
-        .incident-group-header {{ display: flex; justify-content: space-between; align-items: center; background: #1e6b35; color: white; padding: 6px 10px; border-radius: 3px; font-weight: 600; font-size: 11px; }}
-        .incident-group-header .count {{ background: rgba(255,255,255,0.3); padding: 2px 10px; border-radius: 10px; font-size: 10px; }}
-        .incident-subtype {{ display: flex; justify-content: space-between; padding: 4px 10px 4px 20px; font-size: 10px; color: #444; border-bottom: 1px dotted #ccc; }}
+        .incident-group-header {{ display: flex; justify-content: space-between; align-items: center; background: #1e6b35; color: white; padding: 8px 12px; border-radius: 3px; font-weight: 600; font-size: 11pt; }}
+        .incident-group-header .count {{ background: rgba(255,255,255,0.3); padding: 2px 12px; border-radius: 10px; font-size: 10pt; }}
+        .incident-subtype {{ display: flex; justify-content: space-between; padding: 5px 12px 5px 24px; font-size: 10pt; color: #444; border-bottom: 1px dotted #ccc; }}
         .incident-subtype:last-child {{ border-bottom: none; }}
         .incident-subtype .count {{ font-weight: 600; color: #666; }}
-        .unit-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }}
-        .unit-row {{ display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dotted #ccc; font-size: 11px; }}
+        .unit-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; }}
+        .unit-row {{ display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dotted #ccc; font-size: 11pt; }}
         .unit-name {{ font-weight: 500; }}
         .unit-count {{ font-weight: 600; color: #1e6b35; }}
         @media print {{
             @page {{ size: letter; margin: 0.5in; }}
-            html, body {{ width: 100%; height: 100%; }}
-            body {{ padding: 0; width: 100%; }}
+            body {{ padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
             .section {{ break-inside: avoid; }}
             .watermark {{ position: fixed; }}
         }}
