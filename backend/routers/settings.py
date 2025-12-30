@@ -255,6 +255,156 @@ async def delete_branding_logo(db: Session = Depends(get_db)):
 
 
 # =============================================================================
+# PRINT SETTINGS (must be before generic /{category}/{key} routes)
+# =============================================================================
+
+@router.get("/print")
+async def get_print_settings(db: Session = Depends(get_db)):
+    """Get print settings as a combined object"""
+    result = db.execute(
+        text("SELECT key, value, value_type FROM settings WHERE category = 'print'")
+    )
+    
+    settings = dict(DEFAULT_PRINT_SETTINGS)  # Start with defaults
+    
+    for row in result:
+        key = row[0]
+        value = _parse_value(row[1], row[2])
+        if key in settings:
+            settings[key] = value
+    
+    return settings
+
+
+@router.put("/print")
+async def update_print_settings(
+    settings: dict,
+    db: Session = Depends(get_db)
+):
+    """Update print settings"""
+    for key, value in settings.items():
+        # Check if setting exists
+        exists = db.execute(
+            text("SELECT 1 FROM settings WHERE category = 'print' AND key = :key"),
+            {"key": key}
+        ).fetchone()
+        
+        value_str = str(value).lower() if isinstance(value, bool) else str(value)
+        value_type = 'boolean' if isinstance(value, bool) else 'string'
+        
+        if exists:
+            db.execute(
+                text("UPDATE settings SET value = :value, updated_at = NOW() WHERE category = 'print' AND key = :key"),
+                {"key": key, "value": value_str}
+            )
+        else:
+            db.execute(
+                text("INSERT INTO settings (category, key, value, value_type) VALUES ('print', :key, :value, :value_type)"),
+                {"key": key, "value": value_str, "value_type": value_type}
+            )
+    
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/print/layout")
+async def get_print_layout_endpoint(db: Session = Depends(get_db)):
+    """
+    Get the print layout configuration (v2 page-based blocks).
+    Returns stored layout or default if not configured.
+    """
+    result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'print' AND key = 'layout'")
+    ).fetchone()
+    
+    if result and result[0]:
+        try:
+            layout = json.loads(result[0])
+            # Merge with defaults to handle new blocks added after initial save
+            return _merge_layout_with_defaults(layout)
+        except json.JSONDecodeError:
+            pass
+    
+    # Return default layout
+    return dict(DEFAULT_PRINT_LAYOUT)
+
+
+@router.put("/print/layout")
+async def update_print_layout(
+    layout: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Update the print layout configuration.
+    Validates and stores the complete layout structure.
+    """
+    # Validate basic structure
+    if "version" not in layout or "blocks" not in layout:
+        raise HTTPException(status_code=400, detail="Invalid layout: missing version or blocks")
+    
+    if not isinstance(layout["blocks"], list):
+        raise HTTPException(status_code=400, detail="Invalid layout: blocks must be a list")
+    
+    # Validate each block has required fields
+    required_fields = ["id", "enabled", "page", "order"]
+    for block in layout["blocks"]:
+        for field in required_fields:
+            if field not in block:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Invalid block: missing '{field}' in block '{block.get('id', 'unknown')}'"
+                )
+        
+        # Validate page is 1 or 2
+        if block["page"] not in [1, 2]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid block: page must be 1 or 2 for block '{block['id']}'"
+            )
+        
+        # Validate locked blocks stay on page 1
+        if block.get("locked", False) and block["page"] != 1:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid block: locked block '{block['id']}' cannot be moved to page 2"
+            )
+    
+    # Store as JSON
+    layout_json = json.dumps(layout)
+    
+    exists = db.execute(
+        text("SELECT 1 FROM settings WHERE category = 'print' AND key = 'layout'")
+    ).fetchone()
+    
+    if exists:
+        db.execute(
+            text("UPDATE settings SET value = :value, value_type = 'json', updated_at = NOW() WHERE category = 'print' AND key = 'layout'"),
+            {"value": layout_json}
+        )
+    else:
+        db.execute(
+            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('print', 'layout', :value, 'json', 'Print layout configuration v2')"),
+            {"value": layout_json}
+        )
+    
+    db.commit()
+    return {"status": "ok", "message": "Layout saved successfully"}
+
+
+@router.post("/print/layout/reset")
+async def reset_print_layout(db: Session = Depends(get_db)):
+    """
+    Reset print layout to defaults.
+    Deletes stored layout, causing default to be returned on next GET.
+    """
+    db.execute(
+        text("DELETE FROM settings WHERE category = 'print' AND key = 'layout'")
+    )
+    db.commit()
+    return {"status": "ok", "message": "Layout reset to defaults"}
+
+
+# =============================================================================
 # GENERIC SETTING GET/PUT (after specific routes)
 # =============================================================================
 
@@ -731,152 +881,6 @@ DEFAULT_PRINT_LAYOUT = {
         }
     ]
 }
-
-
-@router.get("/print")
-async def get_print_settings(db: Session = Depends(get_db)):
-    """Get print settings as a combined object"""
-    result = db.execute(
-        text("SELECT key, value, value_type FROM settings WHERE category = 'print'")
-    )
-    
-    settings = dict(DEFAULT_PRINT_SETTINGS)  # Start with defaults
-    
-    for row in result:
-        key = row[0]
-        value = _parse_value(row[1], row[2])
-        if key in settings:
-            settings[key] = value
-    
-    return settings
-
-
-@router.put("/print")
-async def update_print_settings(
-    settings: dict,
-    db: Session = Depends(get_db)
-):
-    """Update print settings"""
-    for key, value in settings.items():
-        # Check if setting exists
-        exists = db.execute(
-            text("SELECT 1 FROM settings WHERE category = 'print' AND key = :key"),
-            {"key": key}
-        ).fetchone()
-        
-        value_str = str(value).lower() if isinstance(value, bool) else str(value)
-        value_type = 'boolean' if isinstance(value, bool) else 'string'
-        
-        if exists:
-            db.execute(
-                text("UPDATE settings SET value = :value, updated_at = NOW() WHERE category = 'print' AND key = :key"),
-                {"key": key, "value": value_str}
-            )
-        else:
-            db.execute(
-                text("INSERT INTO settings (category, key, value, value_type) VALUES ('print', :key, :value, :value_type)"),
-                {"key": key, "value": value_str, "value_type": value_type}
-            )
-    
-    db.commit()
-    return {"status": "ok"}
-
-
-@router.get("/print/layout")
-async def get_print_layout(db: Session = Depends(get_db)):
-    """
-    Get the print layout configuration (v2 page-based blocks).
-    Returns stored layout or default if not configured.
-    """
-    result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'print' AND key = 'layout'")
-    ).fetchone()
-    
-    if result and result[0]:
-        try:
-            layout = json.loads(result[0])
-            # Merge with defaults to handle new blocks added after initial save
-            return _merge_layout_with_defaults(layout)
-        except json.JSONDecodeError:
-            pass
-    
-    # Return default layout
-    return dict(DEFAULT_PRINT_LAYOUT)
-
-
-@router.put("/print/layout")
-async def update_print_layout(
-    layout: dict,
-    db: Session = Depends(get_db)
-):
-    """
-    Update the print layout configuration.
-    Validates and stores the complete layout structure.
-    """
-    # Validate basic structure
-    if "version" not in layout or "blocks" not in layout:
-        raise HTTPException(status_code=400, detail="Invalid layout: missing version or blocks")
-    
-    if not isinstance(layout["blocks"], list):
-        raise HTTPException(status_code=400, detail="Invalid layout: blocks must be a list")
-    
-    # Validate each block has required fields
-    required_fields = ["id", "enabled", "page", "order"]
-    for block in layout["blocks"]:
-        for field in required_fields:
-            if field not in block:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Invalid block: missing '{field}' in block '{block.get('id', 'unknown')}'"
-                )
-        
-        # Validate page is 1 or 2
-        if block["page"] not in [1, 2]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid block: page must be 1 or 2 for block '{block['id']}'"
-            )
-        
-        # Validate locked blocks stay on page 1
-        if block.get("locked", False) and block["page"] != 1:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid block: locked block '{block['id']}' cannot be moved to page 2"
-            )
-    
-    # Store as JSON
-    layout_json = json.dumps(layout)
-    
-    exists = db.execute(
-        text("SELECT 1 FROM settings WHERE category = 'print' AND key = 'layout'")
-    ).fetchone()
-    
-    if exists:
-        db.execute(
-            text("UPDATE settings SET value = :value, value_type = 'json', updated_at = NOW() WHERE category = 'print' AND key = 'layout'"),
-            {"value": layout_json}
-        )
-    else:
-        db.execute(
-            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('print', 'layout', :value, 'json', 'Print layout configuration v2')"),
-            {"value": layout_json}
-        )
-    
-    db.commit()
-    return {"status": "ok", "message": "Layout saved successfully"}
-
-
-@router.post("/print/layout/reset")
-async def reset_print_layout(db: Session = Depends(get_db)):
-    """
-    Reset print layout to defaults.
-    Deletes stored layout, causing default to be returned on next GET.
-    """
-    db.execute(
-        text("DELETE FROM settings WHERE category = 'print' AND key = 'layout'")
-    )
-    db.commit()
-    return {"status": "ok", "message": "Layout reset to defaults"}
 
 
 def _merge_layout_with_defaults(stored_layout: dict) -> dict:
