@@ -76,7 +76,7 @@ export default function PrintView({ incidentId, onClose }) {
   };
 
   const handlePrint = () => {
-    window.print();
+      window.open(`/api/reports/html/incident/${incidentId}`, '_blank');
   };
 
   const handleDownloadPdf = () => {

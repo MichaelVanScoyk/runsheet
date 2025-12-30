@@ -1361,7 +1361,7 @@ async def get_incident_html_report(
     incident_id: int,
     db: Session = Depends(get_db)
 ):
-    """Generate printable HTML report for a single incident."""
+    """Generate printable HTML report - matches PrintView.jsx structure with branding colors."""
     from settings_helper import format_local_time, format_local_date, get_timezone
     
     incident = db.execute(text("SELECT * FROM incidents WHERE id = :id AND deleted_at IS NULL"), {"id": incident_id}).fetchone()
@@ -1372,105 +1372,292 @@ async def get_incident_html_report(
     
     # Print settings
     ps_result = db.execute(text("SELECT value FROM settings WHERE category = 'print' AND key = 'settings'")).fetchone()
-    ps = {'showHeader': True, 'showTimes': True, 'showLocation': True, 'showDispatchInfo': True, 'showSituationFound': True, 'showExtentOfDamage': True, 'showServicesProvided': True, 'showNarrative': True, 'showPersonnelGrid': True, 'showOfficerInfo': True, 'showProblemsIssues': True, 'showCadUnits': True, 'showCadUnitDetails': False, 'showWeather': True, 'showCrossStreets': True}
+    ps = {'showHeader': True, 'showTimes': True, 'showLocation': True, 'showDispatchInfo': True, 'showSituationFound': True, 'showExtentOfDamage': True, 'showServicesProvided': True, 'showNarrative': True, 'showPersonnelGrid': True, 'showEquipmentUsed': True, 'showOfficerInfo': True, 'showProblemsIssues': True, 'showCadUnits': True, 'showCadUnitDetails': False, 'showWeather': True, 'showCrossStreets': True, 'showCallerInfo': False}
     if ps_result and ps_result[0]:
         try: ps.update(json.loads(ps_result[0]))
         except: pass
     
-    # Tenant settings
+    # Station settings
     station_name = (db.execute(text("SELECT value FROM settings WHERE category = 'station' AND key = 'name'")).fetchone() or ["Fire Department"])[0]
-    station_short = (db.execute(text("SELECT value FROM settings WHERE category = 'station' AND key = 'short_name'")).fetchone() or ["Station"])[0]
+    station_number = (db.execute(text("SELECT value FROM settings WHERE category = 'station' AND key = 'number'")).fetchone() or [""])[0]
+    
+    # Branding - logo and colors
     logo_result = db.execute(text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo'")).fetchone()
     logo_mime = db.execute(text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")).fetchone()
     logo_url = f"data:{logo_mime[0] if logo_mime else 'image/png'};base64,{logo_result[0]}" if logo_result and logo_result[0] else ""
     
-    # Municipality
-    muni = inc.get('municipality_code', '')
-    if inc.get('municipality_id'):
-        mr = db.execute(text("SELECT display_name, name, code FROM municipalities WHERE id = :id"), {"id": inc['municipality_id']}).fetchone()
-        if mr: muni = mr[0] or mr[1] or mr[2]
+    primary_result = db.execute(text("SELECT value FROM settings WHERE category = 'branding' AND key = 'primary_color'")).fetchone()
+    secondary_result = db.execute(text("SELECT value FROM settings WHERE category = 'branding' AND key = 'secondary_color'")).fetchone()
+    primary_color = primary_result[0] if primary_result else "#016a2b"
+    secondary_color = secondary_result[0] if secondary_result else "#eeee01"
     
-    # Personnel by unit
-    pdata = db.execute(text("SELECT ip.personnel_first_name, ip.personnel_last_name, ip.rank_name_snapshot, a.unit_designator, a.name FROM incident_personnel ip JOIN incident_units iu ON ip.incident_unit_id = iu.id JOIN apparatus a ON iu.apparatus_id = a.id WHERE ip.incident_id = :id ORDER BY a.unit_designator, ip.slot_index"), {"id": incident_id}).fetchall()
-    pbu = {}
-    for p in pdata:
-        if p[3] not in pbu: pbu[p[3]] = {'name': p[4], 'people': []}
-        pbu[p[3]]['people'].append({'name': f"{p[0]} {p[1]}", 'rank': p[2]})
+    # Personnel lookup - for name display
+    personnel_rows = db.execute(text("SELECT id, first_name, last_name FROM personnel")).fetchall()
+    personnel_lookup = {p[0]: f"{p[2]}, {p[1]}" for p in personnel_rows}
     
-    # Officers
-    oic_name = ""
-    comp_name = ""
-    if inc.get('officer_in_charge'):
-        o = db.execute(text("SELECT first_name, last_name FROM personnel WHERE id = :id"), {"id": inc['officer_in_charge']}).fetchone()
-        if o: oic_name = f"{o[0]} {o[1]}"
-    if inc.get('completed_by'):
-        c = db.execute(text("SELECT first_name, last_name FROM personnel WHERE id = :id"), {"id": inc['completed_by']}).fetchone()
-        if c: comp_name = f"{c[0]} {c[1]}"
+    # Apparatus lookup
+    apparatus_rows = db.execute(text("SELECT id, unit_designator, name, slot_count FROM apparatus WHERE active = true ORDER BY unit_designator")).fetchall()
+    apparatus_list = [{'id': a[0], 'unit_designator': a[1], 'name': a[2], 'slot_count': a[3] or 6} for a in apparatus_rows]
+    apparatus_lookup = {a['unit_designator']: a for a in apparatus_list}
     
-    def fmt_time(dt): return format_local_time(dt, include_seconds=True) if dt else ""
-    def fmt_date(dt): return format_local_date(dt) if dt else ""
+    def fmt_time(dt):
+        if not dt: return ''
+        return format_local_time(dt, include_seconds=True)
     
-    inc_date = str(inc.get('incident_date', '')) if inc.get('incident_date') else fmt_date(inc.get('time_dispatched'))
+    def get_personnel_name(pid):
+        return personnel_lookup.get(pid, '')
     
-    # Times box
-    times_rows = ""
-    for f, l in [('time_dispatched','Dispatched'),('time_first_enroute','Enroute'),('time_first_on_scene','On Scene'),('time_fire_under_control','Under Ctrl'),('time_last_cleared','Cleared')]:
-        if inc.get(f): times_rows += f'<tr><td class="tl">{l}:</td><td class="tv">{fmt_time(inc[f])}</td></tr>'
+    # Calculate in-service duration
+    in_service = ''
+    if inc.get('time_dispatched') and inc.get('time_last_cleared'):
+        try:
+            start = inc['time_dispatched']
+            end = inc['time_last_cleared']
+            diff_seconds = (end - start).total_seconds()
+            if diff_seconds > 0:
+                hours = int(diff_seconds // 3600)
+                mins = int((diff_seconds % 3600) // 60)
+                in_service = f"{hours}h {mins}m" if hours > 0 else f"{mins}m"
+        except:
+            pass
     
-    # Units called
-    units_list = ", ".join([u.get('unit_id','') for u in inc.get('cad_units',[]) if u.get('unit_id')]) if inc.get('cad_units') else ""
+    # Get assigned units from personnel_assignments
+    personnel_assignments = inc.get('personnel_assignments', {}) or {}
+    assigned_units = []
+    for a in apparatus_list:
+        slots = personnel_assignments.get(a['unit_designator'], [])
+        if slots and any(s for s in slots):
+            assigned_units.append(a)
     
-    # Personnel HTML
-    pers_html = ""
-    if ps.get('showPersonnelGrid') and pbu:
-        cols = ""
-        for uid, data in pbu.items():
-            names = '<br>'.join([f"{p['rank']} {p['name']}" if p['rank'] else p['name'] for p in data['people']])
-            cols += f'<td class="ucol"><div class="uhdr">{data["name"]}<br>({uid})</div><div class="unames">{names}</div></td>'
-        total = sum(len(d['people']) for d in pbu.values())
-        pers_html = f'<div class="sec"><div class="stitle">Personnel ({total})</div><table class="pgrid"><tr>{cols}</tr></table></div>'
+    # Count total personnel
+    total_personnel = 0
+    for slots in personnel_assignments.values():
+        total_personnel += len([s for s in slots if s])
     
-    # CAD details (last page if enabled)
-    cad_html = ""
-    if ps.get('showCadUnitDetails') and inc.get('cad_units'):
-        rows = ""
-        for u in inc.get('cad_units', []):
-            rows += f'<tr><td>{u.get("unit_id","")}</td><td>{fmt_time(u.get("time_dispatched"))}</td><td>{fmt_time(u.get("time_enroute"))}</td><td>{fmt_time(u.get("time_arrived"))}</td><td>{fmt_time(u.get("time_cleared") or u.get("time_available"))}</td></tr>'
-        cad_html = f'<div class="pgbrk"></div><div class="sec"><div class="stitle">CAD Unit Details</div><table class="dtbl"><thead><tr><th>Unit</th><th>Dispatched</th><th>Enroute</th><th>Arrived</th><th>Cleared</th></tr></thead><tbody>{rows}</tbody></table></div>'
+    # Build personnel table rows (Role column + unit columns)
+    role_names = ['Driver', 'Officer', 'FF', 'FF', 'FF', 'FF']
+    personnel_rows_html = ""
+    for idx, role in enumerate(role_names):
+        has_data = any(
+            personnel_assignments.get(a['unit_designator'], [None] * 6)[idx] if idx < len(personnel_assignments.get(a['unit_designator'], [])) else None
+            for a in assigned_units
+        )
+        if not has_data:
+            continue
+        
+        row = f'<tr><td class="role-cell">{role}</td>'
+        for a in assigned_units:
+            slots = personnel_assignments.get(a['unit_designator'], [])
+            pid = slots[idx] if idx < len(slots) else None
+            name = get_personnel_name(pid) if pid else ''
+            row += f'<td>{name}</td>'
+        row += '</tr>'
+        personnel_rows_html += row
     
-    html = f'''<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Incident {inc.get("internal_incident_number","")}</title>
-<style>
-@page{{size:letter;margin:0.5in}}*{{margin:0;padding:0;box-sizing:border-box}}body{{font-family:Arial,sans-serif;font-size:10px;line-height:1.4;color:#1a1a1a}}
-.hdr{{display:table;width:100%;border-bottom:3px solid #1e6b35;padding-bottom:10px;margin-bottom:12px}}
-.hlogo{{display:table-cell;width:65px;vertical-align:middle}}.hlogo img{{width:60px}}
-.htxt{{display:table-cell;vertical-align:middle;padding-left:12px}}.htxt h1{{font-size:16px;font-weight:700;margin:0}}.htxt .sub{{font-size:11px;color:#1e6b35;font-weight:600}}
-.hright{{display:table-cell;text-align:right;vertical-align:top;width:200px}}.inum{{font-size:14px;font-weight:700;color:#1e6b35}}.idate{{font-size:9px;color:#666}}
-.inforow{{display:table;width:100%;margin-bottom:12px}}.infoleft{{display:table-cell;width:55%;vertical-align:top}}.inforight{{display:table-cell;width:45%;vertical-align:top}}
-.iitem{{margin-bottom:3px;font-size:9px}}.ilbl{{font-weight:600;color:#555}}
-.tbox{{border:1px solid #ccc;border-collapse:collapse;float:right;font-size:9px}}.tbox td{{padding:2px 6px;border:1px solid #ddd}}.tl{{font-weight:600;text-align:right;background:#f5f5f5}}.tv{{font-family:monospace;font-size:10px}}
-.sec{{background:#f8f8f8;border:1px solid #e0e0e0;border-radius:4px;padding:8px 10px;margin-bottom:10px;page-break-inside:avoid}}
-.stitle{{font-size:9px;font-weight:700;color:#1e6b35;text-transform:uppercase;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:6px}}
-.sval{{margin:0}}.ssub{{margin:4px 0 0 0;font-size:9px;color:#555}}
-.pgrid{{width:100%;border-collapse:collapse}}.pgrid td{{vertical-align:top;padding:0 8px 0 0}}
-.ucol{{border:1px solid #ddd;padding:6px;background:white}}.uhdr{{background:#e94560;color:white;padding:4px 6px;font-weight:600;font-size:9px;margin:-6px -6px 6px -6px;text-align:center}}.unames{{font-size:9px;line-height:1.5}}
-.osec{{background:#e8f5e9;border-color:#c8e6c9;font-size:10px}}
-.dtbl{{width:100%;border-collapse:collapse;font-size:9px}}.dtbl th{{background:#1e6b35;color:white;padding:4px 6px;text-align:left}}.dtbl td{{padding:3px 6px;border-bottom:1px solid #e0e0e0}}
-.pgbrk{{page-break-before:always}}
-.ftr{{margin-top:15px;padding-top:8px;border-top:1px solid #ddd;font-size:8px;color:#888;text-align:center}}
-</style></head><body>
-<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.04;z-index:-1"><img src="{logo_url}" style="width:350px" alt=""></div>
-<div class="hdr"><div class="hlogo"><img src="{logo_url}" alt=""></div><div class="htxt"><h1>{station_name.upper()}</h1><div class="sub">Incident Report</div></div><div class="hright"><div class="inum">{inc.get("internal_incident_number","")}</div><div class="idate">{inc_date}</div><div class="idate">CAD: {inc.get("cad_event_number","")}</div></div></div>
-<div class="inforow"><div class="infoleft"><div class="iitem"><span class="ilbl">Municipality:</span> {muni}</div><div class="iitem"><span class="ilbl">Weather:</span> {inc.get("weather_conditions","") or "-"}</div><div class="iitem"><span class="ilbl">ESZ/Box:</span> {inc.get("esz_box","") or "-"}</div></div><div class="inforight"><table class="tbox">{times_rows}</table></div></div>
-<div class="sec"><div class="stitle">Location</div><p class="sval">{inc.get("address","") or "-"}</p>{"<p class='ssub'><strong>Cross Streets:</strong> "+inc.get("cross_streets","")+"</p>" if ps.get('showCrossStreets') and inc.get('cross_streets') else ""}</div>
-{"<div class='sec'><div class='stitle'>Units Called</div><p class='sval'>"+units_list+"</p></div>" if units_list else ""}
-{"<div class='sec'><div class='stitle'>Dispatched As</div><p class='sval'>"+inc.get('cad_event_type','')+((' / '+inc.get('cad_event_subtype')) if inc.get('cad_event_subtype') else '')+"</p></div>" if inc.get('cad_event_type') else ""}
-<div class="sec"><div class="stitle">Incident Details</div>{"<p><strong>Situation Found:</strong> "+inc.get("situation_found","")+"</p>" if ps.get('showSituationFound') and inc.get('situation_found') else ""}{"<p><strong>Extent of Damage:</strong> "+inc.get("extent_of_damage","")+"</p>" if ps.get('showExtentOfDamage') and inc.get('extent_of_damage') else ""}{"<p><strong>Services Provided:</strong> "+inc.get("services_provided","")+"</p>" if ps.get('showServicesProvided') and inc.get('services_provided') else ""}{"<p><strong>Narrative:</strong> "+inc.get("narrative","")+"</p>" if ps.get('showNarrative') and inc.get('narrative') else ""}</div>
-{pers_html}
-{"<div class='sec osec'><strong>Officer in Charge:</strong> "+oic_name+("&nbsp;&nbsp;|&nbsp;&nbsp;<strong>Completed By:</strong> "+comp_name if comp_name else "")+"</div>" if oic_name or comp_name else ""}
-<div class="sec"><div class="stitle">Problems / Issues</div><p class="sval">{inc.get("problems_issues","") or "None"}</p></div>
-<div class="ftr">{station_name} — {station_short} | Generated: {datetime.now().strftime('%m/%d/%Y %I:%M %p')} | {get_timezone()}</div>
-{cad_html}
-</body></html>'''
+    # Build times section
+    times_html = ""
+    if ps.get('showTimes'):
+        times_html = f'''
+        <div class="times-grid">
+            <div class="time-row"><span class="time-label">Dispatched:</span><span class="time-value">{fmt_time(inc.get('time_dispatched'))}</span></div>
+            <div class="time-row"><span class="time-label">Enroute:</span><span class="time-value">{fmt_time(inc.get('time_first_enroute'))}</span></div>
+            <div class="time-row"><span class="time-label">On Scene:</span><span class="time-value">{fmt_time(inc.get('time_first_on_scene'))}</span></div>
+            <div class="time-row"><span class="time-label">Under Ctrl:</span><span class="time-value">{fmt_time(inc.get('time_fire_under_control'))}</span></div>
+            <div class="time-row"><span class="time-label">Cleared:</span><span class="time-value">{fmt_time(inc.get('time_last_cleared'))}</span></div>
+            <div class="time-row"><span class="time-label">In Service:</span><span class="time-value">{in_service}</span></div>
+        </div>'''
+    
+    # Personnel table
+    personnel_html = ""
+    if ps.get('showPersonnelGrid') and assigned_units:
+        unit_headers = ''.join([f'<th>{a["unit_designator"]}</th>' for a in assigned_units])
+        personnel_html = f'''
+        <div class="section">
+            <span class="label">Personnel:</span>
+            <table class="personnel-table">
+                <thead><tr><th>Role</th>{unit_headers}</tr></thead>
+                <tbody>{personnel_rows_html}</tbody>
+            </table>
+            <div class="field"><span class="label">Total Personnel:</span> <span class="value">{total_personnel}</span></div>
+        </div>'''
+    
+    # Officer names
+    oic_name = get_personnel_name(inc.get('officer_in_charge')) if inc.get('officer_in_charge') else ''
+    completed_by_name = get_personnel_name(inc.get('completed_by')) if inc.get('completed_by') else ''
+    
+    # CAD units list
+    cad_units_list = ', '.join([u.get('unit_id', '') for u in (inc.get('cad_units') or [])]) if inc.get('cad_units') else ''
+    
+    # Equipment list
+    equipment_list = ', '.join(inc.get('equipment_used', [])) if inc.get('equipment_used') else ''
+    
+    html = f'''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Incident {inc.get("internal_incident_number", "")}</title>
+    <style>
+        @page {{ size: letter; margin: 0.35in; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: Arial, sans-serif; font-size: 10pt; line-height: 1.3; color: #000; }}
+        
+        .header {{ text-align: center; border-bottom: 2px solid {primary_color}; padding-bottom: 0.25rem; margin-bottom: 0.5rem; }}
+        .header h1 {{ font-size: 14pt; margin: 0; font-weight: bold; }}
+        .header h2 {{ font-size: 11pt; margin: 0; font-weight: normal; }}
+        
+        .top-info {{ display: flex; gap: 1rem; margin-bottom: 0.5rem; }}
+        .col-left {{ flex: 1; }}
+        .col-right {{ width: 180px; }}
+        
+        .field {{ display: flex; align-items: baseline; gap: 0.25rem; margin-bottom: 0.15rem; }}
+        .field-full {{ flex-direction: column; gap: 0; }}
+        .label {{ font-weight: bold; font-size: 9pt; white-space: nowrap; min-width: 80px; }}
+        .value {{ font-size: 10pt; }}
+        .value-bold {{ font-weight: bold; font-size: 12pt; }}
+        
+        .badge {{ display: inline-block; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 8pt; font-weight: bold; margin-left: 0.5rem; color: #fff; }}
+        .badge-fire {{ background: #e74c3c; }}
+        .badge-ems {{ background: #3498db; }}
+        
+        .times-grid {{ border: 1px solid #000; padding: 0.25rem; }}
+        .time-row {{ display: flex; justify-content: space-between; padding: 0.1rem 0; border-bottom: 1px dotted #ccc; }}
+        .time-row:last-child {{ border-bottom: none; }}
+        .time-label {{ font-size: 9pt; font-weight: bold; }}
+        .time-value {{ font-size: 10pt; font-family: 'Courier New', monospace; min-width: 70px; text-align: right; }}
+        
+        .section {{ margin-bottom: 0.35rem; padding-bottom: 0.25rem; border-bottom: 1px solid #ddd; }}
+        
+        .narrative {{ white-space: pre-wrap; margin-top: 0.15rem; padding: 0.25rem; background: #f9f9f9; border: 1px solid #ddd; min-height: 0.5in; }}
+        
+        .personnel-table {{ width: 100%; border-collapse: collapse; font-size: 9pt; }}
+        .personnel-table th, .personnel-table td {{ border: 1px solid #000; padding: 0.15rem 0.25rem; text-align: left; }}
+        .personnel-table th {{ background: {primary_color}; color: #fff; font-weight: bold; text-align: center; }}
+        .role-cell {{ font-weight: bold; width: 50px; background: {secondary_color}; }}
+        
+        .footer {{ margin-top: 0.5rem; padding-top: 0.25rem; border-top: 1px solid #000; display: flex; justify-content: space-between; font-size: 8pt; color: #666; }}
+        
+        @media print {{
+            body {{ background: #fff; }}
+            .section {{ page-break-inside: avoid; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{station_name} — Station {station_number}</h1>
+        <h2>Incident Report</h2>
+    </div>
+    
+    <div class="top-info">
+        <div class="col-left">
+            <div class="field">
+                <span class="label">Incident #:</span>
+                <span class="value value-bold">{inc.get('internal_incident_number', '')}</span>
+                <span class="badge badge-{(inc.get('call_category') or 'fire').lower()}">{inc.get('call_category', '')}</span>
+            </div>
+            <div class="field">
+                <span class="label">Date:</span>
+                <span class="value">{inc.get('incident_date', '') or ''}</span>
+            </div>
+            <div class="field">
+                <span class="label">Municipality:</span>
+                <span class="value">{inc.get('municipality_code', '') or ''}</span>
+            </div>
+            {f'<div class="field"><span class="label">Weather:</span><span class="value">{inc.get("weather_conditions", "")}</span></div>' if ps.get('showWeather') and inc.get('weather_conditions') else ''}
+            <div class="field">
+                <span class="label">ESZ/Box:</span>
+                <span class="value">{inc.get('esz_box', '') or ''}</span>
+            </div>
+        </div>
+        <div class="col-right">
+            {times_html}
+        </div>
+    </div>
+    
+    {f'''<div class="section">
+        <div class="field field-full">
+            <span class="label">Location:</span>
+            <span class="value">{inc.get('address', '') or ''}</span>
+        </div>
+        {f'<div class="field field-full"><span class="label">Cross Streets:</span><span class="value">{inc.get("cross_streets", "")}</span></div>' if ps.get('showCrossStreets') and inc.get('cross_streets') else ''}
+    </div>''' if ps.get('showLocation') else ''}
+    
+    {f'''<div class="section">
+        <div class="field field-full">
+            <span class="label">Units Called:</span>
+            <span class="value">{cad_units_list}</span>
+        </div>
+    </div>''' if ps.get('showCadUnits') and cad_units_list else ''}
+    
+    {f'''<div class="section">
+        <div class="field field-full">
+            <span class="label">Dispatched As:</span>
+            <span class="value">{inc.get('cad_event_type', '')}{(' / ' + inc.get('cad_event_subtype')) if inc.get('cad_event_subtype') else ''}</span>
+        </div>
+    </div>''' if ps.get('showDispatchInfo') else ''}
+    
+    {f'''<div class="section">
+        <div class="field field-full">
+            <span class="label">Situation Found:</span>
+            <span class="value">{inc.get('situation_found', '')}</span>
+        </div>
+    </div>''' if ps.get('showSituationFound') and inc.get('situation_found') else ''}
+    
+    {f'''<div class="section">
+        <div class="field field-full">
+            <span class="label">Extent of Damage:</span>
+            <span class="value">{inc.get('extent_of_damage', '')}</span>
+        </div>
+    </div>''' if ps.get('showExtentOfDamage') and inc.get('extent_of_damage') else ''}
+    
+    {f'''<div class="section">
+        <div class="field field-full">
+            <span class="label">Services Provided:</span>
+            <span class="value">{inc.get('services_provided', '')}</span>
+        </div>
+    </div>''' if ps.get('showServicesProvided') and inc.get('services_provided') else ''}
+    
+    {f'''<div class="section">
+        <div class="field field-full">
+            <span class="label">Narrative:</span>
+            <div class="value narrative">{inc.get('narrative', '')}</div>
+        </div>
+    </div>''' if ps.get('showNarrative') and inc.get('narrative') else ''}
+    
+    {f'''<div class="section">
+        <div class="field field-full">
+            <span class="label">Equipment Used:</span>
+            <span class="value">{equipment_list}</span>
+        </div>
+    </div>''' if ps.get('showEquipmentUsed') and equipment_list else ''}
+    
+    {personnel_html}
+    
+    {f'''<div class="section" style="display: flex; gap: 2rem;">
+        <div class="field">
+            <span class="label">Officer in Charge:</span>
+            <span class="value">{oic_name}</span>
+        </div>
+        <div class="field">
+            <span class="label">Report Completed By:</span>
+            <span class="value">{completed_by_name}</span>
+        </div>
+    </div>''' if ps.get('showOfficerInfo') else ''}
+    
+    {f'''<div class="section">
+        <div class="field field-full">
+            <span class="label">Problems/Issues:</span>
+            <span class="value">{inc.get('problems_issues', '')}</span>
+        </div>
+    </div>''' if ps.get('showProblemsIssues') and inc.get('problems_issues') else ''}
+    
+    <div class="footer">
+        <span>CAD Event: {inc.get('cad_event_number', '')}</span>
+        <span>Status: {inc.get('status', '')}</span>
+        <span>Printed: {datetime.now().strftime('%m/%d/%Y, %I:%M:%S %p')}</span>
+    </div>
+</body>
+</html>'''
     
     return HTMLResponse(content=html)
 
