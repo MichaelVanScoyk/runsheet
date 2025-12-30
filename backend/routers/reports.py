@@ -1360,13 +1360,7 @@ async def get_monthly_pdf_weasy(
     Generate PDF from styled HTML using WeasyPrint.
     Looks identical to the HTML preview - prints consistently every time.
     """
-    try:
-        from weasyprint import HTML
-    except ImportError:
-        raise HTTPException(
-            status_code=500,
-            detail="WeasyPrint not installed. Run: sudo apt install libpango-1.0-0 libpangocairo-1.0-0 && pip install weasyprint --break-system-packages"
-        )
+    from weasyprint import HTML
     
     # Get the HTML content from existing endpoint
     html_response = await get_monthly_html_report(year, month, category, db)
