@@ -876,7 +876,9 @@ async def get_monthly_html_report(
 ):
     """
     Generate printable HTML report for Monthly Chiefs Report.
-    Opens in new window for browser printing.
+    Opens in new window for browser printing - fills full 8.5x11 page.
+    
+    All tenant-specific values (name, logo, station number) come from settings table.
     """
     # Get the report data
     report = await get_monthly_chiefs_report(year, month, category, db)
@@ -885,7 +887,27 @@ async def get_monthly_html_report(
     cs = report['call_summary']
     rt = report['response_times'] or {}
     
-    # Get tenant logo from branding settings
+    # ==========================================================================
+    # TENANT SETTINGS - Pull all dynamic values from settings table
+    # ==========================================================================
+    
+    # Station identity
+    station_name_result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'station' AND key = 'name'")
+    ).fetchone()
+    station_name = station_name_result[0] if station_name_result else "Fire Department"
+    
+    station_number_result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'station' AND key = 'number'")
+    ).fetchone()
+    station_number = station_number_result[0] if station_number_result else ""
+    
+    station_short_result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'station' AND key = 'short_name'")
+    ).fetchone()
+    station_short_name = station_short_result[0] if station_short_result else f"Station {station_number}"
+    
+    # Branding - logo
     logo_result = db.execute(
         text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo'")
     ).fetchone()
@@ -897,7 +919,6 @@ async def get_monthly_html_report(
         mime_type = logo_mime_result[0] if logo_mime_result else 'image/png'
         logo_data_url = f"data:{mime_type};base64,{logo_result[0]}"
     else:
-        # No logo uploaded - use empty placeholder
         logo_data_url = ""
     
     def fmt_currency(cents):
@@ -1009,18 +1030,23 @@ async def get_monthly_html_report(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Glen Moore Fire Co. - Monthly Report</title>
+    <title>{station_name} - Monthly Report</title>
     <style>
-        @page {{ size: letter; margin: 0.4in; }}
+        @page {{ size: letter; margin: 0.5in; }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        html, body {{
+            width: 100%;
+            height: 100%;
+        }}
         body {{
             font-family: 'Segoe UI', Arial, sans-serif;
-            font-size: 10px;
-            line-height: 1.25;
+            font-size: 12px;
+            line-height: 1.3;
             color: #1a1a1a;
-            max-width: 8.5in;
+            width: 7.5in;
+            min-height: 10in;
             margin: 0 auto;
-            padding: 0.35in;
+            padding: 0;
             position: relative;
         }}
         .watermark {{
@@ -1032,53 +1058,59 @@ async def get_monthly_html_report(
             z-index: -1;
             pointer-events: none;
         }}
-        .watermark img {{ width: 5.5in; height: auto; }}
+        .watermark img {{ width: 6in; height: auto; }}
         .header {{
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 15px;
-            border-bottom: 3px solid #1e6b35;
-            padding-bottom: 10px;
-            margin-bottom: 12px;
+            gap: 20px;
+            border-bottom: 4px solid #1e6b35;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
         }}
-        .header-logo {{ width: 65px; height: auto; flex-shrink: 0; }}
+        .header-logo {{ width: 80px; height: auto; flex-shrink: 0; }}
         .header-text {{ text-align: left; }}
-        .header h1 {{ font-size: 20px; font-weight: 700; color: #1a1a1a; letter-spacing: 1px; }}
-        .header .subtitle {{ font-size: 14px; color: #1e6b35; font-weight: 600; margin-top: 2px; }}
-        .content {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }}
-        .section {{ background: #fafafa; border: 1px solid #e0e0e0; border-radius: 4px; padding: 6px 8px; }}
-        .section-title {{ font-size: 9px; font-weight: 700; color: #1e6b35; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #ddd; padding-bottom: 3px; margin-bottom: 5px; }}
+        .header h1 {{ font-size: 26px; font-weight: 700; color: #1a1a1a; letter-spacing: 1.5px; }}
+        .header .subtitle {{ font-size: 16px; color: #1e6b35; font-weight: 600; margin-top: 4px; }}
+        .content {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
+        .section {{ background: #fafafa; border: 1px solid #d0d0d0; border-radius: 6px; padding: 12px 14px; }}
+        .section-title {{ font-size: 11px; font-weight: 700; color: #1e6b35; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #ddd; padding-bottom: 6px; margin-bottom: 10px; }}
         .full-width {{ grid-column: 1 / -1; }}
-        .stats-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }}
-        .stat-box {{ text-align: center; background: white; padding: 5px 3px; border-radius: 3px; border: 1px solid #e8e8e8; }}
-        .stat-value {{ font-size: 16px; font-weight: 700; color: #1a1a1a; }}
+        .stats-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }}
+        .stat-box {{ text-align: center; background: white; padding: 12px 8px; border-radius: 4px; border: 1px solid #e0e0e0; }}
+        .stat-value {{ font-size: 28px; font-weight: 700; color: #1a1a1a; }}
         .stat-value.highlight {{ color: #1e6b35; }}
-        .stat-label {{ font-size: 7px; color: #666; text-transform: uppercase; letter-spacing: 0.3px; }}
-        .stat-compare {{ font-size: 8px; color: #666; margin-top: 1px; }}
-        table {{ width: 100%; border-collapse: collapse; font-size: 9px; }}
-        th {{ background: #f0f0f0; font-weight: 600; text-align: left; padding: 3px 5px; border-bottom: 1px solid #ddd; }}
-        td {{ padding: 2px 5px; border-bottom: 1px solid #eee; }}
+        .stat-label {{ font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 4px; }}
+        .stat-compare {{ font-size: 10px; color: #666; margin-top: 4px; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 11px; }}
+        th {{ background: #f0f0f0; font-weight: 600; text-align: left; padding: 6px 8px; border-bottom: 2px solid #ccc; }}
+        td {{ padding: 5px 8px; border-bottom: 1px solid #e0e0e0; }}
         tr:last-child td {{ border-bottom: none; }}
         .text-right {{ text-align: right; }}
         .text-center {{ text-align: center; }}
-        .response-times {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }}
-        .time-box {{ background: white; border: 1px solid #e8e8e8; border-radius: 3px; padding: 5px; text-align: center; }}
-        .time-value {{ font-size: 14px; font-weight: 700; color: #1a1a1a; }}
-        .time-label {{ font-size: 7px; color: #666; text-transform: uppercase; }}
-        .footer {{ margin-top: 8px; padding-top: 5px; border-top: 1px solid #ddd; display: flex; justify-content: space-between; font-size: 8px; color: #888; }}
-        .incident-group {{ margin-bottom: 6px; }}
+        .response-times {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }}
+        .time-box {{ background: white; border: 1px solid #e0e0e0; border-radius: 4px; padding: 12px 8px; text-align: center; }}
+        .time-value {{ font-size: 22px; font-weight: 700; color: #1a1a1a; }}
+        .time-label {{ font-size: 9px; color: #666; text-transform: uppercase; margin-top: 4px; }}
+        .footer {{ margin-top: 20px; padding-top: 10px; border-top: 2px solid #ddd; display: flex; justify-content: space-between; font-size: 10px; color: #888; }}
+        .incident-group {{ margin-bottom: 10px; }}
         .incident-group:last-child {{ margin-bottom: 0; }}
-        .incident-group-header {{ display: flex; justify-content: space-between; align-items: center; background: #1e6b35; color: white; padding: 3px 6px; border-radius: 2px; font-weight: 600; font-size: 9px; }}
-        .incident-group-header .count {{ background: rgba(255,255,255,0.3); padding: 1px 6px; border-radius: 10px; font-size: 8px; }}
-        .incident-subtype {{ display: flex; justify-content: space-between; padding: 2px 6px 2px 16px; font-size: 8px; color: #444; border-bottom: 1px dotted #ddd; }}
+        .incident-group-header {{ display: flex; justify-content: space-between; align-items: center; background: #1e6b35; color: white; padding: 6px 10px; border-radius: 3px; font-weight: 600; font-size: 11px; }}
+        .incident-group-header .count {{ background: rgba(255,255,255,0.3); padding: 2px 10px; border-radius: 10px; font-size: 10px; }}
+        .incident-subtype {{ display: flex; justify-content: space-between; padding: 4px 10px 4px 20px; font-size: 10px; color: #444; border-bottom: 1px dotted #ccc; }}
         .incident-subtype:last-child {{ border-bottom: none; }}
         .incident-subtype .count {{ font-weight: 600; color: #666; }}
-        .unit-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; }}
-        .unit-row {{ display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dotted #ddd; font-size: 9px; }}
+        .unit-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }}
+        .unit-row {{ display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dotted #ccc; font-size: 11px; }}
         .unit-name {{ font-weight: 500; }}
         .unit-count {{ font-weight: 600; color: #1e6b35; }}
-        @media print {{ body {{ padding: 0; }} .section {{ break-inside: avoid; }} .watermark {{ position: fixed; }} }}
+        @media print {{
+            @page {{ size: letter; margin: 0.5in; }}
+            html, body {{ width: 100%; height: 100%; }}
+            body {{ padding: 0; width: 100%; }}
+            .section {{ break-inside: avoid; }}
+            .watermark {{ position: fixed; }}
+        }}
     </style>
 </head>
 <body>
@@ -1089,7 +1121,7 @@ async def get_monthly_html_report(
     <div class="header">
         <img class="header-logo" src="{logo_data_url}" alt="Department Logo">
         <div class="header-text">
-            <h1>GLEN MOORE FIRE COMPANY</h1>
+            <h1>{station_name.upper()}</h1>
             <div class="subtitle">Monthly Activity Report — {report['month_name']} {report['year']}</div>
         </div>
     </div>
@@ -1160,7 +1192,7 @@ async def get_monthly_html_report(
     </div>
 
     <div class="footer">
-        <span>Glen Moore Fire Company — Station 48</span>
+        <span>{station_name} — {station_short_name}</span>
         <span>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</span>
     </div>
 </body>
@@ -1386,6 +1418,19 @@ async def generate_monthly_pdf_report(
             except:
                 pass
         
+        # ==========================================================================
+        # TENANT SETTINGS - Pull all dynamic values from settings table
+        # ==========================================================================
+        station_name_result = db.execute(
+            text("SELECT value FROM settings WHERE category = 'station' AND key = 'name'")
+        ).fetchone()
+        station_name = station_name_result[0] if station_name_result else "Fire Department"
+        
+        station_short_result = db.execute(
+            text("SELECT value FROM settings WHERE category = 'station' AND key = 'short_name'")
+        ).fetchone()
+        station_short_name = station_short_result[0] if station_short_result else "Station"
+        
         # Header with logo
         cat_label = f" — {'Fire' if category and category.upper() == 'FIRE' else 'EMS'}" if category else ""
         
@@ -1393,7 +1438,7 @@ async def generate_monthly_pdf_report(
             header_data = [[
                 logo_image,
                 [
-                    Paragraph("GLEN MOORE FIRE COMPANY", title_style),
+                    Paragraph(station_name.upper(), title_style),
                     Paragraph(f"Monthly Activity Report — {report['month_name']} {report['year']}{cat_label}", subtitle_style)
                 ]
             ]]
@@ -1406,7 +1451,7 @@ async def generate_monthly_pdf_report(
             ]))
             elements.append(header_table)
         else:
-            elements.append(Paragraph("GLEN MOORE FIRE COMPANY", title_style))
+            elements.append(Paragraph(station_name.upper(), title_style))
             elements.append(Spacer(1, 2))
             elements.append(Paragraph(f"Monthly Activity Report — {report['month_name']} {report['year']}{cat_label}", subtitle_style))
         
@@ -1649,7 +1694,7 @@ async def generate_monthly_pdf_report(
         # Footer
         elements.append(Spacer(1, 0.3*inch))
         footer_style = ParagraphStyle('Footer', fontSize=8, textColor=colors.grey, alignment=TA_CENTER)
-        elements.append(Paragraph(f"Glen Moore Fire Company — Station 48 | Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", footer_style))
+        elements.append(Paragraph(f"{station_name} — {station_short_name} | Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", footer_style))
         
         doc.build(elements)
         buffer.seek(0)
