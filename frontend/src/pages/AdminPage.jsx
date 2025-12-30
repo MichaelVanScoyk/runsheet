@@ -1907,6 +1907,7 @@ const PRINT_SETTING_LABELS = {
   showCrossStreets: { label: 'Cross Streets', desc: 'Nearby intersections' },
   showDispatchInfo: { label: 'Dispatch Info', desc: 'CAD type and subtype' },
   showCadUnits: { label: 'Units Called', desc: 'List of units dispatched' },
+  showCadUnitDetails: { label: 'CAD Unit Details', desc: 'Full unit timestamps table (adds page)' },
   showSituationFound: { label: 'Situation Found', desc: 'What was found on arrival' },
   showExtentOfDamage: { label: 'Extent of Damage', desc: 'Damage description' },
   showServicesProvided: { label: 'Services Provided', desc: 'Actions taken' },
@@ -1962,7 +1963,7 @@ function PrintSettingsTab() {
 
   const headerGroup = ['showHeader', 'showWeather'];
   const timesGroup = ['showTimes'];
-  const locationGroup = ['showLocation', 'showCrossStreets', 'showDispatchInfo', 'showCadUnits'];
+  const locationGroup = ['showLocation', 'showCrossStreets', 'showDispatchInfo', 'showCadUnits', 'showCadUnitDetails'];
   const narrativeGroup = ['showSituationFound', 'showExtentOfDamage', 'showServicesProvided', 'showNarrative'];
   const personnelGroup = ['showPersonnelGrid', 'showOfficerInfo', 'showEquipmentUsed'];
   const otherGroup = ['showProblemsIssues', 'showCallerInfo', 'showNerisInfo'];

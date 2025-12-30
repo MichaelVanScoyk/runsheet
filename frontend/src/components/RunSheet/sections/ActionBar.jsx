@@ -17,6 +17,12 @@ export default function ActionBar() {
   
   const hasCADData = incident && (formData.cad_raw_dispatch || formData.cad_raw_clear);
   
+  const handlePrint = () => {
+    if (incident?.id) {
+      window.open(`/print/${incident.id}`, '_blank');
+    }
+  };
+  
   return (
     <div className="bg-dark-hover rounded px-3 py-2 mb-2 flex items-center justify-between gap-3 flex-wrap">
       {/* Left side - Back link */}
@@ -43,6 +49,19 @@ export default function ActionBar() {
       <div className="flex gap-2 items-center">
         {saveSuccess && (
           <span className="text-green-500 text-sm">✓ Saved</span>
+        )}
+        
+        {/* Print button */}
+        {incident?.id && (
+          <button 
+            type="button" 
+            className="btn btn-secondary"
+            onClick={handlePrint}
+            title="Print View"
+            style={{ padding: '0.25rem 0.5rem' }}
+          >
+            🖨️
+          </button>
         )}
         
         {/* CAD Data buttons */}
