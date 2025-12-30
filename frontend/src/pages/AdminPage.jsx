@@ -1446,11 +1446,16 @@ function BrandingTab() {
   const loadBranding = async () => {
     try {
       // Load logo
+      console.log('Fetching logo...');
       const logoRes = await fetch(`${API_BASE}/api/settings/branding/logo`);
       const logoData = await logoRes.json();
+      console.log('Logo response:', logoData);
+      console.log('has_logo:', logoData?.has_logo);
+      console.log('mime_type:', logoData?.mime_type);
+      console.log('data length:', logoData?.data?.length);
       setLogo(logoData);
       
-      // Load colors
+      // Load colors (404 is OK - means not set yet)
       try {
         const primaryRes = await fetch(`${API_BASE}/api/settings/branding/primary_color`);
         if (primaryRes.ok) {
@@ -1482,22 +1487,22 @@ function BrandingTab() {
 
   // Draw logo to canvas when logo loads (for eyedropper)
   useEffect(() => {
-    if (logo?.has_logo && imgRef.current && canvasRef.current) {
+    if (logo?.has_logo && logo?.data && imgRef.current && canvasRef.current) {
       const img = imgRef.current;
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
       
-      img.onload = () => {
+      const drawToCanvas = () => {
         canvas.width = img.naturalWidth;
         canvas.height = img.naturalHeight;
         ctx.drawImage(img, 0, 0);
       };
       
+      img.onload = drawToCanvas;
+      
       // If already loaded
-      if (img.complete) {
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        ctx.drawImage(img, 0, 0);
+      if (img.complete && img.naturalWidth > 0) {
+        drawToCanvas();
       }
     }
   }, [logo]);
@@ -1523,6 +1528,7 @@ function BrandingTab() {
       const reader = new FileReader();
       reader.onload = async (event) => {
         const base64 = event.target.result;
+        console.log('Uploading logo, data length:', base64.length);
         
         const res = await fetch(`${API_BASE}/api/settings/branding/logo`, {
           method: 'POST',
@@ -1532,9 +1538,11 @@ function BrandingTab() {
 
         if (res.ok) {
           setMessage({ type: 'success', text: 'Logo uploaded successfully' });
+          // Reload to get fresh data
           await loadBranding();
         } else {
           const err = await res.json();
+          console.error('Upload failed:', err);
           setMessage({ type: 'error', text: err.detail || 'Upload failed' });
         }
         setUploading(false);
@@ -1545,6 +1553,7 @@ function BrandingTab() {
       };
       reader.readAsDataURL(file);
     } catch (err) {
+      console.error('Upload error:', err);
       setMessage({ type: 'error', text: 'Upload failed: ' + err.message });
       setUploading(false);
     }
@@ -1635,6 +1644,11 @@ function BrandingTab() {
 
   const hasColorChanges = primaryColor !== savedPrimary || secondaryColor !== savedSecondary;
 
+  // Build image src
+  const logoSrc = logo?.has_logo && logo?.data && logo?.mime_type
+    ? `data:${logo.mime_type};base64,${logo.data}`
+    : null;
+
   if (loading) return <div className="loading">Loading...</div>;
 
   return (
@@ -1666,14 +1680,13 @@ function BrandingTab() {
           }}
           onClick={logo?.has_logo ? handleImageClick : undefined}
         >
-          {logo?.has_logo ? (
+          {logoSrc ? (
             <>
               <img 
                 ref={imgRef}
-                src={`data:${logo.mime_type};base64,${logo.data}`}
+                src={logoSrc}
                 alt="Department Logo"
-                style={{ maxWidth: '200px', maxHeight: '200px', objectFit: 'contain' }}
-                crossOrigin="anonymous"
+                style={{ maxWidth: '200px', maxHeight: '200px', objectFit: 'contain', display: 'block', margin: '0 auto' }}
               />
               <canvas ref={canvasRef} style={{ display: 'none' }} />
               <p style={{ marginTop: '0.5rem', color: '#888', fontSize: '0.85rem' }}>
@@ -1836,6 +1849,21 @@ function BrandingTab() {
             <li>Click 🎯 then click the logo to pick a color from it</li>
             <li>Colors will appear on PDF reports</li>
           </ul>
+        </div>
+
+        {/* Debug info */}
+        <div style={{ marginTop: '1rem', padding: '0.5rem', background: '#111', borderRadius: '4px', fontSize: '0.75rem', color: '#666' }}>
+          <details>
+            <summary style={{ cursor: 'pointer' }}>Debug Info</summary>
+            <pre style={{ margin: '0.5rem 0 0 0', whiteSpace: 'pre-wrap' }}>
+              {JSON.stringify({
+                has_logo: logo?.has_logo,
+                mime_type: logo?.mime_type,
+                data_length: logo?.data?.length,
+                logoSrc_length: logoSrc?.length
+              }, null, 2)}
+            </pre>
+          </details>
         </div>
       </div>
     </div>
