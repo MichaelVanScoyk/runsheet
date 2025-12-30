@@ -3,7 +3,6 @@ import { getIncident, getApparatus, getPersonnel, getPrintSettings } from '../..
 import { formatTimeLocal } from '../../utils/timeUtils';
 import './PrintView.css';
 
-// Default print settings - will be overridden by API config
 const DEFAULT_PRINT_SETTINGS = {
   showHeader: true,
   showTimes: true,
@@ -36,7 +35,6 @@ export default function PrintView({ incidentId, onClose }) {
     loadData();
   }, [incidentId]);
 
-  // Inject landscape style when toggled
   useEffect(() => {
     const styleId = 'print-orientation-style';
     let styleEl = document.getElementById(styleId);
@@ -82,13 +80,12 @@ export default function PrintView({ incidentId, onClose }) {
   };
 
   const handleDownloadPdf = () => {
-    // Open PDF in new tab (inline display, user can save from there)
     window.open(`/api/reports/pdf/incident/${incidentId}`, '_blank');
   };
 
   const formatTime = (isoString) => {
     if (!isoString) return '';
-    return formatTimeLocal(isoString, true);  // Include seconds
+    return formatTimeLocal(isoString, true);
   };
 
   const formatDate = (dateStr) => {
@@ -107,7 +104,6 @@ export default function PrintView({ incidentId, onClose }) {
     return getPersonnelName(personnelId);
   };
 
-  // Calculate total personnel
   const getTotalPersonnel = () => {
     if (!incident?.personnel_assignments) return 0;
     let total = 0;
@@ -117,7 +113,6 @@ export default function PrintView({ incidentId, onClose }) {
     return total;
   };
 
-  // Get units that have personnel assigned
   const getAssignedUnits = () => {
     if (!incident?.personnel_assignments) return [];
     return apparatus.filter(a => {
@@ -126,7 +121,6 @@ export default function PrintView({ incidentId, onClose }) {
     });
   };
 
-  // Calculate in-service duration
   const getInServiceDuration = () => {
     if (!incident?.time_dispatched || !incident?.time_last_cleared) return '';
     const start = new Date(incident.time_dispatched);
@@ -169,7 +163,6 @@ export default function PrintView({ incidentId, onClose }) {
 
   return (
     <div className="print-view-container">
-      {/* Controls - hidden when printing */}
       <div className="print-controls no-print">
         <button onClick={onClose}>← Back to List</button>
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ccc', fontSize: '0.9rem' }}>
@@ -184,9 +177,7 @@ export default function PrintView({ incidentId, onClose }) {
         <button onClick={handleDownloadPdf} className="print-btn" style={{ marginLeft: '0.5rem' }}>📄 Download PDF</button>
       </div>
 
-      {/* Print Content */}
       <div className="print-content">
-        {/* Header */}
         {printSettings.showHeader && (
           <div className="print-header">
             <h1>Glen Moore Fire Company — Station 48</h1>
@@ -194,7 +185,6 @@ export default function PrintView({ incidentId, onClose }) {
           </div>
         )}
 
-        {/* Top Info Row */}
         <div className="print-row print-top-info">
           <div className="print-col-left">
             <div className="print-field">
@@ -224,7 +214,6 @@ export default function PrintView({ incidentId, onClose }) {
             </div>
           </div>
 
-          {/* Times Column */}
           {printSettings.showTimes && (
             <div className="print-col-right">
               <div className="print-times-grid">
@@ -257,7 +246,6 @@ export default function PrintView({ incidentId, onClose }) {
           )}
         </div>
 
-        {/* Location */}
         {printSettings.showLocation && (
           <div className="print-section">
             <div className="print-field print-field-full">
@@ -273,7 +261,6 @@ export default function PrintView({ incidentId, onClose }) {
           </div>
         )}
 
-        {/* CAD Units Called */}
         {printSettings.showCadUnits && incident.cad_units?.length > 0 && (
           <div className="print-section">
             <div className="print-field print-field-full">
@@ -285,7 +272,6 @@ export default function PrintView({ incidentId, onClose }) {
           </div>
         )}
 
-        {/* Dispatch Info */}
         {printSettings.showDispatchInfo && (
           <div className="print-section">
             <div className="print-field print-field-full">
@@ -298,7 +284,6 @@ export default function PrintView({ incidentId, onClose }) {
           </div>
         )}
 
-        {/* Situation / Damage / Services */}
         {printSettings.showSituationFound && incident.situation_found && (
           <div className="print-section">
             <div className="print-field print-field-full">
@@ -326,7 +311,6 @@ export default function PrintView({ incidentId, onClose }) {
           </div>
         )}
 
-        {/* Narrative */}
         {printSettings.showNarrative && incident.narrative && (
           <div className="print-section">
             <div className="print-field print-field-full">
@@ -336,7 +320,6 @@ export default function PrintView({ incidentId, onClose }) {
           </div>
         )}
 
-        {/* Equipment Used */}
         {printSettings.showEquipmentUsed && incident.equipment_used?.length > 0 && (
           <div className="print-section">
             <div className="print-field print-field-full">
@@ -346,7 +329,6 @@ export default function PrintView({ incidentId, onClose }) {
           </div>
         )}
 
-        {/* Personnel Grid */}
         {printSettings.showPersonnelGrid && assignedUnits.length > 0 && (
           <div className="print-section">
             <div className="print-label" style={{ marginBottom: '0.25rem' }}>Personnel:</div>
@@ -361,7 +343,6 @@ export default function PrintView({ incidentId, onClose }) {
               </thead>
               <tbody>
                 {['Driver', 'Officer', 'FF', 'FF', 'FF', 'FF'].map((role, idx) => {
-                  // Check if this row has any data
                   const hasData = assignedUnits.some(a => {
                     const slots = incident.personnel_assignments[a.unit_designator];
                     return slots && slots[idx];
@@ -392,7 +373,6 @@ export default function PrintView({ incidentId, onClose }) {
           </div>
         )}
 
-        {/* Officer / Completed By */}
         {printSettings.showOfficerInfo && (
           <div className="print-section print-row">
             <div className="print-field">
@@ -406,7 +386,6 @@ export default function PrintView({ incidentId, onClose }) {
           </div>
         )}
 
-        {/* Problems/Issues */}
         {printSettings.showProblemsIssues && incident.problems_issues && (
           <div className="print-section">
             <div className="print-field print-field-full">
@@ -416,7 +395,6 @@ export default function PrintView({ incidentId, onClose }) {
           </div>
         )}
 
-        {/* Footer */}
         <div className="print-footer">
           <span>CAD Event: {incident.cad_event_number}</span>
           <span>Status: {incident.status}</span>

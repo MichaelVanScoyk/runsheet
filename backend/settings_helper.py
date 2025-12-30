@@ -89,24 +89,11 @@ def _parse_value(value: str, value_type: str) -> Any:
 def format_utc_iso(dt) -> str:
     """
     Format datetime as ISO 8601 with explicit Z suffix for UTC.
-    
-    This MUST be used for ALL datetime output to JSON/API responses.
-    JavaScript needs the Z suffix to know it's UTC and convert to local time.
-    
-    Without Z: "2025-12-28T23:52:36" - JS treats as LOCAL time (WRONG!)
-    With Z:    "2025-12-28T23:52:36Z" - JS treats as UTC (CORRECT!)
-    
-    Args:
-        dt: datetime object (assumed to be UTC) or None
-    
-    Returns:
-        ISO string with Z suffix, or None if input is None
     """
     if dt is None:
         return None
     if hasattr(dt, 'isoformat'):
         iso = dt.isoformat()
-        # Add Z suffix if not already present and no timezone offset
         if not iso.endswith('Z') and '+' not in iso and '-' not in iso[-6:]:
             iso += 'Z'
         return iso
@@ -114,19 +101,7 @@ def format_utc_iso(dt) -> str:
 
 
 def iso_or_none(obj, attr: str) -> str:
-    """
-    Get attribute from object and format as UTC ISO string.
-    
-    Usage in API responses:
-        "time_dispatched": iso_or_none(incident, 'time_dispatched'),
-    
-    Args:
-        obj: Object to get attribute from
-        attr: Attribute name
-    
-    Returns:
-        ISO string with Z suffix, or None
-    """
+    """Get attribute from object and format as UTC ISO string."""
     val = getattr(obj, attr, None)
     return format_utc_iso(val)
 
@@ -136,16 +111,7 @@ def iso_or_none(obj, attr: str) -> str:
 # =============================================================================
 
 def get_unit_info(unit_id: str) -> dict:
-    """
-    Look up unit in apparatus table by CAD unit ID, designator, or alias.
-    
-    Returns dict with:
-        is_ours: bool - whether this is one of our units
-        apparatus_id: int or None - database ID
-        category: str or None - APPARATUS, DIRECT, STATION
-        counts_for_response_times: bool - whether to include in metrics
-        unit_designator: str or None - canonical unit ID (use this, not the alias)
-    """
+    """Look up unit in apparatus table by CAD unit ID, designator, or alias."""
     if not unit_id:
         return {
             'is_ours': False,
@@ -159,7 +125,6 @@ def get_unit_info(unit_id: str) -> dict:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Look up by cad_unit_id, unit_designator, OR alias
         cur.execute("""
             SELECT id, unit_category, counts_for_response_times, cad_unit_id, unit_designator, cad_unit_aliases
             FROM apparatus 
@@ -175,18 +140,14 @@ def get_unit_info(unit_id: str) -> dict:
         conn.close()
         
         if row:
-            # Found in apparatus table - use explicit values from database
-            # NULL counts_for_response_times defaults to False (safer to exclude than include)
             return {
                 'is_ours': True,
                 'apparatus_id': row['id'],
                 'category': row['unit_category'],
                 'counts_for_response_times': row['counts_for_response_times'] if row['counts_for_response_times'] is not None else False,
-                'unit_designator': row['unit_designator'],  # Canonical ID
+                'unit_designator': row['unit_designator'],
             }
         
-        # Not found in apparatus table - this is mutual aid
-        # Do NOT fall back to station_units setting - apparatus table is authoritative
         return {
             'is_ours': False,
             'apparatus_id': None,
@@ -197,7 +158,6 @@ def get_unit_info(unit_id: str) -> dict:
         
     except Exception as e:
         print(f"Error looking up unit {unit_id}: {e}")
-        # On database error, treat as mutual aid (safer to exclude than include)
         return {
             'is_ours': False,
             'apparatus_id': None,
@@ -238,7 +198,6 @@ def get_weather_enabled() -> bool:
 def get_timezone() -> str:
     """Get configured timezone (IANA format like 'America/New_York')"""
     tz = get_setting('station', 'timezone', 'America/New_York')
-    # Strip quotes if present (JSON string storage)
     if isinstance(tz, str):
         tz = tz.strip('"')
     return tz
@@ -250,39 +209,25 @@ def get_timezone() -> str:
 # =============================================================================
 
 def format_local_time(utc_dt, include_seconds: bool = False) -> str:
-    """
-    Convert UTC datetime to station timezone time string.
-    Mirrors frontend formatTimeLocal().
-    
-    Args:
-        utc_dt: datetime object (UTC) or ISO string
-        include_seconds: if True, returns "HH:MM:SS", else "HH:MM"
-    
-    Returns:
-        Time string in station timezone, or empty string if None
-    """
+    """Convert UTC datetime to station timezone time string."""
     if utc_dt is None:
         return ''
     
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
     
-    # Handle ISO string input
     if isinstance(utc_dt, str):
         if not utc_dt:
             return ''
         try:
-            # Parse ISO string, handle Z suffix
             utc_dt = utc_dt.replace('Z', '+00:00')
             utc_dt = datetime.fromisoformat(utc_dt)
         except:
             return ''
     
-    # Ensure UTC timezone
     if utc_dt.tzinfo is None:
         utc_dt = utc_dt.replace(tzinfo=timezone.utc)
     
-    # Convert to station timezone
     station_tz = ZoneInfo(get_timezone())
     local_dt = utc_dt.astimezone(station_tz)
     
@@ -292,23 +237,13 @@ def format_local_time(utc_dt, include_seconds: bool = False) -> str:
 
 
 def format_local_datetime(utc_dt) -> str:
-    """
-    Convert UTC datetime to station timezone datetime string.
-    Mirrors frontend formatDateTimeLocal().
-    
-    Args:
-        utc_dt: datetime object (UTC) or ISO string
-    
-    Returns:
-        "YYYY-MM-DD HH:MM:SS" in station timezone, or empty string if None
-    """
+    """Convert UTC datetime to station timezone datetime string."""
     if utc_dt is None:
         return ''
     
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
     
-    # Handle ISO string input
     if isinstance(utc_dt, str):
         if not utc_dt:
             return ''
@@ -318,11 +253,9 @@ def format_local_datetime(utc_dt) -> str:
         except:
             return ''
     
-    # Ensure UTC timezone
     if utc_dt.tzinfo is None:
         utc_dt = utc_dt.replace(tzinfo=timezone.utc)
     
-    # Convert to station timezone
     station_tz = ZoneInfo(get_timezone())
     local_dt = utc_dt.astimezone(station_tz)
     
@@ -330,23 +263,13 @@ def format_local_datetime(utc_dt) -> str:
 
 
 def format_local_date(utc_dt) -> str:
-    """
-    Convert UTC datetime to station timezone date string.
-    Mirrors frontend formatDateLocal().
-    
-    Args:
-        utc_dt: datetime object (UTC) or ISO string
-    
-    Returns:
-        "YYYY-MM-DD" in station timezone, or empty string if None
-    """
+    """Convert UTC datetime to station timezone date string."""
     if utc_dt is None:
         return ''
     
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
     
-    # Handle ISO string input
     if isinstance(utc_dt, str):
         if not utc_dt:
             return ''
@@ -356,11 +279,9 @@ def format_local_date(utc_dt) -> str:
         except:
             return ''
     
-    # Ensure UTC timezone
     if utc_dt.tzinfo is None:
         utc_dt = utc_dt.replace(tzinfo=timezone.utc)
     
-    # Convert to station timezone
     station_tz = ZoneInfo(get_timezone())
     local_dt = utc_dt.astimezone(station_tz)
     
@@ -385,19 +306,16 @@ if __name__ == "__main__":
     print(f"  QRS48:  {get_unit_info('QRS48')}")
     print(f"\nStation coords: {get_station_coords()}")
     
-    # Test UTC formatting
     from datetime import datetime, timezone
     print(f"\nUTC Format test:")
     now = datetime.now(timezone.utc)
     print(f"  Input:  {now}")
     print(f"  Output: {format_utc_iso(now)}")
     
-    # Test local time formatting
     print(f"\nLocal Time Format test (TZ: {get_timezone()}):")
     print(f"  format_local_time:     {format_local_time(now)}")
     print(f"  format_local_time(s):  {format_local_time(now, include_seconds=True)}")
     print(f"  format_local_datetime: {format_local_datetime(now)}")
     print(f"  format_local_date:     {format_local_date(now)}")
-    # Test with ISO string
     iso_str = '2025-12-30T15:30:00Z'
     print(f"  ISO string input:      {format_local_time(iso_str, include_seconds=True)}  (from {iso_str})")
