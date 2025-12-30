@@ -128,6 +128,136 @@ async def get_settings_by_category(
     ]
 
 
+# =============================================================================
+# BRANDING / LOGO ENDPOINTS (must be before generic /{category}/{key} routes)
+# =============================================================================
+
+class LogoUpload(BaseModel):
+    """Logo upload payload - base64 encoded image"""
+    data: str  # base64 encoded image data
+    filename: Optional[str] = None
+    mime_type: Optional[str] = "image/png"
+
+
+@router.get("/branding/logo")
+async def get_branding_logo(db: Session = Depends(get_db)):
+    """Get the tenant's logo as base64"""
+    result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo'")
+    ).fetchone()
+    
+    if not result or not result[0]:
+        return {"has_logo": False, "data": None, "mime_type": None}
+    
+    # Get mime type
+    mime_result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")
+    ).fetchone()
+    mime_type = mime_result[0] if mime_result else "image/png"
+    
+    return {
+        "has_logo": True,
+        "data": result[0],
+        "mime_type": mime_type
+    }
+
+
+@router.post("/branding/logo")
+async def upload_branding_logo(
+    logo: LogoUpload,
+    db: Session = Depends(get_db)
+):
+    """Upload/update the tenant's logo"""
+    # Validate base64 data
+    if not logo.data:
+        raise HTTPException(status_code=400, detail="No image data provided")
+    
+    # Strip data URL prefix if present (e.g., "data:image/png;base64,")
+    data = logo.data
+    if data.startswith('data:'):
+        # Extract mime type and data
+        try:
+            header, data = data.split(',', 1)
+            if 'image/png' in header:
+                logo.mime_type = 'image/png'
+            elif 'image/jpeg' in header or 'image/jpg' in header:
+                logo.mime_type = 'image/jpeg'
+            elif 'image/gif' in header:
+                logo.mime_type = 'image/gif'
+            elif 'image/webp' in header:
+                logo.mime_type = 'image/webp'
+        except:
+            pass
+    
+    # Validate it's valid base64 and detect actual mime type from bytes
+    import base64
+    try:
+        decoded = base64.b64decode(data)
+        # Detect actual mime type from magic bytes (not from data URL header)
+        if decoded[:8].startswith(b'\x89PNG'):
+            logo.mime_type = 'image/png'
+        elif decoded[:2] == b'\xff\xd8':
+            logo.mime_type = 'image/jpeg'
+        elif decoded[:6] in (b'GIF87a', b'GIF89a'):
+            logo.mime_type = 'image/gif'
+        elif decoded[:4] == b'RIFF':
+            logo.mime_type = 'image/webp'
+        else:
+            raise HTTPException(status_code=400, detail="Invalid image format. Supported: PNG, JPEG, GIF, WebP")
+    except Exception as e:
+        if "Invalid image format" in str(e):
+            raise
+        raise HTTPException(status_code=400, detail="Invalid base64 data")
+    
+    # Upsert logo data
+    exists = db.execute(
+        text("SELECT 1 FROM settings WHERE category = 'branding' AND key = 'logo'")
+    ).fetchone()
+    
+    if exists:
+        db.execute(
+            text("UPDATE settings SET value = :value, updated_at = NOW() WHERE category = 'branding' AND key = 'logo'"),
+            {"value": data}
+        )
+    else:
+        db.execute(
+            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('branding', 'logo', :value, 'string', 'Tenant logo (base64)')"),
+            {"value": data}
+        )
+    
+    # Upsert mime type
+    mime_exists = db.execute(
+        text("SELECT 1 FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")
+    ).fetchone()
+    
+    if mime_exists:
+        db.execute(
+            text("UPDATE settings SET value = :value, updated_at = NOW() WHERE category = 'branding' AND key = 'logo_mime_type'"),
+            {"value": logo.mime_type}
+        )
+    else:
+        db.execute(
+            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('branding', 'logo_mime_type', :value, 'string', 'Logo MIME type')"),
+            {"value": logo.mime_type}
+        )
+    
+    db.commit()
+    
+    return {"status": "ok", "message": "Logo uploaded successfully"}
+
+
+@router.delete("/branding/logo")
+async def delete_branding_logo(db: Session = Depends(get_db)):
+    """Delete the tenant's logo"""
+    db.execute(text("DELETE FROM settings WHERE category = 'branding' AND key IN ('logo', 'logo_mime_type')"))
+    db.commit()
+    return {"status": "ok", "message": "Logo deleted"}
+
+
+# =============================================================================
+# GENERIC SETTING GET/PUT (after specific routes)
+# =============================================================================
+
 @router.get("/{category}/{key}")
 async def get_setting(
     category: str,
@@ -377,128 +507,3 @@ def get_station_coords(db: Session) -> tuple:
     lon = get_setting_value(db, 'station', 'longitude', -75.7833)
     return (float(lat), float(lon))
 
-
-# =============================================================================
-# BRANDING / LOGO ENDPOINTS
-# =============================================================================
-
-class LogoUpload(BaseModel):
-    """Logo upload payload - base64 encoded image"""
-    data: str  # base64 encoded image data
-    filename: Optional[str] = None
-    mime_type: Optional[str] = "image/png"
-
-
-@router.get("/branding/logo")
-async def get_branding_logo(db: Session = Depends(get_db)):
-    """Get the tenant's logo as base64"""
-    result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo'")
-    ).fetchone()
-    
-    if not result or not result[0]:
-        return {"has_logo": False, "data": None, "mime_type": None}
-    
-    # Get mime type
-    mime_result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")
-    ).fetchone()
-    mime_type = mime_result[0] if mime_result else "image/png"
-    
-    return {
-        "has_logo": True,
-        "data": result[0],
-        "mime_type": mime_type
-    }
-
-
-@router.post("/branding/logo")
-async def upload_branding_logo(
-    logo: LogoUpload,
-    db: Session = Depends(get_db)
-):
-    """Upload/update the tenant's logo"""
-    # Validate base64 data
-    if not logo.data:
-        raise HTTPException(status_code=400, detail="No image data provided")
-    
-    # Strip data URL prefix if present (e.g., "data:image/png;base64,")
-    data = logo.data
-    if data.startswith('data:'):
-        # Extract mime type and data
-        try:
-            header, data = data.split(',', 1)
-            if 'image/png' in header:
-                logo.mime_type = 'image/png'
-            elif 'image/jpeg' in header or 'image/jpg' in header:
-                logo.mime_type = 'image/jpeg'
-            elif 'image/gif' in header:
-                logo.mime_type = 'image/gif'
-            elif 'image/webp' in header:
-                logo.mime_type = 'image/webp'
-        except:
-            pass
-    
-    # Validate it's valid base64 and detect actual mime type from bytes
-    import base64
-    try:
-        decoded = base64.b64decode(data)
-        # Detect actual mime type from magic bytes (not from data URL header)
-        if decoded[:8].startswith(b'\x89PNG'):
-            logo.mime_type = 'image/png'
-        elif decoded[:2] == b'\xff\xd8':
-            logo.mime_type = 'image/jpeg'
-        elif decoded[:6] in (b'GIF87a', b'GIF89a'):
-            logo.mime_type = 'image/gif'
-        elif decoded[:4] == b'RIFF':
-            logo.mime_type = 'image/webp'
-        else:
-            raise HTTPException(status_code=400, detail="Invalid image format. Supported: PNG, JPEG, GIF, WebP")
-    except Exception as e:
-        if "Invalid image format" in str(e):
-            raise
-        raise HTTPException(status_code=400, detail="Invalid base64 data")
-    
-    # Upsert logo data
-    exists = db.execute(
-        text("SELECT 1 FROM settings WHERE category = 'branding' AND key = 'logo'")
-    ).fetchone()
-    
-    if exists:
-        db.execute(
-            text("UPDATE settings SET value = :value, updated_at = NOW() WHERE category = 'branding' AND key = 'logo'"),
-            {"value": data}
-        )
-    else:
-        db.execute(
-            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('branding', 'logo', :value, 'string', 'Tenant logo (base64)')"),
-            {"value": data}
-        )
-    
-    # Upsert mime type
-    mime_exists = db.execute(
-        text("SELECT 1 FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")
-    ).fetchone()
-    
-    if mime_exists:
-        db.execute(
-            text("UPDATE settings SET value = :value, updated_at = NOW() WHERE category = 'branding' AND key = 'logo_mime_type'"),
-            {"value": logo.mime_type}
-        )
-    else:
-        db.execute(
-            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('branding', 'logo_mime_type', :value, 'string', 'Logo MIME type')"),
-            {"value": logo.mime_type}
-        )
-    
-    db.commit()
-    
-    return {"status": "ok", "message": "Logo uploaded successfully"}
-
-
-@router.delete("/branding/logo")
-async def delete_branding_logo(db: Session = Depends(get_db)):
-    """Delete the tenant's logo"""
-    db.execute(text("DELETE FROM settings WHERE category = 'branding' AND key IN ('logo', 'logo_mime_type')"))
-    db.commit()
-    return {"status": "ok", "message": "Logo deleted"}
