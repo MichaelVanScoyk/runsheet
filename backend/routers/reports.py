@@ -1061,7 +1061,7 @@ async def get_monthly_html_report(
         .col-half {{ width: 49%; }}
         .col-half:first-child {{ padding-right: 8px; }}
         .col-half:last-child {{ padding-left: 8px; }}
-        .section {{ background: #fafafa; border: 1px solid #d0d0d0; border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; }}
+        .section {{ background: #e8e8e8; border: 1px solid #d0d0d0; border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; }}
         .section-title {{ font-size: 8px; font-weight: 700; color: #1e6b35; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 6px; }}
         .stats-row {{ display: table; width: 100%; }}
         .stat-box {{ display: table-cell; text-align: center; background: white; padding: 8px 4px; border: 1px solid #e0e0e0; border-radius: 3px; }}
