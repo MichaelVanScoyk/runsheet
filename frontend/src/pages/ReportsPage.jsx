@@ -277,8 +277,8 @@ function ReportsPage() {
   // =========================================================================
 
   const openPrintableReport = (year, month, category) => {
-    // Open HTML report in new window for printing
-    const url = `${API_BASE}/api/reports/html/monthly?year=${year}&month=${month}&category=${category}`;
+    // Open WeasyPrint PDF - styled HTML converted to PDF, prints consistently
+    const url = `${API_BASE}/api/reports/pdf/monthly-weasy?year=${year}&month=${month}&category=${category}`;
     window.open(url, '_blank');
   };
 

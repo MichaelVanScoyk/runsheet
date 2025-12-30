@@ -1349,6 +1349,45 @@ async def generate_pdf_report(
         )
 
 
+@router.get("/pdf/monthly-weasy")
+async def get_monthly_pdf_weasy(
+    year: int = Query(...),
+    month: int = Query(...),
+    category: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate PDF from styled HTML using WeasyPrint.
+    Looks identical to the HTML preview - prints consistently every time.
+    """
+    try:
+        from weasyprint import HTML
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="WeasyPrint not installed. Run: sudo apt install libpango-1.0-0 libpangocairo-1.0-0 && pip install weasyprint --break-system-packages"
+        )
+    
+    # Get the HTML content from existing endpoint
+    html_response = await get_monthly_html_report(year, month, category, db)
+    html_content = html_response.body.decode('utf-8')
+    
+    # Convert HTML to PDF
+    pdf_buffer = io.BytesIO()
+    HTML(string=html_content).write_pdf(pdf_buffer)
+    pdf_buffer.seek(0)
+    
+    # Get month name for filename
+    month_name = date(year, month, 1).strftime("%B")
+    filename = f"monthly_report_{year}_{month:02d}_{month_name}.pdf"
+    
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={filename}"}
+    )
+
+
 @router.get("/pdf/monthly")
 async def generate_monthly_pdf_report(
     year: int = Query(...),
