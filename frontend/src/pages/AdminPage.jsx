@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings } from '../api';
+import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings, getPrintLayout, updatePrintLayout, resetPrintLayout } from '../api';
 import { formatDateTimeLocal } from '../utils/timeUtils';
 import './AdminPage.css';
 import PersonnelPage from './PersonnelPage';
@@ -1897,125 +1897,357 @@ function BrandingTab() {
 
 
 // ============================================================================
-// PRINT SETTINGS TAB COMPONENT
+// PRINT LAYOUT TAB COMPONENT (v2 - Page-based blocks with drag & drop)
 // ============================================================================
 
-const PRINT_SETTING_LABELS = {
-  showHeader: { label: 'Header', desc: 'Station name and "Incident Report" title' },
-  showTimes: { label: 'Response Times', desc: 'Dispatched, Enroute, On Scene, etc.' },
-  showLocation: { label: 'Location', desc: 'Address of incident' },
-  showCrossStreets: { label: 'Cross Streets', desc: 'Nearby intersections' },
-  showDispatchInfo: { label: 'Dispatch Info', desc: 'CAD type and subtype' },
-  showCadUnits: { label: 'Units Called', desc: 'List of units dispatched' },
-  showCadUnitDetails: { label: 'CAD Unit Details', desc: 'Full unit timestamps table (adds page)' },
-  showSituationFound: { label: 'Situation Found', desc: 'What was found on arrival' },
-  showExtentOfDamage: { label: 'Extent of Damage', desc: 'Damage description' },
-  showServicesProvided: { label: 'Services Provided', desc: 'Actions taken' },
-  showNarrative: { label: 'Narrative', desc: 'Detailed incident description' },
-  showEquipmentUsed: { label: 'Equipment Used', desc: 'Tools and equipment list' },
-  showPersonnelGrid: { label: 'Personnel Grid', desc: 'Who responded on each unit' },
-  showOfficerInfo: { label: 'Officer Info', desc: 'OIC and Report Completed By' },
-  showProblemsIssues: { label: 'Problems/Issues', desc: 'Issues encountered' },
-  showWeather: { label: 'Weather', desc: 'Weather conditions' },
-  showCallerInfo: { label: 'Caller Info', desc: 'Caller name and phone (privacy)' },
-  showNerisInfo: { label: 'NERIS Codes', desc: 'Federal reporting classifications' },
-};
-
-function PrintSettingsTab() {
-  const [settings, setSettings] = useState({});
+function PrintLayoutTab() {
+  const [layout, setLayout] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [draggedBlock, setDraggedBlock] = useState(null);
+  const [dragOverTarget, setDragOverTarget] = useState(null);
 
   useEffect(() => {
-    loadSettings();
+    loadLayout();
   }, []);
 
-  const loadSettings = async () => {
+  const loadLayout = async () => {
     try {
-      const res = await getPrintSettings();
-      setSettings(res.data);
+      const res = await getPrintLayout();
+      setLayout(res.data);
+      setHasChanges(false);
     } catch (err) {
-      console.error('Failed to load print settings:', err);
+      console.error('Failed to load print layout:', err);
+      setMessage({ type: 'error', text: 'Failed to load layout' });
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleToggle = (key) => {
-    setSettings(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const handleSave = async () => {
     setSaving(true);
     setMessage(null);
     try {
-      await updatePrintSettings(settings);
-      setMessage({ type: 'success', text: 'Print settings saved' });
+      await updatePrintLayout(layout);
+      setMessage({ type: 'success', text: 'Layout saved successfully' });
+      setHasChanges(false);
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to save settings' });
+      setMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to save layout' });
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) return <div className="loading">Loading print settings...</div>;
+  const handleReset = async () => {
+    if (!confirm('Reset layout to defaults? This will discard all customizations.')) return;
+    
+    setSaving(true);
+    setMessage(null);
+    try {
+      await resetPrintLayout();
+      await loadLayout();
+      setMessage({ type: 'success', text: 'Layout reset to defaults' });
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to reset layout' });
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  const headerGroup = ['showHeader', 'showWeather'];
-  const timesGroup = ['showTimes'];
-  const locationGroup = ['showLocation', 'showCrossStreets', 'showDispatchInfo', 'showCadUnits', 'showCadUnitDetails'];
-  const narrativeGroup = ['showSituationFound', 'showExtentOfDamage', 'showServicesProvided', 'showNarrative'];
-  const personnelGroup = ['showPersonnelGrid', 'showOfficerInfo', 'showEquipmentUsed'];
-  const otherGroup = ['showProblemsIssues', 'showCallerInfo', 'showNerisInfo'];
+  const toggleBlockEnabled = (blockId) => {
+    setLayout(prev => ({
+      ...prev,
+      blocks: prev.blocks.map(b => 
+        b.id === blockId ? { ...b, enabled: !b.enabled } : b
+      )
+    }));
+    setHasChanges(true);
+  };
 
-  const renderGroup = (title, keys) => (
-    <div className="print-settings-group" style={{ marginBottom: '1rem' }}>
-      <h4 style={{ marginBottom: '0.5rem', color: '#888' }}>{title}</h4>
-      {keys.map(key => {
-        const info = PRINT_SETTING_LABELS[key] || { label: key, desc: '' };
-        return (
-          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem', cursor: 'pointer' }}>
+  const moveBlockToPage = (blockId, newPage) => {
+    setLayout(prev => {
+      const block = prev.blocks.find(b => b.id === blockId);
+      if (!block || block.locked) return prev;
+      
+      // Get blocks on the target page to determine new order
+      const targetPageBlocks = prev.blocks.filter(b => b.page === newPage && b.id !== blockId);
+      const maxOrder = targetPageBlocks.length > 0 
+        ? Math.max(...targetPageBlocks.map(b => b.order)) 
+        : 0;
+      
+      return {
+        ...prev,
+        blocks: prev.blocks.map(b => 
+          b.id === blockId ? { ...b, page: newPage, order: maxOrder + 1 } : b
+        )
+      };
+    });
+    setHasChanges(true);
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (e, block) => {
+    if (block.locked) {
+      e.preventDefault();
+      return;
+    }
+    setDraggedBlock(block);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', block.id);
+  };
+
+  const handleDragOver = (e, targetBlock) => {
+    e.preventDefault();
+    if (!draggedBlock || draggedBlock.id === targetBlock.id) return;
+    setDragOverTarget(targetBlock.id);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverTarget(null);
+  };
+
+  const handleDrop = (e, targetBlock) => {
+    e.preventDefault();
+    setDragOverTarget(null);
+    
+    if (!draggedBlock || draggedBlock.id === targetBlock.id) {
+      setDraggedBlock(null);
+      return;
+    }
+
+    setLayout(prev => {
+      const blocks = [...prev.blocks];
+      const draggedIdx = blocks.findIndex(b => b.id === draggedBlock.id);
+      const targetIdx = blocks.findIndex(b => b.id === targetBlock.id);
+      
+      if (draggedIdx === -1 || targetIdx === -1) return prev;
+
+      // Update the dragged block's page to match target
+      blocks[draggedIdx] = { 
+        ...blocks[draggedIdx], 
+        page: targetBlock.page 
+      };
+
+      // Reorder blocks on the target page
+      const targetPage = targetBlock.page;
+      const pageBlocks = blocks
+        .map((b, i) => ({ ...b, originalIdx: i }))
+        .filter(b => b.page === targetPage)
+        .sort((a, b) => a.order - b.order);
+
+      // Find positions
+      const draggedInPage = pageBlocks.findIndex(b => b.id === draggedBlock.id);
+      const targetInPage = pageBlocks.findIndex(b => b.id === targetBlock.id);
+
+      // Remove dragged from its position
+      if (draggedInPage !== -1) {
+        pageBlocks.splice(draggedInPage, 1);
+      }
+      
+      // Find new target position (may have shifted)
+      const newTargetPos = pageBlocks.findIndex(b => b.id === targetBlock.id);
+      
+      // Insert at new position
+      const insertPos = newTargetPos !== -1 ? newTargetPos : pageBlocks.length;
+      pageBlocks.splice(insertPos, 0, { ...blocks[draggedIdx], originalIdx: draggedIdx });
+
+      // Reassign order values
+      pageBlocks.forEach((b, i) => {
+        blocks[b.originalIdx].order = i + 1;
+      });
+
+      return { ...prev, blocks };
+    });
+    
+    setDraggedBlock(null);
+    setHasChanges(true);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedBlock(null);
+    setDragOverTarget(null);
+  };
+
+  // Drop zone for empty page or moving to different page
+  const handleDropOnPage = (e, page) => {
+    e.preventDefault();
+    setDragOverTarget(null);
+    
+    if (!draggedBlock || draggedBlock.page === page) {
+      setDraggedBlock(null);
+      return;
+    }
+
+    moveBlockToPage(draggedBlock.id, page);
+    setDraggedBlock(null);
+  };
+
+  if (loading) return <div className="loading">Loading print layout...</div>;
+  if (!layout) return <div className="error">Failed to load layout</div>;
+
+  // Get blocks for each page, sorted by order
+  const page1Blocks = layout.blocks
+    .filter(b => b.page === 1)
+    .sort((a, b) => a.order - b.order);
+  
+  const page2Blocks = layout.blocks
+    .filter(b => b.page === 2)
+    .sort((a, b) => a.order - b.order);
+
+  const renderBlock = (block) => {
+    const isLocked = block.locked;
+    const isDragging = draggedBlock?.id === block.id;
+    const isDragOver = dragOverTarget === block.id;
+    
+    return (
+      <div
+        key={block.id}
+        className={`layout-block ${!block.enabled ? 'disabled' : ''} ${isLocked ? 'locked' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}
+        draggable={!isLocked}
+        onDragStart={(e) => handleDragStart(e, block)}
+        onDragOver={(e) => handleDragOver(e, block)}
+        onDragLeave={handleDragLeave}
+        onDrop={(e) => handleDrop(e, block)}
+        onDragEnd={handleDragEnd}
+        style={{
+          padding: '0.75rem',
+          marginBottom: '0.5rem',
+          background: block.enabled ? '#2a2a2a' : '#1a1a1a',
+          border: isDragOver ? '2px dashed #4ecdc4' : '1px solid #333',
+          borderRadius: '6px',
+          cursor: isLocked ? 'default' : 'grab',
+          opacity: isDragging ? 0.5 : (block.enabled ? 1 : 0.6),
+          transition: 'all 0.15s ease',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {/* Drag Handle */}
+          <span style={{ color: isLocked ? '#444' : '#666', fontSize: '1.1rem' }}>
+            {isLocked ? '🔒' : '⋮⋮'}
+          </span>
+          
+          {/* Enable Toggle */}
+          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
             <input
               type="checkbox"
-              checked={settings[key] ?? true}
-              onChange={() => handleToggle(key)}
+              checked={block.enabled}
+              onChange={() => toggleBlockEnabled(block.id)}
+              style={{ marginRight: '0' }}
             />
-            <span style={{ fontWeight: '500' }}>{info.label}</span>
-            <span style={{ color: '#666', fontSize: '0.85rem' }}>— {info.desc}</span>
           </label>
-        );
-      })}
+          
+          {/* Block Info */}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: '500', color: block.enabled ? '#fff' : '#888' }}>
+              {block.name}
+              {block.fireOnly && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#e94560' }}>🔥 FIRE</span>}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: '#666' }}>{block.description}</div>
+          </div>
+          
+          {/* Move to other page button */}
+          {!isLocked && (
+            <button
+              onClick={() => moveBlockToPage(block.id, block.page === 1 ? 2 : 1)}
+              className="btn btn-sm btn-secondary"
+              title={`Move to Page ${block.page === 1 ? 2 : 1}`}
+              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+            >
+              {block.page === 1 ? '→ P2' : '← P1'}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderPageColumn = (pageNum, blocks) => (
+    <div
+      className="layout-page-column"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => handleDropOnPage(e, pageNum)}
+      style={{
+        flex: 1,
+        minWidth: '300px',
+        background: '#1e1e1e',
+        borderRadius: '8px',
+        padding: '1rem',
+        minHeight: '400px',
+      }}
+    >
+      <h4 style={{ marginBottom: '1rem', color: '#ccc', borderBottom: '1px solid #333', paddingBottom: '0.5rem' }}>
+        📄 Page {pageNum}
+        <span style={{ fontSize: '0.85rem', color: '#666', fontWeight: 'normal', marginLeft: '0.5rem' }}>
+          ({blocks.filter(b => b.enabled).length} enabled)
+        </span>
+      </h4>
+      
+      {blocks.length === 0 ? (
+        <div style={{ color: '#555', textAlign: 'center', padding: '2rem' }}>
+          Drag blocks here
+        </div>
+      ) : (
+        blocks.map(renderBlock)
+      )}
     </div>
   );
 
   return (
-    <div className="print-settings-tab">
-      <h3>Print Layout Settings</h3>
-      <p className="tab-intro">
-        Choose which sections appear on printed incident reports. Changes apply to all users.
-      </p>
-
-      {message && (
-        <div className={`message ${message.type}`} style={{ marginBottom: '1rem' }}>{message.text}</div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
-        {renderGroup('Header', headerGroup)}
-        {renderGroup('Times', timesGroup)}
-        {renderGroup('Location & Dispatch', locationGroup)}
-        {renderGroup('Incident Details', narrativeGroup)}
-        {renderGroup('Personnel & Equipment', personnelGroup)}
-        {renderGroup('Other', otherGroup)}
+    <div className="print-layout-tab">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div>
+          <h3 style={{ margin: 0 }}>Print Layout Designer</h3>
+          <p style={{ color: '#888', margin: '0.25rem 0 0 0', fontSize: '0.9rem' }}>
+            Drag blocks to reorder. Toggle visibility. Move between pages.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={handleReset}
+            disabled={saving}
+          >
+            Reset to Defaults
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={saving || !hasChanges}
+          >
+            {saving ? 'Saving...' : 'Save Layout'}
+          </button>
+        </div>
       </div>
 
-      <button 
-        className="btn btn-primary" 
-        onClick={handleSave} 
-        disabled={saving}
-        style={{ marginTop: '1rem' }}
-      >
-        {saving ? 'Saving...' : 'Save Print Settings'}
-      </button>
+      {message && (
+        <div className={`message ${message.type}`} style={{ marginBottom: '1rem' }}>
+          {message.text}
+        </div>
+      )}
+
+      {hasChanges && (
+        <div style={{ background: '#3d2f00', border: '1px solid #f39c12', borderRadius: '4px', padding: '0.5rem 1rem', marginBottom: '1rem', color: '#f39c12' }}>
+          ⚠️ You have unsaved changes
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        {renderPageColumn(1, page1Blocks)}
+        {renderPageColumn(2, page2Blocks)}
+      </div>
+
+      <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#1a1a1a', borderRadius: '6px', fontSize: '0.85rem', color: '#888' }}>
+        <strong style={{ color: '#ccc' }}>Tips:</strong>
+        <ul style={{ margin: '0.5rem 0 0 1.2rem', padding: 0 }}>
+          <li><strong>Page 1</strong> — Core info that always prints (header, times, narrative, personnel)</li>
+          <li><strong>Page 2</strong> — Extended details, NERIS data, optional sections</li>
+          <li><span style={{ color: '#e94560' }}>🔥 FIRE</span> blocks only appear on FIRE incidents (not EMS)</li>
+          <li>🔒 Locked blocks (header, footer) cannot be moved between pages</li>
+          <li>Disabled blocks won't appear on printed reports</li>
+        </ul>
+      </div>
     </div>
   );
 }
@@ -2179,7 +2411,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'audit' && <AuditLogTab />}
         {activeTab === 'password' && <PasswordTab />}
         {activeTab === 'export' && <DataExportTab />}
-        {activeTab === 'print' && <PrintSettingsTab />}
+        {activeTab === 'print' && <PrintLayoutTab />}
         {activeTab === 'branding' && <BrandingTab />}
       </div>
     </div>
