@@ -1490,12 +1490,14 @@ function BrandingTab() {
     if (logo?.has_logo && logo?.data && imgRef.current && canvasRef.current) {
       const img = imgRef.current;
       const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
       
       const drawToCanvas = () => {
+        console.log('Drawing to canvas:', img.naturalWidth, 'x', img.naturalHeight);
         canvas.width = img.naturalWidth;
         canvas.height = img.naturalHeight;
         ctx.drawImage(img, 0, 0);
+        console.log('Canvas drawn, dimensions:', canvas.width, 'x', canvas.height);
       };
       
       img.onload = drawToCanvas;
@@ -1577,20 +1579,43 @@ function BrandingTab() {
 
   // Pick color from logo image
   const handleImageClick = (e) => {
-    if (!pickingFor || !canvasRef.current) return;
+    if (!pickingFor || !canvasRef.current || !imgRef.current) return;
     
     const canvas = canvasRef.current;
-    const rect = imgRef.current.getBoundingClientRect();
+    const img = imgRef.current;
+    const rect = img.getBoundingClientRect();
+    
+    // Always redraw to ensure canvas has current image
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    ctx.drawImage(img, 0, 0);
+    
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     const x = Math.floor((e.clientX - rect.left) * scaleX);
     const y = Math.floor((e.clientY - rect.top) * scaleY);
     
-    const ctx = canvas.getContext('2d');
+    console.log('Click:', { clientX: e.clientX, clientY: e.clientY });
+    console.log('Image rect:', rect);
+    console.log('Canvas:', canvas.width, 'x', canvas.height);
+    console.log('Pixel coords:', x, y);
+    
+    // Bounds check
+    if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) {
+      console.log('Click outside image bounds');
+      setPickingFor(null);
+      return;
+    }
+    
     const pixel = ctx.getImageData(x, y, 1, 1).data;
+    console.log('Pixel RGBA:', pixel[0], pixel[1], pixel[2], pixel[3]);
+    
     const hex = '#' + [pixel[0], pixel[1], pixel[2]]
       .map(v => v.toString(16).padStart(2, '0'))
       .join('');
+    
+    console.log('Picked:', hex);
     
     if (pickingFor === 'primary') {
       setPrimaryColor(hex);
