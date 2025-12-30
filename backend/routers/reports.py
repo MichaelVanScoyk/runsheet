@@ -1396,10 +1396,8 @@ async def get_incident_html_report(
     personnel_lookup = {p[0]: f"{p[2]}, {p[1]}" for p in personnel_rows}
     
     # Apparatus lookup
-    apparatus_rows = db.execute(text("SELECT id, unit_designator, name, ff_slots FROM apparatus WHERE active = true ORDER BY unit_designator")).fetchall()
+    apparatus_rows = db.execute(text("SELECT id, unit_designator, name, ff_slots FROM apparatus WHERE active = true ORDER BY display_order, unit_designator")).fetchall()
     apparatus_list = [{'id': a[0], 'unit_designator': a[1], 'name': a[2], 'ff_slots': a[3] or 4} for a in apparatus_rows]
-    apparatus_lookup = {a['unit_designator']: a for a in apparatus_list}
-    
     def fmt_time(dt):
         if not dt: return ''
         return format_local_time(dt, include_seconds=True)
@@ -1421,8 +1419,44 @@ async def get_incident_html_report(
         except:
             pass
     
-    # Get assigned units from personnel_assignments
-    personnel_assignments = inc.get('personnel_assignments', {}) or {}
+    # ==========================================================================
+    # BUILD PERSONNEL ASSIGNMENTS - Query incident_units/incident_personnel tables
+    # Same logic as get_incident() in incidents.py
+    # ==========================================================================
+    personnel_assignments = {}
+    
+    unit_rows = db.execute(text("""
+        SELECT iu.id, iu.apparatus_id, a.unit_designator, a.is_virtual
+        FROM incident_units iu
+        JOIN apparatus a ON iu.apparatus_id = a.id
+        WHERE iu.incident_id = :incident_id
+    """), {"incident_id": incident_id}).fetchall()
+    
+    for unit_row in unit_rows:
+        unit_id, apparatus_id, unit_designator, is_virtual = unit_row
+        
+        # Get personnel for this unit
+        pers_rows = db.execute(text("""
+            SELECT personnel_id, slot_index
+            FROM incident_personnel
+            WHERE incident_unit_id = :unit_id
+            ORDER BY slot_index
+        """), {"unit_id": unit_id}).fetchall()
+        
+        if is_virtual:
+            # Virtual units: just list personnel IDs
+            slots = [p[0] for p in pers_rows]
+        else:
+            # Regular units: fixed 6 slots
+            slots = [None] * 6
+            for p in pers_rows:
+                personnel_id, slot_index = p
+                if slot_index is not None and 0 <= slot_index < 6:
+                    slots[slot_index] = personnel_id
+        
+        personnel_assignments[unit_designator] = slots
+    
+    # Get assigned units (units that have at least one person)
     assigned_units = []
     for a in apparatus_list:
         slots = personnel_assignments.get(a['unit_designator'], [])
