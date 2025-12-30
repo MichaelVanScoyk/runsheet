@@ -244,6 +244,129 @@ def get_timezone() -> str:
     return tz
 
 
+# =============================================================================
+# LOCAL TIME FORMATTING - For server-side display (PDFs, reports)
+# Mirrors frontend timeUtils.js functions
+# =============================================================================
+
+def format_local_time(utc_dt, include_seconds: bool = False) -> str:
+    """
+    Convert UTC datetime to station timezone time string.
+    Mirrors frontend formatTimeLocal().
+    
+    Args:
+        utc_dt: datetime object (UTC) or ISO string
+        include_seconds: if True, returns "HH:MM:SS", else "HH:MM"
+    
+    Returns:
+        Time string in station timezone, or empty string if None
+    """
+    if utc_dt is None:
+        return ''
+    
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    
+    # Handle ISO string input
+    if isinstance(utc_dt, str):
+        if not utc_dt:
+            return ''
+        try:
+            # Parse ISO string, handle Z suffix
+            utc_dt = utc_dt.replace('Z', '+00:00')
+            utc_dt = datetime.fromisoformat(utc_dt)
+        except:
+            return ''
+    
+    # Ensure UTC timezone
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=timezone.utc)
+    
+    # Convert to station timezone
+    station_tz = ZoneInfo(get_timezone())
+    local_dt = utc_dt.astimezone(station_tz)
+    
+    if include_seconds:
+        return local_dt.strftime('%H:%M:%S')
+    return local_dt.strftime('%H:%M')
+
+
+def format_local_datetime(utc_dt) -> str:
+    """
+    Convert UTC datetime to station timezone datetime string.
+    Mirrors frontend formatDateTimeLocal().
+    
+    Args:
+        utc_dt: datetime object (UTC) or ISO string
+    
+    Returns:
+        "YYYY-MM-DD HH:MM:SS" in station timezone, or empty string if None
+    """
+    if utc_dt is None:
+        return ''
+    
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    
+    # Handle ISO string input
+    if isinstance(utc_dt, str):
+        if not utc_dt:
+            return ''
+        try:
+            utc_dt = utc_dt.replace('Z', '+00:00')
+            utc_dt = datetime.fromisoformat(utc_dt)
+        except:
+            return ''
+    
+    # Ensure UTC timezone
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=timezone.utc)
+    
+    # Convert to station timezone
+    station_tz = ZoneInfo(get_timezone())
+    local_dt = utc_dt.astimezone(station_tz)
+    
+    return local_dt.strftime('%Y-%m-%d %H:%M:%S')
+
+
+def format_local_date(utc_dt) -> str:
+    """
+    Convert UTC datetime to station timezone date string.
+    Mirrors frontend formatDateLocal().
+    
+    Args:
+        utc_dt: datetime object (UTC) or ISO string
+    
+    Returns:
+        "YYYY-MM-DD" in station timezone, or empty string if None
+    """
+    if utc_dt is None:
+        return ''
+    
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    
+    # Handle ISO string input
+    if isinstance(utc_dt, str):
+        if not utc_dt:
+            return ''
+        try:
+            utc_dt = utc_dt.replace('Z', '+00:00')
+            utc_dt = datetime.fromisoformat(utc_dt)
+        except:
+            return ''
+    
+    # Ensure UTC timezone
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=timezone.utc)
+    
+    # Convert to station timezone
+    station_tz = ZoneInfo(get_timezone())
+    local_dt = utc_dt.astimezone(station_tz)
+    
+    return local_dt.strftime('%Y-%m-%d')
+
+
 # Test
 if __name__ == "__main__":
     print("Settings from database:")
@@ -268,3 +391,13 @@ if __name__ == "__main__":
     now = datetime.now(timezone.utc)
     print(f"  Input:  {now}")
     print(f"  Output: {format_utc_iso(now)}")
+    
+    # Test local time formatting
+    print(f"\nLocal Time Format test (TZ: {get_timezone()}):")
+    print(f"  format_local_time:     {format_local_time(now)}")
+    print(f"  format_local_time(s):  {format_local_time(now, include_seconds=True)}")
+    print(f"  format_local_datetime: {format_local_datetime(now)}")
+    print(f"  format_local_date:     {format_local_date(now)}")
+    # Test with ISO string
+    iso_str = '2025-12-30T15:30:00Z'
+    print(f"  ISO string input:      {format_local_time(iso_str, include_seconds=True)}  (from {iso_str})")
