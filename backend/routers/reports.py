@@ -1361,7 +1361,10 @@ async def get_incident_html_report(
     incident_id: int,
     db: Session = Depends(get_db)
 ):
-    """Generate printable HTML report - matches PrintView.jsx structure with branding colors."""
+    """
+    Generate printable HTML report for WeasyPrint PDF conversion.
+    Uses table-based layout (NOT flexbox) for WeasyPrint compatibility.
+    """
     from settings_helper import format_local_time, format_local_date, get_timezone
     
     incident = db.execute(text("SELECT * FROM incidents WHERE id = :id AND deleted_at IS NULL"), {"id": incident_id}).fetchone()
@@ -1381,29 +1384,32 @@ async def get_incident_html_report(
     station_name = (db.execute(text("SELECT value FROM settings WHERE category = 'station' AND key = 'name'")).fetchone() or ["Fire Department"])[0]
     station_number = (db.execute(text("SELECT value FROM settings WHERE category = 'station' AND key = 'number'")).fetchone() or [""])[0]
     
-    # Branding - logo and colors
-    logo_result = db.execute(text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo'")).fetchone()
-    logo_mime = db.execute(text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")).fetchone()
-    logo_url = f"data:{logo_mime[0] if logo_mime else 'image/png'};base64,{logo_result[0]}" if logo_result and logo_result[0] else ""
-    
+    # Branding colors
     primary_result = db.execute(text("SELECT value FROM settings WHERE category = 'branding' AND key = 'primary_color'")).fetchone()
     secondary_result = db.execute(text("SELECT value FROM settings WHERE category = 'branding' AND key = 'secondary_color'")).fetchone()
     primary_color = primary_result[0] if primary_result else "#016a2b"
     secondary_color = secondary_result[0] if secondary_result else "#eeee01"
     
-    # Personnel lookup - for name display
+    # Personnel lookup
     personnel_rows = db.execute(text("SELECT id, first_name, last_name FROM personnel")).fetchall()
     personnel_lookup = {p[0]: f"{p[2]}, {p[1]}" for p in personnel_rows}
     
     # Apparatus lookup
     apparatus_rows = db.execute(text("SELECT id, unit_designator, name, ff_slots FROM apparatus WHERE active = true ORDER BY display_order, unit_designator")).fetchall()
     apparatus_list = [{'id': a[0], 'unit_designator': a[1], 'name': a[2], 'ff_slots': a[3] or 4} for a in apparatus_rows]
+    
     def fmt_time(dt):
         if not dt: return ''
         return format_local_time(dt, include_seconds=True)
     
     def get_personnel_name(pid):
         return personnel_lookup.get(pid, '')
+    
+    def escape_html(text):
+        """Escape HTML special characters to prevent layout breaking"""
+        if not text:
+            return ''
+        return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
     
     # Calculate in-service duration
     in_service = ''
@@ -1488,36 +1494,34 @@ async def get_incident_html_report(
         row += '</tr>'
         personnel_rows_html += row
     
-    # Build times section
+    # Build times section - TABLE based, not flex (for WeasyPrint compatibility)
     times_html = ""
     if ps.get('showTimes'):
-        times_html = f'''
-        <div class="times-grid">
-            <div class="time-row"><span class="time-label">Dispatched:</span><span class="time-value">{fmt_time(inc.get('time_dispatched'))}</span></div>
-            <div class="time-row"><span class="time-label">Enroute:</span><span class="time-value">{fmt_time(inc.get('time_first_enroute'))}</span></div>
-            <div class="time-row"><span class="time-label">On Scene:</span><span class="time-value">{fmt_time(inc.get('time_first_on_scene'))}</span></div>
-            <div class="time-row"><span class="time-label">Under Ctrl:</span><span class="time-value">{fmt_time(inc.get('time_fire_under_control'))}</span></div>
-            <div class="time-row"><span class="time-label">Cleared:</span><span class="time-value">{fmt_time(inc.get('time_last_cleared'))}</span></div>
-            <div class="time-row"><span class="time-label">In Service:</span><span class="time-value">{in_service}</span></div>
-        </div>'''
+        times_html = f'''<table class="times-table">
+            <tr><td class="time-label">Dispatched:</td><td class="time-value">{fmt_time(inc.get('time_dispatched'))}</td></tr>
+            <tr><td class="time-label">Enroute:</td><td class="time-value">{fmt_time(inc.get('time_first_enroute'))}</td></tr>
+            <tr><td class="time-label">On Scene:</td><td class="time-value">{fmt_time(inc.get('time_first_on_scene'))}</td></tr>
+            <tr><td class="time-label">Under Ctrl:</td><td class="time-value">{fmt_time(inc.get('time_fire_under_control'))}</td></tr>
+            <tr><td class="time-label">Cleared:</td><td class="time-value">{fmt_time(inc.get('time_last_cleared'))}</td></tr>
+            <tr><td class="time-label">In Service:</td><td class="time-value">{in_service}</td></tr>
+        </table>'''
     
     # Personnel table
     personnel_html = ""
     if ps.get('showPersonnelGrid') and assigned_units:
-        unit_headers = ''.join([f'<th>{a["unit_designator"]}</th>' for a in assigned_units])
-        personnel_html = f'''
-        <div class="section">
-            <span class="label">Personnel:</span>
+        unit_headers = ''.join([f'<th>{escape_html(a["unit_designator"])}</th>' for a in assigned_units])
+        personnel_html = f'''<div class="section">
+            <div class="section-label">Personnel:</div>
             <table class="personnel-table">
-                <thead><tr><th>Role</th>{unit_headers}</tr></thead>
+                <thead><tr><th class="role-header">Role</th>{unit_headers}</tr></thead>
                 <tbody>{personnel_rows_html}</tbody>
             </table>
-            <div class="field"><span class="label">Total Personnel:</span> <span class="value">{total_personnel}</span></div>
+            <div class="total-row">Total Personnel: {total_personnel}</div>
         </div>'''
     
     # Officer names
-    oic_name = get_personnel_name(inc.get('officer_in_charge')) if inc.get('officer_in_charge') else ''
-    completed_by_name = get_personnel_name(inc.get('completed_by')) if inc.get('completed_by') else ''
+    oic_name = escape_html(get_personnel_name(inc.get('officer_in_charge'))) if inc.get('officer_in_charge') else ''
+    completed_by_name = escape_html(get_personnel_name(inc.get('completed_by'))) if inc.get('completed_by') else ''
     
     # CAD units list
     cad_units_list = ', '.join([u.get('unit_id', '') for u in (inc.get('cad_units') or [])]) if inc.get('cad_units') else ''
@@ -1525,170 +1529,154 @@ async def get_incident_html_report(
     # Equipment list
     equipment_list = ', '.join(inc.get('equipment_used', [])) if inc.get('equipment_used') else ''
     
+    # Escape text fields to prevent HTML injection and layout breaking
+    narrative_text = escape_html(inc.get('narrative', ''))
+    situation_found = escape_html(inc.get('situation_found', ''))
+    extent_of_damage = escape_html(inc.get('extent_of_damage', ''))
+    services_provided = escape_html(inc.get('services_provided', ''))
+    problems_issues = escape_html(inc.get('problems_issues', ''))
+    address = escape_html(inc.get('address', ''))
+    cross_streets = escape_html(inc.get('cross_streets', ''))
+    weather_conditions = escape_html(inc.get('weather_conditions', ''))
+    
     html = f'''<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <title>Incident {inc.get("internal_incident_number", "")}</title>
     <style>
-        @page {{ size: letter; margin: 0.35in; }}
+        @page {{ size: letter; margin: 0.4in; }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: Arial, sans-serif; font-size: 10pt; line-height: 1.3; color: #000; }}
+        body {{ font-family: Arial, sans-serif; font-size: 10pt; line-height: 1.4; color: #000; }}
         
-        .header {{ text-align: center; border-bottom: 2px solid {primary_color}; padding-bottom: 0.25rem; margin-bottom: 0.5rem; }}
+        /* Header */
+        .header {{ text-align: center; border-bottom: 3px solid {primary_color}; padding-bottom: 8px; margin-bottom: 12px; }}
         .header h1 {{ font-size: 14pt; margin: 0; font-weight: bold; }}
         .header h2 {{ font-size: 11pt; margin: 0; font-weight: normal; }}
         
-        .top-info {{ display: flex; gap: 1rem; margin-bottom: 0.5rem; }}
-        .col-left {{ flex: 1; }}
-        .col-right {{ width: 180px; }}
+        /* Two-column layout using TABLE - WeasyPrint compatible */
+        .top-layout {{ display: table; width: 100%; margin-bottom: 12px; }}
+        .top-left {{ display: table-cell; vertical-align: top; width: 60%; }}
+        .top-right {{ display: table-cell; vertical-align: top; width: 40%; padding-left: 15px; }}
         
-        .field {{ display: flex; align-items: baseline; gap: 0.25rem; margin-bottom: 0.15rem; }}
-        .field-full {{ flex-direction: column; gap: 0; }}
-        .label {{ font-weight: bold; font-size: 9pt; white-space: nowrap; min-width: 80px; }}
-        .value {{ font-size: 10pt; }}
-        .value-bold {{ font-weight: bold; font-size: 12pt; }}
+        /* Field rows */
+        .field-row {{ margin-bottom: 4px; }}
+        .field-row .label {{ font-weight: bold; font-size: 9pt; display: inline-block; min-width: 85px; }}
+        .field-row .value {{ font-size: 10pt; }}
+        .field-row .value-bold {{ font-weight: bold; font-size: 12pt; }}
         
-        .badge {{ display: inline-block; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 8pt; font-weight: bold; margin-left: 0.5rem; color: #fff; }}
+        /* Badge */
+        .badge {{ display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 8pt; font-weight: bold; margin-left: 8px; color: #fff; }}
         .badge-fire {{ background: #e74c3c; }}
         .badge-ems {{ background: #3498db; }}
         
-        .times-grid {{ border: 1px solid #000; padding: 0.25rem; }}
-        .time-row {{ display: flex; justify-content: space-between; padding: 0.1rem 0; border-bottom: 1px dotted #ccc; }}
-        .time-row:last-child {{ border-bottom: none; }}
-        .time-label {{ font-size: 9pt; font-weight: bold; }}
-        .time-value {{ font-size: 10pt; font-family: 'Courier New', monospace; min-width: 70px; text-align: right; }}
+        /* Times table - real HTML table for WeasyPrint */
+        .times-table {{ width: 100%; border: 1px solid #000; border-collapse: collapse; }}
+        .times-table td {{ padding: 3px 6px; border-bottom: 1px dotted #ccc; }}
+        .times-table tr:last-child td {{ border-bottom: none; }}
+        .time-label {{ font-size: 9pt; font-weight: bold; width: 80px; }}
+        .time-value {{ font-size: 10pt; font-family: 'Courier New', monospace; text-align: right; }}
         
-        .section {{ margin-bottom: 0.35rem; padding-bottom: 0.25rem; border-bottom: 1px solid #ddd; }}
+        /* Sections */
+        .section {{ margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #ddd; }}
+        .section-label {{ font-weight: bold; font-size: 9pt; margin-bottom: 4px; }}
+        .section-value {{ font-size: 10pt; }}
         
-        .narrative {{ white-space: pre-wrap; margin-top: 0.15rem; padding: 0.25rem; background: #f9f9f9; border: 1px solid #ddd; min-height: 0.5in; }}
-        
-        .personnel-table {{ width: 100%; border-collapse: collapse; font-size: 9pt; }}
-        .personnel-table th, .personnel-table td {{ border: 1px solid #000; padding: 0.15rem 0.25rem; text-align: left; }}
-        .personnel-table th {{ background: {primary_color}; color: #fff; font-weight: bold; text-align: center; }}
-        .role-cell {{ font-weight: bold; width: 50px; background: {secondary_color}; }}
-        
-        .footer {{ margin-top: 0.5rem; padding-top: 0.25rem; border-top: 1px solid #000; display: flex; justify-content: space-between; font-size: 8pt; color: #666; }}
-        
-        @media print {{
-            body {{ background: #fff; }}
-            .section {{ page-break-inside: avoid; }}
+        /* Narrative box - contained properly */
+        .narrative-box {{ 
+            white-space: pre-wrap; 
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            padding: 8px; 
+            background: #f9f9f9; 
+            border: 1px solid #ddd; 
+            margin-top: 4px;
+            min-height: 40px;
+            font-size: 10pt;
         }}
+        
+        /* Personnel table */
+        .personnel-table {{ width: 100%; border-collapse: collapse; font-size: 9pt; margin-top: 4px; }}
+        .personnel-table th, .personnel-table td {{ border: 1px solid #000; padding: 4px 6px; text-align: left; }}
+        .personnel-table th {{ background: {primary_color}; color: #fff; font-weight: bold; text-align: center; }}
+        .role-header {{ width: 55px; }}
+        .role-cell {{ font-weight: bold; background: {secondary_color}; width: 55px; }}
+        .total-row {{ margin-top: 6px; font-weight: bold; font-size: 9pt; }}
+        
+        /* Officer info using TABLE - side by side */
+        .officer-row {{ display: table; width: 100%; }}
+        .officer-cell {{ display: table-cell; width: 50%; }}
+        .officer-cell .label {{ font-weight: bold; font-size: 9pt; }}
+        .officer-cell .value {{ font-size: 10pt; }}
+        
+        /* Footer using TABLE */
+        .footer {{ margin-top: 15px; padding-top: 8px; border-top: 1px solid #000; font-size: 8pt; color: #666; }}
+        .footer-row {{ display: table; width: 100%; }}
+        .footer-left {{ display: table-cell; text-align: left; width: 33%; }}
+        .footer-center {{ display: table-cell; text-align: center; width: 34%; }}
+        .footer-right {{ display: table-cell; text-align: right; width: 33%; }}
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>{station_name} — Station {station_number}</h1>
+        <h1>{escape_html(station_name)} — Station {escape_html(station_number)}</h1>
         <h2>Incident Report</h2>
     </div>
     
-    <div class="top-info">
-        <div class="col-left">
-            <div class="field">
+    <div class="top-layout">
+        <div class="top-left">
+            <div class="field-row">
                 <span class="label">Incident #:</span>
-                <span class="value value-bold">{inc.get('internal_incident_number', '')}</span>
-                <span class="badge badge-{(inc.get('call_category') or 'fire').lower()}">{inc.get('call_category', '')}</span>
+                <span class="value value-bold">{escape_html(inc.get('internal_incident_number', ''))}</span>
+                <span class="badge badge-{(inc.get('call_category') or 'fire').lower()}">{escape_html(inc.get('call_category', ''))}</span>
             </div>
-            <div class="field">
+            <div class="field-row">
                 <span class="label">Date:</span>
                 <span class="value">{inc.get('incident_date', '') or ''}</span>
             </div>
-            <div class="field">
+            <div class="field-row">
                 <span class="label">Municipality:</span>
-                <span class="value">{inc.get('municipality_code', '') or ''}</span>
+                <span class="value">{escape_html(inc.get('municipality_code', ''))}</span>
             </div>
-            {f'<div class="field"><span class="label">Weather:</span><span class="value">{inc.get("weather_conditions", "")}</span></div>' if ps.get('showWeather') and inc.get('weather_conditions') else ''}
-            <div class="field">
+            {'<div class="field-row"><span class="label">Weather:</span><span class="value">' + weather_conditions + '</span></div>' if ps.get('showWeather') and weather_conditions else ''}
+            <div class="field-row">
                 <span class="label">ESZ/Box:</span>
-                <span class="value">{inc.get('esz_box', '') or ''}</span>
+                <span class="value">{escape_html(inc.get('esz_box', ''))}</span>
             </div>
         </div>
-        <div class="col-right">
+        <div class="top-right">
             {times_html}
         </div>
     </div>
     
-    {f'''<div class="section">
-        <div class="field field-full">
-            <span class="label">Location:</span>
-            <span class="value">{inc.get('address', '') or ''}</span>
-        </div>
-        {f'<div class="field field-full"><span class="label">Cross Streets:</span><span class="value">{inc.get("cross_streets", "")}</span></div>' if ps.get('showCrossStreets') and inc.get('cross_streets') else ''}
-    </div>''' if ps.get('showLocation') else ''}
+    {'<div class="section"><div class="section-label">Location:</div><div class="section-value">' + address + '</div>' + ('<div class="section-label" style="margin-top:4px">Cross Streets:</div><div class="section-value">' + cross_streets + '</div>' if ps.get('showCrossStreets') and cross_streets else '') + '</div>' if ps.get('showLocation') else ''}
     
-    {f'''<div class="section">
-        <div class="field field-full">
-            <span class="label">Units Called:</span>
-            <span class="value">{cad_units_list}</span>
-        </div>
-    </div>''' if ps.get('showCadUnits') and cad_units_list else ''}
+    {'<div class="section"><div class="section-label">Units Called:</div><div class="section-value">' + escape_html(cad_units_list) + '</div></div>' if ps.get('showCadUnits') and cad_units_list else ''}
     
-    {f'''<div class="section">
-        <div class="field field-full">
-            <span class="label">Dispatched As:</span>
-            <span class="value">{inc.get('cad_event_type', '')}{(' / ' + inc.get('cad_event_subtype')) if inc.get('cad_event_subtype') else ''}</span>
-        </div>
-    </div>''' if ps.get('showDispatchInfo') else ''}
+    {'<div class="section"><div class="section-label">Dispatched As:</div><div class="section-value">' + escape_html(inc.get('cad_event_type', '')) + (' / ' + escape_html(inc.get('cad_event_subtype', '')) if inc.get('cad_event_subtype') else '') + '</div></div>' if ps.get('showDispatchInfo') else ''}
     
-    {f'''<div class="section">
-        <div class="field field-full">
-            <span class="label">Situation Found:</span>
-            <span class="value">{inc.get('situation_found', '')}</span>
-        </div>
-    </div>''' if ps.get('showSituationFound') and inc.get('situation_found') else ''}
+    {'<div class="section"><div class="section-label">Situation Found:</div><div class="section-value">' + situation_found + '</div></div>' if ps.get('showSituationFound') and situation_found else ''}
     
-    {f'''<div class="section">
-        <div class="field field-full">
-            <span class="label">Extent of Damage:</span>
-            <span class="value">{inc.get('extent_of_damage', '')}</span>
-        </div>
-    </div>''' if ps.get('showExtentOfDamage') and inc.get('extent_of_damage') else ''}
+    {'<div class="section"><div class="section-label">Extent of Damage:</div><div class="section-value">' + extent_of_damage + '</div></div>' if ps.get('showExtentOfDamage') and extent_of_damage else ''}
     
-    {f'''<div class="section">
-        <div class="field field-full">
-            <span class="label">Services Provided:</span>
-            <span class="value">{inc.get('services_provided', '')}</span>
-        </div>
-    </div>''' if ps.get('showServicesProvided') and inc.get('services_provided') else ''}
+    {'<div class="section"><div class="section-label">Services Provided:</div><div class="section-value">' + services_provided + '</div></div>' if ps.get('showServicesProvided') and services_provided else ''}
     
-    {f'''<div class="section">
-        <div class="field field-full">
-            <span class="label">Narrative:</span>
-            <div class="value narrative">{inc.get('narrative', '')}</div>
-        </div>
-    </div>''' if ps.get('showNarrative') and inc.get('narrative') else ''}
+    {'<div class="section"><div class="section-label">Narrative:</div><div class="narrative-box">' + narrative_text + '</div></div>' if ps.get('showNarrative') else ''}
     
-    {f'''<div class="section">
-        <div class="field field-full">
-            <span class="label">Equipment Used:</span>
-            <span class="value">{equipment_list}</span>
-        </div>
-    </div>''' if ps.get('showEquipmentUsed') and equipment_list else ''}
+    {'<div class="section"><div class="section-label">Equipment Used:</div><div class="section-value">' + escape_html(equipment_list) + '</div></div>' if ps.get('showEquipmentUsed') and equipment_list else ''}
     
     {personnel_html}
     
-    {f'''<div class="section" style="display: flex; gap: 2rem;">
-        <div class="field">
-            <span class="label">Officer in Charge:</span>
-            <span class="value">{oic_name}</span>
-        </div>
-        <div class="field">
-            <span class="label">Report Completed By:</span>
-            <span class="value">{completed_by_name}</span>
-        </div>
-    </div>''' if ps.get('showOfficerInfo') else ''}
+    {'<div class="section"><div class="officer-row"><div class="officer-cell"><span class="label">Officer in Charge:</span> <span class="value">' + oic_name + '</span></div><div class="officer-cell"><span class="label">Report Completed By:</span> <span class="value">' + completed_by_name + '</span></div></div></div>' if ps.get('showOfficerInfo') else ''}
     
-    {f'''<div class="section">
-        <div class="field field-full">
-            <span class="label">Problems/Issues:</span>
-            <span class="value">{inc.get('problems_issues', '')}</span>
-        </div>
-    </div>''' if ps.get('showProblemsIssues') and inc.get('problems_issues') else ''}
+    {'<div class="section"><div class="section-label">Problems/Issues:</div><div class="section-value">' + problems_issues + '</div></div>' if ps.get('showProblemsIssues') and problems_issues else ''}
     
     <div class="footer">
-        <span>CAD Event: {inc.get('cad_event_number', '')}</span>
-        <span>Status: {inc.get('status', '')}</span>
-        <span>Printed: {datetime.now().strftime('%m/%d/%Y, %I:%M:%S %p')}</span>
+        <div class="footer-row">
+            <span class="footer-left">CAD Event: {escape_html(inc.get('cad_event_number', ''))}</span>
+            <span class="footer-center">Status: {escape_html(inc.get('status', ''))}</span>
+            <span class="footer-right">Printed: {datetime.now().strftime('%m/%d/%Y, %I:%M:%S %p')}</span>
+        </div>
     </div>
 </body>
 </html>'''
