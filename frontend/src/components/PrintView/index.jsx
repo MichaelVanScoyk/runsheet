@@ -81,6 +81,11 @@ export default function PrintView({ incidentId, onClose }) {
     window.print();
   };
 
+  const handleDownloadPdf = () => {
+    // Open PDF in new tab (inline display, user can save from there)
+    window.open(`/api/reports/pdf/incident/${incidentId}`, '_blank');
+  };
+
   const formatTime = (isoString) => {
     if (!isoString) return '';
     return formatTimeLocal(isoString, true);  // Include seconds
@@ -176,6 +181,7 @@ export default function PrintView({ incidentId, onClose }) {
           Landscape
         </label>
         <button onClick={handlePrint} className="print-btn">🖨️ Print</button>
+        <button onClick={handleDownloadPdf} className="print-btn" style={{ marginLeft: '0.5rem' }}>📄 Download PDF</button>
       </div>
 
       {/* Print Content */}
