@@ -310,7 +310,7 @@ async def update_print_settings(
 @router.get("/print/layout")
 async def get_print_layout_endpoint(db: Session = Depends(get_db)):
     """
-    Get the print layout configuration (v2 page-based blocks).
+    Get the print layout configuration.
     Returns stored layout or default if not configured.
     """
     result = db.execute(
@@ -383,7 +383,7 @@ async def update_print_layout(
         )
     else:
         db.execute(
-            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('print', 'layout', :value, 'json', 'Print layout configuration v2')"),
+            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('print', 'layout', :value, 'json', 'Print layout configuration')"),
             {"value": layout_json}
         )
     
@@ -572,313 +572,76 @@ DEFAULT_PRINT_SETTINGS = {
 
 
 # =============================================================================
-# PRINT LAYOUT CONFIGURATION (v2 - Page-based block layout)
+# PRINT LAYOUT V3 - GRANULAR FIELD BLOCKS
+# Each field is its own draggable block
 # =============================================================================
 
 DEFAULT_PRINT_LAYOUT = {
-    "version": 2,
+    "version": 3,
     "blocks": [
-        # PAGE 1 - Core incident info
-        {
-            "id": "header",
-            "name": "Header",
-            "description": "Logo, station name, incident #, CAD #, date, category",
-            "enabled": True,
-            "page": 1,
-            "order": 1,
-            "locked": True,
-            "config": {
-                "showLogo": True,
-                "showIncidentNumber": True,
-                "showCadNumber": True,
-                "showDate": True,
-                "showCategory": True
-            }
-        },
-        {
-            "id": "location",
-            "name": "Location",
-            "description": "Address, municipality, ESZ, cross streets",
-            "enabled": True,
-            "page": 1,
-            "order": 2,
-            "locked": False,
-            "config": {
-                "showAddress": True,
-                "showMunicipality": True,
-                "showEsz": True,
-                "showCrossStreets": True
-            }
-        },
-        {
-            "id": "dispatchInfo",
-            "name": "Dispatch Info",
-            "description": "CAD type, subtype, units called",
-            "enabled": True,
-            "page": 1,
-            "order": 3,
-            "locked": False,
-            "config": {
-                "showCadType": True,
-                "showCadSubtype": True,
-                "showUnitsCalled": True
-            }
-        },
-        {
-            "id": "times",
-            "name": "Response Times",
-            "description": "Dispatched, enroute, on scene, under control, cleared, time in service",
-            "enabled": True,
-            "page": 1,
-            "order": 4,
-            "locked": False,
-            "config": {
-                "showDispatched": True,
-                "showEnroute": True,
-                "showOnScene": True,
-                "showUnderControl": True,
-                "showCleared": True,
-                "showTimeInService": True
-            }
-        },
-        {
-            "id": "callerWeather",
-            "name": "Caller & Weather",
-            "description": "Caller name, phone, weather conditions",
-            "enabled": True,
-            "page": 1,
-            "order": 5,
-            "locked": False,
-            "config": {
-                "showCallerName": True,
-                "showCallerPhone": True,
-                "showWeather": True
-            }
-        },
-        {
-            "id": "narrative",
-            "name": "Narrative",
-            "description": "Situation found, services provided, narrative, problems",
-            "enabled": True,
-            "page": 1,
-            "order": 6,
-            "locked": False,
-            "config": {
-                "showSituationFound": True,
-                "showExtentOfDamage": True,
-                "showServicesProvided": True,
-                "showNarrative": True,
-                "showProblems": True,
-                "overflowToPage2": True,
-                "minHeight": 1.5,
-                "maxHeight": 4.0
-            }
-        },
-        {
-            "id": "personnelGrid",
-            "name": "Personnel Grid",
-            "description": "Personnel assignments by apparatus",
-            "enabled": True,
-            "page": 1,
-            "order": 7,
-            "locked": False,
-            "config": {
-                "showRanks": True,
-                "showOnlyResponded": False,
-                "overflowToPage2": True
-            }
-        },
-        {
-            "id": "officers",
-            "name": "Officers",
-            "description": "Officer in Charge, Completed By",
-            "enabled": True,
-            "page": 1,
-            "order": 8,
-            "locked": False,
-            "config": {
-                "showOIC": True,
-                "showCompletedBy": True
-            }
-        },
-        # PAGE 2 - Extended details (optional)
-        {
-            "id": "damageAssessment",
-            "name": "Damage Assessment",
-            "description": "Property at risk, damages, injuries (FIRE only)",
-            "enabled": True,
-            "page": 2,
-            "order": 1,
-            "locked": False,
-            "fireOnly": True,
-            "config": {
-                "showPropertyAtRisk": True,
-                "showFireDamages": True,
-                "showFFInjuries": True,
-                "showCivilianInjuries": True
-            }
-        },
-        {
-            "id": "mutualAid",
-            "name": "Mutual Aid",
-            "description": "Aid direction, type, departments involved",
-            "enabled": True,
-            "page": 2,
-            "order": 2,
-            "locked": False,
-            "config": {
-                "showDirection": True,
-                "showType": True,
-                "showDepartments": True
-            }
-        },
-        {
-            "id": "cadUnitDetails",
-            "name": "CAD Unit Details",
-            "description": "Full unit timestamps table from CAD",
-            "enabled": True,
-            "page": 2,
-            "order": 3,
-            "locked": False,
-            "config": {
-                "showDispatchTime": True,
-                "showEnrouteTime": True,
-                "showArrivedTime": True,
-                "showClearedTime": True,
-                "showMutualAidFlag": True,
-                "highlightFirstTimes": True
-            }
-        },
-        {
-            "id": "nerisClassification",
-            "name": "NERIS - Classification",
-            "description": "Incident types, location use, actions taken",
-            "enabled": False,
-            "page": 2,
-            "order": 4,
-            "locked": False,
-            "fireOnly": True,
-            "config": {
-                "showIncidentTypes": True,
-                "showLocationUse": True,
-                "showActions": True,
-                "showNoActionReason": True,
-                "showPeoplePresent": True,
-                "showDisplaced": True
-            }
-        },
-        {
-            "id": "nerisRiskReduction",
-            "name": "NERIS - Risk Reduction",
-            "description": "Smoke alarms, fire alarms, sprinklers",
-            "enabled": False,
-            "page": 2,
-            "order": 5,
-            "locked": False,
-            "fireOnly": True,
-            "config": {
-                "showSmokeAlarms": True,
-                "showFireAlarms": True,
-                "showSprinklers": True,
-                "showCookingSuppression": True
-            }
-        },
-        {
-            "id": "nerisEmergingHazards",
-            "name": "NERIS - Emerging Hazards",
-            "description": "EV/battery, solar PV, CSST gas lines",
-            "enabled": False,
-            "page": 2,
-            "order": 6,
-            "locked": False,
-            "fireOnly": True,
-            "config": {
-                "showEvBattery": True,
-                "showSolarPv": True,
-                "showCsst": True
-            }
-        },
-        {
-            "id": "nerisExposures",
-            "name": "NERIS - Exposures",
-            "description": "Fire exposures to adjacent structures",
-            "enabled": False,
-            "page": 2,
-            "order": 7,
-            "locked": False,
-            "fireOnly": True,
-            "config": {}
-        },
-        {
-            "id": "nerisFireModule",
-            "name": "NERIS - Fire Module",
-            "description": "Investigation, arrival conditions, damage, cause",
-            "enabled": False,
-            "page": 2,
-            "order": 8,
-            "locked": False,
-            "fireOnly": True,
-            "config": {
-                "showInvestigation": True,
-                "showArrivalConditions": True,
-                "showStructureDamage": True,
-                "showFloorRoom": True,
-                "showCause": True
-            }
-        },
-        {
-            "id": "nerisMedicalModule",
-            "name": "NERIS - Medical Module",
-            "description": "Patient evaluation and care",
-            "enabled": False,
-            "page": 2,
-            "order": 9,
-            "locked": False,
-            "config": {
-                "showPatientCare": True
-            }
-        },
-        {
-            "id": "nerisHazmatModule",
-            "name": "NERIS - Hazmat Module",
-            "description": "Disposition, evacuations, chemicals",
-            "enabled": False,
-            "page": 2,
-            "order": 10,
-            "locked": False,
-            "config": {
-                "showDisposition": True,
-                "showEvacuated": True,
-                "showChemicals": True
-            }
-        },
-        {
-            "id": "nerisNarratives",
-            "name": "NERIS - Narratives",
-            "description": "Impedance and outcome narratives",
-            "enabled": False,
-            "page": 2,
-            "order": 11,
-            "locked": False,
-            "fireOnly": True,
-            "config": {
-                "showImpedance": True,
-                "showOutcome": True
-            }
-        },
-        {
-            "id": "footer",
-            "name": "Footer",
-            "description": "Station info, generation timestamp",
-            "enabled": True,
-            "page": 1,
-            "order": 99,
-            "locked": True,
-            "config": {
-                "showStationName": True,
-                "showGeneratedTime": True
-            }
-        }
+        # HEADER GROUP
+        {"id": "logo", "name": "Logo", "enabled": True, "page": 1, "order": 1, "locked": False},
+        {"id": "station_name", "name": "Station Name", "enabled": True, "page": 1, "order": 2, "locked": False},
+        
+        # INCIDENT ID
+        {"id": "internal_incident_number", "name": "Incident #", "enabled": True, "page": 1, "order": 3, "locked": False},
+        {"id": "cad_event_number", "name": "CAD Event #", "enabled": True, "page": 1, "order": 4, "locked": False},
+        {"id": "call_category", "name": "Category Badge", "enabled": True, "page": 1, "order": 5, "locked": False},
+        {"id": "incident_date", "name": "Date", "enabled": True, "page": 1, "order": 6, "locked": False},
+        
+        # TIMES (as group - always floated right)
+        {"id": "times_group", "name": "Times Table", "enabled": True, "page": 1, "order": 7, "locked": False, "config": {"float": "right"}},
+        
+        # DISPATCH INFO
+        {"id": "cad_event_type", "name": "CAD Type", "enabled": True, "page": 1, "order": 8, "locked": False},
+        {"id": "cad_event_subtype", "name": "CAD Subtype", "enabled": True, "page": 1, "order": 9, "locked": False},
+        
+        # LOCATION
+        {"id": "address", "name": "Address", "enabled": True, "page": 1, "order": 10, "locked": False},
+        {"id": "cross_streets", "name": "Cross Streets", "enabled": True, "page": 1, "order": 11, "locked": False},
+        {"id": "municipality_code", "name": "Municipality", "enabled": True, "page": 1, "order": 12, "locked": False},
+        {"id": "esz_box", "name": "ESZ/Box", "enabled": True, "page": 1, "order": 13, "locked": False},
+        
+        # UNITS
+        {"id": "units_called", "name": "Units Called", "enabled": True, "page": 1, "order": 14, "locked": False},
+        
+        # CALLER/WEATHER
+        {"id": "caller_name", "name": "Caller Name", "enabled": False, "page": 1, "order": 15, "locked": False},
+        {"id": "caller_phone", "name": "Caller Phone", "enabled": False, "page": 1, "order": 16, "locked": False},
+        {"id": "weather_conditions", "name": "Weather", "enabled": True, "page": 1, "order": 17, "locked": False},
+        
+        # NARRATIVE FIELDS
+        {"id": "situation_found", "name": "Situation Found", "enabled": True, "page": 1, "order": 18, "locked": False, "fireOnly": True},
+        {"id": "extent_of_damage", "name": "Extent of Damage", "enabled": True, "page": 1, "order": 19, "locked": False, "fireOnly": True},
+        {"id": "services_provided", "name": "Services Provided", "enabled": True, "page": 1, "order": 20, "locked": False},
+        {"id": "narrative", "name": "Narrative", "enabled": True, "page": 1, "order": 21, "locked": False},
+        {"id": "problems_issues", "name": "Problems/Issues", "enabled": False, "page": 1, "order": 22, "locked": False},
+        {"id": "equipment_used", "name": "Equipment Used", "enabled": False, "page": 1, "order": 23, "locked": False},
+        
+        # PERSONNEL
+        {"id": "personnel_grid", "name": "Personnel Grid", "enabled": True, "page": 1, "order": 24, "locked": False},
+        {"id": "officer_in_charge", "name": "Officer in Charge", "enabled": True, "page": 1, "order": 25, "locked": False},
+        {"id": "completed_by", "name": "Completed By", "enabled": True, "page": 1, "order": 26, "locked": False},
+        
+        # FOOTER
+        {"id": "footer", "name": "Footer", "enabled": True, "page": 1, "order": 99, "locked": True},
+        
+        # PAGE 2 - EXTENDED INFO
+        {"id": "cad_unit_details", "name": "CAD Unit Details", "enabled": True, "page": 2, "order": 1, "locked": False},
+        
+        # DAMAGE (FIRE ONLY)
+        {"id": "property_value_at_risk", "name": "Property at Risk", "enabled": False, "page": 2, "order": 2, "locked": False, "fireOnly": True},
+        {"id": "fire_damages_estimate", "name": "Fire Damages", "enabled": False, "page": 2, "order": 3, "locked": False, "fireOnly": True},
+        {"id": "ff_injuries_count", "name": "FF Injuries", "enabled": False, "page": 2, "order": 4, "locked": False, "fireOnly": True},
+        {"id": "civilian_injuries_count", "name": "Civilian Injuries", "enabled": False, "page": 2, "order": 5, "locked": False, "fireOnly": True},
+        
+        # MUTUAL AID
+        {"id": "neris_aid_direction", "name": "Aid Direction", "enabled": False, "page": 2, "order": 6, "locked": False},
+        {"id": "neris_aid_departments", "name": "Aid Departments", "enabled": False, "page": 2, "order": 7, "locked": False},
+        
+        # NERIS - kept minimal for now
+        {"id": "neris_incident_types", "name": "NERIS Incident Types", "enabled": False, "page": 2, "order": 10, "locked": False},
+        {"id": "neris_actions", "name": "NERIS Actions Taken", "enabled": False, "page": 2, "order": 11, "locked": False},
     ]
 }
 
@@ -997,4 +760,3 @@ def get_page_blocks(db: Session, page: int, call_category: str = 'FIRE') -> list
     blocks.sort(key=lambda b: b.get('order', 99))
     
     return blocks
-
