@@ -964,7 +964,7 @@ async def get_monthly_html_report(
     
     # Generate unit rows
     unit_rows = '\n'.join([
-        f'''<div class="unit-row">
+        f'''<div class="unit-row clearfix">
             <span class="unit-name">{u['unit_name'] or u['unit']}</span>
             <span class="unit-count">{u['responses']}</span>
         </div>'''
@@ -974,11 +974,11 @@ async def get_monthly_html_report(
     # Generate incident type groups with subtypes
     incident_groups = '\n'.join([
         f'''<div class="incident-group">
-            <div class="incident-group-header">
+            <div class="incident-group-header clearfix">
                 <span>{grp['type']}</span>
                 <span class="count">{grp['count']}</span>
             </div>
-            {''.join([f'<div class="incident-subtype"><span>{st["subtype"]}</span><span class="count">{st["count"]}</span></div>' for st in grp['subtypes']])}
+            {''.join([f'<div class="incident-subtype clearfix"><span>{st["subtype"]}</span><span class="count">{st["count"]}</span></div>' for st in grp['subtypes']])}
         </div>'''
         for grp in report.get('incident_types_grouped', [])
     ]) or '<div>No incidents</div>'
@@ -991,21 +991,21 @@ async def get_monthly_html_report(
             for ma in report.get('mutual_aid', [])
         ]) or '<tr><td colspan="2" class="text-center">None</td></tr>'
         mutual_aid_section = f'''
-        <div class="section">
-            <div class="section-title">Mutual Aid Given</div>
-            <table>
-                <thead><tr><th>Station</th><th class="text-center">Count</th></tr></thead>
-                <tbody>{ma_rows}</tbody>
-            </table>
-        </div>'''
+                <div class="section">
+                    <div class="section-title">Mutual Aid Given</div>
+                    <table>
+                        <thead><tr><th>Station</th><th class="text-center">Count</th></tr></thead>
+                        <tbody>{ma_rows}</tbody>
+                    </table>
+                </div>'''
     
     # Property/Safety section (FIRE only)
     property_section = ''
     if is_fire_report:
         property_section = f'''
-        <div class="section full-width">
+        <div class="section">
             <div class="section-title">Property & Safety</div>
-            <div class="stats-grid">
+            <div class="stats-row">
                 <div class="stat-box">
                     <div class="stat-value">{fmt_currency(cs.get('property_at_risk', 0))}</div>
                     <div class="stat-label">Property at Risk</div>
@@ -1032,89 +1032,78 @@ async def get_monthly_html_report(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{station_name} - Monthly Report</title>
     <style>
+        @page {{ 
+            size: letter; 
+            margin: 0.4in;
+        }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        html, body {{
-            width: 100%;
-            height: auto;
-        }}
         body {{
-            font-family: 'Segoe UI', Arial, sans-serif;
-            font-size: 14pt;
-            line-height: 1.4;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 9px;
+            line-height: 1.3;
             color: #1a1a1a;
-            padding: 0.4in;
-            position: relative;
         }}
-        .watermark {{
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            opacity: 0.06;
-            z-index: -1;
-            pointer-events: none;
-        }}
-        .watermark img {{ width: 80%; max-width: 500px; height: auto; }}
         .header {{
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 20px;
-            border-bottom: 4px solid #1e6b35;
-            padding-bottom: 16px;
-            margin-bottom: 20px;
+            display: table;
+            width: 100%;
+            border-bottom: 3px solid #1e6b35;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
         }}
-        .header-logo {{ width: 90px; height: auto; flex-shrink: 0; }}
-        .header-text {{ text-align: left; }}
-        .header h1 {{ font-size: 28pt; font-weight: 700; color: #1a1a1a; letter-spacing: 1.5px; }}
-        .header .subtitle {{ font-size: 14pt; color: #1e6b35; font-weight: 600; margin-top: 4px; }}
-        .content {{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }}
-        .section {{ background: #fafafa; border: 1px solid #d0d0d0; border-radius: 6px; padding: 14px 16px; }}
-        .section-title {{ font-size: 10pt; font-weight: 700; color: #1e6b35; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #ddd; padding-bottom: 6px; margin-bottom: 12px; }}
-        .full-width {{ grid-column: 1 / -1; }}
-        .stats-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }}
-        .stat-box {{ text-align: center; background: white; padding: 14px 10px; border-radius: 4px; border: 1px solid #e0e0e0; }}
-        .stat-value {{ font-size: 32pt; font-weight: 700; color: #1a1a1a; }}
+        .header-logo {{ display: table-cell; width: 70px; vertical-align: middle; }}
+        .header-logo img {{ width: 60px; height: auto; }}
+        .header-text {{ display: table-cell; vertical-align: middle; padding-left: 12px; }}
+        .header h1 {{ font-size: 20px; font-weight: 700; color: #1a1a1a; letter-spacing: 1px; margin: 0; }}
+        .header .subtitle {{ font-size: 11px; color: #1e6b35; font-weight: 600; margin-top: 2px; }}
+        .content {{ width: 100%; }}
+        .row {{ display: table; width: 100%; margin-bottom: 8px; }}
+        .col {{ display: table-cell; vertical-align: top; }}
+        .col-half {{ width: 49%; }}
+        .col-half:first-child {{ padding-right: 8px; }}
+        .col-half:last-child {{ padding-left: 8px; }}
+        .section {{ background: #fafafa; border: 1px solid #d0d0d0; border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; }}
+        .section-title {{ font-size: 8px; font-weight: 700; color: #1e6b35; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 6px; }}
+        .stats-row {{ display: table; width: 100%; }}
+        .stat-box {{ display: table-cell; text-align: center; background: white; padding: 8px 4px; border: 1px solid #e0e0e0; border-radius: 3px; }}
+        .stat-value {{ font-size: 20px; font-weight: 700; color: #1a1a1a; }}
         .stat-value.highlight {{ color: #1e6b35; }}
-        .stat-label {{ font-size: 8pt; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 4px; }}
-        .stat-compare {{ font-size: 9pt; color: #666; margin-top: 4px; }}
-        table {{ width: 100%; border-collapse: collapse; font-size: 11pt; }}
-        th {{ background: #f0f0f0; font-weight: 600; text-align: left; padding: 8px 10px; border-bottom: 2px solid #ccc; }}
-        td {{ padding: 6px 10px; border-bottom: 1px solid #e0e0e0; }}
+        .stat-label {{ font-size: 7px; color: #666; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }}
+        .stat-compare {{ font-size: 7px; color: #666; margin-top: 2px; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 8px; }}
+        th {{ background: #f0f0f0; font-weight: 600; text-align: left; padding: 4px 6px; border-bottom: 1px solid #ccc; }}
+        td {{ padding: 3px 6px; border-bottom: 1px solid #e0e0e0; }}
         tr:last-child td {{ border-bottom: none; }}
         .text-right {{ text-align: right; }}
         .text-center {{ text-align: center; }}
-        .response-times {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }}
-        .time-box {{ background: white; border: 1px solid #e0e0e0; border-radius: 4px; padding: 14px 10px; text-align: center; }}
-        .time-value {{ font-size: 24pt; font-weight: 700; color: #1a1a1a; }}
-        .time-label {{ font-size: 8pt; color: #666; text-transform: uppercase; margin-top: 4px; }}
-        .footer {{ margin-top: 24px; padding-top: 12px; border-top: 2px solid #ddd; display: flex; justify-content: space-between; font-size: 10pt; color: #888; }}
-        .incident-group {{ margin-bottom: 12px; }}
+        .times-row {{ display: table; width: 100%; }}
+        .time-box {{ display: table-cell; background: white; border: 1px solid #e0e0e0; border-radius: 3px; padding: 6px 4px; text-align: center; }}
+        .time-value {{ font-size: 16px; font-weight: 700; color: #1a1a1a; }}
+        .time-label {{ font-size: 7px; color: #666; text-transform: uppercase; margin-top: 2px; }}
+        .footer {{ margin-top: 10px; padding-top: 6px; border-top: 1px solid #ddd; font-size: 8px; color: #888; }}
+        .footer-left {{ float: left; }}
+        .footer-right {{ float: right; }}
+        .incident-group {{ margin-bottom: 6px; }}
         .incident-group:last-child {{ margin-bottom: 0; }}
-        .incident-group-header {{ display: flex; justify-content: space-between; align-items: center; background: #1e6b35; color: white; padding: 8px 12px; border-radius: 3px; font-weight: 600; font-size: 11pt; }}
-        .incident-group-header .count {{ background: rgba(255,255,255,0.3); padding: 2px 12px; border-radius: 10px; font-size: 10pt; }}
-        .incident-subtype {{ display: flex; justify-content: space-between; padding: 5px 12px 5px 24px; font-size: 10pt; color: #444; border-bottom: 1px dotted #ccc; }}
+        .incident-group-header {{ background: #1e6b35; color: white; padding: 4px 8px; border-radius: 2px; font-weight: 600; font-size: 8px; }}
+        .incident-group-header .count {{ float: right; background: rgba(255,255,255,0.3); padding: 1px 8px; border-radius: 8px; font-size: 7px; }}
+        .incident-subtype {{ padding: 2px 8px 2px 16px; font-size: 7px; color: #444; border-bottom: 1px dotted #ccc; }}
         .incident-subtype:last-child {{ border-bottom: none; }}
-        .incident-subtype .count {{ font-weight: 600; color: #666; }}
-        .unit-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; }}
-        .unit-row {{ display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dotted #ccc; font-size: 11pt; }}
-        .unit-name {{ font-weight: 500; }}
-        .unit-count {{ font-weight: 600; color: #1e6b35; }}
-        @media print {{
-            @page {{ size: letter; margin: 0.5in; }}
-            body {{ padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
-            .section {{ break-inside: avoid; }}
-            .watermark {{ position: fixed; }}
-        }}
+        .incident-subtype .count {{ float: right; font-weight: 600; color: #666; }}
+        .unit-row {{ padding: 3px 0; border-bottom: 1px dotted #ccc; font-size: 8px; }}
+        .unit-row:last-child {{ border-bottom: none; }}
+        .unit-name {{ display: inline; }}
+        .unit-count {{ float: right; font-weight: 600; color: #1e6b35; }}
+        .clearfix::after {{ content: ""; display: table; clear: both; }}
     </style>
 </head>
 <body>
-    <div class="watermark">
-        <img src="{logo_data_url}" alt="">
+    <!-- Watermark -->
+    <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.06; z-index: -1;">
+        <img src="{logo_data_url}" style="width: 350px; height: auto;" alt="">
     </div>
 
     <div class="header">
-        <img class="header-logo" src="{logo_data_url}" alt="Department Logo">
+        <div class="header-logo"><img src="{logo_data_url}" alt="Logo"></div>
         <div class="header-text">
             <h1>{station_name.upper()}</h1>
             <div class="subtitle">Monthly Activity Report — {report['month_name']} {report['year']}</div>
@@ -1122,9 +1111,10 @@ async def get_monthly_html_report(
     </div>
     
     <div class="content">
-        <div class="section full-width">
+        <!-- Call Summary -->
+        <div class="section">
             <div class="section-title">Call Summary</div>
-            <div class="stats-grid">
+            <div class="stats-row">
                 <div class="stat-box">
                     <div class="stat-value highlight">{cs['number_of_calls']}</div>
                     <div class="stat-label">Total Calls</div>
@@ -1145,9 +1135,10 @@ async def get_monthly_html_report(
             </div>
         </div>
 
-        <div class="section full-width">
+        <!-- Response Times -->
+        <div class="section">
             <div class="section-title">Response Times</div>
-            <div class="response-times">
+            <div class="times-row">
                 <div class="time-box">
                     <div class="time-value">{rt.get('avg_turnout_minutes', 0) or 0:.1f}</div>
                     <div class="time-label">Avg Turnout (min)</div>
@@ -1163,32 +1154,44 @@ async def get_monthly_html_report(
             </div>
         </div>
 
-        <div class="section">
-            <div class="section-title">Response by Municipality</div>
-            <table>
-                <thead>{muni_headers}</thead>
-                <tbody>{muni_rows}</tbody>
-            </table>
+        <!-- Two Column Row: Municipality + Units -->
+        <div class="row">
+            <div class="col col-half">
+                <div class="section">
+                    <div class="section-title">Response by Municipality</div>
+                    <table>
+                        <thead>{muni_headers}</thead>
+                        <tbody>{muni_rows}</tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="col col-half">
+                <div class="section">
+                    <div class="section-title">Responses by Unit</div>
+                    {unit_rows}
+                </div>
+            </div>
         </div>
 
-        <div class="section">
-            <div class="section-title">Responses by Unit</div>
-            <div class="unit-grid">{unit_rows}</div>
+        <!-- Two Column Row: Incident Types + Mutual Aid -->
+        <div class="row">
+            <div class="col col-half">
+                <div class="section">
+                    <div class="section-title">Incident Types</div>
+                    {incident_groups}
+                </div>
+            </div>
+            <div class="col col-half">
+                {mutual_aid_section}
+            </div>
         </div>
-
-        <div class="section">
-            <div class="section-title">Incident Types</div>
-            {incident_groups}
-        </div>
-
-        {mutual_aid_section}
 
         {property_section}
     </div>
 
-    <div class="footer">
-        <span>{station_name} — {station_short_name}</span>
-        <span>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</span>
+    <div class="footer clearfix">
+        <span class="footer-left">{station_name} — {station_short_name}</span>
+        <span class="footer-right">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</span>
     </div>
 </body>
 </html>'''
