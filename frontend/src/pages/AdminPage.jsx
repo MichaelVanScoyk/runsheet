@@ -1426,35 +1426,91 @@ function BrandingTab() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState(null);
+  const [savingColors, setSavingColors] = useState(false);
+  const [pickingFor, setPickingFor] = useState(null); // 'primary' or 'secondary'
+  
+  // Color state - local until saved
+  const [primaryColor, setPrimaryColor] = useState('#e94560');
+  const [secondaryColor, setSecondaryColor] = useState('#0f3460');
+  const [savedPrimary, setSavedPrimary] = useState('#e94560');
+  const [savedSecondary, setSavedSecondary] = useState('#0f3460');
+  
   const fileInputRef = useRef(null);
+  const canvasRef = useRef(null);
+  const imgRef = useRef(null);
 
   useEffect(() => {
-    loadLogo();
+    loadBranding();
   }, []);
 
-  const loadLogo = async () => {
+  const loadBranding = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/settings/branding/logo`);
-      const data = await res.json();
-      setLogo(data);
+      // Load logo
+      const logoRes = await fetch(`${API_BASE}/api/settings/branding/logo`);
+      const logoData = await logoRes.json();
+      setLogo(logoData);
+      
+      // Load colors
+      try {
+        const primaryRes = await fetch(`${API_BASE}/api/settings/branding/primary_color`);
+        if (primaryRes.ok) {
+          const data = await primaryRes.json();
+          if (data.raw_value) {
+            setPrimaryColor(data.raw_value);
+            setSavedPrimary(data.raw_value);
+          }
+        }
+      } catch (e) { /* use default */ }
+      
+      try {
+        const secondaryRes = await fetch(`${API_BASE}/api/settings/branding/secondary_color`);
+        if (secondaryRes.ok) {
+          const data = await secondaryRes.json();
+          if (data.raw_value) {
+            setSecondaryColor(data.raw_value);
+            setSavedSecondary(data.raw_value);
+          }
+        }
+      } catch (e) { /* use default */ }
+      
     } catch (err) {
-      console.error('Failed to load logo:', err);
+      console.error('Failed to load branding:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  // Draw logo to canvas when logo loads (for eyedropper)
+  useEffect(() => {
+    if (logo?.has_logo && imgRef.current && canvasRef.current) {
+      const img = imgRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      
+      img.onload = () => {
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        ctx.drawImage(img, 0, 0);
+      };
+      
+      // If already loaded
+      if (img.complete) {
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        ctx.drawImage(img, 0, 0);
+      }
+    }
+  }, [logo]);
+
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
       setMessage({ type: 'error', text: 'Please select a PNG, JPEG, GIF, or WebP image' });
       return;
     }
 
-    // Validate file size (max 500KB)
     if (file.size > 500 * 1024) {
       setMessage({ type: 'error', text: 'Image must be under 500KB' });
       return;
@@ -1464,12 +1520,10 @@ function BrandingTab() {
     setMessage(null);
 
     try {
-      // Read file as base64
       const reader = new FileReader();
       reader.onload = async (event) => {
         const base64 = event.target.result;
         
-        // Upload to server
         const res = await fetch(`${API_BASE}/api/settings/branding/logo`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1478,8 +1532,7 @@ function BrandingTab() {
 
         if (res.ok) {
           setMessage({ type: 'success', text: 'Logo uploaded successfully' });
-          // Reload logo after successful upload
-          await loadLogo();
+          await loadBranding();
         } else {
           const err = await res.json();
           setMessage({ type: 'error', text: err.detail || 'Upload failed' });
@@ -1513,13 +1566,82 @@ function BrandingTab() {
     }
   };
 
+  // Pick color from logo image
+  const handleImageClick = (e) => {
+    if (!pickingFor || !canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const rect = imgRef.current.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.floor((e.clientX - rect.left) * scaleX);
+    const y = Math.floor((e.clientY - rect.top) * scaleY);
+    
+    const ctx = canvas.getContext('2d');
+    const pixel = ctx.getImageData(x, y, 1, 1).data;
+    const hex = '#' + [pixel[0], pixel[1], pixel[2]]
+      .map(v => v.toString(16).padStart(2, '0'))
+      .join('');
+    
+    if (pickingFor === 'primary') {
+      setPrimaryColor(hex);
+    } else {
+      setSecondaryColor(hex);
+    }
+    setPickingFor(null);
+  };
+
+  // Validate and normalize hex input
+  const normalizeHex = (value) => {
+    let hex = value.replace(/[^0-9a-fA-F#]/g, '');
+    if (!hex.startsWith('#')) hex = '#' + hex;
+    if (hex.length > 7) hex = hex.slice(0, 7);
+    return hex;
+  };
+
+  const handleHexInput = (value, setter) => {
+    const normalized = normalizeHex(value);
+    setter(normalized);
+  };
+
+  const saveColors = async () => {
+    setSavingColors(true);
+    setMessage(null);
+    
+    try {
+      // Save primary color
+      await fetch(`${API_BASE}/api/settings/branding/primary_color`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: primaryColor })
+      });
+      
+      // Save secondary color
+      await fetch(`${API_BASE}/api/settings/branding/secondary_color`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: secondaryColor })
+      });
+      
+      setSavedPrimary(primaryColor);
+      setSavedSecondary(secondaryColor);
+      setMessage({ type: 'success', text: 'Colors saved successfully' });
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to save colors' });
+    } finally {
+      setSavingColors(false);
+    }
+  };
+
+  const hasColorChanges = primaryColor !== savedPrimary || secondaryColor !== savedSecondary;
+
   if (loading) return <div className="loading">Loading...</div>;
 
   return (
     <div className="branding-tab">
       <h3>Department Branding</h3>
       <p className="tab-intro">
-        Upload your department's logo. It will appear on reports and other official documents.
+        Upload your department's logo and set brand colors for reports.
       </p>
 
       {message && (
@@ -1528,29 +1650,34 @@ function BrandingTab() {
         </div>
       )}
 
-      <div className="branding-logo-section" style={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
-        gap: '1rem',
-        maxWidth: '400px'
-      }}>
-        {/* Current Logo Preview */}
-        <div className="logo-preview" style={{
-          background: '#2a2a2a',
-          borderRadius: '8px',
-          padding: '1.5rem',
-          textAlign: 'center',
-          border: '2px dashed #444'
-        }}>
+      <div className="branding-content" style={{ maxWidth: '500px' }}>
+        
+        {/* Logo Preview - clickable for eyedropper */}
+        <div 
+          className="logo-preview" 
+          style={{
+            background: '#2a2a2a',
+            borderRadius: '8px',
+            padding: '1.5rem',
+            textAlign: 'center',
+            border: pickingFor ? '2px solid #e94560' : '2px dashed #444',
+            cursor: pickingFor && logo?.has_logo ? 'crosshair' : 'default',
+            position: 'relative'
+          }}
+          onClick={logo?.has_logo ? handleImageClick : undefined}
+        >
           {logo?.has_logo ? (
             <>
               <img 
+                ref={imgRef}
                 src={`data:${logo.mime_type};base64,${logo.data}`}
                 alt="Department Logo"
                 style={{ maxWidth: '200px', maxHeight: '200px', objectFit: 'contain' }}
+                crossOrigin="anonymous"
               />
+              <canvas ref={canvasRef} style={{ display: 'none' }} />
               <p style={{ marginTop: '0.5rem', color: '#888', fontSize: '0.85rem' }}>
-                Current logo
+                {pickingFor ? `Click logo to pick ${pickingFor} color` : 'Current logo'}
               </p>
             </>
           ) : (
@@ -1562,7 +1689,7 @@ function BrandingTab() {
         </div>
 
         {/* Upload Controls */}
-        <div className="logo-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+        <div className="logo-actions" style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
           <input
             type="file"
             ref={fileInputRef}
@@ -1589,20 +1716,125 @@ function BrandingTab() {
           )}
         </div>
 
-        {/* Upload Guidelines */}
+        {/* Color Pickers */}
+        <div style={{ marginTop: '1.5rem', borderTop: '1px solid #333', paddingTop: '1.5rem' }}>
+          <h4 style={{ marginBottom: '1rem', color: '#ccc' }}>Brand Colors</h4>
+          
+          {/* Primary Color */}
+          <div className="color-row" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+            <label style={{ width: '90px', color: '#aaa' }}>Primary:</label>
+            <input
+              type="color"
+              value={primaryColor.length === 7 ? primaryColor : '#e94560'}
+              onChange={(e) => setPrimaryColor(e.target.value)}
+              style={{ width: '50px', height: '36px', padding: 0, border: 'none', cursor: 'pointer' }}
+            />
+            <input
+              type="text"
+              value={primaryColor}
+              onChange={(e) => handleHexInput(e.target.value, setPrimaryColor)}
+              maxLength={7}
+              style={{ 
+                width: '90px', 
+                padding: '0.5rem', 
+                background: '#1a1a2e', 
+                border: '1px solid #0f3460', 
+                borderRadius: '4px', 
+                color: '#fff',
+                fontFamily: 'monospace'
+              }}
+            />
+            {logo?.has_logo && (
+              <button
+                className={`btn btn-sm ${pickingFor === 'primary' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setPickingFor(pickingFor === 'primary' ? null : 'primary')}
+                title="Pick from logo"
+              >
+                🎯
+              </button>
+            )}
+            <div style={{ 
+              width: '24px', 
+              height: '24px', 
+              background: primaryColor, 
+              borderRadius: '4px',
+              border: '1px solid #555'
+            }} />
+          </div>
+          
+          {/* Secondary Color */}
+          <div className="color-row" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+            <label style={{ width: '90px', color: '#aaa' }}>Secondary:</label>
+            <input
+              type="color"
+              value={secondaryColor.length === 7 ? secondaryColor : '#0f3460'}
+              onChange={(e) => setSecondaryColor(e.target.value)}
+              style={{ width: '50px', height: '36px', padding: 0, border: 'none', cursor: 'pointer' }}
+            />
+            <input
+              type="text"
+              value={secondaryColor}
+              onChange={(e) => handleHexInput(e.target.value, setSecondaryColor)}
+              maxLength={7}
+              style={{ 
+                width: '90px', 
+                padding: '0.5rem', 
+                background: '#1a1a2e', 
+                border: '1px solid #0f3460', 
+                borderRadius: '4px', 
+                color: '#fff',
+                fontFamily: 'monospace'
+              }}
+            />
+            {logo?.has_logo && (
+              <button
+                className={`btn btn-sm ${pickingFor === 'secondary' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setPickingFor(pickingFor === 'secondary' ? null : 'secondary')}
+                title="Pick from logo"
+              >
+                🎯
+              </button>
+            )}
+            <div style={{ 
+              width: '24px', 
+              height: '24px', 
+              background: secondaryColor, 
+              borderRadius: '4px',
+              border: '1px solid #555'
+            }} />
+          </div>
+
+          {/* Save Button */}
+          <button
+            className="btn btn-primary"
+            onClick={saveColors}
+            disabled={savingColors || !hasColorChanges}
+            style={{ marginTop: '0.5rem' }}
+          >
+            {savingColors ? 'Saving...' : 'Save Colors'}
+          </button>
+          {hasColorChanges && (
+            <span style={{ marginLeft: '1rem', color: '#f39c12', fontSize: '0.85rem' }}>
+              Unsaved changes
+            </span>
+          )}
+        </div>
+
+        {/* Guidelines */}
         <div style={{ 
           background: '#1e1e1e', 
           borderRadius: '4px', 
           padding: '0.75rem 1rem',
           fontSize: '0.85rem',
-          color: '#888'
+          color: '#888',
+          marginTop: '1.5rem'
         }}>
           <strong style={{ color: '#ccc' }}>Guidelines:</strong>
           <ul style={{ margin: '0.5rem 0 0 1.2rem', padding: 0 }}>
             <li>PNG or WebP recommended (supports transparency)</li>
             <li>Max size: 500KB</li>
-            <li>Square or shield-shaped logos work best</li>
-            <li>Will appear on monthly reports</li>
+            <li>Click 🎯 then click the logo to pick a color from it</li>
+            <li>Colors will appear on PDF reports</li>
           </ul>
         </div>
       </div>

@@ -165,7 +165,8 @@ async def update_setting(
     data: SettingUpdate,
     db: Session = Depends(get_db)
 ):
-    """Update a setting value"""
+    """Update a setting value (creates if not exists)"""
+    # Try update first
     result = db.execute(
         text("""
             UPDATE settings 
@@ -175,12 +176,21 @@ async def update_setting(
         """),
         {"category": category, "key": key, "value": data.value}
     )
-    db.commit()
-    
     row = result.fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Setting not found")
     
+    if not row:
+        # Setting doesn't exist, create it
+        result = db.execute(
+            text("""
+                INSERT INTO settings (category, key, value, value_type)
+                VALUES (:category, :key, :value, 'string')
+                RETURNING id
+            """),
+            {"category": category, "key": key, "value": data.value}
+        )
+        row = result.fetchone()
+    
+    db.commit()
     return {"status": "ok", "id": row[0]}
 
 
