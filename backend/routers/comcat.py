@@ -359,6 +359,23 @@ def update_comment_categories(
         )
         
         db.commit()
+    elif request.edited_by:
+        # No changes but officer clicked "Mark Reviewed" - still update timestamp
+        cad_event_comments["officer_reviewed_at"] = datetime.now(timezone.utc).isoformat()
+        incident.cad_event_comments = cad_event_comments
+        flag_modified(incident, "cad_event_comments")
+        incident.updated_at = datetime.now(timezone.utc)
+        
+        log_comcat_audit(
+            db=db,
+            action="COMCAT_REVIEWED",
+            incident=incident,
+            edited_by_id=request.edited_by,
+            summary="Officer marked comments as reviewed (no changes)",
+            details=None
+        )
+        
+        db.commit()
     
     return CategoryUpdateResponse(
         success=True,
@@ -412,8 +429,9 @@ def retrain_ml_model(
     db: Session = Depends(get_db)
 ):
     """
-    Trigger ML model retraining with all PATTERN and OFFICER categorized data.
+    Trigger ML model retraining with officer corrections.
     
+    v2.0: Now includes operator_type in training data for context-aware learning.
     Gathers training data from all incidents and retrains the Random Forest model.
     """
     if not COMCAT_AVAILABLE:
@@ -429,6 +447,7 @@ def retrain_ml_model(
         )
     
     # Gather training data from all incidents
+    # v2.0: (text, operator_type, category) tuples
     officer_examples = []
     
     incidents = db.query(Incident).filter(
@@ -437,15 +456,15 @@ def retrain_ml_model(
     
     for incident in incidents:
         cad_event_comments = incident.cad_event_comments or {}
-        training_data = get_training_data_from_comments(cad_event_comments)
         
-        # Filter to only OFFICER corrections (seeds are added by retrain_model)
-        for text, category in training_data:
-            # Check if this was officer-corrected
-            for comment in cad_event_comments.get("comments", []):
-                if comment.get("text") == text and comment.get("category_source") == "OFFICER":
-                    officer_examples.append((text, category))
-                    break
+        # Directly gather OFFICER corrections with operator_type
+        for comment in cad_event_comments.get("comments", []):
+            if comment.get("category_source") == "OFFICER":
+                text = comment.get("text", "")
+                operator_type = comment.get("operator_type", "UNKNOWN")
+                category = comment.get("category", "OTHER")
+                if text and category:
+                    officer_examples.append((text, operator_type, category))
     
     # Retrain the model
     try:
@@ -556,11 +575,15 @@ def get_comments_grouped(incident_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/predict")
-def predict_category(text: str):
+def predict_category(text: str, operator_type: str = "UNKNOWN"):
     """
-    Predict category for a single comment text.
+    Predict category for a single comment.
     
-    Useful for testing ML model or real-time categorization.
+    v2.0: Now accepts operator_type for context-aware prediction.
+    
+    Args:
+        text: Comment text
+        operator_type: Who entered it (CALLTAKER, DISPATCHER, UNIT, SYSTEM, UNKNOWN)
     """
     if not COMCAT_AVAILABLE:
         raise HTTPException(status_code=503, detail="ComCat not available")
@@ -573,11 +596,12 @@ def predict_category(text: str):
         if not model.is_trained:
             raise HTTPException(status_code=503, detail="Model not trained")
         
-        category, confidence = model.predict(text)
+        category, confidence = model.predict(text, operator_type)
         needs_review = confidence < CONFIDENCE_THRESHOLD if confidence else True
         
         return {
             "text": text,
+            "operator_type": operator_type,
             "category": category,
             "confidence": confidence,
             "needs_review": needs_review,

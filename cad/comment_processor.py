@@ -1,23 +1,24 @@
 """
 CAD Event Comment Processor for RunSheet
 Created: 2025-12-31
-Updated: 2025-12-31 - Added ML integration (ComCat v2.0)
+Updated: 2025-12-31 - ComCat v2.0: Pure ML categorization
 
 Parses Chester County CAD event comments to:
-1. Extract all comments with metadata (operator type, category)
-2. Detect potential tactical timestamps
-3. Suggest NERIS field mappings (does NOT auto-populate)
+1. Extract all comments with metadata (operator, operator_type, text)
+2. ML-based categorization using text + operator_type features
+3. Detect potential tactical timestamps for NERIS
 4. Extract unit crew counts for reference
-5. ML-assisted categorization with confidence scores
 
-The processor is intentionally conservative - it DETECTS and SUGGESTS
-but does not auto-populate NERIS timestamp fields. Officers confirm
-mappings via the RunSheet form UI.
+ComCat v2.0 uses PURE ML categorization:
+- No hardcoded pattern rules for categories
+- ML model learns from text AND who entered it (calltaker, dispatcher, unit)
+- Officer corrections train the model to improve over time
+- Seed data bootstraps the model initially
 
-ComCat (Comment Categorizer) uses a hybrid approach:
-- Pattern matching first (high confidence, deterministic)
-- ML fallback for unmatched comments (Random Forest with TF-IDF)
-- Officer corrections feed back into ML training data
+The processor still uses patterns for:
+- Operator type detection (ct## = calltaker, fd## = dispatcher, etc)
+- Noise filtering (system messages to hide from reports)
+- Tactical timestamp detection (for NERIS field suggestions)
 """
 
 import re
@@ -125,53 +126,12 @@ NOISE_PATTERNS = [
     re.compile(r'ProQA.*Case (Entry|Exit)', re.IGNORECASE),
 ]
 
-# Category detection patterns (high confidence rules)
-# These take precedence over ML predictions
-CATEGORY_PATTERNS = {
-    "CALLER": [
-        re.compile(r'^(CALLER|COMPLAINANT|RP\s)', re.IGNORECASE),
-        re.compile(r'(HOUSE ON FIRE|SMOKE|FLAMES|FIRE IN|BURNING)', re.IGNORECASE),
-        re.compile(r'(EVERYONE.*OUT|EVACUATED|NO ONE.*INSIDE)', re.IGNORECASE),
-        re.compile(r'(DIFFICULTY BREATHING|CHEST PAIN|UNCONSCIOUS|NOT BREATHING)', re.IGNORECASE),
-        re.compile(r'(PERSON TRAPPED|ENTRAPMENT|WIRES DOWN|GAS LEAK)', re.IGNORECASE),
-    ],
-    "TACTICAL": [
-        re.compile(r'(Command|CMD)\s*(Established|EST)', re.IGNORECASE),
-        re.compile(r'Fire Under Control|FUC\b', re.IGNORECASE),
-        re.compile(r'(Primary|Secondary).*Search.*Complete', re.IGNORECASE),
-        re.compile(r'\bPAR\b.*Complete|PARS\s*COMPLETE', re.IGNORECASE),
-        re.compile(r'\bPAR\b\s*(CHECK|STARTED)|Accountability', re.IGNORECASE),
-        re.compile(r'Evac.*Order|Evacuat', re.IGNORECASE),
-        re.compile(r'\bMAYDAY\b', re.IGNORECASE),
-        re.compile(r'\bRIT\b.*(Activated|Deployed)', re.IGNORECASE),
-        re.compile(r'(Primary|Secondary)?\s*All Clear', re.IGNORECASE),
-        re.compile(r'Fire Incident Command Times', re.IGNORECASE),
-        re.compile(r'(DEFENSIVE|OFFENSIVE)\s*OPERATIONS', re.IGNORECASE),
-        re.compile(r'ASSUMING COMMAND|COMMAND TRANSFERRED', re.IGNORECASE),
-        re.compile(r'LOSS STOP', re.IGNORECASE),
-        re.compile(r'FIRE MARSHAL|INVESTIGAT', re.IGNORECASE),
-    ],
-    "OPERATIONS": [
-        re.compile(r'HYDRANT|WATER SUPPLY', re.IGNORECASE),
-        re.compile(r'OPERATIONS.*\d|OPS\s*\d', re.IGNORECASE),
-        re.compile(r'LINES?\s*(IN|STRETCHED|ADVANCING)', re.IGNORECASE),
-        re.compile(r'INTERIOR|EXTERIOR', re.IGNORECASE),
-        re.compile(r'OVERHAUL|SALVAGE', re.IGNORECASE),
-        re.compile(r'VENTILAT', re.IGNORECASE),
-        re.compile(r'LADDER|AERIAL', re.IGNORECASE),
-        re.compile(r'UTILITIES.*(SECURED|OFF)', re.IGNORECASE),
-        re.compile(r'PECO', re.IGNORECASE),
-        re.compile(r'REHAB', re.IGNORECASE),
-        re.compile(r'EXTENSION|HOT SPOTS', re.IGNORECASE),
-        re.compile(r'(PRIMARY|SECONDARY)\s*SEARCH(?!.*COMPLETE)', re.IGNORECASE),
-    ],
-    "UNIT": [
-        re.compile(r'Enroute with a crew of', re.IGNORECASE),
-        re.compile(r'(On Scene|Arrived|Responding)\b', re.IGNORECASE),
-        re.compile(r'(Available|Clear|In Service)\b', re.IGNORECASE),
-        re.compile(r'STAGING|STANDBY', re.IGNORECASE),
-    ],
-}
+# Category detection patterns - REMOVED IN V2
+# The ML model now handles categorization using text + operator_type features
+# This allows the model to learn patterns naturally from officer corrections
+# rather than relying on hardcoded rules.
+#
+# Only NOISE patterns remain for filtering system messages from reports.
 
 # Tactical timestamp detection patterns
 # Format: (pattern, detected_type, neris_field, operational_field, confidence)
@@ -321,7 +281,7 @@ CREW_COUNT_PATTERN = re.compile(r'Enroute with a crew of\s*(\d+)', re.IGNORECASE
 
 
 # =============================================================================
-# ML MODEL INTEGRATION
+# ML MODEL INTEGRATION (v2 - with operator_type)
 # =============================================================================
 
 # ML model - lazy loaded
@@ -344,9 +304,9 @@ def _get_ml_model():
         _ml_model = get_model()
         _ml_available = _ml_model.is_trained
         if _ml_available:
-            logger.info("ComCat ML model loaded successfully")
+            logger.info(f"ComCat ML model v{_ml_model.model_version} loaded successfully")
         else:
-            logger.warning("ComCat ML model not trained - using patterns only")
+            logger.warning("ComCat ML model not trained - categories may be inaccurate")
     except ImportError as e:
         logger.warning(f"ComCat ML not available: {e}")
         _ml_available = False
@@ -357,9 +317,15 @@ def _get_ml_model():
     return _ml_model
 
 
-def _predict_category_ml(text: str) -> Tuple[Optional[str], Optional[float]]:
+def _predict_category_ml(text: str, operator_type: str = "UNKNOWN") -> Tuple[Optional[str], Optional[float]]:
     """
     Get ML prediction for comment category.
+    
+    v2: Now includes operator_type as a feature for context-aware predictions.
+    
+    Args:
+        text: Comment text
+        operator_type: Who entered it (CALLTAKER, DISPATCHER, UNIT, SYSTEM, UNKNOWN)
     
     Returns:
         (category, confidence) or (None, None) if ML unavailable
@@ -369,7 +335,7 @@ def _predict_category_ml(text: str) -> Tuple[Optional[str], Optional[float]]:
         return None, None
     
     try:
-        category, confidence = model.predict(text)
+        category, confidence = model.predict(text, operator_type)
         return category, confidence
     except Exception as e:
         logger.error(f"ML prediction failed: {e}")
@@ -469,36 +435,27 @@ class CommentProcessor:
     
     def _categorize_comment(self, text: str, operator: str) -> Tuple[str, str, Optional[float]]:
         """
-        Categorize a comment using pattern matching first, then ML fallback.
+        Categorize a comment using ML with text + operator_type features.
+        
+        v2.0: Pure ML - no hardcoded pattern rules. The model learns from
+        officer corrections, considering both the comment text and who
+        entered it (calltaker, dispatcher, unit, etc).
         
         Returns:
             (category, source, confidence)
-            - source: "PATTERN" or "ML"
-            - confidence: float for ML, None for PATTERN
+            - source: "ML" or "FALLBACK" (if ML unavailable)
+            - confidence: float for ML, None for fallback
         """
-        # Unit status updates (operator-based rule)
-        if operator.startswith('$'):
-            return "UNIT", "PATTERN", None
+        operator_type = self._detect_operator_type(operator)
         
-        # Check against category patterns (high confidence)
-        for category, patterns in CATEGORY_PATTERNS.items():
-            for pattern in patterns:
-                if pattern.search(text):
-                    return category, "PATTERN", None
-        
-        # Calltaker comments without pattern match default to CALLER
-        # This is still a pattern-based rule
-        if self._detect_operator_type(operator) == "CALLTAKER":
-            return "CALLER", "PATTERN", None
-        
-        # No pattern match - try ML if enabled
+        # Use ML for all categorization
         if self.use_ml:
-            ml_category, ml_confidence = _predict_category_ml(text)
+            ml_category, ml_confidence = _predict_category_ml(text, operator_type)
             if ml_category is not None:
                 return ml_category, "ML", ml_confidence
         
-        # Fallback to OTHER
-        return "OTHER", "PATTERN", None
+        # Fallback to OTHER only if ML unavailable
+        return "OTHER", "FALLBACK", None
     
     def _detect_timestamps(self):
         """Scan comments for tactical timestamps and suggest NERIS mappings"""
@@ -721,18 +678,18 @@ def get_high_confidence_suggestions(processed: Dict[str, Any]) -> List[Dict]:
     return [t for t in timestamps if t.get("confidence") == "HIGH"]
 
 
-def get_training_data_from_comments(processed: Dict[str, Any]) -> List[Tuple[str, str]]:
+def get_training_data_from_comments(processed: Dict[str, Any]) -> List[Tuple[str, str, str]]:
     """
     Extract training data from comments for ML model retraining.
     
-    Only includes comments categorized by PATTERN or OFFICER (ground truth),
-    not ML predictions (would be circular).
+    v2.0: Returns (text, operator_type, category) tuples for context-aware learning.
+    Only includes OFFICER corrections as ground truth for retraining.
     
     Args:
         processed: The cad_event_comments JSONB data
         
     Returns:
-        List of (text, category) tuples for training
+        List of (text, operator_type, category) tuples for training
     """
     training_data = []
     
@@ -740,13 +697,15 @@ def get_training_data_from_comments(processed: Dict[str, Any]) -> List[Tuple[str
         if comment.get("is_noise"):
             continue
         
-        source = comment.get("category_source", "PATTERN")
-        # Only use PATTERN and OFFICER as ground truth
-        if source in ("PATTERN", "OFFICER"):
+        source = comment.get("category_source", "ML")
+        # Only use OFFICER corrections as ground truth for retraining
+        # (Seed data is already in the model)
+        if source == "OFFICER":
             text = comment.get("text", "")
+            operator_type = comment.get("operator_type", "UNKNOWN")
             category = comment.get("category", "OTHER")
             if text and category:
-                training_data.append((text, category))
+                training_data.append((text, operator_type, category))
     
     return training_data
 
@@ -923,30 +882,18 @@ def _categorize_comment_standalone(
     use_ml: bool = True
 ) -> Tuple[str, str, Optional[float]]:
     """
-    Standalone categorization function for use outside CommentProcessor class.
+    Standalone categorization using pure ML.
+    
+    v2.0: No hardcoded rules - ML learns from text + operator_type.
     
     Returns:
         (category, source, confidence)
     """
-    # Unit status updates (operator-based rule)
-    if operator.startswith('$'):
-        return "UNIT", "PATTERN", None
-    
-    # Check against category patterns (high confidence)
-    for category, patterns in CATEGORY_PATTERNS.items():
-        for pattern in patterns:
-            if pattern.search(text):
-                return category, "PATTERN", None
-    
-    # Calltaker comments without pattern match default to CALLER
-    if operator_type == "CALLTAKER":
-        return "CALLER", "PATTERN", None
-    
-    # No pattern match - try ML if enabled
+    # Use ML for all categorization
     if use_ml:
-        ml_category, ml_confidence = _predict_category_ml(text)
+        ml_category, ml_confidence = _predict_category_ml(text, operator_type)
         if ml_category is not None:
             return ml_category, "ML", ml_confidence
     
-    # Fallback to OTHER
-    return "OTHER", "PATTERN", None
+    # Fallback to OTHER only if ML unavailable
+    return "OTHER", "FALLBACK", None

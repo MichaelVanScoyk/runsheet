@@ -132,11 +132,6 @@ export default function ComCatModal() {
       category
     }));
     
-    if (updates.length === 0) {
-      setShowComCatModal(false);
-      return;
-    }
-    
     setSaving(true);
     setError(null);
     
@@ -160,8 +155,12 @@ export default function ComCatModal() {
       await fetchComments();
       await fetchStats();
       
+      // Trigger parent form refresh to update icons
+      if (window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent('comcat-saved', { detail: { incidentId: incident.id } }));
+      }
+      
       // Show success briefly then close
-      // Retraining can be done in Admin > ComCat ML
       setShowComCatModal(false);
     } catch (err) {
       console.error('ComCat save error:', err);
@@ -361,9 +360,9 @@ export default function ComCatModal() {
               <button 
                 className="btn btn-primary" 
                 onClick={handleSave}
-                disabled={saving || changeCount === 0}
+                disabled={saving}
               >
-                {saving ? 'Saving...' : `Save ${changeCount > 0 ? `(${changeCount})` : ''}`}
+                {saving ? 'Saving...' : changeCount > 0 ? `Save (${changeCount})` : 'Mark Reviewed'}
               </button>
             )}
           </div>

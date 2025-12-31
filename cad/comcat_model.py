@@ -1,24 +1,23 @@
 """
 ComCat ML Model - Random Forest Comment Categorizer
 Created: 2025-12-31
+Updated: 2025-12-31 - v2.0: Added operator_type as ML feature
 
-Uses scikit-learn Random Forest with TF-IDF features to categorize
-CAD event comments. The model is bootstrapped with seed examples and
-continuously improved through officer corrections.
+Uses scikit-learn Random Forest with combined features:
+- TF-IDF for text (unigrams + bigrams)  
+- One-hot encoded operator_type (CALLTAKER, DISPATCHER, UNIT, SYSTEM, UNKNOWN)
 
-Architecture:
-- TF-IDF vectorizer for text features (unigrams + bigrams)
-- Random Forest classifier (100 trees)
-- Model persisted as pickle file
-- Retrainable with new data
+The model learns from both the comment text AND who entered it,
+allowing it to naturally learn patterns like "calltaker comments 
+tend to be caller info" without hardcoded rules.
 
 Usage:
     from cad.comcat_model import ComCatModel
     
     model = ComCatModel()
-    model.load()  # Load existing model or train from seeds
+    model.load()
     
-    category, confidence = model.predict("HOUSE ON FIRE")
+    category, confidence = model.predict("HOUSE ON FIRE", "CALLTAKER")
     # -> ("CALLER", 0.92)
 """
 
@@ -33,12 +32,16 @@ try:
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import cross_val_score
+    from sklearn.preprocessing import OneHotEncoder
+    from sklearn.compose import ColumnTransformer
+    from sklearn.base import BaseEstimator, TransformerMixin
     import numpy as np
+    from scipy.sparse import hstack
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
 
-from .comcat_seeds import get_seed_data, VALID_CATEGORIES, CATEGORY_INFO
+from .comcat_seeds import get_seed_data_v2, VALID_CATEGORIES, CATEGORY_INFO, VALID_OPERATOR_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -48,33 +51,93 @@ logger = logging.getLogger(__name__)
 
 # Model file location
 MODEL_DIR = Path("/opt/runsheet/data")
-MODEL_FILE = MODEL_DIR / "comcat_model.pkl"
+MODEL_FILE = MODEL_DIR / "comcat_model_v2.pkl"  # New filename for v2
 
 # Confidence threshold for flagging review
-# Comments below this confidence should be flagged for officer review
 CONFIDENCE_THRESHOLD = 0.50
 
-# Minimum training examples required before using ML
-# Below this, fall back to pattern matching only
+# Minimum training examples required
 MIN_TRAINING_EXAMPLES = 50
 
 # Model hyperparameters
 TFIDF_PARAMS = {
-    "ngram_range": (1, 2),      # Unigrams and bigrams
-    "max_features": 500,        # Limit vocabulary size
-    "stop_words": "english",    # Remove common words
+    "ngram_range": (1, 2),
+    "max_features": 500,
+    "stop_words": "english",
     "lowercase": True,
     "strip_accents": "ascii",
 }
 
 RF_PARAMS = {
-    "n_estimators": 100,        # Number of trees
-    "max_depth": 15,            # Limit tree depth to prevent overfitting
+    "n_estimators": 100,
+    "max_depth": 15,
     "min_samples_split": 2,
     "min_samples_leaf": 1,
-    "random_state": 42,         # Reproducible results
-    "n_jobs": -1,               # Use all CPU cores
+    "random_state": 42,
+    "n_jobs": -1,
 }
+
+
+# =============================================================================
+# CUSTOM TRANSFORMER FOR COMBINED FEATURES
+# =============================================================================
+
+class ComCatFeaturizer:
+    """
+    Combines TF-IDF text features with one-hot encoded operator_type.
+    
+    Input: List of (text, operator_type) tuples
+    Output: Sparse matrix of combined features
+    """
+    
+    def __init__(self):
+        self.tfidf = TfidfVectorizer(**TFIDF_PARAMS)
+        self.operator_types = VALID_OPERATOR_TYPES
+        self._fitted = False
+    
+    def fit(self, X, y=None):
+        """Fit the TF-IDF vectorizer on texts."""
+        texts = [x[0] for x in X]
+        self.tfidf.fit(texts)
+        self._fitted = True
+        return self
+    
+    def transform(self, X):
+        """Transform (text, operator_type) pairs to feature matrix."""
+        if not self._fitted:
+            raise RuntimeError("Featurizer not fitted")
+        
+        texts = [x[0] for x in X]
+        operator_types = [x[1] for x in X]
+        
+        # TF-IDF features
+        text_features = self.tfidf.transform(texts)
+        
+        # One-hot encode operator_type
+        # Shape: (n_samples, n_operator_types)
+        operator_features = np.zeros((len(X), len(self.operator_types)))
+        for i, op_type in enumerate(operator_types):
+            if op_type in self.operator_types:
+                idx = self.operator_types.index(op_type)
+                operator_features[i, idx] = 1.0
+            else:
+                # Unknown operator type - use UNKNOWN index
+                idx = self.operator_types.index("UNKNOWN")
+                operator_features[i, idx] = 1.0
+        
+        # Combine sparse text features with dense operator features
+        combined = hstack([text_features, operator_features])
+        return combined
+    
+    def fit_transform(self, X, y=None):
+        self.fit(X, y)
+        return self.transform(X)
+    
+    def get_feature_names_out(self):
+        """Get feature names for interpretation."""
+        text_names = list(self.tfidf.get_feature_names_out())
+        operator_names = [f"op_{t}" for t in self.operator_types]
+        return text_names + operator_names
 
 
 # =============================================================================
@@ -83,45 +146,30 @@ RF_PARAMS = {
 
 class ComCatModel:
     """
-    Random Forest-based comment categorizer with TF-IDF features.
+    Random Forest comment categorizer with text + operator_type features.
     
-    The model can be trained on seed data immediately, then improved
-    over time as officers correct categorizations.
+    v2.0: Now considers WHO entered the comment (calltaker, dispatcher, unit)
+    alongside WHAT they wrote, learning patterns naturally from corrections.
     """
     
     def __init__(self, model_path: Optional[Path] = None):
-        """
-        Initialize the model.
-        
-        Args:
-            model_path: Custom path for model file (default: /opt/runsheet/data/comcat_model.pkl)
-        """
         self.model_path = model_path or MODEL_FILE
-        self.pipeline: Optional[Pipeline] = None
+        self.featurizer: Optional[ComCatFeaturizer] = None
+        self.classifier: Optional[RandomForestClassifier] = None
         self.is_trained = False
         self.training_stats: Dict[str, Any] = {}
+        self.model_version = "2.0"
         
         if not SKLEARN_AVAILABLE:
             logger.warning("scikit-learn not available - ML features disabled")
     
-    def _create_pipeline(self) -> Pipeline:
-        """Create a fresh sklearn pipeline."""
-        if not SKLEARN_AVAILABLE:
-            raise RuntimeError("scikit-learn is required for ML features")
-        
-        return Pipeline([
-            ('tfidf', TfidfVectorizer(**TFIDF_PARAMS)),
-            ('clf', RandomForestClassifier(**RF_PARAMS))
-        ])
-    
-    def train(self, texts: List[str], categories: List[str], 
+    def train(self, examples: List[Tuple[str, str, str]], 
               include_seeds: bool = True) -> Dict[str, Any]:
         """
         Train the model on provided examples.
         
         Args:
-            texts: List of comment texts
-            categories: List of category labels (must match texts length)
+            examples: List of (text, operator_type, category) tuples
             include_seeds: Whether to include seed examples (default: True)
             
         Returns:
@@ -130,93 +178,101 @@ class ComCatModel:
         if not SKLEARN_AVAILABLE:
             return {"error": "scikit-learn not available"}
         
-        # Validate inputs
-        if len(texts) != len(categories):
-            raise ValueError(f"texts ({len(texts)}) and categories ({len(categories)}) must match")
-        
         # Combine with seed data if requested
         if include_seeds:
-            seed_texts, seed_categories = get_seed_data()
-            all_texts = list(seed_texts) + list(texts)
-            all_categories = list(seed_categories) + list(categories)
+            seed_examples = get_seed_data_v2()
+            all_examples = list(seed_examples) + list(examples)
         else:
-            all_texts = list(texts)
-            all_categories = list(categories)
+            all_examples = list(examples)
         
         # Validate categories
-        invalid = [c for c in all_categories if c not in VALID_CATEGORIES]
+        categories = [ex[2] for ex in all_examples]
+        invalid = [c for c in categories if c not in VALID_CATEGORIES]
         if invalid:
             raise ValueError(f"Invalid categories: {set(invalid)}")
         
         # Check minimum examples
-        if len(all_texts) < MIN_TRAINING_EXAMPLES:
-            logger.warning(f"Only {len(all_texts)} examples - model may underperform")
+        if len(all_examples) < MIN_TRAINING_EXAMPLES:
+            logger.warning(f"Only {len(all_examples)} examples - model may underperform")
         
-        # Create and train pipeline
-        self.pipeline = self._create_pipeline()
-        self.pipeline.fit(all_texts, all_categories)
+        # Prepare data
+        X = [(ex[0], ex[1]) for ex in all_examples]  # (text, operator_type)
+        y = [ex[2] for ex in all_examples]  # category
+        
+        # Create and fit featurizer
+        self.featurizer = ComCatFeaturizer()
+        X_features = self.featurizer.fit_transform(X)
+        
+        # Train classifier
+        self.classifier = RandomForestClassifier(**RF_PARAMS)
+        self.classifier.fit(X_features, y)
         self.is_trained = True
         
         # Calculate training stats
         category_counts = {}
-        for cat in all_categories:
+        operator_counts = {}
+        for ex in all_examples:
+            cat = ex[2]
+            op = ex[1]
             category_counts[cat] = category_counts.get(cat, 0) + 1
+            operator_counts[op] = operator_counts.get(op, 0) + 1
         
-        # Cross-validation score (if enough examples)
+        # Cross-validation score
         cv_score = None
-        if len(all_texts) >= 20:
+        if len(all_examples) >= 20:
             try:
-                scores = cross_val_score(self.pipeline, all_texts, all_categories, cv=5)
+                scores = cross_val_score(
+                    self.classifier, X_features, y, cv=5, scoring='accuracy'
+                )
                 cv_score = float(np.mean(scores))
             except Exception as e:
                 logger.warning(f"Cross-validation failed: {e}")
         
+        seed_count = len(seed_examples) if include_seeds else 0
+        
         self.training_stats = {
-            "total_examples": len(all_texts),
-            "seed_examples": len(seed_texts) if include_seeds else 0,
-            "officer_examples": len(texts),
+            "total_examples": len(all_examples),
+            "seed_examples": seed_count,
+            "officer_examples": len(examples),
             "category_counts": category_counts,
+            "operator_counts": operator_counts,
             "cv_accuracy": cv_score,
-            "trained_at": __import__("datetime").datetime.utcnow().isoformat() + "Z"
+            "trained_at": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+            "model_version": self.model_version,
         }
         
-        logger.info(f"Model trained on {len(all_texts)} examples (CV accuracy: {cv_score})")
+        logger.info(f"Model v{self.model_version} trained on {len(all_examples)} examples (CV: {cv_score})")
         
         return self.training_stats
     
     def train_from_seeds(self) -> Dict[str, Any]:
-        """
-        Train the model using only seed examples.
-        Call this to bootstrap the model before any officer corrections exist.
-        
-        Returns:
-            Training statistics dictionary
-        """
-        return self.train([], [], include_seeds=True)
+        """Train using only seed examples."""
+        return self.train([], include_seeds=True)
     
-    def predict(self, text: str) -> Tuple[Optional[str], float]:
+    def predict(self, text: str, operator_type: str = "UNKNOWN") -> Tuple[Optional[str], float]:
         """
-        Predict category for a single comment.
+        Predict category for a comment.
         
         Args:
-            text: Comment text to categorize
+            text: Comment text
+            operator_type: Who entered it (CALLTAKER, DISPATCHER, UNIT, SYSTEM, UNKNOWN)
             
         Returns:
-            Tuple of (category, confidence) or (None, 0.0) if model not trained
+            Tuple of (category, confidence)
         """
-        if not self.is_trained or self.pipeline is None:
+        if not self.is_trained or self.featurizer is None or self.classifier is None:
             return None, 0.0
         
         if not SKLEARN_AVAILABLE:
             return None, 0.0
         
         try:
-            # Get probability distribution
-            proba = self.pipeline.predict_proba([text])[0]
+            X = [(text, operator_type)]
+            X_features = self.featurizer.transform(X)
             
-            # Find highest probability class
+            proba = self.classifier.predict_proba(X_features)[0]
             max_idx = np.argmax(proba)
-            category = self.pipeline.classes_[max_idx]
+            category = self.classifier.classes_[max_idx]
             confidence = float(proba[max_idx])
             
             return category, confidence
@@ -225,30 +281,30 @@ class ComCatModel:
             logger.error(f"Prediction failed: {e}")
             return None, 0.0
     
-    def predict_batch(self, texts: List[str]) -> List[Tuple[str, float]]:
+    def predict_batch(self, items: List[Tuple[str, str]]) -> List[Tuple[str, float]]:
         """
         Predict categories for multiple comments.
         
         Args:
-            texts: List of comment texts
+            items: List of (text, operator_type) tuples
             
         Returns:
             List of (category, confidence) tuples
         """
-        if not self.is_trained or self.pipeline is None:
-            return [(None, 0.0) for _ in texts]
+        if not self.is_trained or self.featurizer is None or self.classifier is None:
+            return [(None, 0.0) for _ in items]
         
         if not SKLEARN_AVAILABLE:
-            return [(None, 0.0) for _ in texts]
+            return [(None, 0.0) for _ in items]
         
         try:
-            # Get all probabilities at once
-            probas = self.pipeline.predict_proba(texts)
+            X_features = self.featurizer.transform(items)
+            probas = self.classifier.predict_proba(X_features)
             
             results = []
             for proba in probas:
                 max_idx = np.argmax(proba)
-                category = self.pipeline.classes_[max_idx]
+                category = self.classifier.classes_[max_idx]
                 confidence = float(proba[max_idx])
                 results.append((category, confidence))
             
@@ -256,51 +312,34 @@ class ComCatModel:
             
         except Exception as e:
             logger.error(f"Batch prediction failed: {e}")
-            return [(None, 0.0) for _ in texts]
+            return [(None, 0.0) for _ in items]
     
     def needs_review(self, confidence: float) -> bool:
-        """
-        Check if a prediction confidence warrants officer review.
-        
-        Args:
-            confidence: Model confidence score (0.0-1.0)
-            
-        Returns:
-            True if confidence is below threshold
-        """
+        """Check if prediction needs officer review."""
         return confidence < CONFIDENCE_THRESHOLD
     
     def save(self, path: Optional[Path] = None) -> bool:
-        """
-        Save the trained model to disk.
-        
-        Args:
-            path: Optional custom path (default: configured model path)
-            
-        Returns:
-            True if successful
-        """
-        if not self.is_trained or self.pipeline is None:
+        """Save model to disk."""
+        if not self.is_trained:
             logger.warning("No trained model to save")
             return False
         
         save_path = path or self.model_path
         
         try:
-            # Ensure directory exists
             save_path.parent.mkdir(parents=True, exist_ok=True)
             
-            # Save model and stats
             save_data = {
-                "pipeline": self.pipeline,
+                "featurizer": self.featurizer,
+                "classifier": self.classifier,
                 "training_stats": self.training_stats,
-                "version": "1.0"
+                "version": self.model_version,
             }
             
             with open(save_path, 'wb') as f:
                 pickle.dump(save_data, f)
             
-            logger.info(f"Model saved to {save_path}")
+            logger.info(f"Model v{self.model_version} saved to {save_path}")
             return True
             
         except Exception as e:
@@ -308,29 +347,21 @@ class ComCatModel:
             return False
     
     def load(self, path: Optional[Path] = None) -> bool:
-        """
-        Load a trained model from disk.
-        If no saved model exists, trains from seed data.
-        
-        Args:
-            path: Optional custom path (default: configured model path)
-            
-        Returns:
-            True if model is ready (loaded or trained from seeds)
-        """
+        """Load model from disk, or train from seeds if none exists."""
         load_path = path or self.model_path
         
-        # Try to load existing model
         if load_path.exists():
             try:
                 with open(load_path, 'rb') as f:
                     save_data = pickle.load(f)
                 
-                self.pipeline = save_data.get("pipeline")
+                self.featurizer = save_data.get("featurizer")
+                self.classifier = save_data.get("classifier")
                 self.training_stats = save_data.get("training_stats", {})
-                self.is_trained = self.pipeline is not None
+                self.model_version = save_data.get("version", "1.0")
+                self.is_trained = self.featurizer is not None and self.classifier is not None
                 
-                logger.info(f"Model loaded from {load_path}")
+                logger.info(f"Model v{self.model_version} loaded from {load_path}")
                 return self.is_trained
                 
             except Exception as e:
@@ -345,41 +376,31 @@ class ComCatModel:
         
         return False
     
-    def get_feature_importance(self, top_n: int = 20) -> Dict[str, List[Tuple[str, float]]]:
-        """
-        Get most important features (words) for each category.
-        Useful for understanding what the model learned.
-        
-        Args:
-            top_n: Number of top features per category
-            
-        Returns:
-            Dictionary of category -> [(word, importance), ...]
-        """
-        if not self.is_trained or self.pipeline is None:
-            return {}
-        
-        if not SKLEARN_AVAILABLE:
+    def get_feature_importance(self, top_n: int = 20) -> Dict[str, Any]:
+        """Get feature importances for model interpretation."""
+        if not self.is_trained or self.classifier is None or self.featurizer is None:
             return {}
         
         try:
-            vectorizer = self.pipeline.named_steps['tfidf']
-            classifier = self.pipeline.named_steps['clf']
+            feature_names = self.featurizer.get_feature_names_out()
+            importances = self.classifier.feature_importances_
             
-            feature_names = vectorizer.get_feature_names_out()
-            
-            # Random Forest doesn't have per-class importances,
-            # but we can look at overall feature importance
-            importances = classifier.feature_importances_
-            
-            # Get top features overall
+            # Get top features
             top_indices = np.argsort(importances)[-top_n:][::-1]
             top_features = [
                 (feature_names[i], float(importances[i]))
                 for i in top_indices
             ]
             
-            return {"overall": top_features}
+            # Separate text vs operator features
+            text_features = [(n, i) for n, i in top_features if not n.startswith("op_")]
+            operator_features = [(n, i) for n, i in top_features if n.startswith("op_")]
+            
+            return {
+                "top_overall": top_features,
+                "top_text": text_features,
+                "operator_importance": operator_features,
+            }
             
         except Exception as e:
             logger.error(f"Failed to get feature importance: {e}")
@@ -390,18 +411,11 @@ class ComCatModel:
 # SINGLETON INSTANCE
 # =============================================================================
 
-# Global model instance - lazy loaded
 _model_instance: Optional[ComCatModel] = None
 
 
 def get_model() -> ComCatModel:
-    """
-    Get the singleton model instance.
-    Loads/trains model on first access.
-    
-    Returns:
-        ComCatModel instance ready for predictions
-    """
+    """Get singleton model instance."""
     global _model_instance
     
     if _model_instance is None:
@@ -411,26 +425,18 @@ def get_model() -> ComCatModel:
     return _model_instance
 
 
-def predict_category(text: str) -> Tuple[Optional[str], float]:
-    """
-    Convenience function to predict category for a comment.
-    
-    Args:
-        text: Comment text
-        
-    Returns:
-        Tuple of (category, confidence)
-    """
+def predict_category(text: str, operator_type: str = "UNKNOWN") -> Tuple[Optional[str], float]:
+    """Convenience function for single prediction."""
     model = get_model()
-    return model.predict(text)
+    return model.predict(text, operator_type)
 
 
-def retrain_model(officer_examples: List[Tuple[str, str]]) -> Dict[str, Any]:
+def retrain_model(officer_examples: List[Tuple[str, str, str]]) -> Dict[str, Any]:
     """
-    Retrain the model with new officer-corrected examples.
+    Retrain model with officer corrections.
     
     Args:
-        officer_examples: List of (text, category) tuples from officer corrections
+        officer_examples: List of (text, operator_type, category) tuples
         
     Returns:
         Training statistics
@@ -440,10 +446,7 @@ def retrain_model(officer_examples: List[Tuple[str, str]]) -> Dict[str, Any]:
     if _model_instance is None:
         _model_instance = ComCatModel()
     
-    texts = [ex[0] for ex in officer_examples]
-    categories = [ex[1] for ex in officer_examples]
-    
-    stats = _model_instance.train(texts, categories, include_seeds=True)
+    stats = _model_instance.train(officer_examples, include_seeds=True)
     _model_instance.save()
     
     return stats
@@ -456,15 +459,13 @@ def retrain_model(officer_examples: List[Tuple[str, str]]) -> Dict[str, Any]:
 if __name__ == "__main__":
     import sys
     
-    print("ComCat ML Model - Random Forest Comment Categorizer")
-    print("=" * 50)
+    print("ComCat ML Model v2.0 - With Operator Type Features")
+    print("=" * 55)
     
     if not SKLEARN_AVAILABLE:
         print("ERROR: scikit-learn not installed")
-        print("Install with: pip install scikit-learn")
         sys.exit(1)
     
-    # Train from seeds
     model = ComCatModel()
     print("\nTraining from seed data...")
     stats = model.train_from_seeds()
@@ -475,29 +476,36 @@ if __name__ == "__main__":
     print(f"\nCategory distribution:")
     for cat, count in stats['category_counts'].items():
         print(f"  {cat}: {count}")
+    print(f"\nOperator distribution:")
+    for op, count in stats.get('operator_counts', {}).items():
+        print(f"  {op}: {count}")
     
-    # Test predictions
-    test_comments = [
-        "HOUSE ON FIRE",
-        "Command Established for set Fire Incident Command Times",
-        "HYDRANT SECURED",
-        "Enroute with a crew of 4",
-        "BELFOR ON SCENE",
-        "CHECKING FOR EXTENSION",
-        "SOMETHING RANDOM",
+    # Test predictions with different operator types
+    test_cases = [
+        ("HOUSE ON FIRE", "CALLTAKER"),
+        ("HOUSE ON FIRE", "DISPATCHER"),
+        ("PPL INCIDENT #123456", "DISPATCHER"),
+        ("PPL INCIDENT #123456", "CALLTAKER"),
+        ("Enroute with a crew of 4", "UNIT"),
+        ("Command Established", "DISPATCHER"),
+        ("HYDRANT SECURED", "DISPATCHER"),
     ]
     
-    print("\nTest predictions:")
-    print("-" * 50)
-    for comment in test_comments:
-        category, confidence = model.predict(comment)
-        flag = " ⚠️ REVIEW" if model.needs_review(confidence) else ""
-        print(f"  '{comment[:40]}...'")
+    print("\nTest predictions (same text, different operator):")
+    print("-" * 55)
+    for text, op_type in test_cases:
+        category, confidence = model.predict(text, op_type)
+        flag = " ⚠️" if model.needs_review(confidence) else ""
+        print(f"  [{op_type:10}] '{text[:35]}'")
         print(f"    -> {category} ({confidence:.1%}){flag}")
     
-    # Save model
-    print("\nSaving model...")
+    # Feature importance
+    print("\nFeature importance:")
+    importance = model.get_feature_importance(10)
+    if importance.get("operator_importance"):
+        print("  Operator type features:")
+        for name, imp in importance["operator_importance"]:
+            print(f"    {name}: {imp:.4f}")
+    
     if model.save():
-        print(f"  Saved to {model.model_path}")
-    else:
-        print("  Failed to save (check permissions)")
+        print(f"\nModel saved to {model.model_path}")

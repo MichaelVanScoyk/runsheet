@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRunSheet } from '../RunSheetContext';
 
 export default function ActionBar() {
   const { 
     incident, 
     formData, 
+    setFormData,
     userSession, 
     saving,
     saveSuccess,
@@ -24,7 +25,7 @@ export default function ActionBar() {
   const isFireIncident = formData.call_category === 'FIRE';
   
   // Fetch model trained timestamp for "trained" status (FIRE only)
-  useEffect(() => {
+  const fetchModelStats = useCallback(() => {
     if (isFireIncident && hasEventComments) {
       fetch('/api/comcat/stats', { credentials: 'include' })
         .then(res => res.ok ? res.json() : null)
@@ -36,6 +37,35 @@ export default function ActionBar() {
         .catch(() => {});
     }
   }, [isFireIncident, hasEventComments]);
+  
+  useEffect(() => {
+    fetchModelStats();
+  }, [fetchModelStats]);
+  
+  // Listen for comcat-saved event to refresh cad_event_comments
+  useEffect(() => {
+    const handleComCatSaved = async (e) => {
+      if (e.detail?.incidentId === incident?.id) {
+        // Refetch incident to get updated cad_event_comments
+        try {
+          const res = await fetch(`/api/incidents/${incident.id}`, { credentials: 'include' });
+          if (res.ok) {
+            const data = await res.json();
+            setFormData(prev => ({
+              ...prev,
+              cad_event_comments: data.cad_event_comments
+            }));
+          }
+        } catch (err) {
+          console.error('Failed to refresh after ComCat save:', err);
+        }
+        fetchModelStats();
+      }
+    };
+    
+    window.addEventListener('comcat-saved', handleComCatSaved);
+    return () => window.removeEventListener('comcat-saved', handleComCatSaved);
+  }, [incident?.id, setFormData, fetchModelStats]);
   
   // Calculate ComCat status (FIRE incidents only)
   const getComCatStatus = () => {
