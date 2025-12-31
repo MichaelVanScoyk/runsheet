@@ -220,7 +220,7 @@ async def get_monthly_html_report(year: int = Query(...), month: int = Query(...
     return HTMLResponse(content=html)
 
 
-@router.get("/pdf/monthly")
+@router.get("/pdf/monthly-weasy")
 async def get_monthly_pdf(year: int = Query(...), month: int = Query(...), category: Optional[str] = None, db: Session = Depends(get_db)):
     from weasyprint import HTML
     
