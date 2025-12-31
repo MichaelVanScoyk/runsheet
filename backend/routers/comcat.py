@@ -14,6 +14,7 @@ with category_source="OFFICER", which then feeds into ML retraining.
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import text
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
@@ -318,9 +319,10 @@ def update_comment_categories(
                 updated_count += 1
     
     if updated_count > 0:
-        # Update the JSONB field
+        # Update the JSONB field - must use flag_modified for SQLAlchemy to detect change
         cad_event_comments["comments"] = comments
         incident.cad_event_comments = cad_event_comments
+        flag_modified(incident, "cad_event_comments")
         incident.updated_at = datetime.now(timezone.utc)
         
         # Log the change
