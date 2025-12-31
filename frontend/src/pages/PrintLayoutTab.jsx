@@ -127,7 +127,7 @@ export default function PrintLayoutTab() {
             className="text-gray-400 hover:text-white w-5"
             disabled={block.locked}
           >
-            {block.locked ? '🔒' : (isExpanded ? '▼' : '▶')}
+            {block.locked ? '[L]' : (isExpanded ? '[-]' : '[+]')}
           </button>
           
           {/* Checkbox */}
@@ -166,7 +166,7 @@ export default function PrintLayoutTab() {
               onClick={() => moveToPage(block.id, page === 1 ? 2 : 1)}
               className="text-xs px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded"
             >
-              {page === 1 ? '→ P2' : '← P1'}
+              {page === 1 ? '> P2' : '< P1'}
             </button>
           )}
         </div>
@@ -238,7 +238,7 @@ export default function PrintLayoutTab() {
     return (
       <div className="bg-gray-900 p-3 rounded min-h-96">
         <h3 className="font-bold mb-2 text-sm">
-          📄 Page {pageNum} <span className="text-gray-500">({enabledCount} enabled)</span>
+          Page {pageNum} <span className="text-gray-500">({enabledCount} enabled)</span>
         </h3>
         
         {sortedRowNums.map(rowNum => (
@@ -272,7 +272,7 @@ export default function PrintLayoutTab() {
         <div>
           <h2 className="text-xl font-bold">Print Layout Designer</h2>
           <p className="text-sm text-gray-400">
-            V{layout?.version || '?'} — Click field to edit row/order/width. Same row = side-by-side.
+            V{layout?.version || '?'} - Click field to edit row/order/width. Same row = side-by-side.
           </p>
         </div>
         <div className="flex gap-2">
@@ -311,13 +311,13 @@ export default function PrintLayoutTab() {
 
       <div className="mt-4 p-3 bg-gray-800 rounded text-xs text-gray-400">
         <strong>V4 Layout Tips:</strong><br/>
-        • <strong>Row</strong> — Fields with same row number appear side-by-side<br/>
-        • <strong>Order</strong> — Left-to-right order within a row (1 = leftmost)<br/>
-        • <strong>Width</strong> — How much horizontal space: auto, 25%, 33%, 50%, 67%, 75%, 100%<br/>
-        • <strong>Row 0</strong> — Header (locked)<br/>
-        • <strong>Row 99</strong> — Footer (locked)<br/>
-        • 🔥 FIRE fields only appear on FIRE incidents<br/>
-        • <span className="bg-blue-600 text-white px-1 rounded text-xs">float</span> fields (like Times) position absolutely
+        - <strong>Row</strong> - Fields with same row number appear side-by-side<br/>
+        - <strong>Order</strong> - Left-to-right order within a row (1 = leftmost)<br/>
+        - <strong>Width</strong> - How much horizontal space: auto, 25%, 33%, 50%, 67%, 75%, 100%<br/>
+        - <strong>Row 0</strong> - Header (locked)<br/>
+        - <strong>Row 99</strong> - Footer (locked)<br/>
+        - FIRE fields only appear on FIRE incidents<br/>
+        - <span className="bg-blue-600 text-white px-1 rounded text-xs">float</span> fields (like Times) position absolutely
       </div>
     </div>
   );
