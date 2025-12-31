@@ -1898,6 +1898,206 @@ function BrandingTab() {
 
 
 // ============================================================================
+// COMCAT ML TAB COMPONENT
+// ============================================================================
+
+function ComCatTab() {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [retraining, setRetraining] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const loadStats = async () => {
+    try {
+      const res = await fetch('/api/comcat/stats');
+      if (res.ok) {
+        setStats(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to load ComCat stats:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRetrain = async () => {
+    if (!confirm('Retrain the ML model with all current training data?\n\nThis includes seed examples plus all officer corrections.')) {
+      return;
+    }
+    
+    setRetraining(true);
+    setMessage(null);
+    
+    try {
+      const res = await fetch('/api/comcat/retrain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true })
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Retrain failed');
+      }
+      
+      const data = await res.json();
+      setMessage({ 
+        type: 'success', 
+        text: `Model retrained successfully! ${data.total_examples} examples, ${(data.cv_accuracy * 100).toFixed(1)}% accuracy` 
+      });
+      
+      // Reload stats
+      await loadStats();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setRetraining(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="loading">Loading ComCat statistics...</div>;
+  }
+
+  const categoryColors = {
+    CALLER: '#3b82f6',      // blue
+    TACTICAL: '#ef4444',    // red
+    OPERATIONS: '#f59e0b',  // amber
+    UNIT: '#22c55e',        // green
+    OTHER: '#6b7280',       // gray
+  };
+
+  return (
+    <div className="comcat-tab">
+      <h3>Comment Categorizer (ComCat) ML</h3>
+      <p className="tab-intro">
+        Machine learning model that categorizes CAD event comments. Officer corrections improve accuracy over time.
+      </p>
+
+      {message && (
+        <div className={`message ${message.type}`} style={{ marginBottom: '1rem' }}>
+          {message.text}
+        </div>
+      )}
+
+      {/* Status Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+        {/* ML Status */}
+        <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '1rem' }}>
+          <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '0.5rem' }}>ML Status</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: stats?.ml_available ? '#22c55e' : '#ef4444' }}>
+            {stats?.ml_available ? '✓ Available' : '✗ Unavailable'}
+          </div>
+          <div style={{ color: '#666', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+            sklearn: {stats?.sklearn_installed ? 'installed' : 'missing'}
+          </div>
+        </div>
+
+        {/* Model Status */}
+        <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '1rem' }}>
+          <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Model Trained</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: stats?.model_trained ? '#22c55e' : '#f59e0b' }}>
+            {stats?.model_trained ? '✓ Yes' : '⚠ No'}
+          </div>
+          <div style={{ color: '#666', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+            {stats?.last_trained_at ? `Last: ${new Date(stats.last_trained_at).toLocaleDateString()}` : 'Never trained'}
+          </div>
+        </div>
+
+        {/* Accuracy */}
+        <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '1rem' }}>
+          <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '0.5rem' }}>CV Accuracy</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#4ecdc4' }}>
+            {stats?.cv_accuracy ? `${(stats.cv_accuracy * 100).toFixed(1)}%` : 'N/A'}
+          </div>
+          <div style={{ color: '#666', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+            Cross-validation score
+          </div>
+        </div>
+
+        {/* Training Data */}
+        <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '1rem' }}>
+          <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Training Examples</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#fff' }}>
+            {stats?.total_training_examples || 0}
+          </div>
+          <div style={{ color: '#666', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+            {stats?.seed_examples || 0} seed + {stats?.officer_examples || 0} officer
+          </div>
+        </div>
+      </div>
+
+      {/* Category Distribution */}
+      <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem' }}>
+        <h4 style={{ marginBottom: '1rem', color: '#ccc' }}>Officer Corrections by Category</h4>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          {Object.entries(stats?.category_counts || {}).map(([cat, count]) => (
+            <div 
+              key={cat} 
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem',
+                background: '#1e1e1e',
+                padding: '0.5rem 1rem',
+                borderRadius: '4px',
+                borderLeft: `4px solid ${categoryColors[cat] || '#666'}`
+              }}
+            >
+              <span style={{ color: '#aaa' }}>{cat}:</span>
+              <span style={{ fontWeight: 'bold', color: '#fff' }}>{count}</span>
+            </div>
+          ))}
+        </div>
+        {(stats?.officer_examples || 0) === 0 && (
+          <p style={{ color: '#888', marginTop: '1rem', fontSize: '0.9rem' }}>
+            No officer corrections yet. Corrections made in the Comment Categorizer modal become training data.
+          </p>
+        )}
+      </div>
+
+      {/* Retrain Section */}
+      <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem' }}>
+        <h4 style={{ marginBottom: '0.5rem', color: '#ccc' }}>Retrain Model</h4>
+        <p style={{ color: '#888', fontSize: '0.9rem', marginBottom: '1rem' }}>
+          Retrain the ML model with all seed data plus officer corrections. 
+          You can batch corrections from multiple incidents before retraining.
+        </p>
+        <button 
+          className="btn btn-primary"
+          onClick={handleRetrain}
+          disabled={retraining || !stats?.ml_available}
+        >
+          {retraining ? '⏳ Retraining...' : '🔄 Retrain Model'}
+        </button>
+        {!stats?.ml_available && (
+          <span style={{ marginLeft: '1rem', color: '#f59e0b', fontSize: '0.85rem' }}>
+            ML not available - check server dependencies
+          </span>
+        )}
+      </div>
+
+      {/* How It Works */}
+      <div style={{ background: '#1e1e1e', borderRadius: '8px', padding: '1rem' }}>
+        <h4 style={{ marginBottom: '0.75rem', color: '#ccc' }}>How ComCat Works</h4>
+        <ol style={{ color: '#888', margin: 0, paddingLeft: '1.25rem', lineHeight: 1.8 }}>
+          <li><strong>Pattern Matching</strong> - Common phrases (e.g., "Enroute with crew", "Command Established") are matched with regex rules first</li>
+          <li><strong>ML Classification</strong> - Unmatched comments go to the Random Forest model for prediction</li>
+          <li><strong>Review Flagging</strong> - ML predictions below {((stats?.confidence_threshold || 0.5) * 100).toFixed(0)}% confidence are flagged for officer review</li>
+          <li><strong>Officer Corrections</strong> - Corrections made in the modal become training data (source = "OFFICER")</li>
+          <li><strong>Model Improvement</strong> - Retraining incorporates officer corrections to improve future predictions</li>
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+
+// ============================================================================
 // ADMIN LOGIN FORM
 // ============================================================================
 
@@ -2042,6 +2242,12 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         >
           🏛️ Branding
         </button>
+        <button 
+          className={activeTab === 'comcat' ? 'active' : ''} 
+          onClick={() => setActiveTab('comcat')}
+        >
+          🤖 ComCat ML
+        </button>
       </div>
 
       <div className="admin-content">
@@ -2057,6 +2263,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'export' && <DataExportTab />}
         {activeTab === 'print' && <PrintLayoutTab />}
         {activeTab === 'branding' && <BrandingTab />}
+        {activeTab === 'comcat' && <ComCatTab />}
       </div>
     </div>
   );

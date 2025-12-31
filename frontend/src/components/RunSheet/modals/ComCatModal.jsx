@@ -61,8 +61,6 @@ export default function ComCatModal() {
   const [filterReviewOnly, setFilterReviewOnly] = useState(false);
   const [mlAvailable, setMlAvailable] = useState(false);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
-  const [showRetrainOption, setShowRetrainOption] = useState(false);  // Show after save
-  const [retraining, setRetraining] = useState(false);
   
   // Fetch comments when modal opens
   useEffect(() => {
@@ -162,13 +160,9 @@ export default function ComCatModal() {
       await fetchComments();
       await fetchStats();
       
-      // Show retrain option for officers/admins instead of closing
-      const canRetrain = userSession?.role === 'ADMIN' || userSession?.role === 'OFFICER';
-      if (mlAvailable && canRetrain) {
-        setShowRetrainOption(true);
-      } else {
-        setShowComCatModal(false);
-      }
+      // Show success briefly then close
+      // Retraining can be done in Admin > ComCat ML
+      setShowComCatModal(false);
     } catch (err) {
       console.error('ComCat save error:', err);
       setError(err.message);
@@ -178,36 +172,7 @@ export default function ComCatModal() {
   };
   
   const handleRetrain = async () => {
-    setRetraining(true);
-    try {
-      const res = await fetch('/api/comcat/retrain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ force: true })
-      });
-      
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.detail || 'Retrain failed');
-      }
-      
-      const data = await res.json();
-      await fetchStats();
-      alert(`Model retrained with ${data.total_examples} examples.\nCV Accuracy: ${(data.cv_accuracy * 100).toFixed(1)}%`);
-      setShowRetrainOption(false);
-      setShowComCatModal(false);
-    } catch (err) {
-      console.error('Retrain error:', err);
-      alert('Retrain failed: ' + err.message);
-    } finally {
-      setRetraining(false);
-    }
-  };
-  
-  const handleSkipRetrain = () => {
-    setShowRetrainOption(false);
-    setShowComCatModal(false);
+    // Retraining moved to Admin > ComCat ML tab
   };
   
   if (!showComCatModal) return null;
@@ -370,62 +335,29 @@ export default function ComCatModal() {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-dark-border flex justify-between items-center gap-3">
-          {showRetrainOption ? (
-            // Post-save retrain option (officers/admins only)
-            <>
-              <div className="text-green-400 text-sm flex items-center gap-2">
-                ✓ Changes saved successfully
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  className="btn btn-secondary" 
-                  onClick={handleSkipRetrain}
-                  disabled={retraining}
-                >
-                  Close
-                </button>
-                <button 
-                  className="btn btn-primary flex items-center gap-2" 
-                  onClick={handleRetrain}
-                  disabled={retraining}
-                  title="Retrain ML model with your corrections to improve future predictions"
-                >
-                  {retraining ? (
-                    <>⏳ Retraining...</>
-                  ) : (
-                    <>🔄 Retrain Model</>
-                  )}
-                </button>
-              </div>
-            </>
-          ) : (
-            // Normal footer
-            <>
-              <div className="text-xs text-gray-500">
-                {mlAvailable ? (
-                  'Your corrections help train the ML model'
-                ) : (
-                  'ML categorization unavailable'
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  className="btn btn-secondary" 
-                  onClick={() => setShowComCatModal(false)}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-                <button 
-                  className="btn btn-primary" 
-                  onClick={handleSave}
-                  disabled={saving || changeCount === 0}
-                >
-                  {saving ? 'Saving...' : `Save ${changeCount > 0 ? `(${changeCount})` : ''}`}
-                </button>
-              </div>
-            </>
-          )}
+          <div className="text-xs text-gray-500">
+            {mlAvailable ? (
+              'Corrections train the ML model • Retrain in Admin > ComCat ML'
+            ) : (
+              'ML categorization unavailable'
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button 
+              className="btn btn-secondary" 
+              onClick={() => setShowComCatModal(false)}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button 
+              className="btn btn-primary" 
+              onClick={handleSave}
+              disabled={saving || changeCount === 0}
+            >
+              {saving ? 'Saving...' : `Save ${changeCount > 0 ? `(${changeCount})` : ''}`}
+            </button>
+          </div>
         </div>
       </div>
     </div>
