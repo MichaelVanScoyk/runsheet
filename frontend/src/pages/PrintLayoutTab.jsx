@@ -11,6 +11,14 @@ const WIDTH_OPTIONS = [
   { value: 'full', label: '100%' },
 ];
 
+const SIZE_OPTIONS = [
+  { value: 'xs', label: 'XS (10px)' },
+  { value: 'sm', label: 'Small (12px)' },
+  { value: 'base', label: 'Normal (14px)' },
+  { value: 'lg', label: 'Large (16px)' },
+  { value: 'xl', label: 'XL (18px)' },
+];
+
 export default function PrintLayoutTab() {
   const [layout, setLayout] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -152,6 +160,18 @@ export default function PrintLayoutTab() {
             {block.width || 'auto'}
           </span>
           
+          {/* Font size badge (if not default) */}
+          {block.fontSize && block.fontSize !== 'base' && (
+            <span className="text-xs bg-purple-700 text-white px-1 rounded">
+              {block.fontSize}
+            </span>
+          )}
+          
+          {/* Bold badge */}
+          {block.bold && (
+            <span className="text-xs bg-yellow-600 text-white px-1 rounded font-bold">B</span>
+          )}
+          
           {block.fireOnly && (
             <span className="text-xs bg-red-600 text-white px-1 rounded">FIRE</span>
           )}
@@ -173,58 +193,123 @@ export default function PrintLayoutTab() {
         
         {/* Expanded controls */}
         {isExpanded && !block.locked && (
-          <div className="px-2 pb-2 pt-1 border-t border-gray-700 bg-gray-750 grid grid-cols-4 gap-2">
-            {/* Row */}
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Row</label>
-              <input
-                type="number"
-                min="0"
-                max="99"
-                value={block.row ?? 1}
-                onChange={(e) => updateBlock(block.id, { row: parseInt(e.target.value) || 1 })}
-                className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
-              />
+          <div className="px-2 pb-2 pt-1 border-t border-gray-700 bg-gray-750">
+            {/* Row 1: Position controls */}
+            <div className="grid grid-cols-4 gap-2 mb-2">
+              {/* Row */}
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Row</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="99"
+                  value={block.row ?? 1}
+                  onChange={(e) => updateBlock(block.id, { row: parseInt(e.target.value) || 1 })}
+                  className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
+                />
+              </div>
+              
+              {/* Order */}
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Order</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="99"
+                  value={block.order ?? 1}
+                  onChange={(e) => updateBlock(block.id, { order: parseInt(e.target.value) || 1 })}
+                  className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
+                />
+              </div>
+              
+              {/* Width */}
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Width</label>
+                <select
+                  value={block.width || 'auto'}
+                  onChange={(e) => updateBlock(block.id, { width: e.target.value })}
+                  className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
+                >
+                  {WIDTH_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Page */}
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Page</label>
+                <select
+                  value={block.page}
+                  onChange={(e) => updateBlock(block.id, { page: parseInt(e.target.value) })}
+                  className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
+                >
+                  <option value={1}>Page 1</option>
+                  <option value={2}>Page 2</option>
+                </select>
+              </div>
             </div>
             
-            {/* Order */}
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Order</label>
-              <input
-                type="number"
-                min="1"
-                max="99"
-                value={block.order ?? 1}
-                onChange={(e) => updateBlock(block.id, { order: parseInt(e.target.value) || 1 })}
-                className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
-              />
-            </div>
-            
-            {/* Width */}
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Width</label>
-              <select
-                value={block.width || 'auto'}
-                onChange={(e) => updateBlock(block.id, { width: e.target.value })}
-                className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
-              >
-                {WIDTH_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-            
-            {/* Page */}
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Page</label>
-              <select
-                value={block.page}
-                onChange={(e) => updateBlock(block.id, { page: parseInt(e.target.value) })}
-                className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
-              >
-                <option value={1}>Page 1</option>
-                <option value={2}>Page 2</option>
-              </select>
+            {/* Row 2: Style controls */}
+            <div className="grid grid-cols-4 gap-2">
+              {/* Font Size */}
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Font Size</label>
+                <select
+                  value={block.fontSize || 'base'}
+                  onChange={(e) => updateBlock(block.id, { fontSize: e.target.value })}
+                  className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
+                >
+                  {SIZE_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Bold */}
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Bold</label>
+                <button
+                  onClick={() => updateBlock(block.id, { bold: !block.bold })}
+                  className={`w-full px-2 py-1 rounded text-sm font-bold ${
+                    block.bold 
+                      ? 'bg-yellow-600 text-white' 
+                      : 'bg-gray-700 border border-gray-600 text-gray-400'
+                  }`}
+                >
+                  {block.bold ? 'Bold ON' : 'Bold OFF'}
+                </button>
+              </div>
+              
+              {/* Label Bold (for label: value fields) */}
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Label Bold</label>
+                <button
+                  onClick={() => updateBlock(block.id, { labelBold: !block.labelBold })}
+                  className={`w-full px-2 py-1 rounded text-sm ${
+                    block.labelBold !== false
+                      ? 'bg-green-700 text-white' 
+                      : 'bg-gray-700 border border-gray-600 text-gray-400'
+                  }`}
+                >
+                  {block.labelBold !== false ? 'ON' : 'OFF'}
+                </button>
+              </div>
+              
+              {/* Placeholder for future options */}
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Hide Label</label>
+                <button
+                  onClick={() => updateBlock(block.id, { hideLabel: !block.hideLabel })}
+                  className={`w-full px-2 py-1 rounded text-sm ${
+                    block.hideLabel 
+                      ? 'bg-red-700 text-white' 
+                      : 'bg-gray-700 border border-gray-600 text-gray-400'
+                  }`}
+                >
+                  {block.hideLabel ? 'Hidden' : 'Visible'}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -272,7 +357,7 @@ export default function PrintLayoutTab() {
         <div>
           <h2 className="text-xl font-bold">Print Layout Designer</h2>
           <p className="text-sm text-gray-400">
-            V{layout?.version || '?'} - Click field to edit row/order/width. Same row = side-by-side.
+            V{layout?.version || '?'} - Click [+] to edit position and style. Same row = side-by-side.
           </p>
         </div>
         <div className="flex gap-2">
@@ -313,11 +398,12 @@ export default function PrintLayoutTab() {
         <strong>V4 Layout Tips:</strong><br/>
         - <strong>Row</strong> - Fields with same row number appear side-by-side<br/>
         - <strong>Order</strong> - Left-to-right order within a row (1 = leftmost)<br/>
-        - <strong>Width</strong> - How much horizontal space: auto, 25%, 33%, 50%, 67%, 75%, 100%<br/>
-        - <strong>Row 0</strong> - Header (locked)<br/>
-        - <strong>Row 99</strong> - Footer (locked)<br/>
-        - FIRE fields only appear on FIRE incidents<br/>
-        - <span className="bg-blue-600 text-white px-1 rounded text-xs">float</span> fields (like Times) position absolutely
+        - <strong>Width</strong> - Horizontal space: auto, 25%, 33%, 50%, 67%, 75%, 100%<br/>
+        - <strong>Font Size</strong> - XS (10px) to XL (18px)<br/>
+        - <strong>Bold</strong> - Make the entire field bold<br/>
+        - <strong>Label Bold</strong> - Bold just the label (e.g., "Address:")<br/>
+        - <strong>Hide Label</strong> - Show only the value, no label<br/>
+        - <span className="bg-blue-600 text-white px-1 rounded">float</span> fields position absolutely (like Times)
       </div>
     </div>
   );

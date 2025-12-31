@@ -502,6 +502,48 @@ def render_field(ctx: RenderContext, block: dict) -> str:
     return renderer(ctx, block)
 
 
+# =============================================================================
+# STYLE HELPERS
+# =============================================================================
+
+FONT_SIZE_MAP = {
+    'xs': '10px',
+    'sm': '12px',
+    'base': '14px',
+    'lg': '16px',
+    'xl': '18px',
+}
+
+
+def get_block_style(block: dict) -> str:
+    """Build inline style string from block settings."""
+    styles = []
+    
+    # Font size
+    font_size = block.get('fontSize')
+    if font_size and font_size in FONT_SIZE_MAP:
+        styles.append(f'font-size: {FONT_SIZE_MAP[font_size]}')
+    
+    # Bold
+    if block.get('bold'):
+        styles.append('font-weight: bold')
+    
+    return '; '.join(styles) if styles else ''
+
+
+def get_block_classes(block: dict) -> List[str]:
+    """Build list of CSS classes from block settings."""
+    classes = []
+    
+    if block.get('labelBold') is False:
+        classes.append('label-normal')
+    
+    if block.get('hideLabel'):
+        classes.append('hide-label')
+    
+    return classes
+
+
 def render_row(ctx: RenderContext, blocks: List[dict]) -> str:
     if not blocks:
         return ''
@@ -514,15 +556,25 @@ def render_row(ctx: RenderContext, blocks: List[dict]) -> str:
     
     for block in normal_blocks:
         width_class = get_width_class(block.get('width', 'auto'))
+        block_classes = get_block_classes(block)
+        all_classes = [width_class] + block_classes
+        style = get_block_style(block)
+        style_attr = f' style="{style}"' if style else ''
+        
         html = render_field(ctx, block)
         if html:
-            parts.append(f'<div class="{width_class}">{html}</div>')
+            parts.append(f'<div class="{" ".join(all_classes)}"{style_attr}>{html}</div>')
     
     for block in float_blocks:
         float_dir = block.get('float', 'right')
+        block_classes = get_block_classes(block)
+        all_classes = [f'float-{float_dir}'] + block_classes
+        style = get_block_style(block)
+        style_attr = f' style="{style}"' if style else ''
+        
         html = render_field(ctx, block)
         if html:
-            parts.append(f'<div class="float-{float_dir}">{html}</div>')
+            parts.append(f'<div class="{" ".join(all_classes)}"{style_attr}>{html}</div>')
     
     if not parts:
         return ''
