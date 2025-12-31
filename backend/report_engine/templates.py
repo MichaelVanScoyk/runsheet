@@ -229,8 +229,8 @@ def generate_css(branding: dict) -> str:
         }}
         
         .address {{
-            font-size: 11pt;
-            font-weight: bold;
+            font-size: inherit;
+            font-weight: inherit;
         }}
         
         .cross-streets {{
@@ -241,12 +241,13 @@ def generate_css(branding: dict) -> str:
         }}
         
         .cad-type {{
-            font-size: 11pt;
-            font-weight: bold;
+            font-size: inherit;
+            font-weight: inherit;
         }}
         
         .cad-subtype {{
-            font-size: {body_font_size};
+            font-size: inherit;
+            font-weight: inherit;
             color: {muted_color};
         }}
         
