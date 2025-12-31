@@ -2085,8 +2085,8 @@ function ComCatTab() {
       <div style={{ background: '#1e1e1e', borderRadius: '8px', padding: '1rem' }}>
         <h4 style={{ marginBottom: '0.75rem', color: '#ccc' }}>How ComCat Works</h4>
         <ol style={{ color: '#888', margin: 0, paddingLeft: '1.25rem', lineHeight: 1.8 }}>
-          <li><strong>Pattern Matching</strong> - Common phrases (e.g., "Enroute with crew", "Command Established") are matched with regex rules first</li>
-          <li><strong>ML Classification</strong> - Unmatched comments go to the Random Forest model for prediction</li>
+          <li><strong>ML Classification</strong> - All comments categorized by Random Forest using text + operator type (calltaker, dispatcher, unit)</li>
+          <li><strong>Context-Aware Learning</strong> - Model learns patterns like "calltaker comments tend to be caller info" from your corrections</li>
           <li><strong>Review Flagging</strong> - ML predictions below {((stats?.confidence_threshold || 0.5) * 100).toFixed(0)}% confidence are flagged for officer review</li>
           <li><strong>Officer Corrections</strong> - Corrections made in the modal become training data (source = "OFFICER")</li>
           <li><strong>Model Improvement</strong> - Retraining incorporates officer corrections to improve future predictions</li>
