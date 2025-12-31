@@ -456,6 +456,119 @@ def r_neris_actions(ctx: RenderContext, block: dict) -> str:
     return f'<div class="field"><span class="label">NERIS Actions:</span> {esc(", ".join(v))}</div>'
 
 
+def r_event_comments(ctx: RenderContext, block: dict) -> str:
+    """
+    Render CAD Event Comments for PDF report.
+    
+    Reads from cad_event_comments JSONB field which contains:
+    {
+        "comments": [...],
+        "detected_timestamps": [...],
+        "unit_crew_counts": [...],
+        "parsed_at": "...",
+        "parser_version": "1.0"
+    }
+    
+    Supports two display modes:
+    - categorized: Groups comments by type (CALLER, TACTICAL, OPERATIONS, UNIT)
+    - chronological: Simple time-ordered list
+    
+    Automatically filters system noise (tracking devices, preempts, etc.)
+    """
+    cad_event_data = ctx.get('cad_event_comments') or {}
+    
+    # Handle both old list format and new dict format
+    if isinstance(cad_event_data, list):
+        # Old format: direct list of comments
+        comments = cad_event_data
+    elif isinstance(cad_event_data, dict):
+        # New format: dict with 'comments' key
+        comments = cad_event_data.get('comments', [])
+    else:
+        comments = []
+    
+    if not comments:
+        return ''
+    
+    # Filter out noise comments for display
+    display_comments = [c for c in comments if not c.get('is_noise', False)]
+    
+    if not display_comments:
+        return ''
+    
+    # Check display mode from block settings
+    categorize = block.get('categorize', True)
+    
+    if categorize:
+        return _render_categorized_comments(display_comments)
+    else:
+        return _render_chronological_comments(display_comments)
+
+
+def _render_categorized_comments(comments: List[dict]) -> str:
+    """Render comments grouped by category."""
+    sections = []
+    
+    # Category order and display names (matching comment_processor.py output)
+    category_order = [
+        ('CALLER', 'Caller Information'),
+        ('TACTICAL', 'Command & Tactical'),
+        ('OPERATIONS', 'Operations'),
+        ('UNIT', 'Unit Activity'),
+        ('UNCATEGORIZED', 'Other'),
+    ]
+    
+    for category, title in category_order:
+        # Use 'category' field from comment_processor
+        cat_comments = [c for c in comments if c.get('category') == category]
+        if not cat_comments:
+            continue
+        
+        rows = []
+        for c in cat_comments:
+            time_str = esc(c.get('time', ''))
+            text = esc(c.get('text', ''))
+            rows.append(f'<tr><td class="comment-time">{time_str}</td><td class="comment-text">{text}</td></tr>')
+        
+        sections.append(
+            f'<div class="comment-section">'
+            f'<div class="comment-section-title">{title}</div>'
+            f'<table class="event-comments-table">{"\n".join(rows)}</table>'
+            f'</div>'
+        )
+    
+    if not sections:
+        return ''
+    
+    return f'<div class="event-comments-container"><div class="event-comments-header">Event Comments</div>{"\n".join(sections)}</div>'
+
+
+def _render_chronological_comments(comments: List[dict]) -> str:
+    """Render comments in chronological order."""
+    rows = []
+    for c in comments:
+        time_str = esc(c.get('time', ''))
+        operator = esc(c.get('operator', ''))
+        text = esc(c.get('text', ''))
+        rows.append(
+            f'<tr>'
+            f'<td class="comment-time">{time_str}</td>'
+            f'<td class="comment-operator">{operator}</td>'
+            f'<td class="comment-text">{text}</td>'
+            f'</tr>'
+        )
+    
+    if not rows:
+        return ''
+    
+    return (
+        f'<div class="event-comments-container">'
+        f'<div class="event-comments-header">Event Comments</div>'
+        f'<table class="event-comments-table event-comments-chrono">{"\n".join(rows)}</table>'
+        f'</div>'
+    )
+
+
 # =============================================================================
 # RENDERER REGISTRY
 # =============================================================================
@@ -498,6 +611,7 @@ FIELD_RENDERERS: Dict[str, Callable[[RenderContext, dict], str]] = {
     'neris_aid_departments': r_neris_aid_departments,
     'neris_incident_types': r_neris_incident_types,
     'neris_actions': r_neris_actions,
+    'event_comments': r_event_comments,
 }
 
 

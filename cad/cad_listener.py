@@ -30,6 +30,7 @@ from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from cad_parser import parse_cad_html, report_to_dict
+from comment_processor import process_clear_report_comments
 
 # Configure logging
 logging.basicConfig(
@@ -564,6 +565,59 @@ class CADListener:
         update_data = {
             'cad_raw_clear': raw_html,
         }
+        
+        # Process event comments for storage and tactical timestamp extraction
+        if report.get('event_comments'):
+            try:
+                comment_result = process_clear_report_comments(
+                    report['event_comments'],
+                    incident_date or datetime.now().strftime('%Y-%m-%d'),
+                    self.timezone
+                )
+                
+                # Store processed comments
+                update_data['cad_event_comments'] = comment_result.get('cad_event_comments', [])
+                
+                # Extract tactical timestamps (only set if not already in incident)
+                tactical = comment_result.get('tactical_timestamps', {})
+                
+                # NERIS timestamps
+                if tactical.get('time_command_established') and not incident.get('time_command_established'):
+                    update_data['time_command_established'] = tactical['time_command_established']
+                    logger.info(f"Auto-populated time_command_established from comments")
+                
+                if tactical.get('time_fire_under_control') and not incident.get('time_fire_under_control'):
+                    update_data['time_fire_under_control'] = tactical['time_fire_under_control']
+                    logger.info(f"Auto-populated time_fire_under_control from comments")
+                
+                if tactical.get('time_water_on_fire') and not incident.get('time_water_on_fire'):
+                    update_data['time_water_on_fire'] = tactical['time_water_on_fire']
+                    logger.info(f"Auto-populated time_water_on_fire from comments")
+                
+                if tactical.get('time_primary_search_complete') and not incident.get('time_primary_search_complete'):
+                    update_data['time_primary_search_complete'] = tactical['time_primary_search_complete']
+                    logger.info(f"Auto-populated time_primary_search_complete from comments")
+                
+                # Chester County custom timestamps
+                if tactical.get('time_evac_ordered') and not incident.get('time_evac_ordered'):
+                    update_data['time_evac_ordered'] = tactical['time_evac_ordered']
+                    logger.info(f"Auto-populated time_evac_ordered from comments")
+                
+                if tactical.get('time_par_started') and not incident.get('time_par_started'):
+                    update_data['time_par_started'] = tactical['time_par_started']
+                    logger.info(f"Auto-populated time_par_started from comments")
+                
+                if tactical.get('time_water_supply_established') and not incident.get('time_water_supply_established'):
+                    update_data['time_water_supply_established'] = tactical['time_water_supply_established']
+                    logger.info(f"Auto-populated time_water_supply_established from comments")
+                
+                # Log crew counts (not acted on yet)
+                crew_counts = comment_result.get('crew_counts', {})
+                if crew_counts:
+                    logger.info(f"Crew counts from comments: {crew_counts}")
+                
+            except Exception as e:
+                logger.warning(f"Could not process event comments: {e}")
         
         # Update fields from clear report
         if report.get('address'):

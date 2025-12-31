@@ -114,6 +114,10 @@ DEFAULT_PRINT_LAYOUT = {
         
         # Row 5: NERIS Actions
         {"id": "neris_actions", "name": "NERIS Actions Taken", "enabled": False, "page": 2, "row": 5, "order": 1, "width": "full"},
+        
+        # Row 6: Event Comments (CAD dispatch comments log)
+        # Options: categorize=True (grouped by type) or categorize=False (chronological)
+        {"id": "event_comments", "name": "Event Comments", "enabled": True, "page": 2, "row": 6, "order": 1, "width": "full", "categorize": True},
     ]
 }
 

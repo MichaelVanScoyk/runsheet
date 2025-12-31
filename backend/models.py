@@ -260,6 +260,10 @@ class Incident(Base):
     # Structure: [{"unit_id": "ENG481", "time_dispatched": "...", "is_mutual_aid": false}]
     cad_units = Column(JSONB, default=[])
     
+    # Parsed CAD event comments with detected tactical timestamps
+    # Structure: {comments: [], detected_timestamps: [], unit_crew_counts: [], parsed_at, parser_version}
+    cad_event_comments = Column(JSONB, default={})
+    
     # =========================================================================
     # LOCATION - Display Fields
     # =========================================================================
@@ -312,6 +316,80 @@ class Incident(Base):
     time_fire_knocked_down = Column(TIMESTAMP(timezone=True))
     time_suppression_complete = Column(TIMESTAMP(timezone=True))
     time_extrication_complete = Column(TIMESTAMP(timezone=True))  # Rescue incidents
+    
+    # =========================================================================
+    # ADDITIONAL NERIS TACTIC TIMESTAMPS
+    # Added in migration 011 for complete NERIS mod_tactic_timestamps coverage
+    # =========================================================================
+    
+    # Search Operations
+    time_secondary_search_begin = Column(TIMESTAMP(timezone=True))
+    time_secondary_search_complete = Column(TIMESTAMP(timezone=True))
+    
+    # Ventilation
+    time_ventilation_start = Column(TIMESTAMP(timezone=True))
+    time_ventilation_complete = Column(TIMESTAMP(timezone=True))
+    
+    # Overhaul
+    time_overhaul_start = Column(TIMESTAMP(timezone=True))
+    time_overhaul_complete = Column(TIMESTAMP(timezone=True))
+    
+    # Safety/RIT
+    time_rit_activated = Column(TIMESTAMP(timezone=True))
+    time_mayday_declared = Column(TIMESTAMP(timezone=True))
+    time_mayday_cleared = Column(TIMESTAMP(timezone=True))
+    
+    # Rescue/Extrication
+    time_extrication_start = Column(TIMESTAMP(timezone=True))
+    
+    # =========================================================================
+    # NERIS EMS TACTIC TIMESTAMPS
+    # For medical incident reporting
+    # =========================================================================
+    time_patient_contact = Column(TIMESTAMP(timezone=True))
+    time_patient_assessment_complete = Column(TIMESTAMP(timezone=True))
+    time_cpr_started = Column(TIMESTAMP(timezone=True))
+    time_aed_applied = Column(TIMESTAMP(timezone=True))
+    time_aed_shock_delivered = Column(TIMESTAMP(timezone=True))
+    time_rosc_achieved = Column(TIMESTAMP(timezone=True))
+    time_airway_secured = Column(TIMESTAMP(timezone=True))
+    time_iv_access = Column(TIMESTAMP(timezone=True))
+    
+    # =========================================================================
+    # OPERATIONAL TIMESTAMPS (Chester County / Local)
+    # Not direct NERIS fields, but useful for local operations
+    # =========================================================================
+    time_par_started = Column(TIMESTAMP(timezone=True))
+    time_par_complete = Column(TIMESTAMP(timezone=True))
+    time_evac_ordered = Column(TIMESTAMP(timezone=True))
+    time_water_supply_established = Column(TIMESTAMP(timezone=True))
+    time_all_clear = Column(TIMESTAMP(timezone=True))
+    time_loss_stop = Column(TIMESTAMP(timezone=True))
+    time_utilities_secured = Column(TIMESTAMP(timezone=True))
+    time_rehab_established = Column(TIMESTAMP(timezone=True))
+    time_investigation_requested = Column(TIMESTAMP(timezone=True))
+    
+    # =========================================================================
+    # HAZMAT TIMESTAMPS (NERIS)
+    # =========================================================================
+    time_hazmat_identified = Column(TIMESTAMP(timezone=True))
+    time_hazmat_contained = Column(TIMESTAMP(timezone=True))
+    time_decon_started = Column(TIMESTAMP(timezone=True))
+    time_decon_complete = Column(TIMESTAMP(timezone=True))
+    
+    # =========================================================================
+    # TECHNICAL RESCUE TIMESTAMPS (NERIS)
+    # =========================================================================
+    time_victim_located = Column(TIMESTAMP(timezone=True))
+    time_victim_accessed = Column(TIMESTAMP(timezone=True))
+    time_victim_freed = Column(TIMESTAMP(timezone=True))
+    
+    # =========================================================================
+    # WILDLAND FIRE TIMESTAMPS (NERIS)
+    # =========================================================================
+    time_wildland_contained = Column(TIMESTAMP(timezone=True))
+    time_wildland_controlled = Column(TIMESTAMP(timezone=True))
+    time_wildland_mopup_complete = Column(TIMESTAMP(timezone=True))
     
     # =========================================================================
     # CALLER INFORMATION

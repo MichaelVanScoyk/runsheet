@@ -410,6 +410,74 @@ def generate_css(branding: dict) -> str:
             pointer-events: none;
             z-index: -1;
         }}
+        
+        /* Event Comments */
+        .event-comments-container {{
+            margin-top: 8px;
+        }}
+        
+        .event-comments-header {{
+            font-size: 10pt;
+            font-weight: bold;
+            color: {primary};
+            border-bottom: 1px {border_style} {primary};
+            padding-bottom: 2px;
+            margin-bottom: 6px;
+        }}
+        
+        .comment-section {{
+            margin-bottom: 8px;
+        }}
+        
+        .comment-section-title {{
+            font-size: 8pt;
+            font-weight: bold;
+            color: {text_color};
+            background: {secondary};
+            padding: 2px 4px;
+            margin-bottom: 2px;
+        }}
+        
+        .event-comments-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 8pt;
+        }}
+        
+        .event-comments-table td {{
+            padding: 1px 4px;
+            vertical-align: top;
+            border-bottom: 1px dotted #ddd;
+        }}
+        
+        .event-comments-table tr:last-child td {{
+            border-bottom: none;
+        }}
+        
+        .comment-time {{
+            width: 60px;
+            font-family: 'Courier New', monospace;
+            color: {muted_color};
+            white-space: nowrap;
+        }}
+        
+        .comment-operator {{
+            width: 70px;
+            color: {muted_color};
+            font-size: 7pt;
+        }}
+        
+        .comment-text {{
+            /* Main comment text */
+        }}
+        
+        .event-comments-chrono .comment-time {{
+            width: 55px;
+        }}
+        
+        .event-comments-chrono .comment-operator {{
+            width: 60px;
+        }}
     '''
 
 
