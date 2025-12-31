@@ -162,7 +162,7 @@ def log_comcat_audit(
         personnel_id=edited_by_id,
         personnel_name=personnel_name or "System",
         action=action,
-        entity_type="incident_comments",
+        entity_type="incident",
         entity_id=incident.id,
         entity_display=f"Incident {incident.internal_incident_number}",
         summary=summary,
