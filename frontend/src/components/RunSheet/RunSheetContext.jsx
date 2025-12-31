@@ -185,8 +185,6 @@ const initialFormData = {
   updated_at: null,
   closed_at: null,
   neris_submitted_at: null,
-  // CAD Event Comments (for ComCat)
-  cad_event_comments: null,
 };
 
 export function RunSheetProvider({ incident, onSave, onClose, children }) {
@@ -435,8 +433,6 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
           updated_at: incident.updated_at,
           closed_at: incident.closed_at,
           neris_submitted_at: incident.neris_submitted_at,
-          // CAD Event Comments (for ComCat)
-          cad_event_comments: incident.cad_event_comments || null,
         });
         
         if (incident.personnel_assignments) {
