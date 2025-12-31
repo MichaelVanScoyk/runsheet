@@ -152,7 +152,11 @@ def _render_page(ctx: RenderContext, blocks: List[dict], branding: dict, is_firs
             if footer_block and footer_block.get('enabled', True):
                 footer_html = render_field(ctx, footer_block)
                 if footer_html:
-                    parts.append(footer_html)
+                    # Check if sticky footer is enabled
+                    if footer_block.get('stickyFooter'):
+                        parts.append(f'<div class="footer-sticky">{footer_html}</div>')
+                    else:
+                        parts.append(footer_html)
             continue
         
         # Filter out header-positioned blocks from normal rendering

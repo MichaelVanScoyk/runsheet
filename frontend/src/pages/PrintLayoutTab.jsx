@@ -133,9 +133,9 @@ export default function PrintLayoutTab() {
           <button
             onClick={() => setExpandedBlock(isExpanded ? null : block.id)}
             className="text-gray-400 hover:text-white w-5"
-            disabled={block.locked}
+            disabled={block.locked && block.id !== 'footer'}
           >
-            {block.locked ? '[L]' : (isExpanded ? '[-]' : '[+]')}
+            {block.locked && block.id !== 'footer' ? '[L]' : (isExpanded ? '[-]' : '[+]')}
           </button>
           
           {/* Checkbox */}
@@ -184,6 +184,10 @@ export default function PrintLayoutTab() {
             <span className="text-xs bg-cyan-600 text-white px-1 rounded">hdr</span>
           )}
           
+          {block.stickyFooter && (
+            <span className="text-xs bg-orange-600 text-white px-1 rounded">sticky</span>
+          )}
+          
           {/* Move button */}
           {!block.locked && (
             <button
@@ -196,7 +200,7 @@ export default function PrintLayoutTab() {
         </div>
         
         {/* Expanded controls */}
-        {isExpanded && !block.locked && (
+        {isExpanded && (!block.locked || block.id === 'footer') && (
           <div className="px-2 pb-2 pt-1 border-t border-gray-700 bg-gray-750">
             {/* Row 1: Position controls */}
             <div className="grid grid-cols-4 gap-2 mb-2">
@@ -330,6 +334,25 @@ export default function PrintLayoutTab() {
                     }`}
                   >
                     {block.headerPosition ? 'In Header (above line)' : 'Below Header'}
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {/* Row 3: Special options for footer */}
+            {block.id === 'footer' && (
+              <div className="grid grid-cols-4 gap-2 mt-2">
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-400 block mb-1">Sticky Footer</label>
+                  <button
+                    onClick={() => updateBlock(block.id, { stickyFooter: !block.stickyFooter })}
+                    className={`w-full px-2 py-1 rounded text-sm ${
+                      block.stickyFooter 
+                        ? 'bg-orange-600 text-white' 
+                        : 'bg-gray-700 border border-gray-600 text-gray-400'
+                    }`}
+                  >
+                    {block.stickyFooter ? 'Sticky (bottom of page)' : 'Normal (after content)'}
                   </button>
                 </div>
               </div>

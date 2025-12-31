@@ -79,6 +79,14 @@ def generate_css(branding: dict) -> str:
             z-index: 10;
         }}
         
+        /* Sticky footer - fixed to bottom of page */
+        .footer-sticky {{
+            position: fixed;
+            bottom: 0.3in;
+            left: 0.3in;
+            right: 0.3in;
+        }}
+        
         /* Header styles */
         .header-classic {{
             border-bottom: 2px {border_style} {primary};
