@@ -8,7 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
-from routers import incidents, lookups, apparatus, personnel, settings, reports, neris_codes, admin, backup, tenant_auth, master_admin
+from routers import incidents, lookups, apparatus, personnel, settings, neris_codes, admin, backup, tenant_auth, master_admin
+from routers import branding, print_layout
+from routers.reports import router as reports_router
 from database import engine, Base
 from master_database import MasterSessionLocal
 from master_models import TenantSession, Tenant
@@ -171,7 +173,9 @@ app.include_router(lookups.router, prefix="/api/lookups", tags=["Lookups"])
 app.include_router(apparatus.router, prefix="/api/apparatus", tags=["Apparatus"])
 app.include_router(personnel.router, prefix="/api/personnel", tags=["Personnel"])
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
-app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
+app.include_router(reports_router, prefix="/api/reports", tags=["Reports"])
+app.include_router(branding.router, prefix="/api/branding", tags=["Branding"])
+app.include_router(print_layout.router, prefix="/api/print-layout", tags=["Print Layout"])
 app.include_router(neris_codes.router, prefix="/api/neris-codes", tags=["NERIS Codes"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(backup.router, prefix="/api/backup", tags=["Backup"])

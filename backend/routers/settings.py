@@ -1,12 +1,15 @@
 """
-Settings router - Runtime configuration from database
+Settings Router - Generic runtime configuration from database
+
+Handles generic settings CRUD. Specialized settings have their own routers:
+- Branding: /api/branding (branding.py)
+- Print Layout: /api/print-layout (print_layout.py)
 """
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import Optional, List, Any
-from datetime import datetime, timezone
+from typing import Optional, Any
 from pydantic import BaseModel
 import json
 
@@ -16,7 +19,6 @@ from database import get_db
 try:
     from settings_helper import format_utc_iso
 except ImportError:
-    # Fallback if settings_helper not available (shouldn't happen)
     def format_utc_iso(dt):
         if dt is None:
             return None
@@ -29,6 +31,10 @@ except ImportError:
 
 router = APIRouter()
 
+
+# =============================================================================
+# SCHEMAS
+# =============================================================================
 
 class SettingUpdate(BaseModel):
     value: str
@@ -129,143 +135,38 @@ async def get_settings_by_category(
 
 
 # =============================================================================
-# BRANDING / LOGO ENDPOINTS (must be before generic /{category}/{key} routes)
+# PRINT SETTINGS (Legacy compatibility - redirects to print-layout router)
 # =============================================================================
 
-class LogoUpload(BaseModel):
-    """Logo upload payload - base64 encoded image"""
-    data: str  # base64 encoded image data
-    filename: Optional[str] = None
-    mime_type: Optional[str] = "image/png"
+DEFAULT_PRINT_SETTINGS = {
+    'showHeader': True,
+    'showTimes': True,
+    'showLocation': True,
+    'showDispatchInfo': True,
+    'showSituationFound': True,
+    'showExtentOfDamage': True,
+    'showServicesProvided': True,
+    'showNarrative': True,
+    'showPersonnelGrid': True,
+    'showEquipmentUsed': True,
+    'showOfficerInfo': True,
+    'showProblemsIssues': True,
+    'showCadUnits': True,
+    'showNerisInfo': False,
+    'showWeather': True,
+    'showCrossStreets': True,
+    'showCallerInfo': False,
+}
 
-
-@router.get("/branding/logo")
-async def get_branding_logo(db: Session = Depends(get_db)):
-    """Get the tenant's logo as base64"""
-    result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo'")
-    ).fetchone()
-    
-    if not result or not result[0]:
-        return {"has_logo": False, "data": None, "mime_type": None}
-    
-    # Get mime type
-    mime_result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")
-    ).fetchone()
-    mime_type = mime_result[0] if mime_result else "image/png"
-    
-    return {
-        "has_logo": True,
-        "data": result[0],
-        "mime_type": mime_type
-    }
-
-
-@router.post("/branding/logo")
-async def upload_branding_logo(
-    logo: LogoUpload,
-    db: Session = Depends(get_db)
-):
-    """Upload/update the tenant's logo"""
-    # Validate base64 data
-    if not logo.data:
-        raise HTTPException(status_code=400, detail="No image data provided")
-    
-    # Strip data URL prefix if present (e.g., "data:image/png;base64,")
-    data = logo.data
-    if data.startswith('data:'):
-        # Extract mime type and data
-        try:
-            header, data = data.split(',', 1)
-            if 'image/png' in header:
-                logo.mime_type = 'image/png'
-            elif 'image/jpeg' in header or 'image/jpg' in header:
-                logo.mime_type = 'image/jpeg'
-            elif 'image/gif' in header:
-                logo.mime_type = 'image/gif'
-            elif 'image/webp' in header:
-                logo.mime_type = 'image/webp'
-        except:
-            pass
-    
-    # Validate it's valid base64 and detect actual mime type from bytes
-    import base64
-    try:
-        decoded = base64.b64decode(data)
-        # Detect actual mime type from magic bytes (not from data URL header)
-        if decoded[:8].startswith(b'\x89PNG'):
-            logo.mime_type = 'image/png'
-        elif decoded[:2] == b'\xff\xd8':
-            logo.mime_type = 'image/jpeg'
-        elif decoded[:6] in (b'GIF87a', b'GIF89a'):
-            logo.mime_type = 'image/gif'
-        elif decoded[:4] == b'RIFF':
-            logo.mime_type = 'image/webp'
-        else:
-            raise HTTPException(status_code=400, detail="Invalid image format. Supported: PNG, JPEG, GIF, WebP")
-    except Exception as e:
-        if "Invalid image format" in str(e):
-            raise
-        raise HTTPException(status_code=400, detail="Invalid base64 data")
-    
-    # Upsert logo data
-    exists = db.execute(
-        text("SELECT 1 FROM settings WHERE category = 'branding' AND key = 'logo'")
-    ).fetchone()
-    
-    if exists:
-        db.execute(
-            text("UPDATE settings SET value = :value, updated_at = NOW() WHERE category = 'branding' AND key = 'logo'"),
-            {"value": data}
-        )
-    else:
-        db.execute(
-            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('branding', 'logo', :value, 'string', 'Tenant logo (base64)')"),
-            {"value": data}
-        )
-    
-    # Upsert mime type
-    mime_exists = db.execute(
-        text("SELECT 1 FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")
-    ).fetchone()
-    
-    if mime_exists:
-        db.execute(
-            text("UPDATE settings SET value = :value, updated_at = NOW() WHERE category = 'branding' AND key = 'logo_mime_type'"),
-            {"value": logo.mime_type}
-        )
-    else:
-        db.execute(
-            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('branding', 'logo_mime_type', :value, 'string', 'Logo MIME type')"),
-            {"value": logo.mime_type}
-        )
-    
-    db.commit()
-    
-    return {"status": "ok", "message": "Logo uploaded successfully"}
-
-
-@router.delete("/branding/logo")
-async def delete_branding_logo(db: Session = Depends(get_db)):
-    """Delete the tenant's logo"""
-    db.execute(text("DELETE FROM settings WHERE category = 'branding' AND key IN ('logo', 'logo_mime_type')"))
-    db.commit()
-    return {"status": "ok", "message": "Logo deleted"}
-
-
-# =============================================================================
-# PRINT SETTINGS (must be before generic /{category}/{key} routes)
-# =============================================================================
 
 @router.get("/print")
 async def get_print_settings(db: Session = Depends(get_db)):
-    """Get print settings as a combined object"""
+    """Get legacy print settings (show/hide toggles)"""
     result = db.execute(
         text("SELECT key, value, value_type FROM settings WHERE category = 'print'")
     )
     
-    settings = dict(DEFAULT_PRINT_SETTINGS)  # Start with defaults
+    settings = dict(DEFAULT_PRINT_SETTINGS)
     
     for row in result:
         key = row[0]
@@ -281,9 +182,8 @@ async def update_print_settings(
     settings: dict,
     db: Session = Depends(get_db)
 ):
-    """Update print settings"""
+    """Update legacy print settings"""
     for key, value in settings.items():
-        # Check if setting exists
         exists = db.execute(
             text("SELECT 1 FROM settings WHERE category = 'print' AND key = :key"),
             {"key": key}
@@ -307,69 +207,35 @@ async def update_print_settings(
     return {"status": "ok"}
 
 
+# Legacy print/layout endpoint - redirects to new location
 @router.get("/print/layout")
-async def get_print_layout_endpoint(db: Session = Depends(get_db)):
+async def get_print_layout_legacy(db: Session = Depends(get_db)):
     """
-    Get the print layout configuration.
-    Returns stored layout or default if not configured.
+    Legacy endpoint - use GET /api/print-layout instead.
+    Kept for backward compatibility.
     """
-    result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'print' AND key = 'layout'")
-    ).fetchone()
-    
-    if result and result[0]:
-        try:
-            layout = json.loads(result[0])
-            # Merge with defaults to handle new blocks added after initial save
-            return _merge_layout_with_defaults(layout)
-        except json.JSONDecodeError:
-            pass
-    
-    # Return default layout
-    return dict(DEFAULT_PRINT_LAYOUT)
+    from report_engine.layout_config import get_layout
+    return get_layout(db)
 
 
 @router.put("/print/layout")
-async def update_print_layout(
+async def update_print_layout_legacy(
     layout: dict,
     db: Session = Depends(get_db)
 ):
     """
-    Update the print layout configuration.
-    Validates and stores the complete layout structure.
+    Legacy endpoint - use PUT /api/print-layout instead.
+    Kept for backward compatibility.
     """
-    # Validate basic structure
-    if "version" not in layout or "blocks" not in layout:
-        raise HTTPException(status_code=400, detail="Invalid layout: missing version or blocks")
+    from report_engine.layout_config import validate_layout
     
-    if not isinstance(layout["blocks"], list):
-        raise HTTPException(status_code=400, detail="Invalid layout: blocks must be a list")
+    errors = validate_layout(layout)
+    if errors:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Invalid layout", "errors": errors}
+        )
     
-    # Validate each block has required fields
-    required_fields = ["id", "enabled", "page", "order"]
-    for block in layout["blocks"]:
-        for field in required_fields:
-            if field not in block:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Invalid block: missing '{field}' in block '{block.get('id', 'unknown')}'"
-                )
-        
-        # Validate page is 1 or 2
-        if block["page"] not in [1, 2]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid block: page must be 1 or 2 for block '{block['id']}'"
-            )
-        
-        # Validate locked blocks stay on page 1
-        if block.get("locked", False) and block["page"] != 1:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid block: locked block '{block['id']}' cannot be moved to page 2"
-            )
-    
-    # Store as JSON
     layout_json = json.dumps(layout)
     
     exists = db.execute(
@@ -383,7 +249,7 @@ async def update_print_layout(
         )
     else:
         db.execute(
-            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('print', 'layout', :value, 'json', 'Print layout configuration')"),
+            text("INSERT INTO settings (category, key, value, value_type, description) VALUES ('print', 'layout', :value, 'json', 'Print layout configuration V4')"),
             {"value": layout_json}
         )
     
@@ -392,20 +258,106 @@ async def update_print_layout(
 
 
 @router.post("/print/layout/reset")
-async def reset_print_layout(db: Session = Depends(get_db)):
+async def reset_print_layout_legacy(db: Session = Depends(get_db)):
     """
-    Reset print layout to defaults.
-    Deletes stored layout, causing default to be returned on next GET.
+    Legacy endpoint - use POST /api/print-layout/reset instead.
     """
-    db.execute(
-        text("DELETE FROM settings WHERE category = 'print' AND key = 'layout'")
-    )
+    db.execute(text("DELETE FROM settings WHERE category = 'print' AND key = 'layout'"))
     db.commit()
     return {"status": "ok", "message": "Layout reset to defaults"}
 
 
 # =============================================================================
-# GENERIC SETTING GET/PUT (after specific routes)
+# BRANDING LEGACY ENDPOINTS (Kept for backward compatibility)
+# Use /api/branding for new code
+# =============================================================================
+
+class LogoUpload(BaseModel):
+    data: str
+    filename: Optional[str] = None
+    mime_type: Optional[str] = "image/png"
+
+
+@router.get("/branding/logo")
+async def get_branding_logo_legacy(db: Session = Depends(get_db)):
+    """Legacy endpoint - use GET /api/branding/logo instead."""
+    result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo'")
+    ).fetchone()
+    
+    if not result or not result[0]:
+        return {"has_logo": False, "data": None, "mime_type": None}
+    
+    mime_result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")
+    ).fetchone()
+    mime_type = mime_result[0] if mime_result else "image/png"
+    
+    return {"has_logo": True, "data": result[0], "mime_type": mime_type}
+
+
+@router.post("/branding/logo")
+async def upload_branding_logo_legacy(
+    logo: LogoUpload,
+    db: Session = Depends(get_db)
+):
+    """Legacy endpoint - use POST /api/branding/logo instead."""
+    import base64
+    
+    if not logo.data:
+        raise HTTPException(status_code=400, detail="No image data provided")
+    
+    data = logo.data
+    if data.startswith('data:'):
+        try:
+            header, data = data.split(',', 1)
+            if 'image/png' in header:
+                logo.mime_type = 'image/png'
+            elif 'image/jpeg' in header or 'image/jpg' in header:
+                logo.mime_type = 'image/jpeg'
+            elif 'image/gif' in header:
+                logo.mime_type = 'image/gif'
+            elif 'image/webp' in header:
+                logo.mime_type = 'image/webp'
+        except:
+            pass
+    
+    try:
+        decoded = base64.b64decode(data)
+        if decoded[:8].startswith(b'\x89PNG'):
+            logo.mime_type = 'image/png'
+        elif decoded[:2] == b'\xff\xd8':
+            logo.mime_type = 'image/jpeg'
+        elif decoded[:6] in (b'GIF87a', b'GIF89a'):
+            logo.mime_type = 'image/gif'
+        elif decoded[:4] == b'RIFF':
+            logo.mime_type = 'image/webp'
+        else:
+            raise HTTPException(status_code=400, detail="Invalid image format")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 data")
+    
+    _upsert_setting(db, 'branding', 'logo', data)
+    _upsert_setting(db, 'branding', 'logo_mime_type', logo.mime_type)
+    db.commit()
+    
+    return {"status": "ok", "message": "Logo uploaded successfully"}
+
+
+@router.delete("/branding/logo")
+async def delete_branding_logo_legacy(db: Session = Depends(get_db)):
+    """Legacy endpoint - use DELETE /api/branding/logo instead."""
+    db.execute(text(
+        "DELETE FROM settings WHERE category = 'branding' AND key IN ('logo', 'logo_mime_type')"
+    ))
+    db.commit()
+    return {"status": "ok", "message": "Logo deleted"}
+
+
+# =============================================================================
+# GENERIC SETTING GET/PUT
 # =============================================================================
 
 @router.get("/{category}/{key}")
@@ -446,7 +398,6 @@ async def update_setting(
     db: Session = Depends(get_db)
 ):
     """Update a setting value (creates if not exists)"""
-    # Try update first
     result = db.execute(
         text("""
             UPDATE settings 
@@ -459,7 +410,6 @@ async def update_setting(
     row = result.fetchone()
     
     if not row:
-        # Setting doesn't exist, create it
         result = db.execute(
             text("""
                 INSERT INTO settings (category, key, value, value_type)
@@ -546,130 +496,27 @@ def _parse_value(value: str, value_type: str) -> Any:
     return value
 
 
-# =============================================================================
-# PRINT SETTINGS HELPERS
-# =============================================================================
-
-DEFAULT_PRINT_SETTINGS = {
-    'showHeader': True,
-    'showTimes': True,
-    'showLocation': True,
-    'showDispatchInfo': True,
-    'showSituationFound': True,
-    'showExtentOfDamage': True,
-    'showServicesProvided': True,
-    'showNarrative': True,
-    'showPersonnelGrid': True,
-    'showEquipmentUsed': True,
-    'showOfficerInfo': True,
-    'showProblemsIssues': True,
-    'showCadUnits': True,
-    'showNerisInfo': False,
-    'showWeather': True,
-    'showCrossStreets': True,
-    'showCallerInfo': False,
-}
-
-
-# =============================================================================
-# PRINT LAYOUT V3 - GRANULAR FIELD BLOCKS
-# Each field is its own draggable block
-# =============================================================================
-
-DEFAULT_PRINT_LAYOUT = {
-    "version": 3,
-    "blocks": [
-        # HEADER GROUP
-        {"id": "logo", "name": "Logo", "enabled": True, "page": 1, "order": 1, "locked": False},
-        {"id": "station_name", "name": "Station Name", "enabled": True, "page": 1, "order": 2, "locked": False},
-        
-        # INCIDENT ID
-        {"id": "internal_incident_number", "name": "Incident #", "enabled": True, "page": 1, "order": 3, "locked": False},
-        {"id": "cad_event_number", "name": "CAD Event #", "enabled": True, "page": 1, "order": 4, "locked": False},
-        {"id": "call_category", "name": "Category Badge", "enabled": True, "page": 1, "order": 5, "locked": False},
-        {"id": "incident_date", "name": "Date", "enabled": True, "page": 1, "order": 6, "locked": False},
-        
-        # TIMES (as group - always floated right)
-        {"id": "times_group", "name": "Times Table", "enabled": True, "page": 1, "order": 7, "locked": False, "config": {"float": "right"}},
-        
-        # DISPATCH INFO
-        {"id": "cad_event_type", "name": "CAD Type", "enabled": True, "page": 1, "order": 8, "locked": False},
-        {"id": "cad_event_subtype", "name": "CAD Subtype", "enabled": True, "page": 1, "order": 9, "locked": False},
-        
-        # LOCATION
-        {"id": "address", "name": "Address", "enabled": True, "page": 1, "order": 10, "locked": False},
-        {"id": "cross_streets", "name": "Cross Streets", "enabled": True, "page": 1, "order": 11, "locked": False},
-        {"id": "municipality_code", "name": "Municipality", "enabled": True, "page": 1, "order": 12, "locked": False},
-        {"id": "esz_box", "name": "ESZ/Box", "enabled": True, "page": 1, "order": 13, "locked": False},
-        
-        # UNITS
-        {"id": "units_called", "name": "Units Called", "enabled": True, "page": 1, "order": 14, "locked": False},
-        
-        # CALLER/WEATHER
-        {"id": "caller_name", "name": "Caller Name", "enabled": False, "page": 1, "order": 15, "locked": False},
-        {"id": "caller_phone", "name": "Caller Phone", "enabled": False, "page": 1, "order": 16, "locked": False},
-        {"id": "weather_conditions", "name": "Weather", "enabled": True, "page": 1, "order": 17, "locked": False},
-        
-        # NARRATIVE FIELDS
-        {"id": "situation_found", "name": "Situation Found", "enabled": True, "page": 1, "order": 18, "locked": False, "fireOnly": True},
-        {"id": "extent_of_damage", "name": "Extent of Damage", "enabled": True, "page": 1, "order": 19, "locked": False, "fireOnly": True},
-        {"id": "services_provided", "name": "Services Provided", "enabled": True, "page": 1, "order": 20, "locked": False},
-        {"id": "narrative", "name": "Narrative", "enabled": True, "page": 1, "order": 21, "locked": False},
-        {"id": "problems_issues", "name": "Problems/Issues", "enabled": False, "page": 1, "order": 22, "locked": False},
-        {"id": "equipment_used", "name": "Equipment Used", "enabled": False, "page": 1, "order": 23, "locked": False},
-        
-        # PERSONNEL
-        {"id": "personnel_grid", "name": "Personnel Grid", "enabled": True, "page": 1, "order": 24, "locked": False},
-        {"id": "officer_in_charge", "name": "Officer in Charge", "enabled": True, "page": 1, "order": 25, "locked": False},
-        {"id": "completed_by", "name": "Completed By", "enabled": True, "page": 1, "order": 26, "locked": False},
-        
-        # FOOTER
-        {"id": "footer", "name": "Footer", "enabled": True, "page": 1, "order": 99, "locked": True},
-        
-        # PAGE 2 - EXTENDED INFO
-        {"id": "cad_unit_details", "name": "CAD Unit Details", "enabled": True, "page": 2, "order": 1, "locked": False},
-        
-        # DAMAGE (FIRE ONLY)
-        {"id": "property_value_at_risk", "name": "Property at Risk", "enabled": False, "page": 2, "order": 2, "locked": False, "fireOnly": True},
-        {"id": "fire_damages_estimate", "name": "Fire Damages", "enabled": False, "page": 2, "order": 3, "locked": False, "fireOnly": True},
-        {"id": "ff_injuries_count", "name": "FF Injuries", "enabled": False, "page": 2, "order": 4, "locked": False, "fireOnly": True},
-        {"id": "civilian_injuries_count", "name": "Civilian Injuries", "enabled": False, "page": 2, "order": 5, "locked": False, "fireOnly": True},
-        
-        # MUTUAL AID
-        {"id": "neris_aid_direction", "name": "Aid Direction", "enabled": False, "page": 2, "order": 6, "locked": False},
-        {"id": "neris_aid_departments", "name": "Aid Departments", "enabled": False, "page": 2, "order": 7, "locked": False},
-        
-        # NERIS - kept minimal for now
-        {"id": "neris_incident_types", "name": "NERIS Incident Types", "enabled": False, "page": 2, "order": 10, "locked": False},
-        {"id": "neris_actions", "name": "NERIS Actions Taken", "enabled": False, "page": 2, "order": 11, "locked": False},
-    ]
-}
-
-
-def _merge_layout_with_defaults(stored_layout: dict) -> dict:
-    """
-    Merge stored layout with defaults to handle new blocks.
-    Preserves user's settings while adding any new default blocks.
-    """
-    result = dict(stored_layout)
-    result["version"] = DEFAULT_PRINT_LAYOUT["version"]
+def _upsert_setting(db: Session, category: str, key: str, value: str) -> None:
+    """Insert or update a setting."""
+    exists = db.execute(
+        text("SELECT 1 FROM settings WHERE category = :cat AND key = :key"),
+        {"cat": category, "key": key}
+    ).fetchone()
     
-    # Get IDs of stored blocks
-    stored_ids = {b["id"] for b in result.get("blocks", [])}
-    
-    # Add any new default blocks that don't exist in stored layout
-    for default_block in DEFAULT_PRINT_LAYOUT["blocks"]:
-        if default_block["id"] not in stored_ids:
-            # Add new block with default disabled to not surprise users
-            new_block = dict(default_block)
-            new_block["enabled"] = False
-            result["blocks"].append(new_block)
-    
-    return result
+    if exists:
+        db.execute(
+            text("UPDATE settings SET value = :value, updated_at = NOW() WHERE category = :cat AND key = :key"),
+            {"cat": category, "key": key, "value": value}
+        )
+    else:
+        db.execute(
+            text("INSERT INTO settings (category, key, value, value_type) VALUES (:cat, :key, :value, 'string')"),
+            {"cat": category, "key": key, "value": value}
+        )
 
 
 # =============================================================================
-# CONVENIENCE GETTERS (for use by other modules)
+# CONVENIENCE FUNCTIONS (for use by other modules)
 # =============================================================================
 
 def get_setting_value(db: Session, category: str, key: str, default: Any = None) -> Any:
@@ -685,78 +532,8 @@ def get_setting_value(db: Session, category: str, key: str, default: Any = None)
     return _parse_value(result[0], result[1])
 
 
-def get_station_units(db: Session) -> List[str]:
-    """Get list of station unit IDs"""
-    value = get_setting_value(db, 'units', 'station_units', [])
-    if isinstance(value, list):
-        return value
-    return []
-
-
-def is_station_unit(db: Session, unit_id: str) -> bool:
-    """Check if unit belongs to this station"""
-    units = get_station_units(db)
-    return unit_id.upper() in [u.upper() for u in units]
-
-
 def get_station_coords(db: Session) -> tuple:
     """Get station coordinates for weather lookup"""
     lat = get_setting_value(db, 'station', 'latitude', 40.0977)
     lon = get_setting_value(db, 'station', 'longitude', -75.7833)
     return (float(lat), float(lon))
-
-
-def get_print_layout(db: Session) -> dict:
-    """
-    Get print layout configuration for use by report generators.
-    Returns stored layout merged with defaults, or default layout.
-    """
-    result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'print' AND key = 'layout'")
-    ).fetchone()
-    
-    if result and result[0]:
-        try:
-            layout = json.loads(result[0])
-            return _merge_layout_with_defaults(layout)
-        except json.JSONDecodeError:
-            pass
-    
-    return dict(DEFAULT_PRINT_LAYOUT)
-
-
-def get_page_blocks(db: Session, page: int, call_category: str = 'FIRE') -> list:
-    """
-    Get enabled blocks for a specific page, filtered by call category.
-    Returns blocks sorted by order.
-    
-    Args:
-        db: Database session
-        page: Page number (1 or 2)
-        call_category: 'FIRE' or 'EMS' - filters fireOnly blocks
-    
-    Returns:
-        List of block configs for the specified page
-    """
-    layout = get_print_layout(db)
-    blocks = []
-    
-    for block in layout.get('blocks', []):
-        # Skip disabled blocks
-        if not block.get('enabled', True):
-            continue
-        
-        # Skip if not on requested page
-        if block.get('page') != page:
-            continue
-        
-        # Skip fireOnly blocks for EMS calls
-        if block.get('fireOnly', False) and call_category != 'FIRE':
-            continue
-        
-        blocks.append(block)
-    
-    # Sort by order
-    blocks.sort(key=lambda b: b.get('order', 99))
-    
-    return blocks
