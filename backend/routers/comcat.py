@@ -28,7 +28,10 @@ from models import Incident, Personnel, AuditLog
 # Import ComCat components
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add /opt/runsheet to path (3 levels up from backend/routers/comcat.py)
+_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 try:
     from cad.comcat_seeds import VALID_CATEGORIES, CATEGORY_INFO
