@@ -44,6 +44,22 @@ const CATEGORY_STYLES = {
 
 const CATEGORY_ORDER = ['CALLER', 'TACTICAL', 'OPERATIONS', 'UNIT', 'OTHER'];
 
+// Format ISO timestamp to local display
+const formatReviewTime = (isoString) => {
+  if (!isoString) return null;
+  try {
+    const date = new Date(isoString);
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  } catch {
+    return null;
+  }
+};
+
 export default function ComCatModal() {
   const { 
     showComCatModal, 
@@ -61,6 +77,8 @@ export default function ComCatModal() {
   const [filterReviewOnly, setFilterReviewOnly] = useState(false);
   const [mlAvailable, setMlAvailable] = useState(false);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
+  const [reviewedAt, setReviewedAt] = useState(null);
+  const [reviewedByName, setReviewedByName] = useState(null);
   
   // Fetch comments when modal opens
   useEffect(() => {
@@ -81,6 +99,8 @@ export default function ComCatModal() {
       setComments(data.comments || []);
       setMlAvailable(data.ml_available);
       setConfidenceThreshold(data.confidence_threshold);
+      setReviewedAt(data.officer_reviewed_at);
+      setReviewedByName(data.officer_reviewed_by_name);
       setChanges({});
     } catch (err) {
       console.error('ComCat fetch error:', err);
@@ -219,24 +239,33 @@ export default function ComCatModal() {
         </div>
         
         {/* Stats bar */}
-        {stats && (
-          <div className="px-5 py-2 bg-dark-card border-b border-dark-border flex gap-4 text-xs text-gray-400">
-            <span>ML: {stats.ml_available ? (
-              <span className="text-green-400">Available</span>
-            ) : (
-              <span className="text-red-400">Unavailable</span>
-            )}</span>
-            {stats.ml_available && (
+        <div className="px-5 py-2 bg-dark-card border-b border-dark-border flex justify-between items-center text-xs">
+          <div className="flex gap-4 text-gray-400">
+            {stats && (
               <>
-                <span>Training: {stats.total_training_examples} examples</span>
-                <span>Officer corrections: {stats.officer_examples}</span>
-                {stats.cv_accuracy && (
-                  <span>Accuracy: {(stats.cv_accuracy * 100).toFixed(1)}%</span>
+                <span>ML: {stats.ml_available ? (
+                  <span className="text-green-400">Available</span>
+                ) : (
+                  <span className="text-red-400">Unavailable</span>
+                )}</span>
+                {stats.ml_available && (
+                  <>
+                    <span>Accuracy: {stats.cv_accuracy ? `${(stats.cv_accuracy * 100).toFixed(0)}%` : 'N/A'}</span>
+                  </>
                 )}
               </>
             )}
           </div>
-        )}
+          <div className="text-right">
+            {reviewedAt ? (
+              <span className="text-green-400">
+                ✓ Reviewed by {reviewedByName || 'Officer'} • {formatReviewTime(reviewedAt)}
+              </span>
+            ) : (
+              <span className="text-amber-400">⚠️ Not yet reviewed</span>
+            )}
+          </div>
+        </div>
         
         {/* Filter toggle */}
         <div className="px-5 py-2 border-b border-dark-border flex justify-between items-center">

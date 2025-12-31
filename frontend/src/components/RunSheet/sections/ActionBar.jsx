@@ -77,20 +77,20 @@ export default function ActionBar() {
     const relevantComments = comments.filter(c => !c.is_noise);
     if (!relevantComments.length) return null;
     
-    const officerCount = relevantComments.filter(c => c.category_source === 'OFFICER').length;
-    const total = relevantComments.length;
+    const officerReviewedAt = formData.cad_event_comments?.officer_reviewed_at;
     
-    if (officerCount === 0) return 'pending';
-    if (officerCount < total) return 'partial';
-    
-    // All validated - check if trained
-    if (modelTrainedAt) {
-      const officerReviewedAt = formData.cad_event_comments?.officer_reviewed_at;
-      if (officerReviewedAt && modelTrainedAt > officerReviewedAt) {
-        return 'trained';
-      }
+    // Status is based on whether officer clicked "Mark Reviewed"
+    // NOT on whether every comment was manually corrected
+    if (!officerReviewedAt) {
+      return 'pending';  // Officer hasn't reviewed yet
     }
-    return 'validated';
+    
+    // Officer reviewed - check if model has been trained since
+    if (modelTrainedAt && modelTrainedAt > officerReviewedAt) {
+      return 'trained';  // Reviewed AND model includes these corrections
+    }
+    
+    return 'validated';  // Reviewed, waiting for retrain
   };
   
   const comcatStatus = hasEventComments ? getComCatStatus() : null;
@@ -108,17 +108,15 @@ export default function ActionBar() {
     };
     
     const colors = {
-      trained: '#8b5cf6',
-      validated: '#22c55e',
-      partial: '#f59e0b',
-      pending: '#6b7280'
+      trained: '#8b5cf6',    // purple - in model
+      validated: '#22c55e',  // green - reviewed
+      pending: '#6b7280'     // gray - needs review
     };
     
     const titles = {
-      trained: 'Validated & ML trained',
-      validated: 'Validated by officer',
-      partial: 'Partially reviewed',
-      pending: 'Needs review'
+      trained: 'Reviewed & included in ML model',
+      validated: 'Reviewed by officer (retrain to include)',
+      pending: 'Comments need officer review'
     };
     
     return <span style={{ ...dotStyle, backgroundColor: colors[status] }} title={titles[status]} />;

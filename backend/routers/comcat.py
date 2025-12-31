@@ -120,6 +120,9 @@ class IncidentCommentsResponse(BaseModel):
     categories_available: List[Dict[str, Any]]
     ml_available: bool
     confidence_threshold: float
+    officer_reviewed_at: Optional[str] = None
+    officer_reviewed_by: Optional[int] = None
+    officer_reviewed_by_name: Optional[str] = None
 
 
 class TrainingStatsResponse(BaseModel):
@@ -256,6 +259,14 @@ def get_incident_comments(incident_id: int, db: Session = Depends(get_db)):
             "color": info.get("color", "#6B7280")
         })
     
+    # Get reviewer name if reviewed
+    reviewer_name = None
+    reviewer_id = cad_event_comments.get("officer_reviewed_by")
+    if reviewer_id:
+        reviewer = db.query(Personnel).filter(Personnel.id == reviewer_id).first()
+        if reviewer:
+            reviewer_name = f"{reviewer.first_name} {reviewer.last_name}"
+    
     return IncidentCommentsResponse(
         incident_id=incident.id,
         incident_number=incident.internal_incident_number,
@@ -263,7 +274,10 @@ def get_incident_comments(incident_id: int, db: Session = Depends(get_db)):
         review_count=review_count,
         categories_available=categories_available,
         ml_available=COMCAT_AVAILABLE and SKLEARN_AVAILABLE,
-        confidence_threshold=CONFIDENCE_THRESHOLD
+        confidence_threshold=CONFIDENCE_THRESHOLD,
+        officer_reviewed_at=cad_event_comments.get("officer_reviewed_at"),
+        officer_reviewed_by=reviewer_id,
+        officer_reviewed_by_name=reviewer_name
     )
 
 
@@ -343,18 +357,19 @@ def update_comment_categories(
     if updated_count > 0:
         # Update the JSONB field - must use flag_modified for SQLAlchemy to detect change
         cad_event_comments["comments"] = comments
-        cad_event_comments["officer_reviewed_at"] = datetime.now(timezone.utc).isoformat()  # Track when reviewed
+        cad_event_comments["officer_reviewed_at"] = datetime.now(timezone.utc).isoformat()
+        cad_event_comments["officer_reviewed_by"] = request.edited_by  # Store who reviewed
         incident.cad_event_comments = cad_event_comments
         flag_modified(incident, "cad_event_comments")
         incident.updated_at = datetime.now(timezone.utc)
         
-        # Log the change
+        # Audit log is the authoritative record
         log_comcat_audit(
             db=db,
             action="COMCAT_CORRECTION",
             incident=incident,
             edited_by_id=request.edited_by,
-            summary=f"Officer corrected {updated_count} comment categories",
+            summary=f"Corrected {updated_count} comment categories",
             details={"changes": changes}
         )
         
@@ -362,6 +377,7 @@ def update_comment_categories(
     elif request.edited_by:
         # No changes but officer clicked "Mark Reviewed" - still update timestamp
         cad_event_comments["officer_reviewed_at"] = datetime.now(timezone.utc).isoformat()
+        cad_event_comments["officer_reviewed_by"] = request.edited_by
         incident.cad_event_comments = cad_event_comments
         flag_modified(incident, "cad_event_comments")
         incident.updated_at = datetime.now(timezone.utc)
@@ -371,7 +387,7 @@ def update_comment_categories(
             action="COMCAT_REVIEWED",
             incident=incident,
             edited_by_id=request.edited_by,
-            summary="Officer marked comments as reviewed (no changes)",
+            summary="Marked comments as reviewed (no corrections needed)",
             details=None
         )
         
