@@ -174,6 +174,7 @@ const initialFormData = {
   neris_rr_cooking_suppression: null,
   neris_rr_cooking_suppression_type: [],
   cad_units: [],
+  cad_event_comments: null,
   // Chiefs Report Fields
   property_value_at_risk: 0,
   fire_damages_estimate: 0,
@@ -184,6 +185,8 @@ const initialFormData = {
   updated_at: null,
   closed_at: null,
   neris_submitted_at: null,
+  // CAD Event Comments (for ComCat)
+  cad_event_comments: null,
 };
 
 export function RunSheetProvider({ incident, onSave, onClose, children }) {
@@ -205,6 +208,7 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
   const [showIncidentTypeModal, setShowIncidentTypeModal] = useState(false);
   const [showLocationUseModal, setShowLocationUseModal] = useState(false);
   const [showActionsModal, setShowActionsModal] = useState(false);
+  const [showComCatModal, setShowComCatModal] = useState(false);
   
   // Audit log
   const [auditLog, setAuditLog] = useState([]);
@@ -420,6 +424,7 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
           neris_rr_cooking_suppression: incident.neris_rr_cooking_suppression || null,
           neris_rr_cooking_suppression_type: incident.neris_rr_cooking_suppression_type || [],
           cad_units: incident.cad_units || [],
+          cad_event_comments: incident.cad_event_comments || null,
           // Chiefs Report Fields
           property_value_at_risk: incident.property_value_at_risk ?? 0,
           fire_damages_estimate: incident.fire_damages_estimate ?? 0,
@@ -430,6 +435,8 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
           updated_at: incident.updated_at,
           closed_at: incident.closed_at,
           neris_submitted_at: incident.neris_submitted_at,
+          // CAD Event Comments (for ComCat)
+          cad_event_comments: incident.cad_event_comments || null,
         });
         
         if (incident.personnel_assignments) {
@@ -792,6 +799,8 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
     setShowLocationUseModal,
     showActionsModal,
     setShowActionsModal,
+    showComCatModal,
+    setShowComCatModal,
     
     // Audit log
     auditLog,

@@ -15,7 +15,7 @@ import {
   OfficerSection,
 } from './sections';
 import { NERISSection } from './neris';
-import { CADDataModal, RestorePreviewModal } from './modals';
+import { CADDataModal, RestorePreviewModal, ComCatModal } from './modals';
 
 function RunSheetContent() {
   const { loading, formData } = useRunSheet();
@@ -73,6 +73,7 @@ function RunSheetContent() {
       {/* Modals */}
       <CADDataModal />
       <RestorePreviewModal />
+      <ComCatModal />
     </div>
   );
 }

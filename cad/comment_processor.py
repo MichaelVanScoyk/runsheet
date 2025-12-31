@@ -1,23 +1,33 @@
 """
 CAD Event Comment Processor for RunSheet
 Created: 2025-12-31
+Updated: 2025-12-31 - Added ML integration (ComCat v2.0)
 
 Parses Chester County CAD event comments to:
 1. Extract all comments with metadata (operator type, category)
 2. Detect potential tactical timestamps
 3. Suggest NERIS field mappings (does NOT auto-populate)
 4. Extract unit crew counts for reference
+5. ML-assisted categorization with confidence scores
 
 The processor is intentionally conservative - it DETECTS and SUGGESTS
 but does not auto-populate NERIS timestamp fields. Officers confirm
 mappings via the RunSheet form UI.
+
+ComCat (Comment Categorizer) uses a hybrid approach:
+- Pattern matching first (high confidence, deterministic)
+- ML fallback for unmatched comments (Random Forest with TF-IDF)
+- Officer corrections feed back into ML training data
 """
 
 import re
+import logging
 from datetime import datetime, date
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from dataclasses import dataclass, field, asdict
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -26,14 +36,23 @@ from bs4 import BeautifulSoup
 
 @dataclass
 class ParsedComment:
-    """A single parsed event comment"""
-    time: str                           # Raw time string from CAD (HH:MM:SS)
-    time_iso: Optional[str] = None      # ISO format with date
-    operator: str = ""                  # Operator code (ct08, fd17, $ENG38)
-    operator_type: str = "UNKNOWN"      # CALLTAKER, DISPATCHER, UNIT, SYSTEM
-    text: str = ""                      # Comment text
-    is_noise: bool = False              # System noise to filter from reports
-    category: str = "UNCATEGORIZED"     # CALLER, TACTICAL, OPERATIONS, UNIT, SYSTEM
+    """
+    A single parsed event comment with categorization metadata.
+    
+    ComCat v2.0 adds category_source and category_confidence to track
+    how the category was assigned and enable ML training.
+    """
+    time: str                                    # Raw time string from CAD (HH:MM:SS)
+    time_iso: Optional[str] = None               # ISO format with date
+    operator: str = ""                           # Operator code (ct08, fd17, $ENG38)
+    operator_type: str = "UNKNOWN"               # CALLTAKER, DISPATCHER, UNIT, SYSTEM
+    text: str = ""                               # Comment text
+    is_noise: bool = False                       # System noise to filter from reports
+    category: str = "OTHER"                      # CALLER, TACTICAL, OPERATIONS, UNIT, OTHER
+    
+    # ComCat v2.0 fields for ML training
+    category_source: str = "PATTERN"             # PATTERN, ML, OFFICER
+    category_confidence: Optional[float] = None  # 0.0-1.0 for ML, None for PATTERN/OFFICER
 
 
 @dataclass
@@ -68,7 +87,7 @@ class ProcessedComments:
     detected_timestamps: List[DetectedTimestamp] = field(default_factory=list)
     unit_crew_counts: List[UnitCrewCount] = field(default_factory=list)
     parsed_at: str = ""
-    parser_version: str = "1.0"
+    parser_version: str = "2.0"  # Updated for ComCat ML integration
     incident_date: Optional[str] = None
     
     def to_dict(self) -> Dict:
@@ -106,37 +125,51 @@ NOISE_PATTERNS = [
     re.compile(r'ProQA.*Case (Entry|Exit)', re.IGNORECASE),
 ]
 
-# Category detection patterns
+# Category detection patterns (high confidence rules)
+# These take precedence over ML predictions
 CATEGORY_PATTERNS = {
     "CALLER": [
         re.compile(r'^(CALLER|COMPLAINANT|RP\s)', re.IGNORECASE),
         re.compile(r'(HOUSE ON FIRE|SMOKE|FLAMES|FIRE IN|BURNING)', re.IGNORECASE),
         re.compile(r'(EVERYONE.*OUT|EVACUATED|NO ONE.*INSIDE)', re.IGNORECASE),
+        re.compile(r'(DIFFICULTY BREATHING|CHEST PAIN|UNCONSCIOUS|NOT BREATHING)', re.IGNORECASE),
+        re.compile(r'(PERSON TRAPPED|ENTRAPMENT|WIRES DOWN|GAS LEAK)', re.IGNORECASE),
     ],
     "TACTICAL": [
         re.compile(r'(Command|CMD)\s*(Established|EST)', re.IGNORECASE),
         re.compile(r'Fire Under Control|FUC\b', re.IGNORECASE),
-        re.compile(r'(Primary|Secondary).*Search', re.IGNORECASE),
-        re.compile(r'\bPAR\b|Accountability', re.IGNORECASE),
+        re.compile(r'(Primary|Secondary).*Search.*Complete', re.IGNORECASE),
+        re.compile(r'\bPAR\b.*Complete|PARS\s*COMPLETE', re.IGNORECASE),
+        re.compile(r'\bPAR\b\s*(CHECK|STARTED)|Accountability', re.IGNORECASE),
         re.compile(r'Evac.*Order|Evacuat', re.IGNORECASE),
         re.compile(r'\bMAYDAY\b', re.IGNORECASE),
-        re.compile(r'\bRIT\b', re.IGNORECASE),
-        re.compile(r'All Clear', re.IGNORECASE),
+        re.compile(r'\bRIT\b.*(Activated|Deployed)', re.IGNORECASE),
+        re.compile(r'(Primary|Secondary)?\s*All Clear', re.IGNORECASE),
         re.compile(r'Fire Incident Command Times', re.IGNORECASE),
+        re.compile(r'(DEFENSIVE|OFFENSIVE)\s*OPERATIONS', re.IGNORECASE),
+        re.compile(r'ASSUMING COMMAND|COMMAND TRANSFERRED', re.IGNORECASE),
+        re.compile(r'LOSS STOP', re.IGNORECASE),
+        re.compile(r'FIRE MARSHAL|INVESTIGAT', re.IGNORECASE),
     ],
     "OPERATIONS": [
         re.compile(r'HYDRANT|WATER SUPPLY', re.IGNORECASE),
         re.compile(r'OPERATIONS.*\d|OPS\s*\d', re.IGNORECASE),
         re.compile(r'LINES?\s*(IN|STRETCHED|ADVANCING)', re.IGNORECASE),
-        re.compile(r'INTERIOR|EXTERIOR|DEFENSIVE|OFFENSIVE', re.IGNORECASE),
+        re.compile(r'INTERIOR|EXTERIOR', re.IGNORECASE),
         re.compile(r'OVERHAUL|SALVAGE', re.IGNORECASE),
         re.compile(r'VENTILAT', re.IGNORECASE),
-        re.compile(r'ROOF|LADDER|TRUCK', re.IGNORECASE),
+        re.compile(r'LADDER|AERIAL', re.IGNORECASE),
+        re.compile(r'UTILITIES.*(SECURED|OFF)', re.IGNORECASE),
+        re.compile(r'PECO', re.IGNORECASE),
+        re.compile(r'REHAB', re.IGNORECASE),
+        re.compile(r'EXTENSION|HOT SPOTS', re.IGNORECASE),
+        re.compile(r'(PRIMARY|SECONDARY)\s*SEARCH(?!.*COMPLETE)', re.IGNORECASE),
     ],
     "UNIT": [
         re.compile(r'Enroute with a crew of', re.IGNORECASE),
-        re.compile(r'On Scene|Arrived|Responding', re.IGNORECASE),
-        re.compile(r'Available|Clear|In Service', re.IGNORECASE),
+        re.compile(r'(On Scene|Arrived|Responding)\b', re.IGNORECASE),
+        re.compile(r'(Available|Clear|In Service)\b', re.IGNORECASE),
+        re.compile(r'STAGING|STANDBY', re.IGNORECASE),
     ],
 }
 
@@ -288,6 +321,62 @@ CREW_COUNT_PATTERN = re.compile(r'Enroute with a crew of\s*(\d+)', re.IGNORECASE
 
 
 # =============================================================================
+# ML MODEL INTEGRATION
+# =============================================================================
+
+# ML model - lazy loaded
+_ml_model = None
+_ml_available = False
+
+
+def _get_ml_model():
+    """
+    Lazy load the ML model.
+    Returns None if ML is not available (scikit-learn not installed).
+    """
+    global _ml_model, _ml_available
+    
+    if _ml_model is not None:
+        return _ml_model
+    
+    try:
+        from .comcat_model import get_model
+        _ml_model = get_model()
+        _ml_available = _ml_model.is_trained
+        if _ml_available:
+            logger.info("ComCat ML model loaded successfully")
+        else:
+            logger.warning("ComCat ML model not trained - using patterns only")
+    except ImportError as e:
+        logger.warning(f"ComCat ML not available: {e}")
+        _ml_available = False
+    except Exception as e:
+        logger.error(f"Failed to load ComCat ML model: {e}")
+        _ml_available = False
+    
+    return _ml_model
+
+
+def _predict_category_ml(text: str) -> Tuple[Optional[str], Optional[float]]:
+    """
+    Get ML prediction for comment category.
+    
+    Returns:
+        (category, confidence) or (None, None) if ML unavailable
+    """
+    model = _get_ml_model()
+    if model is None or not _ml_available:
+        return None, None
+    
+    try:
+        category, confidence = model.predict(text)
+        return category, confidence
+    except Exception as e:
+        logger.error(f"ML prediction failed: {e}")
+        return None, None
+
+
+# =============================================================================
 # PROCESSOR CLASS
 # =============================================================================
 
@@ -295,14 +384,25 @@ class CommentProcessor:
     """
     Processes CAD event comments for RunSheet.
     
+    ComCat v2.0 uses hybrid categorization:
+    1. Pattern matching (deterministic, high confidence)
+    2. ML fallback (Random Forest with confidence scores)
+    
     Usage:
         processor = CommentProcessor()
         result = processor.process_clear_html(raw_html, incident_date)
         # result.to_dict() -> JSONB for cad_event_comments column
     """
     
-    def __init__(self):
+    def __init__(self, use_ml: bool = True):
+        """
+        Initialize processor.
+        
+        Args:
+            use_ml: Whether to use ML for unmatched comments (default: True)
+        """
         self.result = ProcessedComments()
+        self.use_ml = use_ml
     
     def process_clear_html(self, html: str, incident_date: Optional[date] = None) -> ProcessedComments:
         """
@@ -350,6 +450,9 @@ class CommentProcessor:
                     if not text:
                         continue
                     
+                    # Get category with source tracking
+                    category, source, confidence = self._categorize_comment(text, operator)
+                    
                     comment = ParsedComment(
                         time=time_str,
                         time_iso=self._to_iso_time(time_str, incident_date),
@@ -357,10 +460,45 @@ class CommentProcessor:
                         operator_type=self._detect_operator_type(operator),
                         text=text,
                         is_noise=self._is_noise(text),
-                        category=self._detect_category(text, operator)
+                        category=category,
+                        category_source=source,
+                        category_confidence=confidence
                     )
                     
                     self.result.comments.append(comment)
+    
+    def _categorize_comment(self, text: str, operator: str) -> Tuple[str, str, Optional[float]]:
+        """
+        Categorize a comment using pattern matching first, then ML fallback.
+        
+        Returns:
+            (category, source, confidence)
+            - source: "PATTERN" or "ML"
+            - confidence: float for ML, None for PATTERN
+        """
+        # Unit status updates (operator-based rule)
+        if operator.startswith('$'):
+            return "UNIT", "PATTERN", None
+        
+        # Check against category patterns (high confidence)
+        for category, patterns in CATEGORY_PATTERNS.items():
+            for pattern in patterns:
+                if pattern.search(text):
+                    return category, "PATTERN", None
+        
+        # Calltaker comments without pattern match default to CALLER
+        # This is still a pattern-based rule
+        if self._detect_operator_type(operator) == "CALLTAKER":
+            return "CALLER", "PATTERN", None
+        
+        # No pattern match - try ML if enabled
+        if self.use_ml:
+            ml_category, ml_confidence = _predict_category_ml(text)
+            if ml_category is not None:
+                return ml_category, "ML", ml_confidence
+        
+        # Fallback to OTHER
+        return "OTHER", "PATTERN", None
     
     def _detect_timestamps(self):
         """Scan comments for tactical timestamps and suggest NERIS mappings"""
@@ -424,24 +562,6 @@ class CommentProcessor:
                 return True
         return False
     
-    def _detect_category(self, text: str, operator: str) -> str:
-        """Categorize comment for display grouping"""
-        # Unit status updates
-        if operator.startswith('$'):
-            return "UNIT"
-            
-        # Check against category patterns
-        for category, patterns in CATEGORY_PATTERNS.items():
-            for pattern in patterns:
-                if pattern.search(text):
-                    return category
-        
-        # Calltaker comments are usually caller info
-        if self._detect_operator_type(operator) == "CALLTAKER":
-            return "CALLER"
-            
-        return "UNCATEGORIZED"
-    
     def _to_iso_time(self, time_str: str, incident_date: Optional[date]) -> Optional[str]:
         """Convert HH:MM:SS to ISO format with date"""
         if not time_str or not incident_date:
@@ -478,18 +598,19 @@ class CommentProcessor:
 # HELPER FUNCTIONS
 # =============================================================================
 
-def process_cad_clear(html: str, incident_date: Optional[date] = None) -> Dict[str, Any]:
+def process_cad_clear(html: str, incident_date: Optional[date] = None, use_ml: bool = True) -> Dict[str, Any]:
     """
     Convenience function to process CAD clear HTML and return dict.
     
     Args:
         html: Raw HTML from CAD Clear Report
         incident_date: Date of incident
+        use_ml: Whether to use ML for categorization (default: True)
         
     Returns:
         Dictionary ready for JSONB storage in cad_event_comments
     """
-    processor = CommentProcessor()
+    processor = CommentProcessor(use_ml=use_ml)
     result = processor.process_clear_html(html, incident_date)
     return result.to_dict()
 
@@ -526,20 +647,48 @@ def get_comments_by_category(processed: Dict[str, Any]) -> Dict[str, List[Dict]]
         "TACTICAL": [],
         "OPERATIONS": [],
         "UNIT": [],
-        "UNCATEGORIZED": []
+        "OTHER": []
     }
     
     for comment in processed.get("comments", []):
         if comment.get("is_noise"):
             continue
-        category = comment.get("category", "UNCATEGORIZED")
+        category = comment.get("category", "OTHER")
+        # Map legacy "UNCATEGORIZED" to "OTHER"
+        if category == "UNCATEGORIZED":
+            category = "OTHER"
         if category in categories:
             categories[category].append(comment)
         else:
-            categories["UNCATEGORIZED"].append(comment)
+            categories["OTHER"].append(comment)
     
     # Remove empty categories
     return {k: v for k, v in categories.items() if v}
+
+
+def get_comments_needing_review(processed: Dict[str, Any], threshold: float = 0.50) -> List[Dict]:
+    """
+    Get ML-categorized comments with low confidence that need officer review.
+    
+    Args:
+        processed: The cad_event_comments JSONB data
+        threshold: Confidence threshold below which to flag for review
+        
+    Returns:
+        List of comment dicts needing review
+    """
+    comments = processed.get("comments", [])
+    review_needed = []
+    
+    for comment in comments:
+        if comment.get("is_noise"):
+            continue
+        if comment.get("category_source") == "ML":
+            confidence = comment.get("category_confidence", 0)
+            if confidence is not None and confidence < threshold:
+                review_needed.append(comment)
+    
+    return review_needed
 
 
 def get_pending_timestamp_mappings(processed: Dict[str, Any]) -> List[Dict]:
@@ -572,6 +721,36 @@ def get_high_confidence_suggestions(processed: Dict[str, Any]) -> List[Dict]:
     return [t for t in timestamps if t.get("confidence") == "HIGH"]
 
 
+def get_training_data_from_comments(processed: Dict[str, Any]) -> List[Tuple[str, str]]:
+    """
+    Extract training data from comments for ML model retraining.
+    
+    Only includes comments categorized by PATTERN or OFFICER (ground truth),
+    not ML predictions (would be circular).
+    
+    Args:
+        processed: The cad_event_comments JSONB data
+        
+    Returns:
+        List of (text, category) tuples for training
+    """
+    training_data = []
+    
+    for comment in processed.get("comments", []):
+        if comment.get("is_noise"):
+            continue
+        
+        source = comment.get("category_source", "PATTERN")
+        # Only use PATTERN and OFFICER as ground truth
+        if source in ("PATTERN", "OFFICER"):
+            text = comment.get("text", "")
+            category = comment.get("category", "OTHER")
+            if text and category:
+                training_data.append((text, category))
+    
+    return training_data
+
+
 # =============================================================================
 # COMPATIBILITY FUNCTION FOR CAD LISTENER
 # =============================================================================
@@ -579,7 +758,8 @@ def get_high_confidence_suggestions(processed: Dict[str, Any]) -> List[Dict]:
 def process_clear_report_comments(
     event_comments: List[Dict[str, str]],
     incident_date: str,
-    timezone: str = 'America/New_York'
+    timezone: str = 'America/New_York',
+    use_ml: bool = True
 ) -> Dict[str, Any]:
     """
     Process pre-parsed event comments from CAD clear report.
@@ -591,6 +771,7 @@ def process_clear_report_comments(
         event_comments: List of comment dicts from cad_parser
         incident_date: Date string (YYYY-MM-DD)
         timezone: IANA timezone string
+        use_ml: Whether to use ML for categorization (default: True)
         
     Returns:
         Dict with:
@@ -654,20 +835,10 @@ def process_clear_report_comments(
                 is_noise = True
                 break
         
-        # Categorize
-        category = "UNCATEGORIZED"
-        if operator.startswith('$'):
-            category = "UNIT"
-        else:
-            for cat, patterns in CATEGORY_PATTERNS.items():
-                for pattern in patterns:
-                    if pattern.search(text):
-                        category = cat
-                        break
-                if category != "UNCATEGORIZED":
-                    break
-            if category == "UNCATEGORIZED" and operator_type == "CALLTAKER":
-                category = "CALLER"
+        # Categorize using hybrid approach
+        category, category_source, category_confidence = _categorize_comment_standalone(
+            text, operator, operator_type, use_ml
+        )
         
         parsed = ParsedComment(
             time=time_str,
@@ -676,7 +847,9 @@ def process_clear_report_comments(
             operator_type=operator_type,
             text=text,
             is_noise=is_noise,
-            category=category
+            category=category,
+            category_source=category_source,
+            category_confidence=category_confidence
         )
         result.comments.append(parsed)
     
@@ -741,3 +914,39 @@ def process_clear_report_comments(
         'tactical_timestamps': tactical_timestamps,
         'crew_counts': crew_counts,
     }
+
+
+def _categorize_comment_standalone(
+    text: str, 
+    operator: str, 
+    operator_type: str,
+    use_ml: bool = True
+) -> Tuple[str, str, Optional[float]]:
+    """
+    Standalone categorization function for use outside CommentProcessor class.
+    
+    Returns:
+        (category, source, confidence)
+    """
+    # Unit status updates (operator-based rule)
+    if operator.startswith('$'):
+        return "UNIT", "PATTERN", None
+    
+    # Check against category patterns (high confidence)
+    for category, patterns in CATEGORY_PATTERNS.items():
+        for pattern in patterns:
+            if pattern.search(text):
+                return category, "PATTERN", None
+    
+    # Calltaker comments without pattern match default to CALLER
+    if operator_type == "CALLTAKER":
+        return "CALLER", "PATTERN", None
+    
+    # No pattern match - try ML if enabled
+    if use_ml:
+        ml_category, ml_confidence = _predict_category_ml(text)
+        if ml_category is not None:
+            return ml_category, "ML", ml_confidence
+    
+    # Fallback to OTHER
+    return "OTHER", "PATTERN", None

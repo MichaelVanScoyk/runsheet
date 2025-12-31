@@ -12,10 +12,12 @@ export default function ActionBar() {
     handleCloseIncident, 
     handleSave,
     setShowCadModal,
+    setShowComCatModal,
     handleRestorePreview
   } = useRunSheet();
   
   const hasCADData = incident && (formData.cad_raw_dispatch || formData.cad_raw_clear);
+  const hasEventComments = formData.cad_event_comments?.comments?.length > 0;
   
   const handlePrint = () => {
     if (incident?.id) {
@@ -73,6 +75,16 @@ export default function ActionBar() {
             >
               View CAD
             </button>
+            {hasEventComments && (
+              <button 
+                type="button" 
+                className="btn btn-secondary"
+                onClick={() => setShowComCatModal(true)}
+                title="Review and categorize event comments"
+              >
+                Comments
+              </button>
+            )}
             <button 
               type="button" 
               className="btn btn-secondary"

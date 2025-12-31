@@ -8,12 +8,14 @@ This script processes all incidents with cad_raw_clear data and populates:
 
 Run from server:
     cd /opt/runsheet
-    python3 -m cad.backfill_event_comments
+    ./runsheet_env/bin/python -m cad.backfill_event_comments
 
 Or with options:
     python3 -m cad.backfill_event_comments --dry-run          # Preview changes
     python3 -m cad.backfill_event_comments --incident F250001 # Single incident
     python3 -m cad.backfill_event_comments --limit 10         # Process 10 incidents
+    python3 -m cad.backfill_event_comments --force            # Reprocess all incidents
+    python3 -m cad.backfill_event_comments --no-ml            # Skip ML categorization
 """
 
 import argparse
@@ -50,7 +52,7 @@ def get_incidents_to_process(
     conn,
     incident_number: Optional[str] = None,
     limit: Optional[int] = None,
-    only_missing: bool = True
+    force: bool = False
 ) -> List[Dict]:
     """
     Get incidents that need event comments backfilled.
@@ -69,7 +71,7 @@ def get_incidents_to_process(
             conditions.append("internal_incident_number = %s")
             params.append(incident_number)
         
-        if only_missing:
+        if not force:
             conditions.append("(cad_event_comments IS NULL OR cad_event_comments = '{}'::jsonb)")
         
         where_clause = " AND ".join(conditions)
@@ -99,7 +101,7 @@ def get_incidents_to_process(
         return cur.fetchall()
 
 
-def process_incident(incident: Dict, dry_run: bool = False) -> Dict[str, Any]:
+def process_incident(incident: Dict, dry_run: bool = False, use_ml: bool = True) -> Dict[str, Any]:
     """
     Process a single incident's raw CAD clear data.
     
@@ -150,7 +152,8 @@ def process_incident(incident: Dict, dry_run: bool = False) -> Dict[str, Any]:
         processed = process_clear_report_comments(
             event_comments,
             incident_date_str,
-            CAD_TIMEZONE
+            CAD_TIMEZONE,
+            use_ml=use_ml
         )
         
         cad_event_comments = processed.get('cad_event_comments', {})
@@ -221,7 +224,9 @@ def run_backfill(
     dry_run: bool = False,
     incident_number: Optional[str] = None,
     limit: Optional[int] = None,
-    verbose: bool = False
+    verbose: bool = False,
+    force: bool = False,
+    use_ml: bool = True
 ):
     """
     Run the backfill process.
@@ -237,6 +242,9 @@ def run_backfill(
     try:
         print(f"{'[DRY RUN] ' if dry_run else ''}Starting event comments backfill...")
         print(f"Timezone: {CAD_TIMEZONE}")
+        print(f"ML Categorization: {'Enabled' if use_ml else 'Disabled'}")
+        if force:
+            print("Force mode: Reprocessing ALL incidents (not just missing)")
         print()
         
         # Get incidents to process
@@ -244,7 +252,7 @@ def run_backfill(
             conn,
             incident_number=incident_number,
             limit=limit,
-            only_missing=True
+            force=force
         )
         
         print(f"Found {len(incidents)} incidents to process")
@@ -264,7 +272,7 @@ def run_backfill(
         }
         
         for i, incident in enumerate(incidents, 1):
-            result = process_incident(incident, dry_run=dry_run)
+            result = process_incident(incident, dry_run=dry_run, use_ml=use_ml)
             
             if result['success']:
                 stats['success'] += 1
@@ -329,6 +337,16 @@ def main():
         action='store_true',
         help='Show detailed progress for each incident'
     )
+    parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Reprocess all incidents, not just those with missing comments'
+    )
+    parser.add_argument(
+        '--no-ml',
+        action='store_true',
+        help='Disable ML categorization (use patterns only)'
+    )
     
     args = parser.parse_args()
     
@@ -336,7 +354,9 @@ def main():
         dry_run=args.dry_run,
         incident_number=args.incident,
         limit=args.limit,
-        verbose=args.verbose
+        verbose=args.verbose,
+        force=args.force,
+        use_ml=not args.no_ml
     )
 
 
