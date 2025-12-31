@@ -901,6 +901,7 @@ async def get_incident(
         "cad_raw_dispatch": incident.cad_raw_dispatch,
         "cad_raw_updates": incident.cad_raw_updates or [],
         "cad_raw_clear": incident.cad_raw_clear,
+        "cad_event_comments": incident.cad_event_comments,
         
         # Timestamps - ALL UTC with Z suffix
         "created_at": format_utc_iso(incident.created_at),
