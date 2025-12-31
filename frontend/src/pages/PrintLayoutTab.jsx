@@ -180,6 +180,10 @@ export default function PrintLayoutTab() {
             <span className="text-xs bg-blue-600 text-white px-1 rounded">float</span>
           )}
           
+          {block.headerPosition && (
+            <span className="text-xs bg-cyan-600 text-white px-1 rounded">hdr</span>
+          )}
+          
           {/* Move button */}
           {!block.locked && (
             <button
@@ -296,7 +300,7 @@ export default function PrintLayoutTab() {
                 </button>
               </div>
               
-              {/* Placeholder for future options */}
+              {/* Hide Label */}
               <div>
                 <label className="text-xs text-gray-400 block mb-1">Hide Label</label>
                 <button
@@ -311,6 +315,25 @@ export default function PrintLayoutTab() {
                 </button>
               </div>
             </div>
+            
+            {/* Row 3: Special options for times_group */}
+            {block.id === 'times_group' && (
+              <div className="grid grid-cols-4 gap-2 mt-2">
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-400 block mb-1">Position in Header</label>
+                  <button
+                    onClick={() => updateBlock(block.id, { headerPosition: !block.headerPosition })}
+                    className={`w-full px-2 py-1 rounded text-sm ${
+                      block.headerPosition 
+                        ? 'bg-cyan-600 text-white' 
+                        : 'bg-gray-700 border border-gray-600 text-gray-400'
+                    }`}
+                  >
+                    {block.headerPosition ? 'In Header (above line)' : 'Below Header'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

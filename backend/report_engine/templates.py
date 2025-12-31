@@ -67,6 +67,18 @@ def generate_css(branding: dict) -> str:
             right: 0;
         }}
         
+        /* Header-positioned elements (like times box in header) */
+        .header-wrapper {{
+            position: relative;
+        }}
+        
+        .header-position {{
+            position: absolute;
+            top: 0;
+            right: 0;
+            z-index: 10;
+        }}
+        
         /* Header styles */
         .header-classic {{
             border-bottom: 2px {border_style} {primary};

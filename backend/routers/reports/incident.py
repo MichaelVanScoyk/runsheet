@@ -120,6 +120,9 @@ def _render_page(ctx: RenderContext, blocks: List[dict], branding: dict, is_firs
     parts = []
     rows = get_blocks_by_row(blocks)
     
+    # Find blocks that should be positioned in header
+    header_positioned_blocks = [b for b in blocks if b.get('headerPosition')]
+    
     for row_num in sorted(rows.keys()):
         row_blocks = rows[row_num]
         
@@ -127,7 +130,20 @@ def _render_page(ctx: RenderContext, blocks: List[dict], branding: dict, is_firs
         if row_num == 0 and is_first_page:
             header_block = next((b for b in row_blocks if b.get('id') == 'header'), None)
             if header_block and header_block.get('enabled', True):
-                parts.append(render_header(branding))
+                header_html = render_header(branding)
+                
+                # If there are header-positioned blocks, wrap header with them
+                if header_positioned_blocks:
+                    hp_html_parts = []
+                    for hp_block in header_positioned_blocks:
+                        hp_content = render_field(ctx, hp_block)
+                        if hp_content:
+                            hp_html_parts.append(f'<div class="header-position">{hp_content}</div>')
+                    
+                    hp_html = ''.join(hp_html_parts)
+                    parts.append(f'<div class="header-wrapper">{header_html}{hp_html}</div>')
+                else:
+                    parts.append(header_html)
             continue
         
         # Footer (row 99) - rendered specially
@@ -139,8 +155,13 @@ def _render_page(ctx: RenderContext, blocks: List[dict], branding: dict, is_firs
                     parts.append(footer_html)
             continue
         
+        # Filter out header-positioned blocks from normal rendering
+        normal_row_blocks = [b for b in row_blocks if not b.get('headerPosition')]
+        if not normal_row_blocks:
+            continue
+        
         # Normal rows - use render_row which applies fontSize, bold, labelBold, hideLabel
-        row_html = render_row(ctx, row_blocks)
+        row_html = render_row(ctx, normal_row_blocks)
         if row_html:
             parts.append(row_html)
     
