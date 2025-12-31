@@ -42,7 +42,13 @@ class RenderContext:
                 if diff_seconds > 0:
                     hours = int(diff_seconds // 3600)
                     mins = int((diff_seconds % 3600) // 60)
-                    return f"{hours}h {mins}m" if hours > 0 else f"{mins}m"
+                    secs = int(diff_seconds % 60)
+                    if hours > 0:
+                        return f"{hours}h {mins}m {secs}s"
+                    elif mins > 0:
+                        return f"{mins}m {secs}s"
+                    else:
+                        return f"{secs}s"
             except:
                 pass
         return ''
