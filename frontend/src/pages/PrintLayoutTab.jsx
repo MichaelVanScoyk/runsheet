@@ -26,8 +26,8 @@ export default function PrintLayoutTab() {
   const loadLayout = async () => {
     try {
       setLoading(true);
-      const data = await getPrintLayout();
-      setLayout(data);
+      const res = await getPrintLayout();
+      setLayout(res.data);
       setHasChanges(false);
     } catch (err) {
       setError('Failed to load layout');
