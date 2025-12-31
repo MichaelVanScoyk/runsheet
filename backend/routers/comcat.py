@@ -278,7 +278,26 @@ def update_comment_categories(
     
     Sets category_source to "OFFICER" for manual corrections,
     which becomes ground truth training data for ML.
+    
+    RESTRICTED: Only OFFICER or ADMIN roles can make corrections.
     """
+    # Validate editor has officer/admin role
+    if not request.edited_by:
+        raise HTTPException(
+            status_code=403,
+            detail="Login required to edit comment categories"
+        )
+    
+    editor = db.query(Personnel).filter(Personnel.id == request.edited_by).first()
+    if not editor:
+        raise HTTPException(status_code=403, detail="Invalid editor")
+    
+    if editor.role not in ('OFFICER', 'ADMIN'):
+        raise HTTPException(
+            status_code=403,
+            detail="Only officers and admins can edit comment categories"
+        )
+    
     incident = db.query(Incident).filter(Incident.id == incident_id).first()
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
@@ -324,6 +343,7 @@ def update_comment_categories(
     if updated_count > 0:
         # Update the JSONB field - must use flag_modified for SQLAlchemy to detect change
         cad_event_comments["comments"] = comments
+        cad_event_comments["officer_reviewed_at"] = datetime.now(timezone.utc).isoformat()  # Track when reviewed
         incident.cad_event_comments = cad_event_comments
         flag_modified(incident, "cad_event_comments")
         incident.updated_at = datetime.now(timezone.utc)

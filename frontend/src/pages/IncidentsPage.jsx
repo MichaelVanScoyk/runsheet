@@ -142,6 +142,33 @@ function IncidentsPage() {
     return null;
   };
 
+  // Get ComCat status dot for Status column (FIRE only)
+  const getComCatStatusDot = (status) => {
+    if (!status) return null;
+    
+    const dotStyle = {
+      display: 'inline-block',
+      width: '8px',
+      height: '8px',
+      borderRadius: '50%',
+      marginLeft: '6px',
+      cursor: 'help'
+    };
+    
+    switch (status) {
+      case 'trained':
+        return <span style={{ ...dotStyle, backgroundColor: '#8b5cf6' }} title="Comments validated & ML trained" />;
+      case 'validated':
+        return <span style={{ ...dotStyle, backgroundColor: '#22c55e' }} title="Comments validated by officer" />;
+      case 'partial':
+        return <span style={{ ...dotStyle, backgroundColor: '#f59e0b' }} title="Comments partially reviewed" />;
+      case 'pending':
+        return <span style={{ ...dotStyle, backgroundColor: '#6b7280' }} title="Comments need review" />;
+      default:
+        return null;
+    }
+  };
+
   // Count by category
   const fireCounts = incidents.filter(i => i.call_category === 'FIRE').length;
   const emsCounts = incidents.filter(i => i.call_category === 'EMS').length;
@@ -275,6 +302,7 @@ function IncidentsPage() {
                       <span className={`badge badge-${i.status?.toLowerCase()}`}>
                         {i.status}
                       </span>
+                      {getComCatStatusDot(i.comcat_status)}
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.25rem' }}>

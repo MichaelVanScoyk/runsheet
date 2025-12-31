@@ -185,6 +185,9 @@ export default function ComCatModal() {
   const reviewCount = comments.filter(c => c.needs_review && !c.is_noise).length;
   const changeCount = Object.keys(changes).length;
   
+  // Role check - only officers/admins can edit
+  const canEdit = userSession?.role === 'OFFICER' || userSession?.role === 'ADMIN';
+  
   return (
     <div 
       className="fixed inset-0 bg-black/85 flex items-center justify-center z-50"
@@ -316,8 +319,10 @@ export default function ComCatModal() {
                           form-select text-sm py-1 px-2 rounded border-0
                           ${style.color} text-white
                           ${hasChange ? 'ring-2 ring-amber-400' : ''}
+                          ${!canEdit ? 'opacity-60 cursor-not-allowed' : ''}
                         `}
-                        disabled={saving}
+                        disabled={saving || !canEdit}
+                        title={!canEdit ? 'Only officers and admins can edit categories' : ''}
                       >
                         {CATEGORY_ORDER.map(cat => (
                           <option key={cat} value={cat}>
@@ -336,7 +341,9 @@ export default function ComCatModal() {
         {/* Footer */}
         <div className="px-5 py-3 border-t border-dark-border flex justify-between items-center gap-3">
           <div className="text-xs text-gray-500">
-            {mlAvailable ? (
+            {!canEdit ? (
+              <span className="text-amber-400">⚠️ View only - Officer or Admin role required to edit</span>
+            ) : mlAvailable ? (
               'Corrections train the ML model • Retrain in Admin > ComCat ML'
             ) : (
               'ML categorization unavailable'
@@ -348,15 +355,17 @@ export default function ComCatModal() {
               onClick={() => setShowComCatModal(false)}
               disabled={saving}
             >
-              Cancel
+              {canEdit ? 'Cancel' : 'Close'}
             </button>
-            <button 
-              className="btn btn-primary" 
-              onClick={handleSave}
-              disabled={saving || changeCount === 0}
-            >
-              {saving ? 'Saving...' : `Save ${changeCount > 0 ? `(${changeCount})` : ''}`}
-            </button>
+            {canEdit && (
+              <button 
+                className="btn btn-primary" 
+                onClick={handleSave}
+                disabled={saving || changeCount === 0}
+              >
+                {saving ? 'Saving...' : `Save ${changeCount > 0 ? `(${changeCount})` : ''}`}
+              </button>
+            )}
           </div>
         </div>
       </div>

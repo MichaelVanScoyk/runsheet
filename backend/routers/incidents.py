@@ -41,6 +41,53 @@ router = APIRouter()
 
 
 # =============================================================================
+# COMMENT VALIDATION STATUS HELPER
+# =============================================================================
+
+def get_comments_validation_status(cad_event_comments: dict, model_trained_at: str = None) -> str:
+    """
+    Calculate validation status for CAD event comments.
+    
+    Returns:
+    - "trained" = Validated AND model trained after officer review
+    - "validated" = All non-noise comments have category_source = "OFFICER"
+    - "partial" = Some but not all comments have been reviewed
+    - "pending" = No officer corrections yet (has comments but none reviewed)
+    - None = No comments at all
+    
+    Args:
+        cad_event_comments: The JSONB field from incident
+        model_trained_at: ISO timestamp of when model was last trained (optional)
+    """
+    if not cad_event_comments:
+        return None
+    
+    comments = cad_event_comments.get("comments", [])
+    if not comments:
+        return None
+    
+    # Filter to non-noise comments only
+    relevant_comments = [c for c in comments if not c.get("is_noise", False)]
+    if not relevant_comments:
+        return None
+    
+    officer_count = sum(1 for c in relevant_comments if c.get("category_source") == "OFFICER")
+    total_count = len(relevant_comments)
+    
+    if officer_count == 0:
+        return "pending"
+    elif officer_count < total_count:
+        return "partial"
+    else:
+        # All validated - check if trained
+        if model_trained_at:
+            officer_reviewed_at = cad_event_comments.get("officer_reviewed_at")
+            if officer_reviewed_at and model_trained_at > officer_reviewed_at:
+                return "trained"
+        return "validated"
+
+
+# =============================================================================
 # AUDIT LOGGING HELPER
 # =============================================================================
 
@@ -449,6 +496,22 @@ async def list_incidents(
     total = query.count()
     incidents = query.offset(offset).limit(limit).all()
     
+    # Get model_trained_at for ComCat status (FIRE incidents only)
+    model_trained_at = None
+    try:
+        import sys
+        import os
+        _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if _project_root not in sys.path:
+            sys.path.insert(0, _project_root)
+        from cad.comcat_model import get_model, SKLEARN_AVAILABLE
+        if SKLEARN_AVAILABLE:
+            model = get_model()
+            if model.is_trained and model.training_stats:
+                model_trained_at = model.training_stats.get("trained_at")
+    except Exception:
+        pass  # ComCat not available
+    
     # Build response with municipality display names
     incident_list = []
     for i in incidents:
@@ -463,6 +526,11 @@ async def list_incidents(
             muni = db.query(Municipality).filter(Municipality.code == i.municipality_code).first()
             if muni:
                 muni_display = muni.display_name or muni.name or muni.code
+        
+        # ComCat validation status - FIRE incidents only
+        comcat_status = None
+        if i.call_category == 'FIRE':
+            comcat_status = get_comments_validation_status(i.cad_event_comments, model_trained_at)
         
         incident_list.append({
             "id": i.id,
@@ -480,6 +548,7 @@ async def list_incidents(
             "municipality_display_name": muni_display,
             "time_dispatched": format_utc_iso(i.time_dispatched),
             "neris_incident_type_codes": i.neris_incident_type_codes,
+            "comcat_status": comcat_status,
         })
     
     return {

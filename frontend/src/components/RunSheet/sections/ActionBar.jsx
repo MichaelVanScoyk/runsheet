@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useRunSheet } from '../RunSheetContext';
 
 export default function ActionBar() {
@@ -16,8 +17,82 @@ export default function ActionBar() {
     handleRestorePreview
   } = useRunSheet();
   
+  const [modelTrainedAt, setModelTrainedAt] = useState(null);
+  
   const hasCADData = incident && (formData.cad_raw_dispatch || formData.cad_raw_clear);
   const hasEventComments = formData.cad_event_comments?.comments?.length > 0;
+  const isFireIncident = formData.call_category === 'FIRE';
+  
+  // Fetch model trained timestamp for "trained" status (FIRE only)
+  useEffect(() => {
+    if (isFireIncident && hasEventComments) {
+      fetch('/api/comcat/stats', { credentials: 'include' })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.last_trained_at) {
+            setModelTrainedAt(data.last_trained_at);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isFireIncident, hasEventComments]);
+  
+  // Calculate ComCat status (FIRE incidents only)
+  const getComCatStatus = () => {
+    if (!isFireIncident) return null;
+    
+    const comments = formData.cad_event_comments?.comments || [];
+    if (!comments.length) return null;
+    
+    const relevantComments = comments.filter(c => !c.is_noise);
+    if (!relevantComments.length) return null;
+    
+    const officerCount = relevantComments.filter(c => c.category_source === 'OFFICER').length;
+    const total = relevantComments.length;
+    
+    if (officerCount === 0) return 'pending';
+    if (officerCount < total) return 'partial';
+    
+    // All validated - check if trained
+    if (modelTrainedAt) {
+      const officerReviewedAt = formData.cad_event_comments?.officer_reviewed_at;
+      if (officerReviewedAt && modelTrainedAt > officerReviewedAt) {
+        return 'trained';
+      }
+    }
+    return 'validated';
+  };
+  
+  const comcatStatus = hasEventComments ? getComCatStatus() : null;
+  
+  // Status dot component
+  const StatusDot = ({ status }) => {
+    if (!status) return null;
+    
+    const dotStyle = {
+      display: 'inline-block',
+      width: '8px',
+      height: '8px',
+      borderRadius: '50%',
+      marginLeft: '4px'
+    };
+    
+    const colors = {
+      trained: '#8b5cf6',
+      validated: '#22c55e',
+      partial: '#f59e0b',
+      pending: '#6b7280'
+    };
+    
+    const titles = {
+      trained: 'Validated & ML trained',
+      validated: 'Validated by officer',
+      partial: 'Partially reviewed',
+      pending: 'Needs review'
+    };
+    
+    return <span style={{ ...dotStyle, backgroundColor: colors[status] }} title={titles[status]} />;
+  };
   
   const handlePrint = () => {
     if (incident?.id) {
@@ -75,14 +150,20 @@ export default function ActionBar() {
             >
               View CAD
             </button>
-            {hasEventComments && (
+            {hasEventComments && isFireIncident && (
               <button 
                 type="button" 
                 className="btn btn-secondary"
                 onClick={() => setShowComCatModal(true)}
                 title="Review and categorize event comments"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem'
+                }}
               >
                 Comments
+                <StatusDot status={comcatStatus} />
               </button>
             )}
             <button 
