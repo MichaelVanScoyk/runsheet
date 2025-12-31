@@ -145,7 +145,7 @@ async def get_monthly_chiefs_report(year: int = Query(...), month: int = Query(.
         SELECT COALESCE(a.unit_designator, iu.cad_unit_id, 'Unknown'), COALESCE(a.name, iu.cad_unit_id), COUNT(DISTINCT iu.incident_id)
         FROM incident_units iu LEFT JOIN apparatus a ON iu.apparatus_id = a.id JOIN incidents i ON iu.incident_id = i.id
         WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date AND i.deleted_at IS NULL {cat_filter}
-        GROUP BY COALESCE(a.unit_designator, iu.cad_unit_id), COALESCE(a.name, iu.cad_unit_id) ORDER BY COUNT(DISTINCT iu.incident_id) DESC
+        GROUP BY COALESCE(a.unit_designator, iu.cad_unit_id, 'Unknown'), COALESCE(a.name, iu.cad_unit_id) ORDER BY COUNT(DISTINCT iu.incident_id) DESC
     """), {"start_date": start_date, "end_date": end_date})
     
     responses_per_unit = [{"unit": row[0], "unit_name": row[1], "responses": row[2]} for row in unit_result]
