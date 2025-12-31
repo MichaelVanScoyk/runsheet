@@ -13,8 +13,8 @@ import io
 from database import get_db
 from report_engine.branding_config import get_branding
 from report_engine.layout_config import get_layout, get_page_blocks, get_blocks_by_row
-from report_engine.templates import generate_css, generate_base_html, render_header, get_width_class
-from report_engine.renderers import RenderContext, FIELD_RENDERERS, render_field
+from report_engine.templates import generate_css, generate_base_html, render_header
+from report_engine.renderers import RenderContext, FIELD_RENDERERS, render_field, render_row
 
 router = APIRouter()
 
@@ -116,18 +116,21 @@ async def get_incident_html_report(incident_id: int, db: Session = Depends(get_d
 
 
 def _render_page(ctx: RenderContext, blocks: List[dict], branding: dict, is_first_page: bool = True) -> str:
+    """Render a page of blocks using the render_row function which applies style settings."""
     parts = []
     rows = get_blocks_by_row(blocks)
     
     for row_num in sorted(rows.keys()):
         row_blocks = rows[row_num]
         
+        # Header (row 0) - rendered specially
         if row_num == 0 and is_first_page:
             header_block = next((b for b in row_blocks if b.get('id') == 'header'), None)
             if header_block and header_block.get('enabled', True):
                 parts.append(render_header(branding))
             continue
         
+        # Footer (row 99) - rendered specially
         if row_num == 99:
             footer_block = next((b for b in row_blocks if b.get('id') == 'footer'), None)
             if footer_block and footer_block.get('enabled', True):
@@ -136,27 +139,10 @@ def _render_page(ctx: RenderContext, blocks: List[dict], branding: dict, is_firs
                     parts.append(footer_html)
             continue
         
-        float_blocks = [b for b in row_blocks if b.get('float')]
-        normal_blocks = [b for b in row_blocks if not b.get('float')]
-        
-        row_parts = []
-        
-        for block in float_blocks:
-            html = render_field(ctx, block)
-            if html:
-                float_dir = block.get('float', 'right')
-                row_parts.append(f'<div class="float-{float_dir}">{html}</div>')
-        
-        for block in normal_blocks:
-            html = render_field(ctx, block)
-            if html:
-                width_class = get_width_class(block.get('width', 'auto'))
-                row_parts.append(f'<div class="{width_class}">{html}</div>')
-        
-        if row_parts:
-            has_float = bool(float_blocks)
-            row_class = "layout-row row-has-float" if has_float else "layout-row"
-            parts.append(f'<div class="{row_class}">{"".join(row_parts)}</div>')
+        # Normal rows - use render_row which applies fontSize, bold, labelBold, hideLabel
+        row_html = render_row(ctx, row_blocks)
+        if row_html:
+            parts.append(row_html)
     
     return '\n'.join(parts)
 
