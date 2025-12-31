@@ -157,13 +157,11 @@ function IncidentsPage() {
     
     switch (status) {
       case 'trained':
-        return <span style={{ ...dotStyle, backgroundColor: '#8b5cf6' }} title="Comments validated & ML trained" />;
+        return <span style={{ ...dotStyle, backgroundColor: '#8b5cf6' }} title="Reviewed & included in ML model" />;
       case 'validated':
-        return <span style={{ ...dotStyle, backgroundColor: '#22c55e' }} title="Comments validated by officer" />;
-      case 'partial':
-        return <span style={{ ...dotStyle, backgroundColor: '#f59e0b' }} title="Comments partially reviewed" />;
+        return <span style={{ ...dotStyle, backgroundColor: '#22c55e' }} title="Reviewed by officer (retrain to include)" />;
       case 'pending':
-        return <span style={{ ...dotStyle, backgroundColor: '#6b7280' }} title="Comments need review" />;
+        return <span style={{ ...dotStyle, backgroundColor: '#6b7280' }} title="Comments need officer review" />;
       default:
         return null;
     }

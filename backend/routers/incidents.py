@@ -49,10 +49,9 @@ def get_comments_validation_status(cad_event_comments: dict, model_trained_at: s
     Calculate validation status for CAD event comments.
     
     Returns:
-    - "trained" = Validated AND model trained after officer review
-    - "validated" = All non-noise comments have category_source = "OFFICER"
-    - "partial" = Some but not all comments have been reviewed
-    - "pending" = No officer corrections yet (has comments but none reviewed)
+    - "trained" = Officer reviewed AND model trained after review
+    - "validated" = Officer has reviewed (clicked Mark Reviewed)
+    - "pending" = Has comments but officer hasn't reviewed yet
     - None = No comments at all
     
     Args:
@@ -71,20 +70,17 @@ def get_comments_validation_status(cad_event_comments: dict, model_trained_at: s
     if not relevant_comments:
         return None
     
-    officer_count = sum(1 for c in relevant_comments if c.get("category_source") == "OFFICER")
-    total_count = len(relevant_comments)
+    # Status based on officer_reviewed_at timestamp, not individual comment sources
+    officer_reviewed_at = cad_event_comments.get("officer_reviewed_at")
     
-    if officer_count == 0:
+    if not officer_reviewed_at:
         return "pending"
-    elif officer_count < total_count:
-        return "partial"
-    else:
-        # All validated - check if trained
-        if model_trained_at:
-            officer_reviewed_at = cad_event_comments.get("officer_reviewed_at")
-            if officer_reviewed_at and model_trained_at > officer_reviewed_at:
-                return "trained"
-        return "validated"
+    
+    # Officer has reviewed - check if model trained since
+    if model_trained_at and model_trained_at > officer_reviewed_at:
+        return "trained"
+    
+    return "validated"
 
 
 # =============================================================================
