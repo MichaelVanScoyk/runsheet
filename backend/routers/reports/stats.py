@@ -196,6 +196,156 @@ async def get_municipality_breakdown(
     }
 
 
+@router.get("/personnel")
+async def get_personnel_report(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    category: Optional[str] = None,
+    limit: int = Query(default=50, le=100),
+    db: Session = Depends(get_db)
+):
+    """Get personnel response statistics - top responders"""
+    cat_filter = ""
+    if category and category.upper() in ('FIRE', 'EMS'):
+        cat_filter = f"AND i.call_category = '{category.upper()}'"
+    
+    result = db.execute(text(f"""
+        WITH personnel_stats AS (
+            SELECT 
+                p.id,
+                p.first_name,
+                p.last_name,
+                r.rank_name AS rank_name,
+                COUNT(DISTINCT ip.incident_id) AS incident_count,
+                SUM(
+                    EXTRACT(EPOCH FROM (
+                        COALESCE(i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
+                    )) / 3600.0
+                ) AS total_hours
+            FROM personnel p
+            LEFT JOIN ranks r ON p.rank_id = r.id
+            LEFT JOIN incident_personnel ip ON ip.personnel_id = p.id
+            LEFT JOIN incidents i ON ip.incident_id = i.id 
+                AND COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
+                AND i.deleted_at IS NULL
+                AND i.time_dispatched IS NOT NULL
+                {cat_filter}
+            WHERE p.active = true
+            GROUP BY p.id, p.first_name, p.last_name, r.rank_name
+        )
+        SELECT 
+            id,
+            first_name,
+            last_name,
+            rank_name,
+            incident_count,
+            COALESCE(total_hours, 0) AS total_hours
+        FROM personnel_stats
+        ORDER BY incident_count DESC, total_hours DESC
+        LIMIT :limit
+    """), {"start_date": start_date, "end_date": end_date, "limit": limit})
+    
+    personnel = []
+    for row in result:
+        personnel.append({
+            "id": row[0],
+            "name": f"{row[1]} {row[2]}",
+            "rank": row[3],
+            "incident_count": row[4],
+            "total_hours": round(float(row[5] or 0), 1)
+        })
+    
+    return {
+        "date_range": {"start": start_date.isoformat(), "end": end_date.isoformat()},
+        "personnel": personnel
+    }
+
+
+@router.get("/by-apparatus")
+async def get_apparatus_report(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    category: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Get incident breakdown by apparatus"""
+    cat_filter = ""
+    if category and category.upper() in ('FIRE', 'EMS'):
+        cat_filter = f"AND i.call_category = '{category.upper()}'"
+    
+    result = db.execute(text(f"""
+        SELECT 
+            a.unit_designator,
+            a.name AS apparatus_name,
+            COUNT(DISTINCT iu.incident_id) AS incident_count,
+            COUNT(iu.id) AS total_responses
+        FROM apparatus a
+        LEFT JOIN incident_units iu ON iu.apparatus_id = a.id
+        LEFT JOIN incidents i ON iu.incident_id = i.id 
+            AND COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
+            AND i.deleted_at IS NULL
+            {cat_filter}
+        WHERE a.unit_category = 'APPARATUS' AND a.active = true
+        GROUP BY a.id, a.unit_designator, a.name
+        ORDER BY incident_count DESC
+    """), {"start_date": start_date, "end_date": end_date})
+    
+    apparatus = []
+    for row in result:
+        apparatus.append({
+            "unit_designator": row[0],
+            "name": row[1],
+            "incident_count": row[2],
+            "total_responses": row[3]
+        })
+    
+    return {
+        "date_range": {"start": start_date.isoformat(), "end": end_date.isoformat()},
+        "apparatus": apparatus
+    }
+
+
+@router.get("/monthly-trend")
+async def get_monthly_trend(
+    year: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Get monthly incident trends for a year"""
+    result = db.execute(text("""
+        SELECT 
+            EXTRACT(MONTH FROM COALESCE(i.incident_date, i.created_at::date))::int AS month,
+            COUNT(*) AS incident_count,
+            COALESCE(SUM(
+                (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id)
+            ), 0) AS personnel_responses
+        FROM incidents i
+        WHERE EXTRACT(YEAR FROM COALESCE(i.incident_date, i.created_at::date)) = :year
+          AND i.deleted_at IS NULL
+        GROUP BY EXTRACT(MONTH FROM COALESCE(i.incident_date, i.created_at::date))
+        ORDER BY month
+    """), {"year": year})
+    
+    # Initialize all months
+    months = {m: {"incident_count": 0, "personnel_responses": 0} for m in range(1, 13)}
+    
+    for row in result:
+        months[row[0]] = {
+            "incident_count": row[1],
+            "personnel_responses": row[2]
+        }
+    
+    monthly_data = [
+        {"month": m, "month_name": date(year, m, 1).strftime("%B"), **data}
+        for m, data in months.items()
+    ]
+    
+    return {
+        "year": year,
+        "months": monthly_data,
+        "total_incidents": sum(m["incident_count"] for m in monthly_data)
+    }
+
+
 @router.get("/trends/by-hour")
 async def get_hourly_distribution(
     start_date: date = Query(...),
