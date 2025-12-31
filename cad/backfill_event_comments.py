@@ -34,22 +34,16 @@ from cad.cad_parser import parse_cad_html
 from cad.comment_processor import process_clear_report_comments
 
 
-# Database connection - matches RunSheet backend config
-DB_CONFIG = {
-    'dbname': 'runsheet_db',
-    'user': 'runsheet_user',
-    'password': 'runsheet_pass',  # Update if different
-    'host': 'localhost',
-    'port': 5432,
-}
+# Database connection - matches RunSheet backend config (Unix socket auth)
+DATABASE_URL = "postgresql:///runsheet_db"
 
 # Timezone for CAD timestamps (Chester County)
 CAD_TIMEZONE = 'America/New_York'
 
 
 def get_db_connection():
-    """Get database connection."""
-    return psycopg2.connect(**DB_CONFIG)
+    """Get database connection using Unix socket (same as backend)."""
+    return psycopg2.connect(DATABASE_URL)
 
 
 def get_incidents_to_process(
