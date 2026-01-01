@@ -482,8 +482,8 @@ const styles = {
   content: {
     flex: 1,
     overflowY: 'auto',
-    padding: '20px',
-    backgroundColor: '#f9f9f9',
+    padding: '16px',
+    backgroundColor: '#e8e8e8',
   },
   footer: {
     padding: '12px 20px',
