@@ -13,6 +13,7 @@ export default function IncidentHubModal({
   incidents,
   initialIncidentId,
   onClose,
+  onTabClose,
   onNavigateToEdit,
   refetch,
 }) {
@@ -274,13 +275,10 @@ export default function IncidentHubModal({
   };
 
   const handleTabClose = (incidentId) => {
-    if (incidents.length === 1) {
+    if (onTabClose) {
+      onTabClose(incidentId);
+    } else if (incidents.length === 1) {
       onClose();
-    } else {
-      if (incidentId === selectedId) {
-        const remaining = incidents.filter(i => i.id !== incidentId);
-        setSelectedId(remaining[0]?.id);
-      }
     }
   };
 
