@@ -2,7 +2,7 @@ import { memo } from 'react';
 import DynamicPersonnelList from '../RunSheet/shared/DynamicPersonnelList';
 
 /**
- * Station and Direct responders - clean form layout
+ * Station and Direct responders - clean form layout with readable text
  */
 function StationDirectSection({
   assignments,
@@ -27,8 +27,8 @@ function StationDirectSection({
       <div style={styles.grid}>
         {/* Station */}
         {stationUnit && (
-          <div style={styles.section}>
-            <div style={{ ...styles.label, color: secondaryColor }}>
+          <div style={{ ...styles.section, borderColor: secondaryColor + '33' }}>
+            <div style={styles.label}>
               Station Responders
             </div>
             <div style={styles.hint}>Responded to station but did not ride on a truck</div>
@@ -47,8 +47,8 @@ function StationDirectSection({
 
         {/* Direct */}
         {directUnit && (
-          <div style={styles.section}>
-            <div style={{ ...styles.label, color: secondaryColor }}>
+          <div style={{ ...styles.section, borderColor: secondaryColor + '33' }}>
+            <div style={styles.label}>
               Direct Responders
             </div>
             <div style={styles.hint}>Went directly to the scene (POV)</div>
@@ -82,13 +82,12 @@ const styles = {
     padding: '12px',
     backgroundColor: '#f8f9fa',
     borderRadius: '6px',
-    border: '1px solid #e9ecef',
+    border: '1px solid',
   },
   label: {
-    fontSize: '12px',
+    fontSize: '13px',
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
+    color: '#333',
     marginBottom: '2px',
   },
   hint: {

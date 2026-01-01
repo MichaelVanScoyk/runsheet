@@ -7,7 +7,8 @@ import QuickEntrySection from './QuickEntrySection';
 
 /**
  * Incident Hub Modal - Kiosk-style incident data entry.
- * Clean, form-like interface for entering personnel assignments.
+ * Clean, form-like interface. Text is neutral/readable.
+ * Branding colors used for buttons and subtle borders only.
  */
 export default function IncidentHubModal({
   incidents,
@@ -26,7 +27,7 @@ export default function IncidentHubModal({
     logo: null,
     stationName: '',
     stationNumber: '',
-    primaryColor: '#c41e3a',
+    primaryColor: '#1a5f2a',
     secondaryColor: '#1a365d',
   });
   
@@ -287,6 +288,19 @@ export default function IncidentHubModal({
   const isActive = selectedIncident?.status === 'OPEN';
   const isClosed = selectedIncident?.status === 'CLOSED';
 
+  // Determine if colors are dark (for button text contrast)
+  const isColorDark = (color) => {
+    const hex = color.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance < 0.5;
+  };
+
+  const primaryTextColor = isColorDark(branding.primaryColor) ? '#fff' : '#000';
+  const secondaryTextColor = isColorDark(branding.secondaryColor) ? '#fff' : '#000';
+
   if (loadingRef) {
     return (
       <div style={styles.overlay}>
@@ -303,7 +317,7 @@ export default function IncidentHubModal({
     <div style={styles.overlay}>
       <div style={styles.modal}>
         {/* Header */}
-        <div style={{ ...styles.header, borderBottomColor: branding.secondaryColor }}>
+        <div style={{ ...styles.header, borderBottomColor: branding.secondaryColor + '44' }}>
           <div style={styles.headerLeft}>
             {branding.logo && (
               <img 
@@ -313,7 +327,7 @@ export default function IncidentHubModal({
               />
             )}
             <div>
-              <div style={{ ...styles.stationName, color: branding.secondaryColor }}>
+              <div style={styles.stationName}>
                 {branding.stationName || 'Fire Department'}
               </div>
               {branding.stationNumber && (
@@ -323,7 +337,7 @@ export default function IncidentHubModal({
           </div>
           
           {incidents.length > 1 && (
-            <div style={{ ...styles.badge, backgroundColor: branding.primaryColor }}>
+            <div style={{ ...styles.badge, backgroundColor: branding.secondaryColor, color: secondaryTextColor }}>
               {incidents.length} Incidents
             </div>
           )}
@@ -365,7 +379,7 @@ export default function IncidentHubModal({
               onAssignmentChange={handleAssignmentChange}
               formData={formData}
               onFormChange={handleFormChange}
-              allPersonnel={personnel}
+              allPersonnel={allPersonnel}
               getAssignedIds={getAssignedIds}
               dispatchedApparatus={dispatchedApparatus}
               primaryColor={branding.primaryColor}
@@ -379,13 +393,13 @@ export default function IncidentHubModal({
         </div>
 
         {/* Footer */}
-        <div style={{ ...styles.footer, borderTopColor: branding.secondaryColor + '33' }}>
+        <div style={{ ...styles.footer, borderTopColor: '#e0e0e0' }}>
           <div style={styles.footerLeft}>
             <button
               style={{
                 ...styles.button,
                 backgroundColor: saving ? '#999' : saveSuccess ? '#22c55e' : branding.primaryColor,
-                color: '#fff',
+                color: saving ? '#fff' : saveSuccess ? '#fff' : primaryTextColor,
               }}
               onClick={handleSave}
               disabled={saving}
@@ -406,7 +420,7 @@ export default function IncidentHubModal({
           </div>
 
           <button
-            style={{ ...styles.button, backgroundColor: branding.secondaryColor, color: '#fff' }}
+            style={{ ...styles.button, backgroundColor: branding.secondaryColor, color: secondaryTextColor }}
             onClick={onClose}
           >
             Close
@@ -466,6 +480,7 @@ const styles = {
   stationName: {
     fontSize: '14px',
     fontWeight: '600',
+    color: '#333',
   },
   stationNumber: {
     fontSize: '11px',
@@ -476,7 +491,6 @@ const styles = {
     borderRadius: '12px',
     fontSize: '11px',
     fontWeight: '600',
-    color: '#fff',
   },
   content: {
     flex: 1,

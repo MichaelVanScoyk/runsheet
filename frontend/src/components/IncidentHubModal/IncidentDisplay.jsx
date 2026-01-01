@@ -1,7 +1,7 @@
 import { memo } from 'react';
 
 /**
- * Incident display - clean, minimal layout
+ * Incident display - clean, minimal layout with readable text
  */
 function IncidentDisplay({ incident, primaryColor = '#c41e3a', secondaryColor = '#1a365d' }) {
   if (!incident) {
@@ -44,11 +44,11 @@ function IncidentDisplay({ incident, primaryColor = '#c41e3a', secondaryColor = 
         </span>
       </div>
 
-      {/* Type */}
-      <div style={{ ...styles.type, color: secondaryColor }}>
+      {/* Type - readable dark text */}
+      <div style={styles.type}>
         {incident.cad_event_type || 'Unknown Type'}
         {incident.cad_event_subtype && (
-          <span style={{ color: primaryColor, marginLeft: '8px' }}>
+          <span style={{ color: '#555', marginLeft: '8px' }}>
             {incident.cad_event_subtype}
           </span>
         )}
@@ -95,6 +95,7 @@ const styles = {
   type: {
     fontSize: '16px',
     fontWeight: '600',
+    color: '#333',
     marginBottom: '4px',
   },
   address: {

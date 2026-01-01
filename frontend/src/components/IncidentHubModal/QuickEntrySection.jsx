@@ -3,6 +3,7 @@ import DynamicPersonnelList from '../RunSheet/shared/DynamicPersonnelList';
 
 /**
  * Quick Entry section - clean form layout for CLOSED incidents
+ * All text is neutral/readable, colors only for borders/accents
  */
 function QuickEntrySection({
   incident,
@@ -25,13 +26,13 @@ function QuickEntrySection({
       {/* Unit Assignments */}
       {apparatusUnits.length > 0 && (
         <div style={styles.section}>
-          <div style={{ ...styles.sectionLabel, color: secondaryColor }}>
+          <div style={styles.sectionLabel}>
             Unit Assignments
           </div>
           <div style={styles.unitsGrid}>
             {apparatusUnits.map((apparatus) => (
-              <div key={apparatus.id} style={styles.unitCard}>
-                <div style={{ ...styles.unitName, borderBottomColor: primaryColor + '33' }}>
+              <div key={apparatus.id} style={{ ...styles.unitCard, borderColor: secondaryColor + '33' }}>
+                <div style={styles.unitName}>
                   {apparatus.name || apparatus.unit_designator}
                 </div>
                 <DynamicPersonnelList
@@ -51,7 +52,7 @@ function QuickEntrySection({
       {/* Narrative Fields */}
       <div style={styles.fieldsGrid}>
         <div>
-          <label style={{ ...styles.fieldLabel, color: secondaryColor }}>
+          <label style={styles.fieldLabel}>
             Situation Found
           </label>
           <textarea
@@ -64,7 +65,7 @@ function QuickEntrySection({
         </div>
 
         <div>
-          <label style={{ ...styles.fieldLabel, color: secondaryColor }}>
+          <label style={styles.fieldLabel}>
             Services Provided
           </label>
           <textarea
@@ -78,7 +79,7 @@ function QuickEntrySection({
       </div>
 
       <div>
-        <label style={{ ...styles.fieldLabel, color: secondaryColor }}>
+        <label style={styles.fieldLabel}>
           Narrative
         </label>
         <textarea
@@ -102,10 +103,9 @@ const styles = {
     marginBottom: '16px',
   },
   sectionLabel: {
-    fontSize: '12px',
+    fontSize: '13px',
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
+    color: '#333',
     marginBottom: '10px',
   },
   unitsGrid: {
@@ -117,7 +117,7 @@ const styles = {
     padding: '10px',
     backgroundColor: '#f8f9fa',
     borderRadius: '6px',
-    border: '1px solid #e9ecef',
+    border: '1px solid',
   },
   unitName: {
     fontSize: '13px',
@@ -125,7 +125,7 @@ const styles = {
     color: '#333',
     marginBottom: '8px',
     paddingBottom: '6px',
-    borderBottom: '1px solid',
+    borderBottom: '1px solid #e0e0e0',
   },
   fieldsGrid: {
     display: 'grid',
@@ -135,8 +135,9 @@ const styles = {
   },
   fieldLabel: {
     display: 'block',
-    fontSize: '12px',
+    fontSize: '13px',
     fontWeight: '600',
+    color: '#333',
     marginBottom: '4px',
   },
   textarea: {

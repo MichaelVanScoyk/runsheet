@@ -1,7 +1,7 @@
 import { memo } from 'react';
 
 /**
- * Incident tabs - clean, minimal tab bar
+ * Incident tabs - clean, minimal tab bar with readable text
  */
 function IncidentTabs({ 
   incidents, 
@@ -43,7 +43,7 @@ function IncidentTabs({
                 <div style={{ 
                   fontSize: '12px', 
                   fontWeight: '500',
-                  color: isSelected ? secondaryColor : '#555',
+                  color: '#333',
                 }}>
                   {inc.cad_event_type || 'Unknown'}
                 </div>
