@@ -181,6 +181,7 @@ class IncidentUpdate(BaseModel):
     cad_raw_dispatch: Optional[str] = None
     cad_raw_updates: Optional[List[str]] = None
     cad_raw_clear: Optional[str] = None
+    cad_event_comments: Optional[Dict[str, Any]] = None
     
     # Location - display
     address: Optional[str] = None
