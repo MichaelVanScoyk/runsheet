@@ -202,7 +202,7 @@ function IncidentsPage() {
 
       <div className="filter-bar" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <select value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
-          {[2025, 2024, 2023].map(y => (
+          {Array.from({ length: new Date().getFullYear() - 2022 }, (_, i) => new Date().getFullYear() - i).map(y => (
             <option key={y} value={y}>{y}</option>
           ))}
         </select>
