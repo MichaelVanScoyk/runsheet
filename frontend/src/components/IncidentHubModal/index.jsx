@@ -370,7 +370,17 @@ export default function IncidentHubModal({
               <img 
                 src={branding.logo} 
                 alt="Department Logo" 
-                className="w-12 h-12 object-contain rounded"
+                style={{
+                  width: '48px',
+                  height: '48px',
+                  minWidth: '48px',
+                  minHeight: '48px',
+                  maxWidth: '48px',
+                  maxHeight: '48px',
+                  objectFit: 'contain',
+                  borderRadius: '4px',
+                  flexShrink: 0,
+                }}
               />
             ) : (
               <div 
