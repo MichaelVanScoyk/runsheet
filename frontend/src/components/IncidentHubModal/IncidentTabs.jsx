@@ -1,76 +1,68 @@
 import { memo } from 'react';
 
 /**
- * Browser-style tabs for multiple incidents.
- * Each tab shows: CAD Event Sub Type, Address, Status indicator
+ * Incident tabs - clean, minimal tab bar
  */
-function IncidentTabs({ incidents, selectedId, onSelect, onClose }) {
-  if (!incidents || incidents.length === 0) {
-    return null;
-  }
-
-  // Don't show tabs if only one incident
-  if (incidents.length === 1) {
-    return null;
-  }
+function IncidentTabs({ 
+  incidents, 
+  selectedId, 
+  onSelect, 
+  onClose,
+  primaryColor = '#c41e3a',
+  secondaryColor = '#1a365d',
+}) {
+  if (incidents.length <= 1) return null;
 
   return (
-    <div className="flex items-end gap-0.5 px-4 pt-2">
-      {incidents.map((incident) => {
-        const isSelected = incident.id === selectedId;
-        const isActive = incident.status === 'OPEN';
-
+    <div style={styles.container}>
+      {incidents.map(inc => {
+        const isSelected = inc.id === selectedId;
+        const isActive = inc.status === 'OPEN';
+        
         return (
           <div
-            key={incident.id}
-            className={`
-              relative flex flex-col px-3 py-2 min-w-[180px] max-w-[250px] cursor-pointer
-              rounded-t-lg transition-all
-              ${isSelected
-                ? 'bg-dark-card border border-dark-border border-b-0 z-10'
-                : 'bg-dark-hover border border-transparent hover:bg-dark-border/50'
-              }
-            `}
-            onClick={() => onSelect(incident.id)}
+            key={inc.id}
+            style={{
+              ...styles.tab,
+              backgroundColor: isSelected ? '#fff' : '#f5f5f5',
+              borderBottomColor: isSelected ? secondaryColor : 'transparent',
+            }}
+            onClick={() => onSelect(inc.id)}
           >
+            <div style={styles.tabContent}>
+              {/* Status dot */}
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: isActive ? '#22c55e' : '#999',
+                flexShrink: 0,
+              }} />
+              
+              <div style={styles.tabText}>
+                <div style={{ 
+                  fontSize: '12px', 
+                  fontWeight: '500',
+                  color: isSelected ? secondaryColor : '#555',
+                }}>
+                  {inc.cad_event_type || 'Unknown'}
+                </div>
+                <div style={{ fontSize: '10px', color: '#888' }}>
+                  {inc.address ? inc.address.substring(0, 20) : 'No address'}
+                </div>
+              </div>
+            </div>
+            
             {/* Close button */}
             <button
-              className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center
-                         text-gray-500 hover:text-white hover:bg-red-500/50 rounded
-                         transition-colors"
+              style={styles.closeBtn}
               onClick={(e) => {
                 e.stopPropagation();
-                onClose(incident.id);
+                onClose(inc.id);
               }}
-              title="Close this tab"
             >
               ×
             </button>
-
-            {/* Event subtype */}
-            <div className={`text-sm font-medium truncate pr-5 ${isSelected ? 'text-white' : 'text-gray-400'}`}>
-              {incident.cad_event_subtype || incident.cad_event_type || 'Unknown Type'}
-            </div>
-
-            {/* Address */}
-            <div className={`text-xs truncate ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>
-              {truncateAddress(incident.address) || 'No address'}
-            </div>
-
-            {/* Status indicator */}
-            <div className="flex items-center gap-1.5 mt-1">
-              <span
-                className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}
-              />
-              <span className={`text-xs ${isActive ? 'text-green-400' : 'text-gray-500'}`}>
-                {isActive ? 'ACTIVE' : 'CLOSED'}
-              </span>
-            </div>
-
-            {/* Bottom border connector for selected tab */}
-            {isSelected && (
-              <div className="absolute bottom-0 left-0 right-0 h-px bg-dark-card" />
-            )}
           </div>
         );
       })}
@@ -78,13 +70,45 @@ function IncidentTabs({ incidents, selectedId, onSelect, onClose }) {
   );
 }
 
-/**
- * Truncate address for display in tab
- */
-function truncateAddress(address) {
-  if (!address) return null;
-  if (address.length <= 25) return address;
-  return address.substring(0, 22) + '...';
-}
+const styles = {
+  container: {
+    display: 'flex',
+    backgroundColor: '#eee',
+    borderBottom: '1px solid #ddd',
+    overflowX: 'auto',
+  },
+  tab: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '8px 12px',
+    minWidth: '160px',
+    maxWidth: '200px',
+    cursor: 'pointer',
+    borderBottom: '2px solid transparent',
+    borderRight: '1px solid #ddd',
+    transition: 'background-color 0.15s',
+  },
+  tabContent: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    flex: 1,
+    overflow: 'hidden',
+  },
+  tabText: {
+    overflow: 'hidden',
+  },
+  closeBtn: {
+    background: 'none',
+    border: 'none',
+    fontSize: '16px',
+    color: '#999',
+    cursor: 'pointer',
+    padding: '0 4px',
+    marginLeft: '4px',
+    lineHeight: 1,
+  },
+};
 
 export default memo(IncidentTabs);

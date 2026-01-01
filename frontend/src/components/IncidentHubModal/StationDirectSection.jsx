@@ -2,11 +2,7 @@ import { memo } from 'react';
 import DynamicPersonnelList from '../RunSheet/shared/DynamicPersonnelList';
 
 /**
- * Station and Direct responders section.
- * Available during both ACTIVE and CLOSED phases.
- * 
- * - Station: People who responded to the station but didn't ride on a truck
- * - Direct: People who went directly to the scene (POV)
+ * Station and Direct responders - clean form layout
  */
 function StationDirectSection({
   assignments,
@@ -15,69 +11,94 @@ function StationDirectSection({
   getAssignedIds,
   stationUnit,
   directUnit,
-  primaryColor = '#e94560',
+  primaryColor = '#c41e3a',
+  secondaryColor = '#1a365d',
 }) {
   if (!stationUnit && !directUnit) {
     return (
-      <div className="px-6 py-4 text-center text-gray-500">
+      <div style={{ padding: '12px', color: '#999', fontSize: '12px', textAlign: 'center' }}>
         No Station or Direct units configured.
-        <br />
-        <span className="text-sm">Configure in Admin → Units with unit_category STATION or DIRECT.</span>
       </div>
     );
   }
 
   return (
-    <div className="px-6 py-4" style={{ borderTop: '1px solid #333' }}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Station Responders */}
+    <div style={styles.container}>
+      <div style={styles.grid}>
+        {/* Station */}
         {stationUnit && (
-          <div>
-            <h3 
-              className="text-sm font-semibold mb-2 flex items-center gap-2"
-              style={{ color: primaryColor }}
-            >
-              <span className="w-2 h-2 bg-yellow-500 rounded-full" />
-              STATION RESPONDERS
-            </h3>
-            <p className="text-xs text-gray-500 mb-3">
-              Responded to station but did not ride on a truck
-            </p>
-            <DynamicPersonnelList
-              label={stationUnit.unit_designator}
-              assignedIds={assignments[stationUnit.unit_designator] || []}
-              onUpdate={(newList) => onAssignmentChange(stationUnit.unit_designator, newList)}
-              allPersonnel={allPersonnel}
-              getAssignedIds={getAssignedIds}
-            />
+          <div style={styles.section}>
+            <div style={{ ...styles.label, color: secondaryColor }}>
+              Station Responders
+            </div>
+            <div style={styles.hint}>Responded to station but did not ride on a truck</div>
+            <div style={styles.listWrapper}>
+              <DynamicPersonnelList
+                label={stationUnit.unit_designator}
+                assignedIds={assignments[stationUnit.unit_designator] || []}
+                onUpdate={(newList) => onAssignmentChange(stationUnit.unit_designator, newList)}
+                allPersonnel={allPersonnel}
+                getAssignedIds={getAssignedIds}
+                lightMode={true}
+              />
+            </div>
           </div>
         )}
 
-        {/* Direct Responders */}
+        {/* Direct */}
         {directUnit && (
-          <div>
-            <h3 
-              className="text-sm font-semibold mb-2 flex items-center gap-2"
-              style={{ color: primaryColor }}
-            >
-              <span className="w-2 h-2 bg-blue-500 rounded-full" />
-              DIRECT RESPONDERS
-            </h3>
-            <p className="text-xs text-gray-500 mb-3">
-              Went directly to the scene (POV)
-            </p>
-            <DynamicPersonnelList
-              label={directUnit.unit_designator}
-              assignedIds={assignments[directUnit.unit_designator] || []}
-              onUpdate={(newList) => onAssignmentChange(directUnit.unit_designator, newList)}
-              allPersonnel={allPersonnel}
-              getAssignedIds={getAssignedIds}
-            />
+          <div style={styles.section}>
+            <div style={{ ...styles.label, color: secondaryColor }}>
+              Direct Responders
+            </div>
+            <div style={styles.hint}>Went directly to the scene (POV)</div>
+            <div style={styles.listWrapper}>
+              <DynamicPersonnelList
+                label={directUnit.unit_designator}
+                assignedIds={assignments[directUnit.unit_designator] || []}
+                onUpdate={(newList) => onAssignmentChange(directUnit.unit_designator, newList)}
+                allPersonnel={allPersonnel}
+                getAssignedIds={getAssignedIds}
+                lightMode={true}
+              />
+            </div>
           </div>
         )}
       </div>
     </div>
   );
 }
+
+const styles = {
+  container: {
+    marginBottom: '16px',
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: '16px',
+  },
+  section: {
+    padding: '12px',
+    backgroundColor: '#f8f9fa',
+    borderRadius: '6px',
+    border: '1px solid #e9ecef',
+  },
+  label: {
+    fontSize: '12px',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    marginBottom: '2px',
+  },
+  hint: {
+    fontSize: '11px',
+    color: '#888',
+    marginBottom: '10px',
+  },
+  listWrapper: {
+    // The DynamicPersonnelList will handle its own styling
+  },
+};
 
 export default memo(StationDirectSection);

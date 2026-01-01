@@ -1,13 +1,12 @@
 import { memo } from 'react';
 
 /**
- * Large incident display showing key info from CAD.
- * Designed to be visible on a station monitor.
+ * Incident display - clean, minimal layout
  */
-function IncidentDisplay({ incident, primaryColor = '#e94560' }) {
+function IncidentDisplay({ incident, primaryColor = '#c41e3a', secondaryColor = '#1a365d' }) {
   if (!incident) {
     return (
-      <div className="text-center text-gray-500 py-8">
+      <div style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
         No incident selected
       </div>
     );
@@ -15,99 +14,106 @@ function IncidentDisplay({ incident, primaryColor = '#e94560' }) {
 
   const isActive = incident.status === 'OPEN';
 
-  // Get dispatched units from cad_units
   const dispatchedUnits = (incident.cad_units || [])
     .filter(u => !u.is_mutual_aid)
     .map(u => u.unit_id)
     .join(', ');
 
-  const mutualAidUnits = (incident.cad_units || [])
-    .filter(u => u.is_mutual_aid)
-    .map(u => u.unit_id)
-    .join(', ');
-
   return (
-    <div className="px-6 py-4">
-      {/* Event Type - Large */}
-      <div className="text-center mb-4">
-        <div className="text-2xl font-bold text-white uppercase tracking-wide">
-          {incident.cad_event_type || 'UNKNOWN TYPE'}
+    <div style={styles.container}>
+      {/* Status row */}
+      <div style={styles.statusRow}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            backgroundColor: isActive ? '#22c55e' : '#999',
+          }} />
+          <span style={{ 
+            fontSize: '11px', 
+            fontWeight: '600',
+            color: isActive ? '#22c55e' : '#666',
+            textTransform: 'uppercase',
+          }}>
+            {isActive ? 'Active' : 'Closed'}
+          </span>
         </div>
+        <span style={{ fontSize: '11px', color: '#666' }}>
+          CAD# {incident.cad_event_number}
+        </span>
+      </div>
+
+      {/* Type */}
+      <div style={{ ...styles.type, color: secondaryColor }}>
+        {incident.cad_event_type || 'Unknown Type'}
         {incident.cad_event_subtype && (
-          <div 
-            className="text-xl mt-1"
-            style={{ color: primaryColor }}
-          >
+          <span style={{ color: primaryColor, marginLeft: '8px' }}>
             {incident.cad_event_subtype}
-          </div>
+          </span>
         )}
       </div>
 
-      {/* Address - Very Large */}
-      <div className="text-center mb-4">
-        <div className="text-3xl font-bold text-white">
-          {incident.address || 'NO ADDRESS'}
-        </div>
-        <div className="text-xl text-gray-400 mt-1">
-          {incident.municipality_code || ''}
-          {incident.cross_streets && (
-            <span className="text-gray-500 ml-2">
-              @ {incident.cross_streets}
-            </span>
-          )}
-        </div>
+      {/* Address */}
+      <div style={styles.address}>
+        {incident.address || 'No Address'}
+      </div>
+      
+      {/* Municipality / Cross streets */}
+      <div style={styles.location}>
+        {incident.municipality_code}
+        {incident.cross_streets && (
+          <span style={{ color: '#888' }}> @ {incident.cross_streets}</span>
+        )}
       </div>
 
-      {/* Units */}
-      {dispatchedUnits && (
-        <div className="text-center mb-4">
-          <div className="text-lg text-gray-400">
-            <span className="text-gray-500">UNITS:</span>{' '}
-            <span className="text-white font-semibold">{dispatchedUnits}</span>
-          </div>
-          {mutualAidUnits && (
-            <div className="text-sm text-gray-500 mt-1">
-              Mutual Aid: {mutualAidUnits}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Status and CAD Number */}
-      <div 
-        className="flex items-center justify-between mt-4 pt-4"
-        style={{ borderTop: '1px solid #333' }}
-      >
-        {/* Status Indicator */}
-        <div className="flex items-center gap-2">
-          <span
-            className={`w-3 h-3 rounded-full ${isActive ? 'animate-pulse' : ''}`}
-            style={{ 
-              backgroundColor: isActive ? '#22c55e' : '#6b7280',
-            }}
-          />
-          <span
-            className="text-lg font-semibold"
-            style={{ color: isActive ? '#22c55e' : '#9ca3af' }}
-          >
-            {isActive ? 'ACTIVE' : 'CLOSED'}
-          </span>
-        </div>
-
-        {/* CAD Event Number */}
-        <div className="text-gray-500">
-          CAD# <span className="text-gray-400">{incident.cad_event_number}</span>
-        </div>
+      {/* Units and ESZ */}
+      <div style={styles.infoRow}>
+        {dispatchedUnits && (
+          <span><strong>Units:</strong> {dispatchedUnits}</span>
+        )}
+        {incident.esz_box && (
+          <span><strong>ESZ/Box:</strong> {incident.esz_box}</span>
+        )}
       </div>
-
-      {/* ESZ/Box if present */}
-      {incident.esz_box && (
-        <div className="text-center mt-2 text-sm text-gray-500">
-          ESZ/Box: {incident.esz_box}
-        </div>
-      )}
     </div>
   );
 }
+
+const styles = {
+  container: {
+    marginBottom: '16px',
+    paddingBottom: '16px',
+    borderBottom: '1px solid #eee',
+  },
+  statusRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '8px',
+  },
+  type: {
+    fontSize: '16px',
+    fontWeight: '600',
+    marginBottom: '4px',
+  },
+  address: {
+    fontSize: '20px',
+    fontWeight: '700',
+    color: '#111',
+    marginBottom: '2px',
+  },
+  location: {
+    fontSize: '13px',
+    color: '#555',
+    marginBottom: '8px',
+  },
+  infoRow: {
+    display: 'flex',
+    gap: '16px',
+    fontSize: '12px',
+    color: '#666',
+  },
+};
 
 export default memo(IncidentDisplay);

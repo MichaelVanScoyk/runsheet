@@ -4,21 +4,10 @@ import IncidentTabs from './IncidentTabs';
 import IncidentDisplay from './IncidentDisplay';
 import StationDirectSection from './StationDirectSection';
 import QuickEntrySection from './QuickEntrySection';
-import './IncidentHubModal.css';
 
 /**
  * Incident Hub Modal - Kiosk-style incident data entry.
- * 
- * Provides a simplified interface for entering personnel assignments
- * and basic narrative fields during and immediately after incidents.
- * No authentication required (like paper).
- * 
- * Props:
- * - incidents: Array of qualifying incidents
- * - initialIncidentId: ID of incident to select initially (optional)
- * - onClose: Called when modal is closed
- * - onNavigateToEdit: Called when Full Edit button is clicked
- * - refetch: Function to refresh incident data
+ * Clean, form-like interface for entering personnel assignments.
  */
 export default function IncidentHubModal({
   incidents,
@@ -27,25 +16,20 @@ export default function IncidentHubModal({
   onNavigateToEdit,
   refetch,
 }) {
-  // Selected incident
   const [selectedId, setSelectedId] = useState(initialIncidentId || incidents[0]?.id);
   const [selectedIncident, setSelectedIncident] = useState(null);
-  
-  // Reference data
   const [apparatus, setApparatus] = useState([]);
   const [personnel, setPersonnel] = useState([]);
   const [loadingRef, setLoadingRef] = useState(true);
   
-  // Branding
   const [branding, setBranding] = useState({
     logo: null,
     stationName: '',
     stationNumber: '',
-    primaryColor: '#e94560',
-    secondaryColor: '#0f3460',
+    primaryColor: '#c41e3a',
+    secondaryColor: '#1a365d',
   });
   
-  // Form state
   const [assignments, setAssignments] = useState({});
   const [formData, setFormData] = useState({
     situation_found: '',
@@ -53,16 +37,14 @@ export default function IncidentHubModal({
     narrative: '',
   });
   
-  // UI state
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState(null);
 
-  // Load branding from settings
+  // Load branding
   useEffect(() => {
     async function loadBranding() {
       try {
-        // Load all branding in parallel
         const [logoRes, stationRes, primaryRes, secondaryRes] = await Promise.allSettled([
           fetch('/api/settings/branding/logo'),
           fetch('/api/settings'),
@@ -72,7 +54,6 @@ export default function IncidentHubModal({
         
         const newBranding = { ...branding };
         
-        // Logo
         if (logoRes.status === 'fulfilled' && logoRes.value.ok) {
           const logoData = await logoRes.value.json();
           if (logoData.has_logo && logoData.data && logoData.mime_type) {
@@ -80,7 +61,6 @@ export default function IncidentHubModal({
           }
         }
         
-        // Station settings
         if (stationRes.status === 'fulfilled' && stationRes.value.ok) {
           const settings = await stationRes.value.json();
           const stationSettings = settings.station || [];
@@ -90,7 +70,6 @@ export default function IncidentHubModal({
           if (numberEntry) newBranding.stationNumber = numberEntry.raw_value || numberEntry.value || '';
         }
         
-        // Colors
         if (primaryRes.status === 'fulfilled' && primaryRes.value.ok) {
           const data = await primaryRes.value.json();
           if (data.raw_value) newBranding.primaryColor = data.raw_value;
@@ -109,7 +88,7 @@ export default function IncidentHubModal({
     loadBranding();
   }, []);
 
-  // Load reference data once
+  // Load reference data
   useEffect(() => {
     async function loadRefData() {
       try {
@@ -129,7 +108,7 @@ export default function IncidentHubModal({
     loadRefData();
   }, []);
 
-  // Load full incident data when selection changes
+  // Load incident data
   useEffect(() => {
     async function loadIncident() {
       if (!selectedId) {
@@ -142,13 +121,11 @@ export default function IncidentHubModal({
         const inc = res.data;
         setSelectedIncident(inc);
 
-        // Initialize assignments from incident
         const newAssignments = {};
         apparatus.forEach(a => {
           newAssignments[a.unit_designator] = [];
         });
 
-        // Merge existing assignments
         if (inc.personnel_assignments) {
           Object.entries(inc.personnel_assignments).forEach(([unitKey, slots]) => {
             newAssignments[unitKey] = slots.filter(id => id !== null);
@@ -156,7 +133,6 @@ export default function IncidentHubModal({
         }
         setAssignments(newAssignments);
 
-        // Initialize form data
         setFormData({
           situation_found: inc.situation_found || '',
           services_provided: inc.services_provided || '',
@@ -175,10 +151,8 @@ export default function IncidentHubModal({
     }
   }, [selectedId, loadingRef, apparatus]);
 
-  // Update selection when incidents list changes (new dispatch)
   useEffect(() => {
     if (incidents.length > 0 && !incidents.find(i => i.id === selectedId)) {
-      // Current selection no longer in list, select first
       setSelectedId(incidents[0].id);
     } else if (incidents.length === 0) {
       setSelectedId(null);
@@ -186,7 +160,6 @@ export default function IncidentHubModal({
     }
   }, [incidents, selectedId]);
 
-  // Get assigned IDs across all units (for depletion)
   const getAssignedIds = useCallback(() => {
     const assigned = new Set();
     Object.values(assignments).forEach(slots => {
@@ -197,7 +170,6 @@ export default function IncidentHubModal({
     return assigned;
   }, [assignments]);
 
-  // Handle assignment changes
   const handleAssignmentChange = useCallback((unitDesignator, newList) => {
     setAssignments(prev => ({
       ...prev,
@@ -205,7 +177,6 @@ export default function IncidentHubModal({
     }));
   }, []);
 
-  // Handle form field changes
   const handleFormChange = useCallback((field, value) => {
     setFormData(prev => ({
       ...prev,
@@ -213,7 +184,6 @@ export default function IncidentHubModal({
     }));
   }, []);
 
-  // Find Station and Direct units
   const stationUnit = useMemo(() => 
     apparatus.find(a => a.unit_category === 'STATION'),
     [apparatus]
@@ -224,7 +194,6 @@ export default function IncidentHubModal({
     [apparatus]
   );
 
-  // Get apparatus that were dispatched to this incident
   const dispatchedApparatus = useMemo(() => {
     if (!selectedIncident?.cad_units) return [];
     
@@ -239,7 +208,6 @@ export default function IncidentHubModal({
     );
   }, [selectedIncident, apparatus]);
 
-  // Save handler
   const handleSave = async () => {
     if (!selectedIncident) return;
 
@@ -248,15 +216,12 @@ export default function IncidentHubModal({
     setError(null);
 
     try {
-      // Build assignments payload - convert arrays to the expected format
       const assignmentPayload = {};
       Object.entries(assignments).forEach(([unitKey, personIds]) => {
         const unit = apparatus.find(a => a.unit_designator === unitKey);
         if (unit && (unit.unit_category === 'STATION' || unit.unit_category === 'DIRECT')) {
-          // Virtual units: just the array of IDs
           assignmentPayload[unitKey] = personIds;
         } else {
-          // Apparatus units: array with null slots
           const slots = [null, null, null, null, null, null];
           personIds.forEach((id, idx) => {
             if (idx < 6) slots[idx] = id;
@@ -265,14 +230,12 @@ export default function IncidentHubModal({
         }
       });
 
-      // Save assignments
       await fetch(`/api/incidents/${selectedIncident.id}/assignments`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assignments: assignmentPayload }),
       });
 
-      // Save form data (only if CLOSED and fields have content)
       if (selectedIncident.status === 'CLOSED') {
         const updatePayload = {};
         if (formData.situation_found) updatePayload.situation_found = formData.situation_found;
@@ -287,12 +250,8 @@ export default function IncidentHubModal({
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
 
-      // Refresh data
-      if (refetch) {
-        await refetch();
-      }
+      if (refetch) await refetch();
 
-      // Reload incident to get updated data
       const res = await getIncident(selectedIncident.id);
       setSelectedIncident(res.data);
 
@@ -304,26 +263,20 @@ export default function IncidentHubModal({
     }
   };
 
-  // Print handler - direct to PDF
   const handlePrint = () => {
     if (!selectedIncident) return;
     window.open(`/api/reports/pdf/incident/${selectedIncident.id}`, '_blank');
   };
 
-  // Full Edit handler
   const handleFullEdit = () => {
     if (!selectedIncident || !onNavigateToEdit) return;
     onNavigateToEdit(selectedIncident.id);
   };
 
-  // Tab close handler
   const handleTabClose = (incidentId) => {
-    // Just remove from local view, doesn't affect the incident
     if (incidents.length === 1) {
-      // Last tab - close the modal
       onClose();
     } else {
-      // Switch to another tab if closing selected
       if (incidentId === selectedId) {
         const remaining = incidents.filter(i => i.id !== incidentId);
         setSelectedId(remaining[0]?.id);
@@ -336,107 +289,64 @@ export default function IncidentHubModal({
 
   if (loadingRef) {
     return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-        <div className="bg-dark-card rounded-lg p-8 text-center">
-          <div className="text-white">Loading...</div>
+      <div style={styles.overlay}>
+        <div style={{ ...styles.modal, padding: '2rem', textAlign: 'center' }}>
+          Loading...
         </div>
       </div>
     );
   }
 
-  if (incidents.length === 0) {
-    return null; // No qualifying incidents
-  }
+  if (incidents.length === 0) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div 
-        className="bg-dark-bg rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
-        style={{ 
-          border: `2px solid ${branding.secondaryColor}`,
-        }}
-      >
-        {/* Header with branding */}
-        <div 
-          className="px-6 py-3 flex items-center justify-between"
-          style={{ 
-            background: `linear-gradient(135deg, ${branding.secondaryColor} 0%, ${branding.primaryColor}22 100%)`,
-            borderBottom: `1px solid ${branding.secondaryColor}`,
-          }}
-        >
-          <div className="flex items-center gap-3">
-            {/* Logo or placeholder */}
-            {branding.logo ? (
+    <div style={styles.overlay}>
+      <div style={styles.modal}>
+        {/* Header */}
+        <div style={{ ...styles.header, borderBottomColor: branding.secondaryColor }}>
+          <div style={styles.headerLeft}>
+            {branding.logo && (
               <img 
                 src={branding.logo} 
-                alt="Department Logo" 
-                style={{
-                  width: '48px',
-                  height: '48px',
-                  minWidth: '48px',
-                  minHeight: '48px',
-                  maxWidth: '48px',
-                  maxHeight: '48px',
-                  objectFit: 'contain',
-                  borderRadius: '4px',
-                  flexShrink: 0,
-                }}
+                alt="Logo" 
+                style={styles.logo}
               />
-            ) : (
-              <div 
-                className="w-12 h-12 rounded-lg flex items-center justify-center font-bold text-xl"
-                style={{ 
-                  backgroundColor: branding.primaryColor,
-                  color: '#fff',
-                }}
-              >
-                {branding.stationNumber || '48'}
-              </div>
             )}
             <div>
-              <div className="text-white font-semibold text-lg">
-                {branding.stationName || 'FIRE DEPARTMENT'}
+              <div style={{ ...styles.stationName, color: branding.secondaryColor }}>
+                {branding.stationName || 'Fire Department'}
               </div>
               {branding.stationNumber && (
-                <div className="text-gray-400 text-sm">
-                  Station {branding.stationNumber}
-                </div>
+                <div style={styles.stationNumber}>Station {branding.stationNumber}</div>
               )}
             </div>
           </div>
           
-          {/* Incident count badge */}
           {incidents.length > 1 && (
-            <div 
-              className="px-3 py-1 rounded-full text-sm font-medium"
-              style={{ 
-                backgroundColor: branding.primaryColor,
-                color: '#fff',
-              }}
-            >
+            <div style={{ ...styles.badge, backgroundColor: branding.primaryColor }}>
               {incidents.length} Incidents
             </div>
           )}
         </div>
 
-        {/* Tabs (if multiple incidents) */}
+        {/* Tabs */}
         <IncidentTabs
           incidents={incidents}
           selectedId={selectedId}
           onSelect={setSelectedId}
           onClose={handleTabClose}
           primaryColor={branding.primaryColor}
+          secondaryColor={branding.secondaryColor}
         />
 
-        {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto">
-          {/* Incident Display */}
+        {/* Content */}
+        <div style={styles.content}>
           <IncidentDisplay 
             incident={selectedIncident} 
             primaryColor={branding.primaryColor}
+            secondaryColor={branding.secondaryColor}
           />
 
-          {/* Station / Direct Section (always available) */}
           <StationDirectSection
             assignments={assignments}
             onAssignmentChange={handleAssignmentChange}
@@ -445,9 +355,9 @@ export default function IncidentHubModal({
             stationUnit={stationUnit}
             directUnit={directUnit}
             primaryColor={branding.primaryColor}
+            secondaryColor={branding.secondaryColor}
           />
 
-          {/* Quick Entry Section (only when CLOSED) */}
           {isClosed && (
             <QuickEntrySection
               incident={selectedIncident}
@@ -459,88 +369,164 @@ export default function IncidentHubModal({
               getAssignedIds={getAssignedIds}
               dispatchedApparatus={dispatchedApparatus}
               primaryColor={branding.primaryColor}
+              secondaryColor={branding.secondaryColor}
             />
           )}
 
-          {/* Error message */}
           {error && (
-            <div className="mx-6 mb-4 p-3 bg-red-500/20 border border-red-500 rounded text-red-400 text-sm">
-              {error}
-            </div>
+            <div style={styles.error}>{error}</div>
           )}
         </div>
 
-        {/* Footer with buttons */}
-        <div 
-          className="px-6 py-4 flex items-center justify-between"
-          style={{ 
-            backgroundColor: branding.secondaryColor + '33',
-            borderTop: `1px solid ${branding.secondaryColor}`,
-          }}
-        >
-          <div className="flex items-center gap-3">
-            {/* Print button (only when CLOSED) */}
-            {isClosed && (
-              <button
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded
-                           flex items-center gap-2 transition-colors"
-                onClick={handlePrint}
-              >
-                🖨️ Print
-              </button>
-            )}
-
-            {/* Save button */}
+        {/* Footer */}
+        <div style={{ ...styles.footer, borderTopColor: branding.secondaryColor + '33' }}>
+          <div style={styles.footerLeft}>
             <button
-              className="px-4 py-2 rounded flex items-center gap-2 transition-colors"
               style={{
-                backgroundColor: saving 
-                  ? '#666' 
-                  : saveSuccess 
-                    ? '#22c55e' 
-                    : branding.primaryColor,
+                ...styles.button,
+                backgroundColor: saving ? '#999' : saveSuccess ? '#22c55e' : branding.primaryColor,
                 color: '#fff',
-                cursor: saving ? 'not-allowed' : 'pointer',
               }}
               onClick={handleSave}
               disabled={saving}
             >
-              {saving ? '💾 Saving...' : saveSuccess ? '✓ Saved!' : '💾 Save'}
+              {saving ? 'Saving...' : saveSuccess ? '✓ Saved' : 'Save'}
             </button>
 
-            {/* Full Edit button (only when CLOSED) */}
             {isClosed && (
-              <button
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded
-                           flex items-center gap-2 transition-colors"
-                onClick={handleFullEdit}
-              >
-                📋 Full Edit
-              </button>
+              <>
+                <button style={styles.buttonSecondary} onClick={handlePrint}>
+                  Print
+                </button>
+                <button style={styles.buttonSecondary} onClick={handleFullEdit}>
+                  Full Edit
+                </button>
+              </>
             )}
           </div>
 
-          {/* Close button */}
           <button
-            className="px-4 py-2 rounded transition-colors"
-            style={{
-              backgroundColor: branding.secondaryColor,
-              color: '#fff',
-            }}
+            style={{ ...styles.button, backgroundColor: branding.secondaryColor, color: '#fff' }}
             onClick={onClose}
           >
             Close
           </button>
         </div>
 
-        {/* Active indicator overlay */}
+        {/* Active indicator */}
         {isActive && (
-          <div 
-            className="absolute top-0 left-0 right-0 h-1 animate-pulse"
-            style={{ backgroundColor: '#22c55e' }}
-          />
+          <div style={{ ...styles.activeIndicator, backgroundColor: '#22c55e' }} />
         )}
       </div>
     </div>
   );
 }
+
+const styles = {
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: '1rem',
+  },
+  modal: {
+    backgroundColor: '#fff',
+    borderRadius: '8px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+    width: '100%',
+    maxWidth: '800px',
+    maxHeight: '90vh',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  header: {
+    padding: '12px 16px',
+    borderBottom: '2px solid',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fafafa',
+  },
+  headerLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  logo: {
+    width: '40px',
+    height: '40px',
+    objectFit: 'contain',
+  },
+  stationName: {
+    fontSize: '14px',
+    fontWeight: '600',
+  },
+  stationNumber: {
+    fontSize: '11px',
+    color: '#666',
+  },
+  badge: {
+    padding: '4px 10px',
+    borderRadius: '12px',
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#fff',
+  },
+  content: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '16px',
+  },
+  footer: {
+    padding: '12px 16px',
+    borderTop: '1px solid',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fafafa',
+  },
+  footerLeft: {
+    display: 'flex',
+    gap: '8px',
+  },
+  button: {
+    padding: '8px 16px',
+    borderRadius: '4px',
+    border: 'none',
+    fontSize: '13px',
+    fontWeight: '500',
+    cursor: 'pointer',
+  },
+  buttonSecondary: {
+    padding: '8px 16px',
+    borderRadius: '4px',
+    border: '1px solid #ddd',
+    backgroundColor: '#fff',
+    fontSize: '13px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    color: '#333',
+  },
+  error: {
+    margin: '12px 0',
+    padding: '10px',
+    backgroundColor: '#fee',
+    border: '1px solid #fcc',
+    borderRadius: '4px',
+    color: '#c00',
+    fontSize: '13px',
+  },
+  activeIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '3px',
+  },
+};
