@@ -7,8 +7,7 @@ import QuickEntrySection from './QuickEntrySection';
 
 /**
  * Incident Hub Modal - Kiosk-style incident data entry.
- * Clean, form-like interface. Text is neutral/readable.
- * Branding colors used for buttons and subtle borders only.
+ * Matches the branding style of the Monthly Report template.
  */
 export default function IncidentHubModal({
   incidents,
@@ -288,23 +287,10 @@ export default function IncidentHubModal({
   const isActive = selectedIncident?.status === 'OPEN';
   const isClosed = selectedIncident?.status === 'CLOSED';
 
-  // Determine if colors are dark (for button text contrast)
-  const isColorDark = (color) => {
-    const hex = color.replace('#', '');
-    const r = parseInt(hex.substr(0, 2), 16);
-    const g = parseInt(hex.substr(2, 2), 16);
-    const b = parseInt(hex.substr(4, 2), 16);
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return luminance < 0.5;
-  };
-
-  const primaryTextColor = isColorDark(branding.primaryColor) ? '#fff' : '#000';
-  const secondaryTextColor = isColorDark(branding.secondaryColor) ? '#fff' : '#000';
-
   if (loadingRef) {
     return (
       <div style={styles.overlay}>
-        <div style={{ ...styles.modal, padding: '2rem', textAlign: 'center' }}>
+        <div style={{ ...styles.modal, padding: '2rem', textAlign: 'center', color: '#333' }}>
           Loading...
         </div>
       </div>
@@ -316,8 +302,8 @@ export default function IncidentHubModal({
   return (
     <div style={styles.overlay}>
       <div style={styles.modal}>
-        {/* Header */}
-        <div style={{ ...styles.header, borderBottomColor: branding.secondaryColor + '44' }}>
+        {/* Header - matches report header style */}
+        <div style={styles.header}>
           <div style={styles.headerLeft}>
             {branding.logo && (
               <img 
@@ -328,20 +314,25 @@ export default function IncidentHubModal({
             )}
             <div>
               <div style={styles.stationName}>
-                {branding.stationName || 'Fire Department'}
+                {(branding.stationName || 'Fire Department').toUpperCase()}
               </div>
               {branding.stationNumber && (
-                <div style={styles.stationNumber}>Station {branding.stationNumber}</div>
+                <div style={{ ...styles.stationSubtitle, color: branding.primaryColor }}>
+                  Station {branding.stationNumber}
+                </div>
               )}
             </div>
           </div>
           
           {incidents.length > 1 && (
-            <div style={{ ...styles.badge, backgroundColor: branding.secondaryColor, color: secondaryTextColor }}>
+            <div style={{ ...styles.badge, backgroundColor: branding.primaryColor }}>
               {incidents.length} Incidents
             </div>
           )}
         </div>
+
+        {/* Accent line under header - like the report */}
+        <div style={{ height: '3px', backgroundColor: branding.primaryColor }} />
 
         {/* Tabs */}
         <IncidentTabs
@@ -350,7 +341,6 @@ export default function IncidentHubModal({
           onSelect={setSelectedId}
           onClose={handleTabClose}
           primaryColor={branding.primaryColor}
-          secondaryColor={branding.secondaryColor}
         />
 
         {/* Content */}
@@ -358,7 +348,6 @@ export default function IncidentHubModal({
           <IncidentDisplay 
             incident={selectedIncident} 
             primaryColor={branding.primaryColor}
-            secondaryColor={branding.secondaryColor}
           />
 
           <StationDirectSection
@@ -369,7 +358,6 @@ export default function IncidentHubModal({
             stationUnit={stationUnit}
             directUnit={directUnit}
             primaryColor={branding.primaryColor}
-            secondaryColor={branding.secondaryColor}
           />
 
           {isClosed && (
@@ -379,11 +367,10 @@ export default function IncidentHubModal({
               onAssignmentChange={handleAssignmentChange}
               formData={formData}
               onFormChange={handleFormChange}
-              allPersonnel={allPersonnel}
+              allPersonnel={personnel}
               getAssignedIds={getAssignedIds}
               dispatchedApparatus={dispatchedApparatus}
               primaryColor={branding.primaryColor}
-              secondaryColor={branding.secondaryColor}
             />
           )}
 
@@ -393,13 +380,12 @@ export default function IncidentHubModal({
         </div>
 
         {/* Footer */}
-        <div style={{ ...styles.footer, borderTopColor: '#e0e0e0' }}>
+        <div style={styles.footer}>
           <div style={styles.footerLeft}>
             <button
               style={{
                 ...styles.button,
                 backgroundColor: saving ? '#999' : saveSuccess ? '#22c55e' : branding.primaryColor,
-                color: saving ? '#fff' : saveSuccess ? '#fff' : primaryTextColor,
               }}
               onClick={handleSave}
               disabled={saving}
@@ -420,7 +406,7 @@ export default function IncidentHubModal({
           </div>
 
           <button
-            style={{ ...styles.button, backgroundColor: branding.secondaryColor, color: secondaryTextColor }}
+            style={{ ...styles.buttonSecondary, backgroundColor: '#f5f5f5' }}
             onClick={onClose}
           >
             Close
@@ -449,7 +435,7 @@ const styles = {
   },
   modal: {
     backgroundColor: '#fff',
-    borderRadius: '8px',
+    borderRadius: '4px',
     boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
     width: '100%',
     maxWidth: '800px',
@@ -460,69 +446,72 @@ const styles = {
     position: 'relative',
   },
   header: {
-    padding: '12px 16px',
-    borderBottom: '2px solid',
+    padding: '16px 20px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fafafa',
+    backgroundColor: '#fff',
   },
   headerLeft: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
+    gap: '16px',
   },
   logo: {
-    width: '40px',
-    height: '40px',
+    width: '50px',
+    height: '50px',
     objectFit: 'contain',
   },
   stationName: {
-    fontSize: '14px',
-    fontWeight: '600',
+    fontSize: '18px',
+    fontWeight: '700',
     color: '#333',
+    letterSpacing: '0.5px',
   },
-  stationNumber: {
-    fontSize: '11px',
-    color: '#666',
+  stationSubtitle: {
+    fontSize: '12px',
+    fontWeight: '500',
   },
   badge: {
-    padding: '4px 10px',
-    borderRadius: '12px',
-    fontSize: '11px',
+    padding: '6px 12px',
+    borderRadius: '4px',
+    fontSize: '12px',
     fontWeight: '600',
+    color: '#fff',
   },
   content: {
     flex: 1,
     overflowY: 'auto',
-    padding: '16px',
+    padding: '20px',
+    backgroundColor: '#f9f9f9',
   },
   footer: {
-    padding: '12px 16px',
-    borderTop: '1px solid',
+    padding: '12px 20px',
+    borderTop: '1px solid #e0e0e0',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fafafa',
+    backgroundColor: '#fff',
   },
   footerLeft: {
     display: 'flex',
     gap: '8px',
   },
   button: {
-    padding: '8px 16px',
+    padding: '10px 20px',
     borderRadius: '4px',
     border: 'none',
-    fontSize: '13px',
-    fontWeight: '500',
+    fontSize: '14px',
+    fontWeight: '600',
     cursor: 'pointer',
+    color: '#fff',
   },
   buttonSecondary: {
-    padding: '8px 16px',
+    padding: '10px 20px',
     borderRadius: '4px',
     border: '1px solid #ddd',
     backgroundColor: '#fff',
-    fontSize: '13px',
+    fontSize: '14px',
     fontWeight: '500',
     cursor: 'pointer',
     color: '#333',

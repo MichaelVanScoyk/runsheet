@@ -2,8 +2,8 @@ import { memo } from 'react';
 import DynamicPersonnelList from '../RunSheet/shared/DynamicPersonnelList';
 
 /**
- * Quick Entry section - clean form layout for CLOSED incidents
- * All text is neutral/readable, colors only for borders/accents
+ * Quick Entry section - matches report template style
+ * Section headers use branding color (like CALL SUMMARY in report)
  */
 function QuickEntrySection({
   incident,
@@ -14,8 +14,7 @@ function QuickEntrySection({
   allPersonnel,
   getAssignedIds,
   dispatchedApparatus,
-  primaryColor = '#c41e3a',
-  secondaryColor = '#1a365d',
+  primaryColor = '#1a5f2a',
 }) {
   const apparatusUnits = dispatchedApparatus.filter(
     a => a.unit_category === 'APPARATUS' || !a.unit_category
@@ -25,13 +24,14 @@ function QuickEntrySection({
     <div style={styles.container}>
       {/* Unit Assignments */}
       {apparatusUnits.length > 0 && (
-        <div style={styles.section}>
-          <div style={styles.sectionLabel}>
+        <div style={styles.card}>
+          {/* Section header - GREEN like report */}
+          <div style={{ ...styles.sectionHeader, color: primaryColor }}>
             Unit Assignments
           </div>
           <div style={styles.unitsGrid}>
             {apparatusUnits.map((apparatus) => (
-              <div key={apparatus.id} style={{ ...styles.unitCard, borderColor: secondaryColor + '33' }}>
+              <div key={apparatus.id} style={styles.unitCard}>
                 <div style={styles.unitName}>
                   {apparatus.name || apparatus.unit_designator}
                 </div>
@@ -50,45 +50,46 @@ function QuickEntrySection({
       )}
 
       {/* Narrative Fields */}
-      <div style={styles.fieldsGrid}>
-        <div>
-          <label style={styles.fieldLabel}>
-            Situation Found
-          </label>
-          <textarea
-            style={styles.textarea}
-            rows={3}
-            placeholder="What was found on arrival..."
-            value={formData.situation_found || ''}
-            onChange={(e) => onFormChange('situation_found', e.target.value)}
-          />
+      <div style={styles.card}>
+        {/* Section header - GREEN like report */}
+        <div style={{ ...styles.sectionHeader, color: primaryColor }}>
+          Incident Narrative
+        </div>
+        
+        <div style={styles.fieldsGrid}>
+          <div>
+            <label style={styles.fieldLabel}>Situation Found</label>
+            <textarea
+              style={styles.textarea}
+              rows={3}
+              placeholder="What was found on arrival..."
+              value={formData.situation_found || ''}
+              onChange={(e) => onFormChange('situation_found', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label style={styles.fieldLabel}>Services Provided</label>
+            <textarea
+              style={styles.textarea}
+              rows={3}
+              placeholder="Actions taken..."
+              value={formData.services_provided || ''}
+              onChange={(e) => onFormChange('services_provided', e.target.value)}
+            />
+          </div>
         </div>
 
         <div>
-          <label style={styles.fieldLabel}>
-            Services Provided
-          </label>
+          <label style={styles.fieldLabel}>Narrative</label>
           <textarea
             style={styles.textarea}
-            rows={3}
-            placeholder="Actions taken..."
-            value={formData.services_provided || ''}
-            onChange={(e) => onFormChange('services_provided', e.target.value)}
+            rows={4}
+            placeholder="Detailed narrative of the incident..."
+            value={formData.narrative || ''}
+            onChange={(e) => onFormChange('narrative', e.target.value)}
           />
         </div>
-      </div>
-
-      <div>
-        <label style={styles.fieldLabel}>
-          Narrative
-        </label>
-        <textarea
-          style={styles.textarea}
-          rows={4}
-          placeholder="Detailed narrative of the incident..."
-          value={formData.narrative || ''}
-          onChange={(e) => onFormChange('narrative', e.target.value)}
-        />
       </div>
     </div>
   );
@@ -96,17 +97,20 @@ function QuickEntrySection({
 
 const styles = {
   container: {
-    paddingTop: '16px',
-    borderTop: '1px dashed #ddd',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
   },
-  section: {
-    marginBottom: '16px',
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: '4px',
+    padding: '16px',
+    border: '1px solid #e0e0e0',
   },
-  sectionLabel: {
-    fontSize: '13px',
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: '10px',
+  sectionHeader: {
+    fontSize: '14px',
+    fontWeight: '700',
+    marginBottom: '12px',
   },
   unitsGrid: {
     display: 'grid',
@@ -114,17 +118,17 @@ const styles = {
     gap: '12px',
   },
   unitCard: {
-    padding: '10px',
-    backgroundColor: '#f8f9fa',
-    borderRadius: '6px',
-    border: '1px solid',
+    padding: '12px',
+    backgroundColor: '#f9f9f9',
+    borderRadius: '4px',
+    border: '1px solid #eee',
   },
   unitName: {
-    fontSize: '13px',
+    fontSize: '14px',
     fontWeight: '600',
     color: '#333',
     marginBottom: '8px',
-    paddingBottom: '6px',
+    paddingBottom: '8px',
     borderBottom: '1px solid #e0e0e0',
   },
   fieldsGrid: {
@@ -138,12 +142,12 @@ const styles = {
     fontSize: '13px',
     fontWeight: '600',
     color: '#333',
-    marginBottom: '4px',
+    marginBottom: '6px',
   },
   textarea: {
     width: '100%',
-    padding: '8px 10px',
-    fontSize: '13px',
+    padding: '10px 12px',
+    fontSize: '14px',
     border: '1px solid #ddd',
     borderRadius: '4px',
     resize: 'vertical',

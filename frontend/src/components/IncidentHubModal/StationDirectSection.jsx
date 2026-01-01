@@ -2,7 +2,8 @@ import { memo } from 'react';
 import DynamicPersonnelList from '../RunSheet/shared/DynamicPersonnelList';
 
 /**
- * Station and Direct responders - clean form layout with readable text
+ * Station and Direct responders - matches report template style
+ * Section headers use branding color (like CALL SUMMARY in report)
  */
 function StationDirectSection({
   assignments,
@@ -11,12 +12,11 @@ function StationDirectSection({
   getAssignedIds,
   stationUnit,
   directUnit,
-  primaryColor = '#c41e3a',
-  secondaryColor = '#1a365d',
+  primaryColor = '#1a5f2a',
 }) {
   if (!stationUnit && !directUnit) {
     return (
-      <div style={{ padding: '12px', color: '#999', fontSize: '12px', textAlign: 'center' }}>
+      <div style={{ padding: '12px', color: '#999', fontSize: '13px', textAlign: 'center' }}>
         No Station or Direct units configured.
       </div>
     );
@@ -27,41 +27,38 @@ function StationDirectSection({
       <div style={styles.grid}>
         {/* Station */}
         {stationUnit && (
-          <div style={{ ...styles.section, borderColor: secondaryColor + '33' }}>
-            <div style={styles.label}>
+          <div style={styles.section}>
+            {/* Section header - GREEN like report */}
+            <div style={{ ...styles.sectionHeader, color: primaryColor }}>
               Station Responders
             </div>
             <div style={styles.hint}>Responded to station but did not ride on a truck</div>
-            <div style={styles.listWrapper}>
-              <DynamicPersonnelList
-                label={stationUnit.unit_designator}
-                assignedIds={assignments[stationUnit.unit_designator] || []}
-                onUpdate={(newList) => onAssignmentChange(stationUnit.unit_designator, newList)}
-                allPersonnel={allPersonnel}
-                getAssignedIds={getAssignedIds}
-                lightMode={true}
-              />
-            </div>
+            <DynamicPersonnelList
+              label={stationUnit.unit_designator}
+              assignedIds={assignments[stationUnit.unit_designator] || []}
+              onUpdate={(newList) => onAssignmentChange(stationUnit.unit_designator, newList)}
+              allPersonnel={allPersonnel}
+              getAssignedIds={getAssignedIds}
+              lightMode={true}
+            />
           </div>
         )}
 
         {/* Direct */}
         {directUnit && (
-          <div style={{ ...styles.section, borderColor: secondaryColor + '33' }}>
-            <div style={styles.label}>
+          <div style={styles.section}>
+            <div style={{ ...styles.sectionHeader, color: primaryColor }}>
               Direct Responders
             </div>
             <div style={styles.hint}>Went directly to the scene (POV)</div>
-            <div style={styles.listWrapper}>
-              <DynamicPersonnelList
-                label={directUnit.unit_designator}
-                assignedIds={assignments[directUnit.unit_designator] || []}
-                onUpdate={(newList) => onAssignmentChange(directUnit.unit_designator, newList)}
-                allPersonnel={allPersonnel}
-                getAssignedIds={getAssignedIds}
-                lightMode={true}
-              />
-            </div>
+            <DynamicPersonnelList
+              label={directUnit.unit_designator}
+              assignedIds={assignments[directUnit.unit_designator] || []}
+              onUpdate={(newList) => onAssignmentChange(directUnit.unit_designator, newList)}
+              allPersonnel={allPersonnel}
+              getAssignedIds={getAssignedIds}
+              lightMode={true}
+            />
           </div>
         )}
       </div>
@@ -75,28 +72,24 @@ const styles = {
   },
   grid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
     gap: '16px',
   },
   section: {
-    padding: '12px',
-    backgroundColor: '#f8f9fa',
-    borderRadius: '6px',
-    border: '1px solid',
+    backgroundColor: '#fff',
+    borderRadius: '4px',
+    padding: '16px',
+    border: '1px solid #e0e0e0',
   },
-  label: {
-    fontSize: '13px',
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: '2px',
+  sectionHeader: {
+    fontSize: '14px',
+    fontWeight: '700',
+    marginBottom: '4px',
   },
   hint: {
-    fontSize: '11px',
+    fontSize: '12px',
     color: '#888',
-    marginBottom: '10px',
-  },
-  listWrapper: {
-    // The DynamicPersonnelList will handle its own styling
+    marginBottom: '12px',
   },
 };
 

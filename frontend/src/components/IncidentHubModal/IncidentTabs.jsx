@@ -1,15 +1,14 @@
 import { memo } from 'react';
 
 /**
- * Incident tabs - clean, minimal tab bar with readable text
+ * Incident tabs - clean style matching report template
  */
 function IncidentTabs({ 
   incidents, 
   selectedId, 
   onSelect, 
   onClose,
-  primaryColor = '#c41e3a',
-  secondaryColor = '#1a365d',
+  primaryColor = '#1a5f2a',
 }) {
   if (incidents.length <= 1) return null;
 
@@ -25,7 +24,8 @@ function IncidentTabs({
             style={{
               ...styles.tab,
               backgroundColor: isSelected ? '#fff' : '#f5f5f5',
-              borderBottomColor: isSelected ? secondaryColor : 'transparent',
+              borderBottomColor: isSelected ? primaryColor : 'transparent',
+              borderBottomWidth: isSelected ? '2px' : '0',
             }}
             onClick={() => onSelect(inc.id)}
           >
@@ -41,14 +41,14 @@ function IncidentTabs({
               
               <div style={styles.tabText}>
                 <div style={{ 
-                  fontSize: '12px', 
-                  fontWeight: '500',
+                  fontSize: '13px', 
+                  fontWeight: '600',
                   color: '#333',
                 }}>
                   {inc.cad_event_type || 'Unknown'}
                 </div>
-                <div style={{ fontSize: '10px', color: '#888' }}>
-                  {inc.address ? inc.address.substring(0, 20) : 'No address'}
+                <div style={{ fontSize: '11px', color: '#888' }}>
+                  {inc.address ? inc.address.substring(0, 25) : 'No address'}
                 </div>
               </div>
             </div>
@@ -73,7 +73,7 @@ function IncidentTabs({
 const styles = {
   container: {
     display: 'flex',
-    backgroundColor: '#eee',
+    backgroundColor: '#f0f0f0',
     borderBottom: '1px solid #ddd',
     overflowX: 'auto',
   },
@@ -81,18 +81,18 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '8px 12px',
-    minWidth: '160px',
-    maxWidth: '200px',
+    padding: '10px 14px',
+    minWidth: '180px',
+    maxWidth: '220px',
     cursor: 'pointer',
     borderBottom: '2px solid transparent',
-    borderRight: '1px solid #ddd',
+    borderRight: '1px solid #e0e0e0',
     transition: 'background-color 0.15s',
   },
   tabContent: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: '10px',
     flex: 1,
     overflow: 'hidden',
   },
@@ -102,11 +102,11 @@ const styles = {
   closeBtn: {
     background: 'none',
     border: 'none',
-    fontSize: '16px',
+    fontSize: '18px',
     color: '#999',
     cursor: 'pointer',
     padding: '0 4px',
-    marginLeft: '4px',
+    marginLeft: '8px',
     lineHeight: 1,
   },
 };

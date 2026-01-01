@@ -1,9 +1,10 @@
 import { memo } from 'react';
 
 /**
- * Incident display - clean, minimal layout with readable text
+ * Incident display - matches report template style
+ * Section headers use branding color, body text is dark/readable
  */
-function IncidentDisplay({ incident, primaryColor = '#c41e3a', secondaryColor = '#1a365d' }) {
+function IncidentDisplay({ incident, primaryColor = '#1a5f2a' }) {
   if (!incident) {
     return (
       <div style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
@@ -31,7 +32,7 @@ function IncidentDisplay({ incident, primaryColor = '#c41e3a', secondaryColor = 
             backgroundColor: isActive ? '#22c55e' : '#999',
           }} />
           <span style={{ 
-            fontSize: '11px', 
+            fontSize: '12px', 
             fontWeight: '600',
             color: isActive ? '#22c55e' : '#666',
             textTransform: 'uppercase',
@@ -39,16 +40,16 @@ function IncidentDisplay({ incident, primaryColor = '#c41e3a', secondaryColor = 
             {isActive ? 'Active' : 'Closed'}
           </span>
         </div>
-        <span style={{ fontSize: '11px', color: '#666' }}>
+        <span style={{ fontSize: '12px', color: '#666' }}>
           CAD# {incident.cad_event_number}
         </span>
       </div>
 
-      {/* Type - readable dark text */}
+      {/* Type */}
       <div style={styles.type}>
         {incident.cad_event_type || 'Unknown Type'}
         {incident.cad_event_subtype && (
-          <span style={{ color: '#555', marginLeft: '8px' }}>
+          <span style={{ marginLeft: '10px' }}>
             {incident.cad_event_subtype}
           </span>
         )}
@@ -63,57 +64,62 @@ function IncidentDisplay({ incident, primaryColor = '#c41e3a', secondaryColor = 
       <div style={styles.location}>
         {incident.municipality_code}
         {incident.cross_streets && (
-          <span style={{ color: '#888' }}> @ {incident.cross_streets}</span>
+          <span> @ {incident.cross_streets}</span>
         )}
       </div>
 
-      {/* Units and ESZ */}
-      <div style={styles.infoRow}>
-        {dispatchedUnits && (
-          <span><strong>Units:</strong> {dispatchedUnits}</span>
-        )}
-        {incident.esz_box && (
-          <span><strong>ESZ/Box:</strong> {incident.esz_box}</span>
-        )}
-      </div>
+      {/* ESZ/Box */}
+      {incident.esz_box && (
+        <div style={styles.info}>
+          <strong>ESZ/Box:</strong> {incident.esz_box}
+        </div>
+      )}
+
+      {/* Units */}
+      {dispatchedUnits && (
+        <div style={styles.info}>
+          <strong>Units:</strong> {dispatchedUnits}
+        </div>
+      )}
     </div>
   );
 }
 
 const styles = {
   container: {
+    backgroundColor: '#fff',
+    borderRadius: '4px',
+    padding: '16px',
     marginBottom: '16px',
-    paddingBottom: '16px',
-    borderBottom: '1px solid #eee',
+    border: '1px solid #e0e0e0',
   },
   statusRow: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '8px',
+    marginBottom: '12px',
   },
   type: {
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#333',
+    fontSize: '14px',
+    fontWeight: '500',
+    color: '#555',
     marginBottom: '4px',
   },
   address: {
-    fontSize: '20px',
+    fontSize: '22px',
     fontWeight: '700',
-    color: '#111',
-    marginBottom: '2px',
+    color: '#222',
+    marginBottom: '4px',
   },
   location: {
-    fontSize: '13px',
+    fontSize: '14px',
     color: '#555',
     marginBottom: '8px',
   },
-  infoRow: {
-    display: 'flex',
-    gap: '16px',
-    fontSize: '12px',
-    color: '#666',
+  info: {
+    fontSize: '13px',
+    color: '#555',
+    marginTop: '4px',
   },
 };
 
