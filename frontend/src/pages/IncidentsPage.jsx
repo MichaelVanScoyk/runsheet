@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getIncidents, getIncident } from '../api';
 import RunSheetForm from '../components/RunSheetForm';
+import IncidentHubModal from '../components/IncidentHubModal';
+import { incidentQualifiesForModal } from '../components/IncidentHubModal/hooks/useActiveIncidents';
 import { formatTimeLocal } from '../utils/timeUtils';
 
 const FILTER_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const POLL_INTERVAL_MS = 5000; // 5 seconds
 
 function IncidentsPage() {
   const [incidents, setIncidents] = useState([]);
@@ -14,6 +17,11 @@ function IncidentsPage() {
   const [editingIncident, setEditingIncident] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState('ALL'); // ALL, FIRE, EMS
+  
+  // Incident Hub Modal state
+  const [showHubModal, setShowHubModal] = useState(false);
+  const [qualifyingIncidents, setQualifyingIncidents] = useState([]);
+  const [selectedModalIncidentId, setSelectedModalIncidentId] = useState(null);
   
   // Timeout ref for resetting filter
   const filterTimeoutRef = useRef(null);
@@ -45,10 +53,13 @@ function IncidentsPage() {
         setShowForm(false);
         setEditingIncident(null);
       }
+      if (showHubModal) {
+        setShowHubModal(false);
+      }
     };
     window.addEventListener('nav-incidents-click', handleNavClick);
     return () => window.removeEventListener('nav-incidents-click', handleNavClick);
-  }, [showForm]);
+  }, [showForm, showHubModal]);
 
   const loadData = useCallback(async () => {
     try {
@@ -66,22 +77,120 @@ function IncidentsPage() {
     loadData();
   }, [loadData]);
 
-  // Auto-refresh every 5 seconds when enabled (and not viewing form)
+  // Load qualifying incidents for modal (with full details for cad_clear_received_at)
+  const loadQualifyingIncidents = useCallback(async () => {
+    try {
+      // Get current year incidents
+      const res = await getIncidents(new Date().getFullYear(), null);
+      const allIncidents = res.data.incidents || [];
+      
+      // Filter to potentially qualifying (OPEN or recently CLOSED)
+      const candidates = allIncidents.filter(inc => 
+        inc.status === 'OPEN' || inc.status === 'CLOSED'
+      );
+      
+      // Fetch full details for candidates to check cad_clear_received_at
+      const fullIncidents = await Promise.all(
+        candidates.slice(0, 10).map(async (inc) => { // Limit to 10 for performance
+          try {
+            const fullRes = await getIncident(inc.id);
+            return fullRes.data;
+          } catch (err) {
+            return inc;
+          }
+        })
+      );
+      
+      // Filter to actually qualifying
+      const qualifying = fullIncidents.filter(incidentQualifiesForModal);
+      
+      // Sort by dispatch time (newest first)
+      qualifying.sort((a, b) => {
+        const aTime = a.time_dispatched ? new Date(a.time_dispatched).getTime() : 0;
+        const bTime = b.time_dispatched ? new Date(b.time_dispatched).getTime() : 0;
+        return bTime - aTime;
+      });
+      
+      setQualifyingIncidents(qualifying);
+      
+      // Auto-open modal if there are qualifying incidents and modal not already shown
+      // and not viewing the form
+      if (qualifying.length > 0 && !showHubModal && !showForm) {
+        // Check if any are new (OPEN status) - auto-show for new dispatches
+        const hasActive = qualifying.some(i => i.status === 'OPEN');
+        if (hasActive) {
+          setSelectedModalIncidentId(qualifying[0].id);
+          setShowHubModal(true);
+        }
+      }
+      
+    } catch (err) {
+      console.error('Failed to load qualifying incidents:', err);
+    }
+  }, [showHubModal, showForm]);
+
+  // Poll for qualifying incidents
   useEffect(() => {
-    if (!autoRefresh || showForm) return;
+    // Initial load
+    loadQualifyingIncidents();
+    
+    // Set up polling
+    const interval = setInterval(() => {
+      loadQualifyingIncidents();
+    }, POLL_INTERVAL_MS);
+    
+    return () => clearInterval(interval);
+  }, [loadQualifyingIncidents]);
+
+  // Auto-refresh incidents list every 5 seconds when enabled (and not viewing form/modal)
+  useEffect(() => {
+    if (!autoRefresh || showForm || showHubModal) return;
     
     const interval = setInterval(() => {
       loadData();
-    }, 5000);
+    }, POLL_INTERVAL_MS);
     
     return () => clearInterval(interval);
-  }, [autoRefresh, loadData, showForm]);
+  }, [autoRefresh, loadData, showForm, showHubModal]);
 
   const handleNewIncident = () => {
     setEditingIncident(null);
     setShowForm(true);
   };
 
+  // Handle clicking on an incident row - route to modal or form
+  const handleIncidentClick = async (incidentSummary) => {
+    setLoadingIncident(true);
+    try {
+      const res = await getIncident(incidentSummary.id);
+      const fullIncident = res.data;
+      
+      // Check if incident qualifies for modal
+      if (incidentQualifiesForModal(fullIncident)) {
+        // Show in modal
+        setSelectedModalIncidentId(fullIncident.id);
+        // Add to qualifying list if not already there
+        setQualifyingIncidents(prev => {
+          if (prev.find(i => i.id === fullIncident.id)) {
+            return prev;
+          }
+          return [fullIncident, ...prev];
+        });
+        setShowHubModal(true);
+      } else {
+        // Show in RunSheetForm (requires auth)
+        setEditingIncident(fullIncident);
+        setShowForm(true);
+      }
+    } catch (err) {
+      console.error('Failed to load incident:', err);
+      alert('Failed to load incident details');
+    } finally {
+      setLoadingIncident(false);
+    }
+  };
+
+  // Legacy edit handler (from Edit button) - always goes to form
   const handleEditIncident = async (incidentSummary) => {
     setLoadingIncident(true);
     try {
@@ -97,8 +206,8 @@ function IncidentsPage() {
   };
 
   const handlePrintIncident = (incidentId) => {
-    // Open print view in new tab - cleaner print without app shell
-    window.open(`/print/${incidentId}`, '_blank');
+    // Direct to PDF
+    window.open(`/api/reports/pdf/incident/${incidentId}`, '_blank');
   };
 
   const handleFormClose = () => {
@@ -111,25 +220,60 @@ function IncidentsPage() {
     loadData();
   };
 
+  // Modal handlers
+  const handleModalClose = () => {
+    setShowHubModal(false);
+    setSelectedModalIncidentId(null);
+    loadData();
+  };
+
+  const handleNavigateToEdit = async (incidentId) => {
+    setShowHubModal(false);
+    setSelectedModalIncidentId(null);
+    
+    // Load full incident and show form
+    try {
+      const res = await getIncident(incidentId);
+      setEditingIncident(res.data);
+      setShowForm(true);
+    } catch (err) {
+      console.error('Failed to load incident for edit:', err);
+      alert('Failed to load incident');
+    }
+  };
+
   const handleCategoryChange = (newCategory) => {
     setCategoryFilter(newCategory);
     resetFilterTimeout();
   };
 
   // Get row style based on category
-  const getRowStyle = (category) => {
+  const getRowStyle = (incident) => {
+    const category = incident.call_category;
+    const isQualifying = qualifyingIncidents.some(q => q.id === incident.id);
+    
+    let style = {};
+    
     if (category === 'EMS') {
-      return { 
+      style = { 
         borderLeft: '3px solid #3498db',
         borderRight: '3px solid #3498db'
       };
     } else if (category === 'FIRE') {
-      return { 
+      style = { 
         borderLeft: '3px solid #e74c3c',
         borderRight: '3px solid #e74c3c'
       };
     }
-    return {};
+    
+    // Highlight qualifying incidents
+    if (isQualifying) {
+      style.backgroundColor = incident.status === 'OPEN' 
+        ? 'rgba(34, 197, 94, 0.1)' // Green tint for active
+        : 'rgba(234, 179, 8, 0.1)'; // Yellow tint for recently closed
+    }
+    
+    return style;
   };
 
   // Get category badge
@@ -170,6 +314,7 @@ function IncidentsPage() {
   // Count by category
   const fireCounts = incidents.filter(i => i.call_category === 'FIRE').length;
   const emsCounts = incidents.filter(i => i.call_category === 'EMS').length;
+  const activeCount = qualifyingIncidents.filter(i => i.status === 'OPEN').length;
 
   if (showForm) {
     return (
@@ -183,9 +328,37 @@ function IncidentsPage() {
 
   return (
     <div>
+      {/* Incident Hub Modal */}
+      {showHubModal && qualifyingIncidents.length > 0 && (
+        <IncidentHubModal
+          incidents={qualifyingIncidents}
+          initialIncidentId={selectedModalIncidentId}
+          onClose={handleModalClose}
+          onNavigateToEdit={handleNavigateToEdit}
+          refetch={loadQualifyingIncidents}
+        />
+      )}
+
       <div className="page-header">
         <h2>Incidents - {year}</h2>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {/* Active incidents indicator */}
+          {activeCount > 0 && (
+            <button
+              className="btn btn-sm"
+              style={{ 
+                backgroundColor: '#22c55e', 
+                color: '#fff',
+                animation: 'pulse 2s infinite'
+              }}
+              onClick={() => {
+                setSelectedModalIncidentId(qualifyingIncidents[0]?.id);
+                setShowHubModal(true);
+              }}
+            >
+              🚨 {activeCount} Active
+            </button>
+          )}
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#888', fontSize: '0.85rem' }}>
             <input
               type="checkbox"
@@ -272,7 +445,12 @@ function IncidentsPage() {
                 </tr>
               ) : (
                 incidents.map((i) => (
-                  <tr key={i.id} style={getRowStyle(i.call_category)}>
+                  <tr 
+                    key={i.id} 
+                    style={getRowStyle(i)}
+                    onClick={() => handleIncidentClick(i)}
+                    className="cursor-pointer hover:bg-dark-hover transition-colors"
+                  >
                     <td>
                       {i.internal_incident_number}
                       {getCategoryBadge(i.call_category)}
@@ -302,7 +480,7 @@ function IncidentsPage() {
                       </span>
                       {getComCatStatusDot(i.comcat_status)}
                     </td>
-                    <td>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: '0.25rem' }}>
                         <button
                           className="btn btn-secondary btn-sm"

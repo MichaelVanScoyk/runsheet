@@ -1,0 +1,116 @@
+/* Incident Hub Modal Styles */
+
+/* Animation for active indicator */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Custom scrollbar for modal content */
+.incident-hub-modal::-webkit-scrollbar {
+  width: 8px;
+}
+
+.incident-hub-modal::-webkit-scrollbar-track {
+  background: var(--dark-bg, #1a1a1a);
+}
+
+.incident-hub-modal::-webkit-scrollbar-thumb {
+  background: var(--dark-border, #333);
+  border-radius: 4px;
+}
+
+.incident-hub-modal::-webkit-scrollbar-thumb:hover {
+  background: var(--dark-hover, #444);
+}
+
+/* Tab active state connector */
+.tab-active-connector {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--dark-card, #252525);
+}
+
+/* Large display text for station monitor visibility */
+.incident-type-large {
+  font-size: 1.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.incident-address-large {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+/* Status indicator animation */
+.status-active {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Button hover effects */
+.hub-button {
+  transition: all 0.15s ease;
+}
+
+.hub-button:hover {
+  transform: translateY(-1px);
+}
+
+.hub-button:active {
+  transform: translateY(0);
+}
+
+/* Save success animation */
+@keyframes save-success {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.save-success {
+  animation: save-success 0.3s ease;
+}
+
+/* Tab close button */
+.tab-close-btn {
+  opacity: 0.5;
+  transition: all 0.15s ease;
+}
+
+.tab-close-btn:hover {
+  opacity: 1;
+  background-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .incident-type-large {
+    font-size: 1.25rem;
+  }
+  
+  .incident-address-large {
+    font-size: 1.5rem;
+  }
+}
+
+/* Print styles - hide modal when printing */
+@media print {
+  .incident-hub-modal-overlay {
+    display: none !important;
+  }
+}

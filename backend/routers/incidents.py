@@ -972,6 +972,10 @@ async def get_incident(
         # Timestamps - ALL UTC with Z suffix
         "created_at": format_utc_iso(incident.created_at),
         "updated_at": format_utc_iso(incident.updated_at),
+        
+        # CAD received timestamps (for modal timing logic)
+        "cad_dispatch_received_at": format_utc_iso(incident.cad_dispatch_received_at),
+        "cad_clear_received_at": format_utc_iso(incident.cad_clear_received_at),
     }
 
 
@@ -1281,6 +1285,10 @@ async def close_incident(
     old_status = incident.status
     incident.status = 'CLOSED'
     incident.updated_at = datetime.now(timezone.utc)
+    
+    # Record when the clear report was received (used for "1 hour after close" modal logic)
+    if not incident.cad_clear_received_at:
+        incident.cad_clear_received_at = datetime.now(timezone.utc)
     
     # Audit log - use edited_by (logged-in user) or fall back to completed_by
     audit_user_id = edited_by or incident.completed_by
