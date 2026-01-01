@@ -153,7 +153,7 @@ function UnitSection({ title, assignedIds, unitDesignator, getPersonName, onRemo
             zIndex: 9999,
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
           }}>
-            {filtered.slice(0, 10).map(p => (
+            {filtered.map(p => (
               <div
                 key={p.id}
                 onMouseDown={() => handleSelect(p.id)}
