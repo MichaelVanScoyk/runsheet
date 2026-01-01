@@ -4,6 +4,7 @@ import IncidentTabs from './IncidentTabs';
 import IncidentDisplay from './IncidentDisplay';
 import StationDirectSection from './StationDirectSection';
 import QuickEntrySection from './QuickEntrySection';
+import './IncidentHubModal.css';
 
 /**
  * Incident Hub Modal - Kiosk-style incident data entry.
@@ -35,6 +36,15 @@ export default function IncidentHubModal({
   const [personnel, setPersonnel] = useState([]);
   const [loadingRef, setLoadingRef] = useState(true);
   
+  // Branding
+  const [branding, setBranding] = useState({
+    logo: null,
+    stationName: '',
+    stationNumber: '',
+    primaryColor: '#e94560',
+    secondaryColor: '#0f3460',
+  });
+  
   // Form state
   const [assignments, setAssignments] = useState({});
   const [formData, setFormData] = useState({
@@ -47,6 +57,57 @@ export default function IncidentHubModal({
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState(null);
+
+  // Load branding from settings
+  useEffect(() => {
+    async function loadBranding() {
+      try {
+        // Load all branding in parallel
+        const [logoRes, stationRes, primaryRes, secondaryRes] = await Promise.allSettled([
+          fetch('/api/settings/branding/logo'),
+          fetch('/api/settings'),
+          fetch('/api/settings/branding/primary_color'),
+          fetch('/api/settings/branding/secondary_color'),
+        ]);
+        
+        const newBranding = { ...branding };
+        
+        // Logo
+        if (logoRes.status === 'fulfilled' && logoRes.value.ok) {
+          const logoData = await logoRes.value.json();
+          if (logoData.has_logo && logoData.data && logoData.mime_type) {
+            newBranding.logo = `data:${logoData.mime_type};base64,${logoData.data}`;
+          }
+        }
+        
+        // Station settings
+        if (stationRes.status === 'fulfilled' && stationRes.value.ok) {
+          const settings = await stationRes.value.json();
+          const stationSettings = settings.station || [];
+          const nameEntry = stationSettings.find(s => s.key === 'name');
+          const numberEntry = stationSettings.find(s => s.key === 'station_number');
+          if (nameEntry) newBranding.stationName = nameEntry.raw_value || nameEntry.value || '';
+          if (numberEntry) newBranding.stationNumber = numberEntry.raw_value || numberEntry.value || '';
+        }
+        
+        // Colors
+        if (primaryRes.status === 'fulfilled' && primaryRes.value.ok) {
+          const data = await primaryRes.value.json();
+          if (data.raw_value) newBranding.primaryColor = data.raw_value;
+        }
+        
+        if (secondaryRes.status === 'fulfilled' && secondaryRes.value.ok) {
+          const data = await secondaryRes.value.json();
+          if (data.raw_value) newBranding.secondaryColor = data.raw_value;
+        }
+        
+        setBranding(newBranding);
+      } catch (err) {
+        console.error('Failed to load branding:', err);
+      }
+    }
+    loadBranding();
+  }, []);
 
   // Load reference data once
   useEffect(() => {
@@ -289,19 +350,63 @@ export default function IncidentHubModal({
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-dark-bg rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-dark-border">
+      <div 
+        className="bg-dark-bg rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
+        style={{ 
+          border: `2px solid ${branding.secondaryColor}`,
+        }}
+      >
         {/* Header with branding */}
-        <div className="bg-dark-card px-6 py-3 border-b border-dark-border flex items-center justify-between">
+        <div 
+          className="px-6 py-3 flex items-center justify-between"
+          style={{ 
+            background: `linear-gradient(135deg, ${branding.secondaryColor} 0%, ${branding.primaryColor}22 100%)`,
+            borderBottom: `1px solid ${branding.secondaryColor}`,
+          }}
+        >
           <div className="flex items-center gap-3">
-            {/* Logo placeholder */}
-            <div className="w-10 h-10 bg-accent-red rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">48</span>
-            </div>
+            {/* Logo or placeholder */}
+            {branding.logo ? (
+              <img 
+                src={branding.logo} 
+                alt="Department Logo" 
+                className="w-12 h-12 object-contain rounded"
+              />
+            ) : (
+              <div 
+                className="w-12 h-12 rounded-lg flex items-center justify-center font-bold text-xl"
+                style={{ 
+                  backgroundColor: branding.primaryColor,
+                  color: '#fff',
+                }}
+              >
+                {branding.stationNumber || '48'}
+              </div>
+            )}
             <div>
-              <div className="text-white font-semibold">GLEN MOORE FIRE CO.</div>
-              <div className="text-gray-500 text-sm">Station 48</div>
+              <div className="text-white font-semibold text-lg">
+                {branding.stationName || 'FIRE DEPARTMENT'}
+              </div>
+              {branding.stationNumber && (
+                <div className="text-gray-400 text-sm">
+                  Station {branding.stationNumber}
+                </div>
+              )}
             </div>
           </div>
+          
+          {/* Incident count badge */}
+          {incidents.length > 1 && (
+            <div 
+              className="px-3 py-1 rounded-full text-sm font-medium"
+              style={{ 
+                backgroundColor: branding.primaryColor,
+                color: '#fff',
+              }}
+            >
+              {incidents.length} Incidents
+            </div>
+          )}
         </div>
 
         {/* Tabs (if multiple incidents) */}
@@ -310,12 +415,16 @@ export default function IncidentHubModal({
           selectedId={selectedId}
           onSelect={setSelectedId}
           onClose={handleTabClose}
+          primaryColor={branding.primaryColor}
         />
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
           {/* Incident Display */}
-          <IncidentDisplay incident={selectedIncident} />
+          <IncidentDisplay 
+            incident={selectedIncident} 
+            primaryColor={branding.primaryColor}
+          />
 
           {/* Station / Direct Section (always available) */}
           <StationDirectSection
@@ -325,6 +434,7 @@ export default function IncidentHubModal({
             getAssignedIds={getAssignedIds}
             stationUnit={stationUnit}
             directUnit={directUnit}
+            primaryColor={branding.primaryColor}
           />
 
           {/* Quick Entry Section (only when CLOSED) */}
@@ -338,6 +448,7 @@ export default function IncidentHubModal({
               allPersonnel={personnel}
               getAssignedIds={getAssignedIds}
               dispatchedApparatus={dispatchedApparatus}
+              primaryColor={branding.primaryColor}
             />
           )}
 
@@ -350,7 +461,13 @@ export default function IncidentHubModal({
         </div>
 
         {/* Footer with buttons */}
-        <div className="bg-dark-card px-6 py-4 border-t border-dark-border flex items-center justify-between">
+        <div 
+          className="px-6 py-4 flex items-center justify-between"
+          style={{ 
+            backgroundColor: branding.secondaryColor + '33',
+            borderTop: `1px solid ${branding.secondaryColor}`,
+          }}
+        >
           <div className="flex items-center gap-3">
             {/* Print button (only when CLOSED) */}
             {isClosed && (
@@ -365,13 +482,16 @@ export default function IncidentHubModal({
 
             {/* Save button */}
             <button
-              className={`px-4 py-2 rounded flex items-center gap-2 transition-colors
-                ${saving 
-                  ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
-                  : saveSuccess
-                    ? 'bg-green-600 text-white'
-                    : 'bg-accent-red hover:bg-red-600 text-white'
-                }`}
+              className="px-4 py-2 rounded flex items-center gap-2 transition-colors"
+              style={{
+                backgroundColor: saving 
+                  ? '#666' 
+                  : saveSuccess 
+                    ? '#22c55e' 
+                    : branding.primaryColor,
+                color: '#fff',
+                cursor: saving ? 'not-allowed' : 'pointer',
+              }}
               onClick={handleSave}
               disabled={saving}
             >
@@ -392,8 +512,11 @@ export default function IncidentHubModal({
 
           {/* Close button */}
           <button
-            className="px-4 py-2 bg-dark-border hover:bg-dark-hover text-gray-400 
-                       hover:text-white rounded transition-colors"
+            className="px-4 py-2 rounded transition-colors"
+            style={{
+              backgroundColor: branding.secondaryColor,
+              color: '#fff',
+            }}
             onClick={onClose}
           >
             Close
@@ -402,7 +525,10 @@ export default function IncidentHubModal({
 
         {/* Active indicator overlay */}
         {isActive && (
-          <div className="absolute top-0 left-0 right-0 h-1 bg-green-500 animate-pulse" />
+          <div 
+            className="absolute top-0 left-0 right-0 h-1 animate-pulse"
+            style={{ backgroundColor: '#22c55e' }}
+          />
         )}
       </div>
     </div>

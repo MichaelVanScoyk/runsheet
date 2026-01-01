@@ -7,6 +7,46 @@ import { formatTimeLocal } from '../utils/timeUtils';
 
 const FILTER_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const POLL_INTERVAL_MS = 5000; // 5 seconds
+const ACK_STORAGE_KEY = 'hubModalAcknowledged';
+
+/**
+ * Get acknowledged incidents from sessionStorage
+ * Format: { incidentId: lastAcknowledgedUpdatedAt }
+ */
+function getAcknowledged() {
+  try {
+    const data = sessionStorage.getItem(ACK_STORAGE_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Mark an incident as acknowledged at its current updated_at
+ */
+function acknowledgeIncident(incidentId, updatedAt) {
+  const acked = getAcknowledged();
+  acked[incidentId] = updatedAt;
+  sessionStorage.setItem(ACK_STORAGE_KEY, JSON.stringify(acked));
+}
+
+/**
+ * Check if an incident needs to auto-show (has been updated since last ack)
+ */
+function needsAutoShow(incident) {
+  const acked = getAcknowledged();
+  const lastAck = acked[incident.id];
+  
+  // Never acknowledged = needs to show
+  if (!lastAck) return true;
+  
+  // Check if updated since last ack
+  const updatedAt = incident.updated_at || incident.created_at;
+  if (!updatedAt) return true;
+  
+  return new Date(updatedAt).getTime() > new Date(lastAck).getTime();
+}
 
 function IncidentsPage() {
   const [incidents, setIncidents] = useState([]);
@@ -22,6 +62,7 @@ function IncidentsPage() {
   const [showHubModal, setShowHubModal] = useState(false);
   const [qualifyingIncidents, setQualifyingIncidents] = useState([]);
   const [selectedModalIncidentId, setSelectedModalIncidentId] = useState(null);
+  const [manualOpen, setManualOpen] = useState(false); // Track if opened manually via row click
   
   // Timeout ref for resetting filter
   const filterTimeoutRef = useRef(null);
@@ -54,12 +95,16 @@ function IncidentsPage() {
         setEditingIncident(null);
       }
       if (showHubModal) {
+        // Acknowledge all qualifying incidents when closing via nav
+        qualifyingIncidents.forEach(inc => {
+          acknowledgeIncident(inc.id, inc.updated_at || inc.created_at);
+        });
         setShowHubModal(false);
       }
     };
     window.addEventListener('nav-incidents-click', handleNavClick);
     return () => window.removeEventListener('nav-incidents-click', handleNavClick);
-  }, [showForm, showHubModal]);
+  }, [showForm, showHubModal, qualifyingIncidents]);
 
   const loadData = useCallback(async () => {
     try {
@@ -113,13 +158,16 @@ function IncidentsPage() {
       
       setQualifyingIncidents(qualifying);
       
-      // Auto-open modal if there are qualifying incidents and modal not already shown
-      // and not viewing the form
+      // Auto-open modal ONLY if:
+      // 1. There are qualifying incidents
+      // 2. Modal not already shown
+      // 3. Not viewing the form
+      // 4. At least one incident needs auto-show (not acknowledged or updated since ack)
       if (qualifying.length > 0 && !showHubModal && !showForm) {
-        // Check if any are new (OPEN status) - auto-show for new dispatches
-        const hasActive = qualifying.some(i => i.status === 'OPEN');
-        if (hasActive) {
-          setSelectedModalIncidentId(qualifying[0].id);
+        const needsShow = qualifying.filter(needsAutoShow);
+        if (needsShow.length > 0) {
+          setSelectedModalIncidentId(needsShow[0].id);
+          setManualOpen(false);
           setShowHubModal(true);
         }
       }
@@ -167,8 +215,9 @@ function IncidentsPage() {
       
       // Check if incident qualifies for modal
       if (incidentQualifiesForModal(fullIncident)) {
-        // Show in modal
+        // Show in modal - this is a MANUAL open (row click)
         setSelectedModalIncidentId(fullIncident.id);
+        setManualOpen(true); // Mark as manual so we don't auto-close
         // Add to qualifying list if not already there
         setQualifyingIncidents(prev => {
           if (prev.find(i => i.id === fullIncident.id)) {
@@ -220,16 +269,29 @@ function IncidentsPage() {
     loadData();
   };
 
-  // Modal handlers
+  // Modal close handler - ACKNOWLEDGE all displayed incidents
   const handleModalClose = () => {
+    // Acknowledge all qualifying incidents so they don't auto-pop again
+    qualifyingIncidents.forEach(inc => {
+      acknowledgeIncident(inc.id, inc.updated_at || inc.created_at);
+    });
+    
     setShowHubModal(false);
     setSelectedModalIncidentId(null);
+    setManualOpen(false);
     loadData();
   };
 
   const handleNavigateToEdit = async (incidentId) => {
+    // Acknowledge before navigating away
+    const inc = qualifyingIncidents.find(i => i.id === incidentId);
+    if (inc) {
+      acknowledgeIncident(inc.id, inc.updated_at || inc.created_at);
+    }
+    
     setShowHubModal(false);
     setSelectedModalIncidentId(null);
+    setManualOpen(false);
     
     // Load full incident and show form
     try {
@@ -342,7 +404,7 @@ function IncidentsPage() {
       <div className="page-header">
         <h2>Incidents - {year}</h2>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          {/* Active incidents indicator */}
+          {/* Active incidents indicator - clicking always opens (manual) */}
           {activeCount > 0 && (
             <button
               className="btn btn-sm"
@@ -353,6 +415,7 @@ function IncidentsPage() {
               }}
               onClick={() => {
                 setSelectedModalIncidentId(qualifyingIncidents[0]?.id);
+                setManualOpen(true);
                 setShowHubModal(true);
               }}
             >

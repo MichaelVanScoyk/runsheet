@@ -4,7 +4,7 @@ import { memo } from 'react';
  * Large incident display showing key info from CAD.
  * Designed to be visible on a station monitor.
  */
-function IncidentDisplay({ incident }) {
+function IncidentDisplay({ incident, primaryColor = '#e94560' }) {
   if (!incident) {
     return (
       <div className="text-center text-gray-500 py-8">
@@ -34,7 +34,10 @@ function IncidentDisplay({ incident }) {
           {incident.cad_event_type || 'UNKNOWN TYPE'}
         </div>
         {incident.cad_event_subtype && (
-          <div className="text-xl text-accent-red mt-1">
+          <div 
+            className="text-xl mt-1"
+            style={{ color: primaryColor }}
+          >
             {incident.cad_event_subtype}
           </div>
         )}
@@ -71,18 +74,21 @@ function IncidentDisplay({ incident }) {
       )}
 
       {/* Status and CAD Number */}
-      <div className="flex items-center justify-between mt-4 pt-4 border-t border-dark-border">
+      <div 
+        className="flex items-center justify-between mt-4 pt-4"
+        style={{ borderTop: '1px solid #333' }}
+      >
         {/* Status Indicator */}
         <div className="flex items-center gap-2">
           <span
-            className={`w-3 h-3 rounded-full ${
-              isActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
-            }`}
+            className={`w-3 h-3 rounded-full ${isActive ? 'animate-pulse' : ''}`}
+            style={{ 
+              backgroundColor: isActive ? '#22c55e' : '#6b7280',
+            }}
           />
           <span
-            className={`text-lg font-semibold ${
-              isActive ? 'text-green-400' : 'text-gray-400'
-            }`}
+            className="text-lg font-semibold"
+            style={{ color: isActive ? '#22c55e' : '#9ca3af' }}
           >
             {isActive ? 'ACTIVE' : 'CLOSED'}
           </span>

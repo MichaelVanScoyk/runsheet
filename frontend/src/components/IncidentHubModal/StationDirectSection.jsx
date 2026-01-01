@@ -15,24 +15,28 @@ function StationDirectSection({
   getAssignedIds,
   stationUnit,
   directUnit,
+  primaryColor = '#e94560',
 }) {
   if (!stationUnit && !directUnit) {
     return (
       <div className="px-6 py-4 text-center text-gray-500">
         No Station or Direct units configured.
         <br />
-        <span className="text-sm">Configure in Admin → Apparatus with unit_category STATION or DIRECT.</span>
+        <span className="text-sm">Configure in Admin → Units with unit_category STATION or DIRECT.</span>
       </div>
     );
   }
 
   return (
-    <div className="px-6 py-4 border-t border-dark-border">
+    <div className="px-6 py-4" style={{ borderTop: '1px solid #333' }}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Station Responders */}
         {stationUnit && (
           <div>
-            <h3 className="text-sm font-semibold text-accent-red mb-2 flex items-center gap-2">
+            <h3 
+              className="text-sm font-semibold mb-2 flex items-center gap-2"
+              style={{ color: primaryColor }}
+            >
               <span className="w-2 h-2 bg-yellow-500 rounded-full" />
               STATION RESPONDERS
             </h3>
@@ -52,7 +56,10 @@ function StationDirectSection({
         {/* Direct Responders */}
         {directUnit && (
           <div>
-            <h3 className="text-sm font-semibold text-accent-red mb-2 flex items-center gap-2">
+            <h3 
+              className="text-sm font-semibold mb-2 flex items-center gap-2"
+              style={{ color: primaryColor }}
+            >
               <span className="w-2 h-2 bg-blue-500 rounded-full" />
               DIRECT RESPONDERS
             </h3>
