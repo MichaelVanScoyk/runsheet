@@ -10,6 +10,7 @@ function QuickEntrySection({
   getAssignedIds,
   dispatchedApparatus,
   primaryColor = '#1a5f2a',
+  showNarrative = true,
 }) {
   const apparatusUnits = dispatchedApparatus.filter(a => a.unit_category === 'APPARATUS' || !a.unit_category);
 
@@ -31,8 +32,12 @@ function QuickEntrySection({
   const globalAssigned = getAssignedIds();
   const getAvailable = () => allPersonnel.filter(p => !globalAssigned.has(p.id));
 
+  // Don't render anything if no units and no narrative to show
+  if (apparatusUnits.length === 0 && !showNarrative) return null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* Unit Assignments - always show if there are dispatched units */}
       {apparatusUnits.length > 0 && (
         <div style={{ backgroundColor: '#fff', borderRadius: '4px', padding: '12px', border: '1px solid #ddd' }}>
           <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', color: primaryColor }}>Unit Assignments</div>
@@ -53,41 +58,44 @@ function QuickEntrySection({
         </div>
       )}
 
-      <div style={{ backgroundColor: '#fff', borderRadius: '4px', padding: '12px', border: '1px solid #ddd' }}>
-        <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', color: primaryColor }}>Narrative</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '10px', marginBottom: '10px' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>Situation Found</label>
-            <textarea
-              rows={2}
-              placeholder="What was found on arrival..."
-              value={formData.situation_found || ''}
-              onChange={(e) => onFormChange('situation_found', e.target.value)}
-              style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}
-            />
+      {/* Narrative Fields - only show when closed */}
+      {showNarrative && (
+        <div style={{ backgroundColor: '#fff', borderRadius: '4px', padding: '12px', border: '1px solid #ddd' }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', color: primaryColor }}>Narrative</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '10px', marginBottom: '10px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>Situation Found</label>
+              <textarea
+                rows={2}
+                placeholder="What was found on arrival..."
+                value={formData.situation_found || ''}
+                onChange={(e) => onFormChange('situation_found', e.target.value)}
+                style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>Services Provided</label>
+              <textarea
+                rows={2}
+                placeholder="Actions taken..."
+                value={formData.services_provided || ''}
+                onChange={(e) => onFormChange('services_provided', e.target.value)}
+                style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}
+              />
+            </div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>Services Provided</label>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>Narrative</label>
             <textarea
-              rows={2}
-              placeholder="Actions taken..."
-              value={formData.services_provided || ''}
-              onChange={(e) => onFormChange('services_provided', e.target.value)}
+              rows={3}
+              placeholder="Detailed narrative..."
+              value={formData.narrative || ''}
+              onChange={(e) => onFormChange('narrative', e.target.value)}
               style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}
             />
           </div>
         </div>
-        <div>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>Narrative</label>
-          <textarea
-            rows={3}
-            placeholder="Detailed narrative..."
-            value={formData.narrative || ''}
-            onChange={(e) => onFormChange('narrative', e.target.value)}
-            style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}
-          />
-        </div>
-      </div>
+      )}
     </div>
   );
 }
