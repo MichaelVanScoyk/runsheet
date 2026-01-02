@@ -4,7 +4,7 @@
 }
 
 .admin-page h2 {
-  color: #e94560;
+  color: var(--primary-color);
   margin-bottom: 1rem;
 }
 
@@ -14,7 +14,7 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
-  border-bottom: 2px solid #0f3460;
+  border-bottom: 2px solid var(--dark-border);
   padding-bottom: 0.5rem;
 }
 
@@ -35,13 +35,13 @@
 }
 
 .admin-tabs button.active {
-  color: #e94560;
-  background: #16213e;
+  color: var(--primary-color);
+  background: var(--dark-card);
   font-weight: 600;
 }
 
 .admin-content {
-  background: #16213e;
+  background: var(--dark-card);
   border-radius: 0 8px 8px 8px;
   padding: 1.5rem;
   min-height: 400px;
@@ -61,17 +61,17 @@
 }
 
 .settings-category {
-  background: #1a1a2e;
+  background: var(--dark-bg);
   border-radius: 8px;
   padding: 0.75rem 1rem;
   margin-bottom: 0.5rem;
 }
 
 .settings-category h3 {
-  color: #e94560;
+  color: var(--primary-color);
   margin: 0 0 0.5rem 0;
   padding-bottom: 0.25rem;
-  border-bottom: 1px solid #0f3460;
+  border-bottom: 1px solid var(--dark-border);
   text-transform: capitalize;
   font-size: 0.95rem;
 }
@@ -118,7 +118,7 @@
   gap: 1rem;
   align-items: center;
   padding: 0.5rem 0.75rem;
-  background: #0f1a2e;
+  background: var(--dark-hover);
   border-radius: 6px;
 }
 
@@ -147,8 +147,8 @@
 .setting-item input,
 .setting-item select {
   padding: 0.35rem 0.5rem;
-  background: #0f3460;
-  border: 1px solid #0f3460;
+  background: var(--dark-border);
+  border: 1px solid var(--dark-border);
   border-radius: 4px;
   color: #fff;
   font-size: 0.85rem;
@@ -157,7 +157,7 @@
 .setting-item input:focus,
 .setting-item select:focus {
   outline: none;
-  border-color: #e94560;
+  border-color: var(--primary-color);
 }
 
 .setting-item input:disabled,
@@ -181,8 +181,8 @@
 }
 
 .unit-badge {
-  background: #0f3460;
-  color: #e94560;
+  background: var(--dark-border);
+  color: var(--primary-color);
   padding: 0.25rem 0.75rem;
   border-radius: 4px;
   font-family: monospace;
@@ -220,8 +220,8 @@
 .units-edit textarea {
   width: 100%;
   padding: 0.75rem;
-  background: #0f3460;
-  border: 1px solid #0f3460;
+  background: var(--dark-border);
+  border: 1px solid var(--dark-border);
   border-radius: 4px;
   color: #fff;
   font-family: monospace;
@@ -230,7 +230,7 @@
 
 .units-edit textarea:focus {
   outline: none;
-  border-color: #e94560;
+  border-color: var(--primary-color);
 }
 
 .units-buttons {
@@ -248,7 +248,7 @@
   max-height: 400px;
   overflow-y: auto;
   padding: 0.5rem;
-  background: #0f3460;
+  background: var(--dark-border);
   border-radius: 4px;
 }
 
@@ -259,7 +259,7 @@
 }
 
 .apparatus-group strong {
-  color: #e94560;
+  color: var(--primary-color);
   font-size: 0.85rem;
 }
 
@@ -270,7 +270,7 @@
 }
 
 .apparatus-code {
-  background: #1a1a2e;
+  background: var(--dark-bg);
   padding: 0.2rem 0.5rem;
   border-radius: 3px;
   font-size: 0.75rem;
@@ -306,8 +306,8 @@
 
 .sequence-year-selector select {
   padding: 0.5rem 1rem;
-  background: #0f3460;
-  border: 1px solid #0f3460;
+  background: var(--dark-border);
+  border: 1px solid var(--dark-border);
   border-radius: 4px;
   color: #fff;
   font-size: 0.9rem;
@@ -316,7 +316,7 @@
 
 .sequence-year-selector select:focus {
   outline: none;
-  border-color: #e94560;
+  border-color: var(--primary-color);
 }
 
 /* Banners */
@@ -329,20 +329,20 @@
 
 .sequence-banner.warning {
   background: rgba(243, 156, 18, 0.15);
-  border: 1px solid #f39c12;
-  color: #f39c12;
+  border: 1px solid var(--status-warning);
+  color: var(--status-warning);
 }
 
 .sequence-banner.success {
   background: rgba(39, 174, 96, 0.15);
-  border: 1px solid #27ae60;
-  color: #27ae60;
+  border: 1px solid var(--status-open);
+  color: var(--status-open);
 }
 
 .sequence-banner.error {
   background: rgba(231, 76, 60, 0.15);
-  border: 1px solid #e74c3c;
-  color: #e74c3c;
+  border: 1px solid var(--status-error);
+  color: var(--status-error);
 }
 
 /* Table */
@@ -350,7 +350,7 @@
   max-height: 500px;
   overflow-y: auto;
   border-radius: 6px;
-  border: 1px solid #0f3460;
+  border: 1px solid var(--dark-border);
 }
 
 .sequence-table {
@@ -360,8 +360,8 @@
 }
 
 .sequence-table th {
-  background: #0f3460;
-  color: #e94560;
+  background: var(--dark-border);
+  color: var(--primary-color);
   padding: 0.75rem;
   text-align: left;
   font-weight: 600;
@@ -372,7 +372,7 @@
 
 .sequence-table td {
   padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid #0f3460;
+  border-bottom: 1px solid var(--dark-border);
   color: #ccc;
 }
 
@@ -395,7 +395,7 @@
 }
 
 .sequence-table .should-be {
-  color: #27ae60;
+  color: var(--status-open);
   font-size: 0.75rem;
   margin-left: 0.5rem;
 }
@@ -413,11 +413,11 @@
 }
 
 .badge-ok {
-  color: #27ae60;
+  color: var(--status-open);
 }
 
 .badge-warning {
-  color: #f39c12;
+  color: var(--status-warning);
 }
 
 /* ============================================================================
@@ -432,7 +432,7 @@
   display: flex;
   gap: 0.25rem;
   margin-bottom: 1.5rem;
-  background: #1a1a2e;
+  background: var(--dark-bg);
   padding: 0.25rem;
   border-radius: 6px;
   width: fit-content;
@@ -454,7 +454,7 @@
 }
 
 .neris-subtabs button.active {
-  background: #e94560;
+  background: var(--primary-color);
   color: #fff;
 }
 
@@ -466,13 +466,13 @@
 }
 
 .neris-sidebar {
-  background: #1a1a2e;
+  background: var(--dark-bg);
   border-radius: 6px;
   padding: 1rem;
 }
 
 .neris-sidebar h4 {
-  color: #e94560;
+  color: var(--primary-color);
   font-size: 0.85rem;
   margin: 0 0 0.75rem 0;
   text-transform: uppercase;
@@ -486,7 +486,7 @@
   padding: 0.5rem 0.75rem;
   margin-bottom: 4px;
   border: none;
-  background: #0f3460;
+  background: var(--dark-border);
   color: #ccc;
   cursor: pointer;
   border-radius: 4px;
@@ -500,7 +500,7 @@
 }
 
 .neris-cat-btn.selected {
-  background: #e94560;
+  background: var(--primary-color);
   color: white;
 }
 
@@ -510,13 +510,13 @@
 }
 
 .neris-codes-list {
-  background: #1a1a2e;
+  background: var(--dark-bg);
   border-radius: 6px;
   padding: 1rem;
 }
 
 .neris-codes-list h4 {
-  color: #e94560;
+  color: var(--primary-color);
   margin: 0 0 1rem 0;
 }
 
@@ -529,7 +529,7 @@
 
 .neris-import-form,
 .neris-update-form {
-  background: #1a1a2e;
+  background: var(--dark-bg);
   border-radius: 6px;
   padding: 1.5rem;
 }
@@ -547,7 +547,7 @@
 }
 
 .neris-issue-group h5 {
-  color: #f39c12;
+  color: var(--status-warning);
   margin-bottom: 0.5rem;
 }
 
@@ -560,14 +560,14 @@
 
 .neris-result.success {
   background: rgba(39, 174, 96, 0.15);
-  border: 1px solid #27ae60;
-  color: #27ae60;
+  border: 1px solid var(--status-open);
+  color: var(--status-open);
 }
 
 .neris-result.error {
   background: rgba(231, 76, 60, 0.15);
-  border: 1px solid #e74c3c;
-  color: #e74c3c;
+  border: 1px solid var(--status-error);
+  color: var(--status-error);
 }
 
 /* ============================================================================
@@ -589,16 +589,16 @@
 }
 
 .btn-primary {
-  background: #e94560;
+  background: var(--primary-color);
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #d63850;
+  background: var(--primary-hover);
 }
 
 .btn-fix {
-  background: #f39c12;
+  background: var(--status-warning);
   color: #000;
   font-weight: 600;
 }
@@ -617,7 +617,7 @@
 }
 
 .btn-danger {
-  background: #e74c3c;
+  background: var(--status-error);
   color: #fff;
 }
 
@@ -645,18 +645,18 @@
 }
 
 .modal-content {
-  background: #16213e;
+  background: var(--dark-card);
   border-radius: 8px;
   padding: 1.5rem;
   max-width: 500px;
   width: 90%;
   max-height: 80vh;
   overflow-y: auto;
-  border: 1px solid #0f3460;
+  border: 1px solid var(--dark-border);
 }
 
 .modal-content h3 {
-  color: #e94560;
+  color: var(--primary-color);
   margin: 0 0 1rem 0;
 }
 
@@ -666,7 +666,7 @@
 }
 
 .changes-preview {
-  background: #0f1a2e;
+  background: var(--dark-hover);
   border-radius: 4px;
   padding: 1rem;
   margin-bottom: 1.5rem;
@@ -681,7 +681,7 @@
   padding: 0.4rem 0;
   font-family: monospace;
   font-size: 0.85rem;
-  border-bottom: 1px solid #0f3460;
+  border-bottom: 1px solid var(--dark-border);
 }
 
 .change-item:last-child {
@@ -694,11 +694,11 @@
 }
 
 .change-number.new {
-  color: #27ae60;
+  color: var(--status-open);
 }
 
 .change-arrow {
-  color: #e94560;
+  color: var(--primary-color);
 }
 
 .change-date {
@@ -756,7 +756,7 @@
 }
 
 .login-box {
-  background: #16213e;
+  background: var(--dark-card);
   border-radius: 12px;
   padding: 2rem;
   width: 100%;
@@ -765,7 +765,7 @@
 }
 
 .login-box h2 {
-  color: #e94560;
+  color: var(--primary-color);
   margin: 0 0 0.5rem 0;
 }
 
@@ -783,8 +783,8 @@
 
 .login-box input {
   padding: 0.75rem 1rem;
-  background: #1a1a2e;
-  border: 1px solid #0f3460;
+  background: var(--dark-bg);
+  border: 1px solid var(--dark-border);
   border-radius: 6px;
   color: #fff;
   font-size: 1rem;
@@ -792,12 +792,12 @@
 
 .login-box input:focus {
   outline: none;
-  border-color: #e94560;
+  border-color: var(--primary-color);
 }
 
 .login-box button {
   padding: 0.75rem 1rem;
-  background: #e94560;
+  background: var(--primary-color);
   border: none;
   border-radius: 6px;
   color: #fff;
@@ -807,7 +807,7 @@
 }
 
 .login-box button:hover {
-  background: #d63850;
+  background: var(--primary-hover);
 }
 
 .login-box button:disabled {
@@ -817,8 +817,8 @@
 
 .login-error {
   background: rgba(231, 76, 60, 0.15);
-  border: 1px solid #e74c3c;
-  color: #e74c3c;
+  border: 1px solid var(--status-error);
+  color: var(--status-error);
   padding: 0.5rem;
   border-radius: 6px;
   font-size: 0.9rem;
@@ -842,7 +842,7 @@
 
 .btn-logout {
   padding: 0.5rem 1rem;
-  background: #0f3460;
+  background: var(--dark-border);
   border: none;
   border-radius: 4px;
   color: #ccc;
@@ -852,7 +852,7 @@
 }
 
 .btn-logout:hover {
-  background: #e94560;
+  background: var(--primary-color);
   color: #fff;
 }
 
@@ -867,7 +867,7 @@
 
 .password-tab h3 {
   margin: 0 0 1.5rem 0;
-  color: #e94560;
+  color: var(--primary-color);
 }
 
 .password-form {
@@ -889,8 +889,8 @@
 
 .password-form input {
   padding: 0.75rem;
-  background: #1a1a2e;
-  border: 1px solid #0f3460;
+  background: var(--dark-bg);
+  border: 1px solid var(--dark-border);
   border-radius: 6px;
   color: #fff;
   font-size: 1rem;
@@ -898,12 +898,12 @@
 
 .password-form input:focus {
   outline: none;
-  border-color: #e94560;
+  border-color: var(--primary-color);
 }
 
 .password-form button {
   padding: 0.75rem 1.5rem;
-  background: #e94560;
+  background: var(--primary-color);
   border: none;
   border-radius: 6px;
   color: #fff;
@@ -914,7 +914,7 @@
 }
 
 .password-form button:hover {
-  background: #d63850;
+  background: var(--primary-hover);
 }
 
 .password-form button:disabled {
@@ -930,14 +930,14 @@
 
 .password-form .message.success {
   background: rgba(39, 174, 96, 0.15);
-  border: 1px solid #27ae60;
-  color: #27ae60;
+  border: 1px solid var(--status-open);
+  color: var(--status-open);
 }
 
 .password-form .message.error {
   background: rgba(231, 76, 60, 0.15);
-  border: 1px solid #e74c3c;
-  color: #e74c3c;
+  border: 1px solid var(--status-error);
+  color: var(--status-error);
 }
 
 
@@ -958,21 +958,21 @@
 
 .audit-header h3 {
   margin: 0;
-  color: #e94560;
+  color: var(--primary-color);
   flex: 1;
 }
 
 .audit-header select {
   padding: 0.5rem;
-  background: #1a1a2e;
-  border: 1px solid #0f3460;
+  background: var(--dark-bg);
+  border: 1px solid var(--dark-border);
   border-radius: 4px;
   color: #fff;
 }
 
 .audit-header button {
   padding: 0.5rem 1rem;
-  background: #0f3460;
+  background: var(--dark-border);
   border: none;
   border-radius: 4px;
   color: #fff;
@@ -993,12 +993,12 @@
 .audit-table td {
   padding: 0.75rem;
   text-align: left;
-  border-bottom: 1px solid #0f3460;
+  border-bottom: 1px solid var(--dark-border);
 }
 
 .audit-table th {
-  background: #0f3460;
-  color: #e94560;
+  background: var(--dark-border);
+  color: var(--primary-color);
   font-weight: 600;
 }
 
@@ -1031,7 +1031,7 @@
 
 .ranks-header h3 {
   margin: 0;
-  color: #e94560;
+  color: var(--primary-color);
 }
 
 .ranks-table {
@@ -1044,12 +1044,12 @@
 .ranks-table td {
   padding: 0.75rem;
   text-align: left;
-  border-bottom: 1px solid #0f3460;
+  border-bottom: 1px solid var(--dark-border);
 }
 
 .ranks-table th {
-  background: #0f3460;
-  color: #e94560;
+  background: var(--dark-border);
+  color: var(--primary-color);
   font-weight: 600;
 }
 
@@ -1068,8 +1068,8 @@
 
 .form-error {
   background: rgba(231, 76, 60, 0.15);
-  border: 1px solid #e74c3c;
-  color: #e74c3c;
+  border: 1px solid var(--status-error);
+  color: var(--status-error);
   padding: 0.75rem;
   border-radius: 6px;
   margin-bottom: 1rem;
