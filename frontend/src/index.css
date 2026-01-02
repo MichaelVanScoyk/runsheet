@@ -4,11 +4,8 @@
 
 /* ==============================================
    CSS CUSTOM PROPERTIES - TENANT BRANDING
-   These are set dynamically by BrandingContext.jsx
-   Defaults match the original pink theme for fallback
    ============================================== */
 :root {
-  /* Branding colors - set by BrandingContext on load */
   --primary-color: #016a2b;
   --primary-hover: #015a24;
   --primary-light: #e6f4ea;
@@ -16,7 +13,6 @@
   --primary-rgb: 1, 106, 43;
   --secondary-rgb: 238, 238, 1;
   
-  /* Dark theme base colors */
   --dark-bg: #1a1a2e;
   --dark-sidebar: #16213e;
   --dark-card: #16213e;
@@ -24,14 +20,12 @@
   --dark-hover: #0f1a2e;
   --dark-input: #1a1a2e;
   
-  /* Status colors */
   --status-open: #27ae60;
   --status-closed: #7f8c8d;
   --status-completed: #3498db;
   --status-warning: #f39c12;
   --status-error: #e74c3c;
   
-  /* Typography */
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
@@ -50,7 +44,6 @@ body {
   min-height: 100vh;
 }
 
-/* Base input styling for dark theme */
 @layer base {
   input, select, textarea {
     @apply bg-dark-input border border-dark-border rounded px-2 py-1 text-white text-sm;
@@ -64,7 +57,6 @@ body {
   }
 }
 
-/* Utility classes */
 @layer components {
   .btn {
     @apply px-3 py-1.5 rounded text-sm font-medium cursor-pointer transition-colors;
@@ -110,7 +102,6 @@ body {
     @apply bg-status-completed text-white;
   }
   
-  /* Category badges using branding colors */
   .badge-fire {
     background-color: var(--primary-color);
     color: white;
@@ -121,11 +112,7 @@ body {
   }
 }
 
-/* ==============================================
-   PRINT STYLES - Hide app shell when printing
-   ============================================== */
 @media print {
-  /* Hide the entire app shell - sidebar and navigation */
   .sidebar,
   .app > .sidebar,
   .logo,
@@ -138,7 +125,6 @@ body {
     left: -9999px !important;
   }
   
-  /* Reset body and html for print */
   html, body {
     background: white !important;
     color: black !important;
@@ -147,12 +133,10 @@ body {
     width: 100% !important;
   }
   
-  /* Reset the app container */
   .app {
     display: block !important;
   }
   
-  /* Make main content full width, remove sidebar margin */
   .content {
     margin-left: 0 !important;
     padding: 0 !important;
@@ -160,7 +144,6 @@ body {
     max-width: none !important;
   }
   
-  /* Ensure print content fills the page */
   .print-view-container {
     background: white !important;
     padding: 0 !important;

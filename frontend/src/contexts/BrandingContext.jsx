@@ -3,17 +3,12 @@
  * 
  * Fetches branding config from API and applies as CSS custom properties.
  * This ensures consistent branding across web UI and PDF reports.
- * 
- * Usage:
- *   import { useBranding } from '../contexts/BrandingContext';
- *   const { primaryColor, logoUrl, stationName } = useBranding();
  */
 
 import { createContext, useContext, useState, useEffect } from 'react';
 
 const BrandingContext = createContext(null);
 
-// Default branding (matches backend DEFAULT_BRANDING)
 const DEFAULT_BRANDING = {
   stationName: 'Fire Department',
   stationNumber: '',
@@ -27,9 +22,6 @@ const DEFAULT_BRANDING = {
   mutedColor: '#666666',
 };
 
-/**
- * Apply branding colors as CSS custom properties on :root
- */
 function applyBrandingToCSS(branding) {
   const root = document.documentElement;
   
@@ -40,7 +32,6 @@ function applyBrandingToCSS(branding) {
   root.style.setProperty('--text-color', branding.textColor);
   root.style.setProperty('--muted-color', branding.mutedColor);
   
-  // Also compute an RGB version for rgba() usage
   const hexToRgb = (hex) => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result 
@@ -61,13 +52,10 @@ export function BrandingProvider({ children }) {
     async function fetchBranding() {
       try {
         const response = await fetch('/api/branding/theme');
-        if (!response.ok) {
-          throw new Error('Failed to fetch branding');
-        }
+        if (!response.ok) throw new Error('Failed to fetch branding');
         
         const data = await response.json();
         
-        // Map API response to our branding object
         const newBranding = {
           stationName: data.station_name || DEFAULT_BRANDING.stationName,
           stationNumber: data.station_number || '',
@@ -87,7 +75,6 @@ export function BrandingProvider({ children }) {
       } catch (err) {
         console.error('Failed to load branding:', err);
         setError(err.message);
-        // Apply defaults on error
         applyBrandingToCSS(DEFAULT_BRANDING);
       } finally {
         setLoading(false);
@@ -97,7 +84,6 @@ export function BrandingProvider({ children }) {
     fetchBranding();
   }, []);
 
-  // Expose a method to refresh branding (useful after admin changes)
   const refreshBranding = async () => {
     setLoading(true);
     try {

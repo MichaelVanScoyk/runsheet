@@ -7,7 +7,6 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Branding colors - pulled from CSS variables set by BrandingContext
         primary: {
           DEFAULT: 'var(--primary-color)',
           hover: 'var(--primary-hover)',
@@ -16,7 +15,6 @@ export default {
         secondary: {
           DEFAULT: 'var(--secondary-color)',
         },
-        // Dark theme base colors
         dark: {
           bg: 'var(--dark-bg)',
           sidebar: 'var(--dark-sidebar)',
@@ -25,12 +23,10 @@ export default {
           border: 'var(--dark-border)',
           hover: 'var(--dark-hover)',
         },
-        // Legacy accent colors - mapped to branding
         accent: {
           red: 'var(--primary-color)',
           redHover: 'var(--primary-hover)',
         },
-        // Status colors
         status: {
           open: 'var(--status-open)',
           closed: 'var(--status-closed)',
@@ -45,7 +41,6 @@ export default {
         'base': '0.85rem',
       },
       spacing: {
-        // Compact spacing per Mike's request (~50% reduction)
         '0.5': '0.125rem',
         '1': '0.25rem',
         '1.5': '0.375rem',
