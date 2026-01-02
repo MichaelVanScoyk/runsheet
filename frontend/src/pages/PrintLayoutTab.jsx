@@ -189,7 +189,7 @@ export default function PrintLayoutTab() {
           )}
           
           {block.showWhenEmpty && (
-            <span className="text-xs bg-green-100 text-green-700 px-1 rounded border border-green-300">show∅</span>
+            <span className="text-xs bg-green-100 text-green-700 px-1 rounded border border-green-300">always</span>
           )}
           
           {/* Move button */}

@@ -164,8 +164,8 @@ def generate_css(branding: dict) -> str:
         }}
         
         .inc-number {{
-            font-size: 14pt;
-            font-weight: bold;
+            font-size: inherit;
+            font-weight: inherit;
             margin-right: 6px;
         }}
         
@@ -211,7 +211,7 @@ def generate_css(branding: dict) -> str:
             width: 100%;
             border: 1px {border_style} {text_color};
             border-collapse: collapse;
-            font-size: 8pt;
+            font-size: inherit;
         }}
         
         .times-table td {{
@@ -224,7 +224,7 @@ def generate_css(branding: dict) -> str:
         }}
         
         .time-label {{
-            font-weight: bold;
+            font-weight: inherit;
             width: 60px;
         }}
         
@@ -244,8 +244,8 @@ def generate_css(branding: dict) -> str:
         }}
         
         .label {{
-            font-weight: bold;
-            font-size: 8pt;
+            font-weight: inherit;
+            font-size: inherit;
         }}
         
         .address {{
@@ -287,8 +287,8 @@ def generate_css(branding: dict) -> str:
         }}
         
         .personnel-section-title {{
-            font-weight: bold;
-            font-size: 8pt;
+            font-weight: inherit;
+            font-size: inherit;
             margin-bottom: 2px;
             color: {primary};
         }}
@@ -296,7 +296,7 @@ def generate_css(branding: dict) -> str:
         .personnel-table {{
             width: 100%;
             border-collapse: collapse;
-            font-size: 8pt;
+            font-size: inherit;
             margin-top: 2px;
         }}
         
@@ -325,12 +325,12 @@ def generate_css(branding: dict) -> str:
         
         .total-row {{
             margin-top: 2px;
-            font-weight: bold;
-            font-size: 8pt;
+            font-weight: inherit;
+            font-size: inherit;
         }}
         
         .personnel-list {{
-            font-size: 8pt;
+            font-size: inherit;
             margin-top: 2px;
         }}
         
@@ -346,7 +346,7 @@ def generate_css(branding: dict) -> str:
         .officer-cell {{
             display: inline-block;
             width: 48%;
-            font-size: {body_font_size};
+            font-size: inherit;
         }}
         
         /* Footer */
@@ -390,8 +390,8 @@ def generate_css(branding: dict) -> str:
         }}
         
         .stat-value {{
-            font-size: 14pt;
-            font-weight: bold;
+            font-size: inherit;
+            font-weight: inherit;
         }}
         
         .stat-label {{
@@ -417,8 +417,8 @@ def generate_css(branding: dict) -> str:
         }}
         
         .event-comments-header {{
-            font-size: 10pt;
-            font-weight: bold;
+            font-size: inherit;
+            font-weight: inherit;
             color: {primary};
             border-bottom: 1px {border_style} {primary};
             padding-bottom: 2px;
@@ -430,8 +430,8 @@ def generate_css(branding: dict) -> str:
         }}
         
         .comment-section-title {{
-            font-size: 8pt;
-            font-weight: bold;
+            font-size: inherit;
+            font-weight: inherit;
             color: {text_color};
             background: {secondary};
             padding: 2px 4px;
@@ -441,7 +441,7 @@ def generate_css(branding: dict) -> str:
         .event-comments-table {{
             width: 100%;
             border-collapse: collapse;
-            font-size: 8pt;
+            font-size: inherit;
         }}
         
         .event-comments-table td {{
