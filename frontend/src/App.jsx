@@ -284,27 +284,27 @@ function AppContent({ tenant, onTenantLogout }) {
               }} 
             />
           )}
-          <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)' }}>{branding.stationName || tenant?.name || 'Fire Department'}</span>
+          <span style={{ fontSize: '0.85rem', color: '#016a2b' }}>{branding.stationName || tenant?.name || 'Fire Department'}</span>
         </div>
         
         {/* Tenant info */}
         <div style={{ 
           padding: '8px 12px', 
-          background: 'rgba(0,0,0,0.2)', 
-          margin: '0 10px 8px', 
-          borderRadius: '4px',
+          background: 'rgba(255,255,255,0.95)', 
+          borderRadius: '8px',
           fontSize: '0.8rem',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          marginBottom: '0.5rem'
         }}>
-          <span style={{ color: 'rgba(255,255,255,0.9)' }}>🏢 {tenant?.slug}</span>
+          <span style={{ color: '#333' }}>🏢 {tenant?.slug}</span>
           <button 
             onClick={onTenantLogout}
             style={{ 
-              background: 'rgba(255,255,255,0.15)', 
+              background: '#016a2b', 
               border: 'none', 
-              color: 'rgba(255,255,255,0.8)', 
+              color: '#fff', 
               cursor: 'pointer',
               fontSize: '0.7rem',
               padding: '3px 8px',
@@ -317,17 +317,11 @@ function AppContent({ tenant, onTenantLogout }) {
         </div>
         
         {/* User session / login area */}
-        <div className="user-auth-area" style={{ 
-          padding: '10px', 
-          background: 'rgba(0,0,0,0.25)', 
-          margin: '0 10px 10px', 
-          borderRadius: '4px',
-          fontSize: '0.85rem'
-        }}>
+        <div className="user-auth-area">
           {userSession ? (
             // Logged in
             <>
-              <div style={{ color: 'var(--status-open)', marginBottom: '5px' }}>
+              <div style={{ color: '#016a2b', marginBottom: '5px', fontWeight: '500' }}>
                 ✓ {userSession.display_name}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -339,7 +333,7 @@ function AppContent({ tenant, onTenantLogout }) {
                   style={{ 
                     background: 'none', 
                     border: 'none', 
-                    color: '#888', 
+                    color: '#666', 
                     cursor: 'pointer',
                     fontSize: '0.8rem',
                     padding: '2px 5px'
@@ -349,7 +343,7 @@ function AppContent({ tenant, onTenantLogout }) {
                 </button>
               </div>
               {!userSession.is_approved && (
-                <div style={{ color: 'var(--status-warning)', fontSize: '0.75rem', marginTop: '5px' }}>
+                <div style={{ color: '#ca8a04', fontSize: '0.75rem', marginTop: '5px' }}>
                   ⚠️ Pending approval
                 </div>
               )}
@@ -483,7 +477,7 @@ function AppContent({ tenant, onTenantLogout }) {
               )}
 
               {authError && (
-                <div style={{ color: 'var(--status-error)', fontSize: '0.75rem', marginTop: '5px' }}>
+                <div style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '5px' }}>
                   {authError}
                 </div>
               )}

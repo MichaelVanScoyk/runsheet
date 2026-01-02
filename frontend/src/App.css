@@ -15,11 +15,11 @@ body {
   min-height: 100vh;
 }
 
-/* GREEN SIDEBAR */
+/* SIDEBAR - Green with gray content areas */
 .sidebar {
   width: 220px;
-  background: linear-gradient(180deg, #016a2b 0%, #014d1f 100%);
-  padding: 1.5rem 0;
+  background: #016a2b;
+  padding: 0.75rem;
   position: fixed;
   height: 100vh;
   overflow-y: auto;
@@ -27,33 +27,38 @@ body {
 }
 
 .logo {
-  padding: 0 1.5rem 1.5rem;
-  border-bottom: 1px solid rgba(255,255,255,0.15);
-  margin-bottom: 1rem;
+  background: rgba(255,255,255,0.95);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 0.5rem;
+  text-align: center;
 }
 
 .logo h1 {
-  color: #ffffff;
-  font-size: 1.4rem;
+  color: #016a2b;
+  font-size: 1.1rem;
   font-weight: 700;
 }
 
 .logo span {
-  color: rgba(255,255,255,0.7);
-  font-size: 0.8rem;
+  color: #666;
+  font-size: 0.75rem;
 }
 
 .nav-links {
   list-style: none;
-  padding: 0 0.5rem;
+  background: rgba(255,255,255,0.95);
+  border-radius: 8px;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 .nav-links li a {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.7rem 1rem;
-  color: rgba(255,255,255,0.85);
+  padding: 0.65rem 0.75rem;
+  color: #333;
   text-decoration: none;
   border-radius: 6px;
   margin-bottom: 2px;
@@ -61,12 +66,12 @@ body {
 }
 
 .nav-links li a:hover {
-  background: rgba(255,255,255,0.1);
-  color: #fff;
+  background: #e8e8e8;
+  color: #016a2b;
 }
 
 .nav-links li a.active {
-  background: rgba(255,255,255,0.2);
+  background: #016a2b;
   color: #fff;
   font-weight: 600;
 }
@@ -282,27 +287,27 @@ tr:last-child td {
   border-bottom: 2px solid #016a2b;
 }
 
-/* USER AUTH AREA - on green sidebar */
+/* USER AUTH AREA - gray card style */
 .user-auth-area {
-  background: rgba(0,0,0,0.25) !important;
-  margin: 0 10px 10px !important;
-  padding: 10px !important;
-  border-radius: 6px;
-  color: #fff;
+  background: rgba(255,255,255,0.95) !important;
+  margin: 0 0 0.5rem 0 !important;
+  padding: 0.75rem !important;
+  border-radius: 8px;
+  color: #333;
 }
 
 .user-auth-area select,
 .user-auth-area input {
-  background: rgba(255,255,255,0.95) !important;
+  background: #fff !important;
   color: #333 !important;
-  border: none !important;
+  border: 1px solid #ccc !important;
   border-radius: 4px;
   width: 100%;
   padding: 6px 8px;
 }
 
 .user-auth-area button {
-  background: rgba(255,255,255,0.2) !important;
+  background: #016a2b !important;
   color: #fff !important;
   border: none;
   border-radius: 4px;
@@ -311,13 +316,13 @@ tr:last-child td {
 }
 
 .user-auth-area button:hover {
-  background: rgba(255,255,255,0.35) !important;
+  background: #015a24 !important;
 }
 
 .user-auth-area .badge {
-  background: rgba(255,255,255,0.2);
-  color: #fff;
-  border: 1px solid rgba(255,255,255,0.3);
+  background: #e8e8e8;
+  color: #333;
+  border: 1px solid #ccc;
 }
 
 /* LOADING */
