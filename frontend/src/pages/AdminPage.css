@@ -4,7 +4,7 @@
 }
 
 .admin-page h2 {
-  color: #016a2b;
+  color: var(--primary-color);
   font-weight: 700;
 }
 
@@ -19,6 +19,7 @@
   border-radius: 8px 8px 0 0;
   border: 1px solid #e0e0e0;
   border-bottom: none;
+  border-top: 3px solid var(--secondary-color);
 }
 
 .admin-tabs button {
@@ -39,11 +40,12 @@
 
 .admin-tabs button.active {
   background: #f8f8f8;
-  color: #016a2b;
+  color: var(--primary-color);
   font-weight: 600;
   border: 1px solid #e0e0e0;
   border-bottom: 1px solid #f8f8f8;
   margin-bottom: -1px;
+  box-shadow: inset 0 3px 0 var(--secondary-color);
 }
 
 .admin-content {
@@ -67,10 +69,11 @@
   padding: 0.75rem 1rem;
   margin-bottom: 0.75rem;
   border: 1px solid #e8e8e8;
+  border-left: 3px solid var(--secondary-color);
 }
 
 .settings-category h3 {
-  color: #016a2b;
+  color: var(--primary-color);
   margin: 0 0 0.5rem 0;
   font-size: 0.95rem;
   font-weight: 600;
@@ -141,19 +144,20 @@
 
 .setting-item input:focus,
 .setting-item select:focus {
-  border-color: #016a2b;
+  border-color: var(--primary-color);
   outline: none;
 }
 
 /* Unit badges */
 .unit-badge {
-  background: #e8f5e9;
-  color: #016a2b;
+  background: var(--primary-light, #e8f5e9);
+  color: var(--primary-color);
   padding: 0.2rem 0.6rem;
   border-radius: 3px;
   font-family: monospace;
   font-size: 0.8rem;
   font-weight: 500;
+  border-left: 2px solid var(--secondary-color);
 }
 
 /* Buttons */
@@ -167,18 +171,23 @@
 }
 
 .btn-primary {
-  background: #016a2b;
+  background: var(--primary-color);
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #015a24;
+  background: var(--primary-hover);
+  box-shadow: 0 0 0 2px var(--secondary-color);
 }
 
 .btn-secondary {
   background: #f0f0f0;
   color: #333;
   border: 1px solid #ddd;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--secondary-color);
 }
 
 .btn-danger {
@@ -209,13 +218,14 @@
   max-width: 500px;
   width: 90%;
   box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  border-top: 4px solid var(--secondary-color);
 }
 
 .modal-content h3 {
-  color: #016a2b;
+  color: var(--primary-color);
   margin: 0 0 1rem 0;
   padding-bottom: 0.5rem;
-  border-bottom: 2px solid #016a2b;
+  border-bottom: 2px solid var(--primary-color);
 }
 
 /* Login */
@@ -231,10 +241,11 @@
   padding: 2rem;
   max-width: 360px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  border-top: 4px solid var(--secondary-color);
 }
 
 .login-box h2 {
-  color: #016a2b;
+  color: var(--primary-color);
   margin-bottom: 0.5rem;
 }
 
@@ -255,9 +266,14 @@
   border-radius: 4px;
 }
 
+.login-box input:focus {
+  border-color: var(--primary-color);
+  outline: none;
+}
+
 .login-box button {
   padding: 0.7rem;
-  background: #016a2b;
+  background: var(--primary-color);
   border: none;
   border-radius: 4px;
   color: #fff;
@@ -266,7 +282,8 @@
 }
 
 .login-box button:hover {
-  background: #015a24;
+  background: var(--primary-hover);
+  box-shadow: 0 0 0 2px var(--secondary-color);
 }
 
 /* Tables */
@@ -283,12 +300,18 @@
 .sequence-table th,
 .audit-table th,
 .ranks-table th {
-  background: #016a2b;
+  background: var(--primary-color);
   color: #fff;
   padding: 0.6rem 0.75rem;
   text-align: left;
   font-size: 0.8rem;
   font-weight: 600;
+}
+
+.sequence-table th:first-child,
+.audit-table th:first-child,
+.ranks-table th:first-child {
+  border-left: 3px solid var(--secondary-color);
 }
 
 .sequence-table td,
@@ -341,7 +364,7 @@
 }
 
 .neris-sidebar h4 {
-  color: #016a2b;
+  color: var(--primary-color);
   margin-bottom: 0.5rem;
   font-size: 0.85rem;
 }
@@ -362,12 +385,14 @@
 
 .neris-cat-btn:hover {
   background: #f0f0f0;
+  border-color: var(--secondary-color);
 }
 
 .neris-cat-btn.selected {
-  background: #016a2b;
+  background: var(--primary-color);
   color: white;
-  border-color: #016a2b;
+  border-color: var(--primary-color);
+  box-shadow: inset 3px 0 0 var(--secondary-color);
 }
 
 .neris-codes-list {
@@ -378,7 +403,7 @@
 }
 
 .neris-codes-list h4 {
-  color: #016a2b;
+  color: var(--primary-color);
   margin-bottom: 0.75rem;
 }
 
@@ -408,8 +433,9 @@
 }
 
 .neris-subtabs button.active {
-  background: #016a2b;
+  background: var(--primary-color);
   color: #fff;
+  box-shadow: inset 0 -2px 0 var(--secondary-color);
 }
 
 /* Header */
@@ -419,13 +445,24 @@
   align-items: center;
   margin-bottom: 1rem;
   padding-bottom: 0.75rem;
-  border-bottom: 3px solid #016a2b;
+  border-bottom: 3px solid var(--primary-color);
+  position: relative;
+}
+
+.admin-header::after {
+  content: '';
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  width: 60px;
+  height: 3px;
+  background: var(--secondary-color);
 }
 
 .password-tab h3,
 .audit-header h3,
 .ranks-header h3 {
-  color: #016a2b;
+  color: var(--primary-color);
   font-weight: 600;
 }
 

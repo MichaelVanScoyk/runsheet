@@ -284,7 +284,7 @@ function AppContent({ tenant, onTenantLogout }) {
               }} 
             />
           )}
-          <span style={{ fontSize: '0.85rem', color: '#016a2b' }}>{branding.stationName || tenant?.name || 'Fire Department'}</span>
+          <span style={{ fontSize: '0.85rem', color: branding.primaryColor }}>{branding.stationName || tenant?.name || 'Fire Department'}</span>
         </div>
         
         {/* Tenant info */}
@@ -303,7 +303,7 @@ function AppContent({ tenant, onTenantLogout }) {
           <button 
             onClick={onTenantLogout}
             style={{ 
-              background: '#016a2b', 
+              background: branding.primaryColor, 
               border: 'none', 
               color: '#fff', 
               cursor: 'pointer',
@@ -322,7 +322,7 @@ function AppContent({ tenant, onTenantLogout }) {
           {userSession ? (
             // Logged in
             <>
-              <div style={{ color: '#016a2b', marginBottom: '5px', fontWeight: '500' }}>
+              <div style={{ color: branding.primaryColor, marginBottom: '5px', fontWeight: '500' }}>
                 ✓ {userSession.display_name}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -5,7 +5,12 @@
 :root {
   --primary-color: #016a2b;
   --primary-hover: #015a24;
+  --primary-light: #e6f4ea;
   --secondary-color: #eeee01;
+  --secondary-hover: #d4d400;
+  --secondary-light: #fffde6;
+  --primary-rgb: 1, 106, 43;
+  --secondary-rgb: 238, 238, 1;
   --bg-page: #e8e8e8;
   --bg-card: #ffffff;
   --border-color: #e0e0e0;
@@ -29,10 +34,16 @@ body {
 .text-gray-400 { color: var(--text-muted) !important; }
 .text-gray-500 { color: #555 !important; }
 
-/* Accent colors → green */
+/* Accent colors → primary */
 .text-accent-red { color: var(--primary-color) !important; }
 .border-accent-red { border-color: var(--primary-color) !important; }
 .bg-accent-red { background-color: var(--primary-color) !important; }
+
+/* Secondary accent utilities */
+.text-secondary { color: var(--secondary-color) !important; }
+.bg-secondary { background-color: var(--secondary-color) !important; }
+.border-secondary { border-color: var(--secondary-color) !important; }
+.bg-secondary-light { background-color: var(--secondary-light) !important; }
 
 /* RunSheet form styling */
 .rounded-lg {
@@ -51,7 +62,7 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus {
   border-color: var(--primary-color) !important;
   outline: none;
-  box-shadow: 0 0 0 3px rgba(1,106,43,0.1);
+  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
 }
 
 /* Tables */
@@ -73,4 +84,47 @@ h2, h3, h4 {
 /* Labels */
 label {
   color: var(--text-muted) !important;
+}
+
+/* Highlighted/selected states using secondary color */
+.highlight-row {
+  background: var(--secondary-light) !important;
+  border-left: 3px solid var(--secondary-color) !important;
+}
+
+/* Active nav item accent */
+.nav-links li a.active {
+  box-shadow: inset 3px 0 0 var(--secondary-color);
+}
+
+/* Button hover accent */
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.3), 
+              0 0 0 2px var(--secondary-color);
+}
+
+/* Page header accent underline */
+.page-header {
+  position: relative;
+}
+
+.page-header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 60px;
+  height: 3px;
+  background: var(--secondary-color);
+}
+
+/* Badge accents for open/active status */
+.badge-open {
+  border-left: 3px solid var(--secondary-color) !important;
+}
+
+/* Keyframes for pulse animation */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }

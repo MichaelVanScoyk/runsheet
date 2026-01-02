@@ -27,8 +27,8 @@ export default function IncidentHubModal({
     logo: null,
     stationName: '',
     stationNumber: '',
-    primaryColor: '#1a5f2a',
-    secondaryColor: '#1a365d',
+    primaryColor: '#016a2b',
+    secondaryColor: '#eeee01',
   });
   
   const [assignments, setAssignments] = useState({});
