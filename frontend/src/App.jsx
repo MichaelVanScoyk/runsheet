@@ -290,8 +290,9 @@ function AppContent({ tenant, onTenantLogout }) {
         {/* Tenant info */}
         <div style={{ 
           padding: '8px 12px', 
-          background: 'rgba(255,255,255,0.95)', 
+          background: '#fff', 
           borderRadius: '8px',
+          border: '1px solid #ccc',
           fontSize: '0.8rem',
           display: 'flex',
           justifyContent: 'space-between',
