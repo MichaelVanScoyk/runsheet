@@ -237,52 +237,109 @@ def r_equipment_used(ctx: RenderContext, block: dict) -> str:
 
 
 def r_personnel_apparatus(ctx: RenderContext, block: dict) -> str:
-    return _render_personnel_grid(ctx, 'APPARATUS', 'Apparatus Personnel')
+    return _render_personnel_grid(ctx, 'APPARATUS', block)
 
 
 def r_personnel_direct(ctx: RenderContext, block: dict) -> str:
-    return _render_personnel_list(ctx, 'DIRECT', 'Direct Response')
+    return _render_personnel_grid(ctx, 'DIRECT', block)
 
 
 def r_personnel_station(ctx: RenderContext, block: dict) -> str:
-    return _render_personnel_list(ctx, 'STATION', 'Station Personnel')
+    return _render_personnel_grid(ctx, 'STATION', block)
 
 
-def _render_personnel_grid(ctx: RenderContext, category: str, title: str) -> str:
-    assigned_units = ctx.get_assigned_units(category)
-    if not assigned_units:
+def _get_units_for_category(ctx: RenderContext, category: str, show_when_empty: bool) -> List[dict]:
+    """Get units for a category - either assigned only, or all if showWhenEmpty."""
+    if show_when_empty:
+        # Return ALL units in this category (for placeholder display)
+        return [a for a in ctx.apparatus_list if a.get('unit_category') == category]
+    else:
+        # Return only units with assignments
+        return ctx.get_assigned_units(category)
+
+
+def _render_personnel_grid(ctx: RenderContext, category: str, block: dict) -> str:
+    """
+    Unified personnel grid renderer for all categories (APPARATUS, DIRECT, STATION).
+    
+    - APPARATUS: Shows Role column (Driver, Officer, FF slots)
+    - DIRECT/STATION: No Role column, unlimited personnel rows
+    - Section title comes from first unit's name field
+    - Column headers use unit name (not unit_designator)
+    """
+    show_when_empty = block.get('showWhenEmpty', False)
+    units = _get_units_for_category(ctx, category, show_when_empty)
+    
+    if not units:
         return ''
     
-    branding = ctx.branding
+    # Section title from first unit's name
+    section_title = units[0].get('name', category)
+    
+    # Check if this is a role-based category (APPARATUS) or simple list (DIRECT/STATION)
+    is_apparatus = category == 'APPARATUS'
+    
+    if is_apparatus:
+        return _render_apparatus_grid(ctx, units, section_title, show_when_empty)
+    else:
+        return _render_simple_grid(ctx, units, section_title, show_when_empty)
+
+
+def _render_apparatus_grid(ctx: RenderContext, units: List[dict], title: str, show_when_empty: bool) -> str:
+    """Render apparatus personnel with Role column (Driver, Officer, FF slots)."""
+    
+    # Determine max slots needed across all units
     role_names = ['Driver', 'Officer', 'FF', 'FF', 'FF', 'FF']
     rows_html = ""
     
     for idx, role in enumerate(role_names):
+        # Check if any unit has data in this slot
         has_data = any(
             ctx.personnel_assignments.get(a['unit_designator'], [None]*6)[idx] 
             if idx < len(ctx.personnel_assignments.get(a['unit_designator'], [])) else None
-            for a in assigned_units
+            for a in units
         )
+        
+        # Skip empty rows unless showWhenEmpty and it's a configured slot
         if not has_data:
-            continue
+            if show_when_empty:
+                # Only show if at least one unit has this role configured
+                show_role = False
+                for a in units:
+                    if idx == 0 and a.get('has_driver', True):
+                        show_role = True
+                        break
+                    elif idx == 1 and a.get('has_officer', True):
+                        show_role = True
+                        break
+                    elif idx >= 2:
+                        # FF slots - always show at least one if showWhenEmpty
+                        show_role = True
+                        break
+                if not show_role:
+                    continue
+            else:
+                continue
         
         row = f'<tr><td class="role-cell">{role}</td>'
-        for a in assigned_units:
+        for a in units:
             slots = ctx.personnel_assignments.get(a['unit_designator'], [])
             pid = slots[idx] if idx < len(slots) else None
             name = ctx.get_personnel_name(pid)
-            row += f'<td>{name}</td>'
+            row += f'<td>{esc(name)}</td>'
         row += '</tr>'
         rows_html += row
     
-    if not rows_html:
+    # If no rows and not showWhenEmpty, return empty
+    if not rows_html and not show_when_empty:
         return ''
     
-    unit_headers = ''.join([f'<th>{esc(a["unit_designator"])}</th>' for a in assigned_units])
-    total = sum(len([s for s in ctx.personnel_assignments.get(a['unit_designator'], []) if s]) for a in assigned_units)
+    # Column headers use unit NAME (not unit_designator)
+    unit_headers = ''.join([f'<th>{esc(a.get("name", a["unit_designator"]))}</th>' for a in units])
+    total = sum(len([s for s in ctx.personnel_assignments.get(a['unit_designator'], []) if s]) for a in units)
     
     return f'''<div class="personnel-section">
-        <div class="personnel-section-title">{title}</div>
+        <div class="personnel-section-title">{esc(title)}</div>
         <table class="personnel-table">
             <thead><tr><th class="role-header">Role</th>{unit_headers}</tr></thead>
             <tbody>{rows_html}</tbody>
@@ -291,29 +348,53 @@ def _render_personnel_grid(ctx: RenderContext, category: str, title: str) -> str
     </div>'''
 
 
-def _render_personnel_list(ctx: RenderContext, category: str, title: str) -> str:
-    assigned_units = ctx.get_assigned_units(category)
-    if not assigned_units:
+def _render_simple_grid(ctx: RenderContext, units: List[dict], title: str, show_when_empty: bool) -> str:
+    """Render DIRECT/STATION personnel - no Role column, unlimited rows."""
+    
+    # Gather all personnel per unit (unlimited)
+    unit_personnel = {}
+    max_rows = 0
+    for a in units:
+        unit_id = a['unit_designator']
+        slots = ctx.personnel_assignments.get(unit_id, [])
+        # Filter to actual assignments (no nulls)
+        assigned = [pid for pid in slots if pid]
+        unit_personnel[unit_id] = assigned
+        if len(assigned) > max_rows:
+            max_rows = len(assigned)
+    
+    # If no assignments and not showWhenEmpty, return empty
+    if max_rows == 0 and not show_when_empty:
         return ''
     
-    personnel = []
-    for a in assigned_units:
-        slots = ctx.personnel_assignments.get(a['unit_designator'], [])
-        for pid in slots:
-            if pid:
-                name = ctx.get_personnel_name(pid)
-                if name and name not in personnel:
-                    personnel.append(name)
+    # Ensure at least one empty row if showWhenEmpty
+    if show_when_empty and max_rows == 0:
+        max_rows = 1
     
-    if not personnel:
-        return ''
+    # Build rows
+    rows_html = ""
+    for row_idx in range(max_rows):
+        row = '<tr>'
+        for a in units:
+            unit_id = a['unit_designator']
+            assigned = unit_personnel.get(unit_id, [])
+            pid = assigned[row_idx] if row_idx < len(assigned) else None
+            name = ctx.get_personnel_name(pid)
+            row += f'<td>{esc(name)}</td>'
+        row += '</tr>'
+        rows_html += row
     
-    items = ''.join([f'<span class="personnel-list-item">{esc(p)}</span>' for p in personnel])
+    # Column headers use unit NAME
+    unit_headers = ''.join([f'<th>{esc(a.get("name", a["unit_designator"]))}</th>' for a in units])
+    total = sum(len(unit_personnel.get(a['unit_designator'], [])) for a in units)
     
     return f'''<div class="personnel-section">
-        <div class="personnel-section-title">{title}</div>
-        <div class="personnel-list">{items}</div>
-        <div class="total-row">Total: {len(personnel)}</div>
+        <div class="personnel-section-title">{esc(title)}</div>
+        <table class="personnel-table">
+            <thead><tr>{unit_headers}</tr></thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+        <div class="total-row">Total: {total}</div>
     </div>'''
 
 

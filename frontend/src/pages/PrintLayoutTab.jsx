@@ -188,6 +188,10 @@ export default function PrintLayoutTab() {
             <span className="text-xs bg-orange-100 text-orange-700 px-1 rounded border border-orange-300">sticky</span>
           )}
           
+          {block.showWhenEmpty && (
+            <span className="text-xs bg-green-100 text-green-700 px-1 rounded border border-green-300">show∅</span>
+          )}
+          
           {/* Move button */}
           {!block.locked && (
             <button
@@ -353,6 +357,25 @@ export default function PrintLayoutTab() {
                     }`}
                   >
                     {block.stickyFooter ? 'Sticky (bottom of page)' : 'Normal (after content)'}
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {/* Row 3: Special options for personnel blocks */}
+            {['personnel_apparatus', 'personnel_direct', 'personnel_station'].includes(block.id) && (
+              <div className="grid grid-cols-4 gap-2 mt-2">
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-600 block mb-1">Show When Empty</label>
+                  <button
+                    onClick={() => updateBlock(block.id, { showWhenEmpty: !block.showWhenEmpty })}
+                    className={`w-full px-2 py-1 rounded text-sm ${
+                      block.showWhenEmpty 
+                        ? 'bg-green-500 text-white border border-green-600' 
+                        : 'bg-white border border-gray-300 text-gray-500'
+                    }`}
+                  >
+                    {block.showWhenEmpty ? 'Show table even if empty' : 'Hide when no assignments'}
                   </button>
                 </div>
               </div>
