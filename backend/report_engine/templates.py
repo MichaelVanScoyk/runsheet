@@ -256,6 +256,16 @@ def generate_css(branding: dict) -> str:
             font-size: inherit;
         }}
         
+        /* Hide label when hideLabel is set */
+        .hide-label .label {{
+            display: none;
+        }}
+        
+        /* Normal weight label when labelBold is false */
+        .label-normal .label {{
+            font-weight: normal;
+        }}
+        
         .address {{
             font-size: inherit;
             font-weight: inherit;
