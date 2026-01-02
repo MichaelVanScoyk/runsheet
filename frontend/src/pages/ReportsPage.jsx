@@ -169,8 +169,10 @@ function ReportsPage() {
   const colors = {
     green: '#016a2b',
     greenLight: '#e8f5e9',
-    gray: '#f5f5f5',
-    grayMed: '#e0e0e0',
+    pageBg: '#dcdcdc',      // Page background - gray
+    cardBg: '#ffffff',       // Card background - white
+    statBg: '#e8e8e8',       // Stat box background - visible gray
+    border: '#c0c0c0',       // Borders - darker for visibility
     grayDark: '#666',
     text: '#333',
     white: '#fff',
@@ -181,12 +183,12 @@ function ReportsPage() {
   };
 
   const s = {
-    page: { background: colors.white, minHeight: '100vh', padding: '0' },
+    page: { background: colors.pageBg, minHeight: '100vh', padding: '0' },
     
     // Header matching PDF header style
     header: { 
       display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.5rem',
-      borderBottom: `3px solid ${colors.green}`, background: colors.white, marginBottom: '1rem'
+      borderBottom: `3px solid ${colors.green}`, background: colors.cardBg, marginBottom: '1rem'
     },
     headerLogo: { width: '60px', height: '60px', objectFit: 'contain' },
     headerText: { flex: 1 },
@@ -196,21 +198,21 @@ function ReportsPage() {
     // Controls bar
     controlsBar: { 
       display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem',
-      padding: '0.75rem 1rem', background: colors.gray, borderRadius: '4px',
-      border: `1px solid ${colors.grayMed}`, marginBottom: '1rem'
+      padding: '0.75rem 1rem', background: colors.cardBg, borderRadius: '4px',
+      border: `1px solid ${colors.border}`, marginBottom: '1rem'
     },
     
     // Query bar
     queryBar: { 
-      padding: '1rem', background: colors.gray, borderRadius: '4px',
-      border: `1px solid ${colors.grayMed}`, marginBottom: '1rem'
+      padding: '1rem', background: colors.cardBg, borderRadius: '4px',
+      border: `1px solid ${colors.border}`, marginBottom: '1rem'
     },
     input: { 
-      padding: '0.6rem 0.75rem', border: `1px solid ${colors.grayMed}`, borderRadius: '4px',
+      padding: '0.6rem 0.75rem', border: `1px solid ${colors.border}`, borderRadius: '4px',
       fontSize: '0.9rem', background: colors.white, color: colors.text, outline: 'none'
     },
     select: {
-      padding: '0.5rem 0.75rem', border: `1px solid ${colors.grayMed}`, borderRadius: '4px',
+      padding: '0.5rem 0.75rem', border: `1px solid ${colors.border}`, borderRadius: '4px',
       fontSize: '0.85rem', background: colors.white, color: colors.text, cursor: 'pointer'
     },
     
@@ -220,26 +222,26 @@ function ReportsPage() {
       fontWeight: '500', fontSize: '0.85rem', transition: 'all 0.15s'
     },
     btnGreen: { background: colors.green, color: colors.white },
-    btnGray: { background: colors.white, color: colors.text, border: `1px solid ${colors.grayMed}` },
+    btnGray: { background: colors.white, color: colors.text, border: `1px solid ${colors.border}` },
     btnSmall: { padding: '0.35rem 0.6rem', fontSize: '0.8rem' },
     
     // Cards - matching PDF boxes
     card: { 
-      background: colors.white, borderRadius: '4px', border: `1px solid ${colors.grayMed}`,
+      background: colors.cardBg, borderRadius: '4px', border: `1px solid ${colors.border}`,
       marginBottom: '1rem', overflow: 'hidden'
     },
     cardHeader: { 
-      background: colors.gray, padding: '0.6rem 1rem', fontSize: '0.8rem',
+      background: colors.statBg, padding: '0.6rem 1rem', fontSize: '0.8rem',
       fontWeight: '600', color: colors.green, textTransform: 'uppercase', letterSpacing: '0.5px',
-      borderBottom: `1px solid ${colors.grayMed}`
+      borderBottom: `1px solid ${colors.border}`
     },
-    cardBody: { padding: '1rem' },
+    cardBody: { padding: '1rem', background: colors.cardBg },
     
-    // Stat boxes - matching PDF stat cards
+    // Stat boxes - matching PDF stat cards with VISIBLE gray background
     statGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.75rem' },
     statBox: { 
-      background: colors.gray, borderRadius: '4px', padding: '1rem', textAlign: 'center',
-      border: `1px solid ${colors.grayMed}`
+      background: colors.statBg, borderRadius: '4px', padding: '1rem', textAlign: 'center',
+      border: `1px solid ${colors.border}`
     },
     statValue: { fontSize: '1.75rem', fontWeight: '700', color: colors.text, lineHeight: 1.2 },
     statLabel: { fontSize: '0.7rem', color: colors.grayDark, textTransform: 'uppercase', marginTop: '0.25rem', letterSpacing: '0.3px' },
@@ -248,10 +250,10 @@ function ReportsPage() {
     // Tables - matching PDF tables
     table: { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' },
     th: { 
-      textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: '600', color: colors.grayDark,
-      borderBottom: `1px solid ${colors.grayMed}`, fontSize: '0.8rem'
+      textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: '600', color: colors.white,
+      background: colors.green, fontSize: '0.8rem'
     },
-    td: { padding: '0.5rem 0.75rem', borderBottom: `1px solid ${colors.grayMed}`, color: colors.text },
+    td: { padding: '0.5rem 0.75rem', borderBottom: `1px solid ${colors.border}`, color: colors.text },
     tdRight: { textAlign: 'right', fontFamily: 'monospace' },
     tdGreen: { color: colors.green, fontWeight: '600' },
     
