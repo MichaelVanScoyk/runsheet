@@ -276,15 +276,14 @@ function AppContent({ tenant, onTenantLogout }) {
               src={branding.logoUrl} 
               alt="Logo" 
               style={{ 
-                width: '48px', 
-                height: '48px', 
+                width: '72px', 
+                height: '72px', 
                 objectFit: 'contain',
                 marginBottom: '0.5rem'
               }} 
             />
           )}
-          <h1>{branding.stationShortName || 'CADReport'}</h1>
-          <span>{branding.stationName || tenant?.name || 'Fire Department'}</span>
+          <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)' }}>{branding.stationName || tenant?.name || 'Fire Department'}</span>
         </div>
         
         {/* Tenant info */}

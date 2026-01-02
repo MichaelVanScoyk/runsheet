@@ -35,6 +35,7 @@ function needsAutoShow(incident) {
 }
 
 function IncidentsPage() {
+  const branding = useBranding();
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingIncident, setLoadingIncident] = useState(false);
@@ -283,7 +284,7 @@ function IncidentsPage() {
       )}
 
       <div className="page-header">
-        <h2>Incidents - {year}</h2>
+        <h2>{branding.stationShortName || 'Station 48'} — Incidents - {year}</h2>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           {activeCount > 0 && (
             <button
