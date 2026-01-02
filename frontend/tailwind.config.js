@@ -7,24 +7,36 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Dark theme from existing design
+        // Branding colors - pulled from CSS variables set by BrandingContext
+        primary: {
+          DEFAULT: 'var(--primary-color)',
+          hover: 'var(--primary-hover)',
+          light: 'var(--primary-light)',
+        },
+        secondary: {
+          DEFAULT: 'var(--secondary-color)',
+        },
+        // Dark theme base colors
         dark: {
-          bg: '#16213e',
-          card: '#1a1a2e',
-          input: '#1a1a2e',
-          border: '#0f3460',
-          hover: '#0f1a2e',
+          bg: 'var(--dark-bg)',
+          sidebar: 'var(--dark-sidebar)',
+          card: 'var(--dark-card)',
+          input: 'var(--dark-input)',
+          border: 'var(--dark-border)',
+          hover: 'var(--dark-hover)',
         },
+        // Legacy accent colors - mapped to branding
         accent: {
-          red: '#e94560',
-          redHover: '#d63850',
+          red: 'var(--primary-color)',
+          redHover: 'var(--primary-hover)',
         },
+        // Status colors
         status: {
-          open: '#27ae60',
-          closed: '#7f8c8d',
-          completed: '#3498db',
-          warning: '#f39c12',
-          error: '#e74c3c',
+          open: 'var(--status-open)',
+          closed: 'var(--status-closed)',
+          completed: 'var(--status-completed)',
+          warning: 'var(--status-warning)',
+          error: 'var(--status-error)',
         }
       },
       fontSize: {

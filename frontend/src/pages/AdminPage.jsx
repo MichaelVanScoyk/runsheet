@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings, getPrintLayout, updatePrintLayout, resetPrintLayout } from '../api';
+import { useBranding } from '../contexts/BrandingContext';
 import { formatDateTimeLocal } from '../utils/timeUtils';
 import './AdminPage.css';
 import PersonnelPage from './PersonnelPage';
@@ -1422,7 +1423,7 @@ function DataExportTab() {
 // BRANDING TAB COMPONENT
 // ============================================================================
 
-function BrandingTab() {
+function BrandingTab({ onRefresh }) {
   const [logo, setLogo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -1661,6 +1662,9 @@ function BrandingTab() {
       setSavedPrimary(primaryColor);
       setSavedSecondary(secondaryColor);
       setMessage({ type: 'success', text: 'Colors saved successfully' });
+      
+      // Refresh branding context to update UI immediately
+      if (onRefresh) onRefresh();
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to save colors' });
     } finally {
@@ -1873,7 +1877,7 @@ function BrandingTab() {
             <li>PNG or WebP recommended (supports transparency)</li>
             <li>Max size: 500KB</li>
             <li>Click 🎯 then click the logo to pick a color from it</li>
-            <li>Colors will appear on PDF reports</li>
+            <li>Colors apply to the web UI and PDF reports</li>
           </ul>
         </div>
 
@@ -2151,6 +2155,7 @@ function AdminLoginForm({ onLogin }) {
 // ============================================================================
 
 function AdminPage({ isAuthenticated, onLogin, onLogout }) {
+  const { refreshBranding } = useBranding();
   const [activeTab, setActiveTab] = useState('settings');
 
   if (!isAuthenticated) {
@@ -2262,7 +2267,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'password' && <PasswordTab />}
         {activeTab === 'export' && <DataExportTab />}
         {activeTab === 'print' && <PrintLayoutTab />}
-        {activeTab === 'branding' && <BrandingTab />}
+        {activeTab === 'branding' && <BrandingTab onRefresh={refreshBranding} />}
         {activeTab === 'comcat' && <ComCatTab />}
       </div>
     </div>

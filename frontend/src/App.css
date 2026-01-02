@@ -7,7 +7,7 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  background: #1a1a2e;
+  background: var(--dark-bg);
   color: #fff;
   min-height: 100vh;
 }
@@ -21,9 +21,9 @@ body {
 /* Sidebar */
 .sidebar {
   width: 220px;
-  background: #16213e;
+  background: var(--dark-sidebar);
   padding: 1.5rem 0;
-  border-right: 1px solid #0f3460;
+  border-right: 1px solid var(--dark-border);
   position: fixed;
   height: 100vh;
   overflow-y: auto;
@@ -31,12 +31,12 @@ body {
 
 .logo {
   padding: 0 1.5rem 1.5rem;
-  border-bottom: 1px solid #0f3460;
+  border-bottom: 1px solid var(--dark-border);
   margin-bottom: 1rem;
 }
 
 .logo h1 {
-  color: #e94560;
+  color: var(--primary-color);
   font-size: 1.5rem;
   margin-bottom: 0.25rem;
 }
@@ -59,12 +59,12 @@ body {
 }
 
 .nav-links li a:hover {
-  background: #0f3460;
+  background: var(--dark-border);
   color: #fff;
 }
 
 .nav-links li a.active {
-  background: #e94560;
+  background: var(--primary-color);
   color: #fff;
 }
 
@@ -84,13 +84,13 @@ body {
 }
 
 .page-header h2 {
-  color: #e94560;
+  color: var(--primary-color);
   font-size: 1.5rem;
 }
 
 /* Tables */
 .table-container {
-  background: #16213e;
+  background: var(--dark-card);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -103,12 +103,12 @@ table {
 th, td {
   padding: 0.75rem 1rem;
   text-align: left;
-  border-bottom: 1px solid #0f3460;
+  border-bottom: 1px solid var(--dark-border);
 }
 
 th {
-  background: #0f3460;
-  color: #e94560;
+  background: var(--dark-border);
+  color: var(--primary-color);
   font-weight: 600;
   font-size: 0.85rem;
   text-transform: uppercase;
@@ -120,7 +120,7 @@ td {
 }
 
 tr:hover {
-  background: rgba(233, 69, 96, 0.05);
+  background: rgba(var(--primary-rgb), 0.05);
 }
 
 .inactive-row {
@@ -132,12 +132,12 @@ tr:hover {
 }
 
 .needs-attention-row td:first-child {
-  border-left: 3px solid #f39c12;
+  border-left: 3px solid var(--status-warning);
 }
 
 /* Code styling */
 code {
-  background: #0f3460;
+  background: var(--dark-border);
   padding: 0.15rem 0.4rem;
   border-radius: 3px;
   font-family: 'Consolas', 'Monaco', monospace;
@@ -167,16 +167,16 @@ code {
 }
 
 .btn-primary {
-  background: #e94560;
+  background: var(--primary-color);
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #d63850;
+  background: var(--primary-hover);
 }
 
 .btn-secondary {
-  background: #0f3460;
+  background: var(--dark-border);
   color: #fff;
 }
 
@@ -185,7 +185,7 @@ code {
 }
 
 .btn-warning {
-  background: #f39c12;
+  background: var(--status-warning);
   color: #000;
 }
 
@@ -218,17 +218,17 @@ code {
 }
 
 .badge-open {
-  background: #27ae60;
+  background: var(--status-open);
   color: white;
 }
 
 .badge-closed {
-  background: #7f8c8d;
+  background: var(--status-closed);
   color: white;
 }
 
 .badge-completed {
-  background: #3498db;
+  background: var(--status-completed);
   color: white;
 }
 
@@ -247,7 +247,7 @@ code {
 }
 
 .modal {
-  background: #16213e;
+  background: var(--dark-card);
   border-radius: 8px;
   padding: 1.5rem;
   width: 100%;
@@ -257,7 +257,7 @@ code {
 }
 
 .modal h3 {
-  color: #e94560;
+  color: var(--primary-color);
   margin-bottom: 1.5rem;
   font-size: 1.25rem;
 }
@@ -268,7 +268,7 @@ code {
   gap: 1rem;
   margin-top: 1.5rem;
   padding-top: 1rem;
-  border-top: 1px solid #0f3460;
+  border-top: 1px solid var(--dark-border);
 }
 
 /* Form Elements */
@@ -288,8 +288,8 @@ code {
 .form-group textarea {
   width: 100%;
   padding: 0.5rem 0.75rem;
-  background: #1a1a2e;
-  border: 1px solid #0f3460;
+  background: var(--dark-bg);
+  border: 1px solid var(--dark-border);
   border-radius: 4px;
   color: #fff;
   font-size: 0.9rem;
@@ -299,7 +299,7 @@ code {
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #e94560;
+  border-color: var(--primary-color);
 }
 
 .form-group input:disabled {
@@ -337,8 +337,8 @@ code {
 
 .filter-bar select {
   padding: 0.5rem 0.75rem;
-  background: #16213e;
-  border: 1px solid #0f3460;
+  background: var(--dark-card);
+  border: 1px solid var(--dark-border);
   border-radius: 4px;
   color: #fff;
   font-size: 0.9rem;
@@ -346,7 +346,7 @@ code {
 
 .filter-bar select:focus {
   outline: none;
-  border-color: #e94560;
+  border-color: var(--primary-color);
 }
 
 /* Responsive */

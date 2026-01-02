@@ -2,7 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==============================================
+   CSS CUSTOM PROPERTIES - TENANT BRANDING
+   These are set dynamically by BrandingContext.jsx
+   Defaults match the original pink theme for fallback
+   ============================================== */
 :root {
+  /* Branding colors - set by BrandingContext on load */
+  --primary-color: #016a2b;
+  --primary-hover: #015a24;
+  --primary-light: #e6f4ea;
+  --secondary-color: #eeee01;
+  --primary-rgb: 1, 106, 43;
+  --secondary-rgb: 238, 238, 1;
+  
+  /* Dark theme base colors */
+  --dark-bg: #1a1a2e;
+  --dark-sidebar: #16213e;
+  --dark-card: #16213e;
+  --dark-border: #0f3460;
+  --dark-hover: #0f1a2e;
+  --dark-input: #1a1a2e;
+  
+  /* Status colors */
+  --status-open: #27ae60;
+  --status-closed: #7f8c8d;
+  --status-completed: #3498db;
+  --status-warning: #f39c12;
+  --status-error: #e74c3c;
+  
+  /* Typography */
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
@@ -27,7 +56,8 @@ body {
     @apply bg-dark-input border border-dark-border rounded px-2 py-1 text-white text-sm;
   }
   input:focus, select:focus, textarea:focus {
-    @apply outline-none border-accent-red;
+    outline: none;
+    border-color: var(--primary-color);
   }
   input:disabled, select:disabled, textarea:disabled {
     @apply opacity-60 cursor-not-allowed;
@@ -43,7 +73,11 @@ body {
     @apply opacity-60 cursor-not-allowed;
   }
   .btn-primary {
-    @apply bg-accent-red text-white hover:bg-accent-redHover;
+    background-color: var(--primary-color);
+    color: white;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--primary-hover);
   }
   .btn-secondary {
     @apply bg-dark-border text-white hover:bg-dark-hover;
@@ -74,6 +108,16 @@ body {
   }
   .badge-completed {
     @apply bg-status-completed text-white;
+  }
+  
+  /* Category badges using branding colors */
+  .badge-fire {
+    background-color: var(--primary-color);
+    color: white;
+  }
+  .badge-ems {
+    background-color: var(--secondary-color);
+    color: #1a1a1a;
   }
 }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getIncidents, getIncident } from '../api';
+import { useBranding } from '../contexts/BrandingContext';
 import RunSheetForm from '../components/RunSheetForm';
 import IncidentHubModal from '../components/IncidentHubModal';
 import { incidentQualifiesForModal } from '../components/IncidentHubModal/hooks/useActiveIncidents';

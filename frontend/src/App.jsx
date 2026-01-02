@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink, useNavigate, useParams } from 'react-router-dom';
+import { BrandingProvider, useBranding } from './contexts/BrandingContext';
 import { setStationTimezone } from './utils/timeUtils';
 import IncidentsPage from './pages/IncidentsPage';
 import PersonnelPage from './pages/PersonnelPage';
@@ -74,6 +75,7 @@ function SessionManager({ userSession, onSessionExpired }) {
 }
 
 function AppContent({ tenant, onTenantLogout }) {
+  const branding = useBranding();
   const [adminAuth, setAdminAuth] = useState(isAdminAuthenticated());
   const [userSession, setUserSessionState] = useState(getUserSession());
   const [personnel, setPersonnel] = useState([]);
@@ -268,14 +270,27 @@ function AppContent({ tenant, onTenantLogout }) {
       <SessionManager userSession={userSession} onSessionExpired={handleSessionExpired} />
       <nav className="sidebar">
         <div className="logo">
-          <h1>RunSheet</h1>
-          <span>{tenant?.name || 'Station 48'}</span>
+          {/* Show logo if available */}
+          {branding.logoUrl && (
+            <img 
+              src={branding.logoUrl} 
+              alt="Logo" 
+              style={{ 
+                width: '48px', 
+                height: '48px', 
+                objectFit: 'contain',
+                marginBottom: '0.5rem'
+              }} 
+            />
+          )}
+          <h1>{branding.stationShortName || 'CADReport'}</h1>
+          <span>{branding.stationName || tenant?.name || 'Fire Department'}</span>
         </div>
         
         {/* Tenant info */}
         <div style={{ 
           padding: '8px 10px', 
-          background: '#1a3a1a', 
+          background: 'rgba(var(--primary-rgb), 0.15)', 
           margin: '0 10px 5px', 
           borderRadius: '4px',
           fontSize: '0.8rem',
@@ -283,7 +298,7 @@ function AppContent({ tenant, onTenantLogout }) {
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <span style={{ color: '#4a9' }}>🏢 {tenant?.slug}</span>
+          <span style={{ color: 'var(--primary-color)' }}>🏢 {tenant?.slug}</span>
           <button 
             onClick={onTenantLogout}
             style={{ 
@@ -311,7 +326,7 @@ function AppContent({ tenant, onTenantLogout }) {
           {userSession ? (
             // Logged in
             <>
-              <div style={{ color: '#2ecc71', marginBottom: '5px' }}>
+              <div style={{ color: 'var(--status-open)', marginBottom: '5px' }}>
                 ✓ {userSession.display_name}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -333,7 +348,7 @@ function AppContent({ tenant, onTenantLogout }) {
                 </button>
               </div>
               {!userSession.is_approved && (
-                <div style={{ color: '#f39c12', fontSize: '0.75rem', marginTop: '5px' }}>
+                <div style={{ color: 'var(--status-warning)', fontSize: '0.75rem', marginTop: '5px' }}>
                   ⚠️ Pending approval
                 </div>
               )}
@@ -467,7 +482,7 @@ function AppContent({ tenant, onTenantLogout }) {
               )}
 
               {authError && (
-                <div style={{ color: '#e74c3c', fontSize: '0.75rem', marginTop: '5px' }}>
+                <div style={{ color: 'var(--status-error)', fontSize: '0.75rem', marginTop: '5px' }}>
                   {authError}
                 </div>
               )}
@@ -563,7 +578,7 @@ function App() {
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center',
-        background: '#1a1a2e',
+        background: 'var(--dark-bg, #1a1a2e)',
         color: '#888'
       }}>
         Loading...
@@ -581,16 +596,18 @@ function App() {
     return <TenantLogin onLogin={handleTenantLogin} />;
   }
 
-  // Show app with tenant context
+  // Show app with tenant context - wrapped in BrandingProvider
   return (
-    <Router>
-      <Routes>
-        {/* Print route - standalone, no app shell */}
-        <Route path="/print/:id" element={<PrintPage />} />
-        {/* All other routes use the app shell */}
-        <Route path="/*" element={<AppContent tenant={tenantSession} onTenantLogout={handleTenantLogout} />} />
-      </Routes>
-    </Router>
+    <BrandingProvider>
+      <Router>
+        <Routes>
+          {/* Print route - standalone, no app shell */}
+          <Route path="/print/:id" element={<PrintPage />} />
+          {/* All other routes use the app shell */}
+          <Route path="/*" element={<AppContent tenant={tenantSession} onTenantLogout={handleTenantLogout} />} />
+        </Routes>
+      </Router>
+    </BrandingProvider>
   );
 }
 

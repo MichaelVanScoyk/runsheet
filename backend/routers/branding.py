@@ -64,6 +64,78 @@ async def get_branding_config(db: Session = Depends(get_db)):
     return result
 
 
+@router.get("/theme")
+async def get_ui_theme(db: Session = Depends(get_db)):
+    """
+    Get all UI theming data in a single call.
+    Used by frontend BrandingContext to apply tenant colors app-wide.
+    Includes logo as data URL for immediate use.
+    """
+    branding = get_branding(db)
+    
+    # Build logo data URL if available
+    logo_url = None
+    if branding.get('logo_data'):
+        mime = branding.get('logo_mime_type', 'image/png')
+        logo_url = f"data:{mime};base64,{branding['logo_data']}"
+    
+    return {
+        # Identity
+        "station_name": branding.get('station_name', 'Fire Department'),
+        "station_number": branding.get('station_number', ''),
+        "station_short_name": branding.get('station_short_name', ''),
+        
+        # Logo
+        "logo_url": logo_url,
+        
+        # Colors - these become CSS variables
+        "primary_color": branding.get('primary_color', '#016a2b'),
+        "secondary_color": branding.get('secondary_color', '#eeee01'),
+        "text_color": branding.get('text_color', '#1a1a1a'),
+        "muted_color": branding.get('muted_color', '#666666'),
+        
+        # Derived colors (computed for convenience)
+        "primary_hover": _darken_color(branding.get('primary_color', '#016a2b'), 15),
+        "primary_light": _lighten_color(branding.get('primary_color', '#016a2b'), 90),
+    }
+
+
+def _darken_color(hex_color: str, percent: int) -> str:
+    """Darken a hex color by a percentage."""
+    try:
+        hex_color = hex_color.lstrip('#')
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        
+        factor = (100 - percent) / 100
+        r = int(r * factor)
+        g = int(g * factor)
+        b = int(b * factor)
+        
+        return f"#{r:02x}{g:02x}{b:02x}"
+    except:
+        return hex_color
+
+
+def _lighten_color(hex_color: str, percent: int) -> str:
+    """Lighten a hex color by a percentage (toward white)."""
+    try:
+        hex_color = hex_color.lstrip('#')
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        
+        factor = percent / 100
+        r = int(r + (255 - r) * factor)
+        g = int(g + (255 - g) * factor)
+        b = int(b + (255 - b) * factor)
+        
+        return f"#{r:02x}{g:02x}{b:02x}"
+    except:
+        return hex_color
+
+
 @router.put("")
 async def update_branding_config(updates: BrandingUpdate, db: Session = Depends(get_db)):
     field_mappings = {
