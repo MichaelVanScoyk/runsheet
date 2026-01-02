@@ -590,6 +590,11 @@ def r_event_comments(ctx: RenderContext, block: dict) -> str:
         return _render_chronological_comments(display_comments)
 
 
+def r_spacer(ctx: RenderContext, block: dict) -> str:
+    """Render a blank spacer row for layout control."""
+    return '<div class="spacer">&nbsp;</div>'
+
+
 def _render_categorized_comments(comments: List[dict]) -> str:
     """Render comments grouped by category."""
     sections = []
@@ -697,6 +702,9 @@ FIELD_RENDERERS: Dict[str, Callable[[RenderContext, dict], str]] = {
     'neris_incident_types': r_neris_incident_types,
     'neris_actions': r_neris_actions,
     'event_comments': r_event_comments,
+    'spacer_1': r_spacer,
+    'spacer_2': r_spacer,
+    'spacer_3': r_spacer,
 }
 
 

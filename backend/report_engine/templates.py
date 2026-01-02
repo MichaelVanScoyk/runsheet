@@ -246,6 +246,11 @@ def generate_css(branding: dict) -> str:
             margin-right: 12px;
         }}
         
+        .spacer {{
+            height: 8px;
+            width: 100%;
+        }}
+        
         .label {{
             font-weight: inherit;
             font-size: inherit;

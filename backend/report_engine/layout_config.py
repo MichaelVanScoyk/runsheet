@@ -118,6 +118,11 @@ DEFAULT_PRINT_LAYOUT = {
         # Row 6: Event Comments (CAD dispatch comments log)
         # Options: categorize=True (grouped by type) or categorize=False (chronological)
         {"id": "event_comments", "name": "Event Comments", "enabled": True, "page": 2, "row": 6, "order": 1, "width": "full", "categorize": True},
+        
+        # Spacers - blank rows for layout control
+        {"id": "spacer_1", "name": "Spacer 1", "enabled": False, "page": 2, "row": 90, "order": 1, "width": "full"},
+        {"id": "spacer_2", "name": "Spacer 2", "enabled": False, "page": 2, "row": 91, "order": 1, "width": "full"},
+        {"id": "spacer_3", "name": "Spacer 3", "enabled": False, "page": 2, "row": 92, "order": 1, "width": "full"},
     ]
 }
 
