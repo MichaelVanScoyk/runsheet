@@ -85,6 +85,23 @@ def clean_text(text: Optional[str]) -> Optional[str]:
     return text if text else None
 
 
+def get_cell_text(cell) -> Optional[str]:
+    """
+    Extract text from a BeautifulSoup cell, preserving spacing for <br> tags.
+    
+    BeautifulSoup's get_text() concatenates text nodes without spaces,
+    so 'LINE1<br>LINE2' becomes 'LINE1LINE2'. This handles that.
+    """
+    if not cell:
+        return None
+    # Use separator to handle <br> and other inline elements
+    text = cell.get_text(separator=' ')
+    # Clean up extra whitespace
+    text = re.sub(r'\s+', ' ', text)
+    text = text.strip()
+    return text if text else None
+
+
 def parse_phone(text: Optional[str]) -> Optional[str]:
     """Extract phone number"""
     if not text:
@@ -270,17 +287,15 @@ def _parse_location_section(soup: BeautifulSoup, report: ParsedCADReport):
         if not label:
             continue
         
-        # Get value - might span multiple columns
-        value = clean_text(cells[1].get_text())
-        
+        # Get value - use get_cell_text for address to handle <br> line breaks
         if label == 'Address:':
-            report.address = value
+            report.address = get_cell_text(cells[1])
         elif 'Location Info' in label:
-            report.location_info = value
+            report.location_info = clean_text(cells[1].get_text())
         elif 'Cross Street' in label:
-            report.cross_streets = value
+            report.cross_streets = clean_text(cells[1].get_text())
         elif label == 'Municipality:':
-            report.municipality = value
+            report.municipality = clean_text(cells[1].get_text())
             # ESZ is in same row, different cells
             for i, cell in enumerate(cells):
                 cell_text = cell.get_text()
@@ -288,7 +303,7 @@ def _parse_location_section(soup: BeautifulSoup, report: ParsedCADReport):
                     if i + 1 < len(cells):
                         report.esz = clean_text(cells[i + 1].get_text())
         elif 'Development' in label:
-            report.development = value
+            report.development = clean_text(cells[1].get_text())
             # Beat is in same row
             for i, cell in enumerate(cells):
                 cell_text = cell.get_text()
