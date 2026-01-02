@@ -182,7 +182,7 @@ def generate_css(branding: dict) -> str:
         }}
         
         .muni {{
-            margin-left: 8px;
+            /* No margin - let layout control spacing */
         }}
         
         .esz {{
