@@ -705,6 +705,16 @@ FIELD_RENDERERS: Dict[str, Callable[[RenderContext, dict], str]] = {
     'spacer_1': r_spacer,
     'spacer_2': r_spacer,
     'spacer_3': r_spacer,
+    'spacer_4': r_spacer,
+    'spacer_5': r_spacer,
+    'spacer_6': r_spacer,
+    'spacer_7': r_spacer,
+    'spacer_8': r_spacer,
+    'spacer_9': r_spacer,
+    'spacer_10': r_spacer,
+    'spacer_11': r_spacer,
+    'spacer_12': r_spacer,
+    'spacer_13': r_spacer,
 }
 
 

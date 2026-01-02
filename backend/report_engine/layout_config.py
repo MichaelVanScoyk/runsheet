@@ -123,6 +123,16 @@ DEFAULT_PRINT_LAYOUT = {
         {"id": "spacer_1", "name": "Spacer 1", "enabled": False, "page": 2, "row": 90, "order": 1, "width": "full"},
         {"id": "spacer_2", "name": "Spacer 2", "enabled": False, "page": 2, "row": 91, "order": 1, "width": "full"},
         {"id": "spacer_3", "name": "Spacer 3", "enabled": False, "page": 2, "row": 92, "order": 1, "width": "full"},
+        {"id": "spacer_4", "name": "Spacer 4", "enabled": False, "page": 2, "row": 93, "order": 1, "width": "full"},
+        {"id": "spacer_5", "name": "Spacer 5", "enabled": False, "page": 2, "row": 94, "order": 1, "width": "full"},
+        {"id": "spacer_6", "name": "Spacer 6", "enabled": False, "page": 2, "row": 95, "order": 1, "width": "full"},
+        {"id": "spacer_7", "name": "Spacer 7", "enabled": False, "page": 2, "row": 96, "order": 1, "width": "full"},
+        {"id": "spacer_8", "name": "Spacer 8", "enabled": False, "page": 2, "row": 97, "order": 1, "width": "full"},
+        {"id": "spacer_9", "name": "Spacer 9", "enabled": False, "page": 2, "row": 98, "order": 1, "width": "full"},
+        {"id": "spacer_10", "name": "Spacer 10", "enabled": False, "page": 2, "row": 100, "order": 1, "width": "full"},
+        {"id": "spacer_11", "name": "Spacer 11", "enabled": False, "page": 2, "row": 101, "order": 1, "width": "full"},
+        {"id": "spacer_12", "name": "Spacer 12", "enabled": False, "page": 2, "row": 102, "order": 1, "width": "full"},
+        {"id": "spacer_13", "name": "Spacer 13", "enabled": False, "page": 2, "row": 103, "order": 1, "width": "full"},
     ]
 }
 
