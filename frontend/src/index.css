@@ -2,160 +2,135 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ==============================================
-   CSS CUSTOM PROPERTIES - TENANT BRANDING
-   ============================================== */
+/* FORCE LIGHT THEME EVERYWHERE */
 :root {
   --primary-color: #016a2b;
   --primary-hover: #015a24;
-  --primary-light: #e6f4ea;
   --secondary-color: #eeee01;
-  --primary-rgb: 1, 106, 43;
-  --secondary-rgb: 238, 238, 1;
-  
-  --dark-bg: #1a1a2e;
-  --dark-sidebar: #16213e;
-  --dark-card: #16213e;
-  --dark-border: #0f3460;
-  --dark-hover: #0f1a2e;
-  --dark-input: #1a1a2e;
-  
-  --status-open: #27ae60;
-  --status-closed: #7f8c8d;
-  --status-completed: #3498db;
-  --status-warning: #f39c12;
-  --status-error: #e74c3c;
-  
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color-scheme: dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #0a0a12;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  color-scheme: light !important;
 }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
+/* Global overrides - LIGHT THEME */
+body, html {
+  background: #f5f5f5 !important;
+  color: #1a1a1a !important;
 }
 
-@layer base {
-  input, select, textarea {
-    @apply bg-dark-input border border-dark-border rounded px-2 py-1 text-white text-sm;
-  }
-  input:focus, select:focus, textarea:focus {
-    outline: none;
-    border-color: var(--primary-color);
-  }
-  input:disabled, select:disabled, textarea:disabled {
-    @apply opacity-60 cursor-not-allowed;
-  }
+/* Force all dark backgrounds to light */
+.bg-dark-bg, [class*="bg-dark"], [class*="bg-gray-9"], [class*="bg-gray-8"], [class*="bg-slate"] {
+  background-color: #ffffff !important;
 }
 
-@layer components {
-  .btn {
-    @apply px-3 py-1.5 rounded text-sm font-medium cursor-pointer transition-colors;
-  }
-  .btn:disabled {
-    @apply opacity-60 cursor-not-allowed;
-  }
-  .btn-primary {
-    background-color: var(--primary-color);
-    color: white;
-  }
-  .btn-primary:hover:not(:disabled) {
-    background-color: var(--primary-hover);
-  }
-  .btn-secondary {
-    @apply bg-dark-border text-white hover:bg-dark-hover;
-  }
-  .btn-warning {
-    @apply bg-status-warning text-black hover:opacity-90;
-  }
-  .btn-sm {
-    @apply px-2 py-1 text-xs;
-  }
-  
-  .badge {
-    @apply inline-block px-2 py-0.5 rounded text-xs font-semibold uppercase;
-  }
-  .badge-open {
-    @apply bg-status-open text-white;
-  }
-  .badge-closed {
-    @apply text-gray-400 border-2 border-gray-400 bg-transparent tracking-widest;
-    font-family: 'Courier New', monospace;
-    font-weight: 800;
-    font-size: 0.7rem;
-    padding: 0.25rem 0.75rem;
-    transform: rotate(-3deg);
-    border-radius: 4px;
-    text-shadow: 1px 1px 0 rgba(0,0,0,0.3);
-    box-shadow: inset 0 0 0 1px rgba(156, 163, 175, 0.3);
-  }
-  .badge-completed {
-    @apply bg-status-completed text-white;
-  }
-  
-  .badge-fire {
-    background-color: var(--primary-color);
-    color: white;
-  }
-  .badge-ems {
-    background-color: var(--secondary-color);
-    color: #1a1a1a;
-  }
+/* Force text to dark */
+.text-gray-400, .text-gray-500, [class*="text-gray"] {
+  color: #666666 !important;
 }
 
-@media print {
-  .sidebar,
-  .app > .sidebar,
-  .logo,
-  .nav-links,
-  .no-print,
-  .print-controls {
-    display: none !important;
-    visibility: hidden !important;
-    position: absolute !important;
-    left: -9999px !important;
-  }
-  
-  html, body {
-    background: white !important;
-    color: black !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
-  }
-  
-  .app {
-    display: block !important;
-  }
-  
-  .content {
-    margin-left: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
-    max-width: none !important;
-  }
-  
-  .print-view-container {
-    background: white !important;
-    padding: 0 !important;
-    min-height: auto !important;
-  }
-  
-  .print-content {
-    display: block !important;
-    background: white !important;
-    color: black !important;
-    padding: 0 !important;
-    max-width: none !important;
-    box-shadow: none !important;
-  }
+.text-white, [class*="text-white"] {
+  color: #1a1a1a !important;
+}
+
+/* Fix borders */
+[class*="border-dark"], .border-dark-border {
+  border-color: #e0e0e0 !important;
+}
+
+/* Accent colors - use green */
+.text-accent-red, .border-accent-red, [class*="accent-red"] {
+  color: #016a2b !important;
+  border-color: #016a2b !important;
+}
+
+.bg-accent-red {
+  background-color: #016a2b !important;
+}
+
+/* Cards and containers */
+.rounded-lg, .rounded-md, [class*="rounded"] {
+  background-color: #ffffff;
+  border: 1px solid #e0e0e0;
+}
+
+/* Input fields */
+input, select, textarea {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+  border: 1px solid #e0e0e0 !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: #016a2b !important;
+  outline: none;
+}
+
+/* Tables */
+table {
+  background: #ffffff !important;
+}
+
+th {
+  background: #016a2b !important;
+  color: #ffffff !important;
+}
+
+td {
+  color: #1a1a1a !important;
+  border-bottom: 1px solid #e0e0e0 !important;
+}
+
+tr:hover {
+  background: #f9f9f9 !important;
+}
+
+/* Buttons */
+.btn-primary, [class*="btn-primary"] {
+  background: #016a2b !important;
+  color: #ffffff !important;
+}
+
+.btn-secondary, [class*="btn-secondary"] {
+  background: #e0e0e0 !important;
+  color: #1a1a1a !important;
+}
+
+/* Labels and small text */
+label {
+  color: #666666 !important;
+}
+
+/* Status badges - keep these colored */
+.badge-open { background: #27ae60 !important; color: white !important; }
+.badge-closed { background: #7f8c8d !important; color: white !important; }
+.badge-completed { background: #3498db !important; color: white !important; }
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+  color: #016a2b !important;
+}
+
+/* Links */
+a {
+  color: #016a2b;
+}
+
+/* Modal overlays - keep dark backdrop */
+.modal-overlay, [class*="modal-overlay"] {
+  background: rgba(0,0,0,0.5) !important;
+}
+
+/* Modal content - white */
+.modal, .modal-content, [class*="modal-content"] {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+/* Page backgrounds */
+.content, main, .page {
+  background: #f5f5f5 !important;
+}
+
+/* Sections and cards */
+section, article, .card, [class*="card"] {
+  background: #ffffff !important;
+  border: 1px solid #e0e0e0 !important;
 }

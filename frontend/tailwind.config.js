@@ -8,45 +8,35 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: 'var(--primary-color)',
-          hover: 'var(--primary-hover)',
-          light: 'var(--primary-light)',
+          DEFAULT: '#016a2b',
+          hover: '#015a24',
         },
-        secondary: {
-          DEFAULT: 'var(--secondary-color)',
-        },
+        // REMAP dark-* to LIGHT colors
         dark: {
-          bg: 'var(--dark-bg)',
-          sidebar: 'var(--dark-sidebar)',
-          card: 'var(--dark-card)',
-          input: 'var(--dark-input)',
-          border: 'var(--dark-border)',
-          hover: 'var(--dark-hover)',
+          bg: '#f5f5f5',
+          card: '#ffffff',
+          border: '#e0e0e0',
+          hover: '#f0f0f0',
+          input: '#ffffff',
+          sidebar: '#016a2b',
         },
+        // Remap accent-red to green
         accent: {
-          red: 'var(--primary-color)',
-          redHover: 'var(--primary-hover)',
+          red: '#016a2b',
+          redHover: '#015a24',
         },
         status: {
-          open: 'var(--status-open)',
-          closed: 'var(--status-closed)',
-          completed: 'var(--status-completed)',
-          warning: 'var(--status-warning)',
-          error: 'var(--status-error)',
+          open: '#27ae60',
+          closed: '#7f8c8d',
+          completed: '#3498db',
+          warning: '#f39c12',
+          error: '#e74c3c',
         }
       },
-      fontSize: {
-        'xs': '0.75rem',
-        'sm': '0.8rem',
-        'base': '0.85rem',
-      },
-      spacing: {
-        '0.5': '0.125rem',
-        '1': '0.25rem',
-        '1.5': '0.375rem',
-        '2': '0.5rem',
-        '3': '0.75rem',
-        '4': '1rem',
+      textColor: {
+        // Force gray text to be visible on light backgrounds
+        'gray-400': '#666666',
+        'gray-500': '#555555',
       }
     },
   },
