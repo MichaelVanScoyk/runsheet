@@ -23,6 +23,7 @@ class RenderContext:
         apparatus_list: List[dict],
         personnel_assignments: Dict[str, List[Optional[int]]],
         time_formatter: Callable,
+        municipality_lookup: Dict[str, str] = None,
     ):
         self.incident = incident
         self.branding = branding
@@ -30,6 +31,7 @@ class RenderContext:
         self.apparatus_list = apparatus_list
         self.personnel_assignments = personnel_assignments
         self.fmt_time = time_formatter
+        self.municipality_lookup = municipality_lookup or {}
         
         self.call_category = incident.get('call_category', 'FIRE') or 'FIRE'
         self.in_service = self._calc_in_service()
@@ -148,10 +150,12 @@ def r_cross_streets(ctx: RenderContext, block: dict) -> str:
 
 
 def r_municipality_code(ctx: RenderContext, block: dict) -> str:
-    m = esc(ctx.get('municipality_code', ''))
-    if not m:
+    code = ctx.get('municipality_code', '')
+    if not code:
         return ''
-    return f'<span class="muni">{m}</span>'
+    # Use display_name from lookup, fall back to code
+    display = ctx.municipality_lookup.get(code, code)
+    return f'<span class="muni">{esc(display)}</span>'
 
 
 def r_esz_box(ctx: RenderContext, block: dict) -> str:

@@ -33,6 +33,10 @@ def _load_incident_context(db: Session, incident_id: int) -> tuple:
     personnel_rows = db.execute(text("SELECT id, first_name, last_name FROM personnel")).fetchall()
     personnel_lookup = {p[0]: f"{p[2]}, {p[1]}" for p in personnel_rows}
     
+    # Municipality lookup: code -> display_name
+    muni_rows = db.execute(text("SELECT code, display_name FROM municipalities")).fetchall()
+    municipality_lookup = {m[0]: m[1] for m in muni_rows}
+    
     apparatus_rows = db.execute(text("""
         SELECT id, unit_designator, name, ff_slots, unit_category 
         FROM apparatus WHERE active = true ORDER BY display_order, unit_designator
@@ -63,7 +67,7 @@ def _load_incident_context(db: Session, incident_id: int) -> tuple:
         
         personnel_assignments[unit_designator] = slots
     
-    return inc, personnel_lookup, apparatus_list, personnel_assignments
+    return inc, personnel_lookup, apparatus_list, personnel_assignments, municipality_lookup
 
 
 def _create_time_formatter(db: Session):
@@ -80,7 +84,7 @@ def _create_time_formatter(db: Session):
 
 @router.get("/html/incident/{incident_id}")
 async def get_incident_html_report(incident_id: int, db: Session = Depends(get_db)):
-    inc, personnel_lookup, apparatus_list, personnel_assignments = _load_incident_context(db, incident_id)
+    inc, personnel_lookup, apparatus_list, personnel_assignments, municipality_lookup = _load_incident_context(db, incident_id)
     branding = get_branding(db)
     
     call_category = inc.get('call_category', 'FIRE') or 'FIRE'
@@ -92,6 +96,7 @@ async def get_incident_html_report(incident_id: int, db: Session = Depends(get_d
         apparatus_list=apparatus_list,
         personnel_assignments=personnel_assignments,
         time_formatter=_create_time_formatter(db),
+        municipality_lookup=municipality_lookup,
     )
     
     page1_blocks = get_page_blocks(db, 1, call_category)
