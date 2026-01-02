@@ -173,12 +173,11 @@ def generate_css(branding: dict) -> str:
         }}
         
         .cad-number {{
-            margin-left: 8px;
             color: {muted_color};
         }}
         
         .inc-date {{
-            margin-left: 8px;
+            /* No margin - let layout control spacing */
         }}
         
         .muni {{
@@ -186,7 +185,6 @@ def generate_css(branding: dict) -> str:
         }}
         
         .esz {{
-            margin-left: 8px;
             color: {muted_color};
         }}
         
@@ -275,7 +273,6 @@ def generate_css(branding: dict) -> str:
             font-size: {body_font_size};
             color: {muted_color};
             display: inline;
-            margin-left: 4px;
         }}
         
         .cad-type {{
