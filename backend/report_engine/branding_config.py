@@ -66,6 +66,7 @@ LOGO_SIZES = {
     "small": "40px",
     "medium": "60px",
     "large": "80px",
+    "xlarge": "104px",
 }
 
 # Badge style mappings

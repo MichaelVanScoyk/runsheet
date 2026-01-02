@@ -89,20 +89,22 @@ def generate_css(branding: dict) -> str:
         
         /* Header styles */
         .header-classic {{
+            display: flex;
+            align-items: center;
             border-bottom: 2px {border_style} {primary};
             padding-bottom: 4px;
             margin-bottom: 4px;
         }}
         
         .header-classic .logo {{
-            float: left;
             width: {logo_size};
             height: auto;
-            margin-right: 8px;
+            margin-right: 12px;
+            flex-shrink: 0;
         }}
         
         .header-classic .header-text {{
-            overflow: hidden;
+            /* Text block beside logo */
         }}
         
         .header-modern {{
