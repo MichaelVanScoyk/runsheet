@@ -164,11 +164,12 @@ function ReportsPage() {
   const openPrintableReport = (year, month, category) => window.open(`${API_BASE}/api/reports/pdf/monthly-weasy?year=${year}&month=${month}&category=${category}`, '_blank');
 
   // ==========================================================================
-  // STYLES - Matching PDF aesthetic
+  // STYLES - Using branding colors
   // ==========================================================================
   const colors = {
-    green: '#016a2b',
-    greenLight: '#e8f5e9',
+    green: branding.primaryColor || '#016a2b',
+    greenLight: branding.primaryLight || '#e8f5e9',
+    secondary: branding.secondaryColor || '#eeee01',
     pageBg: '#dcdcdc',      // Page background - gray
     cardBg: '#ffffff',       // Card background - white
     statBg: '#e8e8e8',       // Stat box background - visible gray
@@ -188,7 +189,12 @@ function ReportsPage() {
     // Header matching PDF header style
     header: { 
       display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.5rem',
-      borderBottom: `3px solid ${colors.green}`, background: colors.cardBg, marginBottom: '1rem'
+      borderBottom: `3px solid ${colors.green}`, background: colors.cardBg, marginBottom: '1rem',
+      position: 'relative'
+    },
+    headerAccent: {
+      position: 'absolute', bottom: '-3px', left: '0', width: '80px', height: '3px',
+      background: colors.secondary
     },
     headerLogo: { width: '60px', height: '60px', objectFit: 'contain' },
     headerText: { flex: 1 },
@@ -222,13 +228,14 @@ function ReportsPage() {
       fontWeight: '500', fontSize: '0.85rem', transition: 'all 0.15s'
     },
     btnGreen: { background: colors.green, color: colors.white },
+    btnGreenHover: { boxShadow: `0 0 0 2px ${colors.secondary}` },
     btnGray: { background: colors.white, color: colors.text, border: `1px solid ${colors.border}` },
     btnSmall: { padding: '0.35rem 0.6rem', fontSize: '0.8rem' },
     
     // Cards - matching PDF boxes
     card: { 
       background: colors.cardBg, borderRadius: '4px', border: `1px solid ${colors.border}`,
-      marginBottom: '1rem', overflow: 'hidden'
+      marginBottom: '1rem', overflow: 'hidden', borderTop: `3px solid ${colors.secondary}`
     },
     cardHeader: { 
       background: colors.statBg, padding: '0.6rem 1rem', fontSize: '0.8rem',
@@ -253,6 +260,9 @@ function ReportsPage() {
       textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: '600', color: colors.white,
       background: colors.green, fontSize: '0.8rem'
     },
+    thFirst: {
+      borderLeft: `3px solid ${colors.secondary}`
+    },
     td: { padding: '0.5rem 0.75rem', borderBottom: `1px solid ${colors.border}`, color: colors.text },
     tdRight: { textAlign: 'right', fontFamily: 'monospace' },
     tdGreen: { color: colors.green, fontWeight: '600' },
@@ -274,6 +284,7 @@ function ReportsPage() {
     <div style={s.page}>
       {/* Header - PDF style with logo */}
       <div style={s.header}>
+        <div style={s.headerAccent} />
         {branding.logoUrl && <img src={branding.logoUrl} alt="Logo" style={s.headerLogo} />}
         <div style={s.headerText}>
           <h1 style={s.headerTitle}>{branding.stationName || 'GLEN MOORE FIRE COMPANY'}</h1>
@@ -302,7 +313,7 @@ function ReportsPage() {
           ))}
           {queryResult && (
             <button onClick={() => setActiveReport('custom')}
-              style={{ ...s.btn, ...s.btnSmall, background: activeReport === 'custom' ? '#7c3aed' : '#ede9fe', color: activeReport === 'custom' ? '#fff' : '#7c3aed' }}>
+              style={{ ...s.btn, ...s.btnSmall, background: activeReport === 'custom' ? colors.green : colors.greenLight, color: activeReport === 'custom' ? colors.white : colors.green }}>
               ✨ Query
             </button>
           )}
@@ -606,7 +617,7 @@ function PersonnelReport({ data, s, colors }) {
           </thead>
           <tbody>
             {(data.personnel || []).map((p, i) => (
-              <tr key={p.id} style={{ background: i < 3 ? '#f0fdf4' : 'transparent' }}>
+              <tr key={p.id} style={{ background: i < 3 ? colors.greenLight : 'transparent' }}>
                 <td style={s.td}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
                 <td style={{ ...s.td, fontWeight: '500' }}>{p.name}</td>
                 <td style={{ ...s.td, color: colors.grayDark }}>{p.rank || '-'}</td>
@@ -657,13 +668,13 @@ function UnitReport({ data, s, colors }) {
 // =============================================================================
 function CustomQueryResult({ result, onOpenPrint, s, colors }) {
   if (!result) return null;
-  if (result.error) return <div style={{ ...s.card, background: '#fef2f2' }}><div style={{ ...s.cardHeader, color: '#dc2626' }}>Error</div><div style={s.cardBody}>{result.error}</div></div>;
+  if (result.error) return <div style={{ ...s.card, background: colors.redLight }}><div style={{ ...s.cardHeader, color: colors.red }}>Error</div><div style={s.cardBody}>{result.error}</div></div>;
 
   return (
     <div>
-      <div style={{ ...s.card, background: '#f5f3ff', border: '1px solid #c4b5fd' }}>
+      <div style={{ ...s.card, background: colors.greenLight, border: `1px solid ${colors.green}` }}>
         <div style={{ padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div><span style={{ color: '#7c3aed', fontWeight: '500' }}>✨ {result.title}</span><br/><span style={{ fontSize: '0.8rem', color: colors.grayDark }}>Query: "{result.query}"</span></div>
+          <div><span style={{ color: colors.green, fontWeight: '500' }}>✨ {result.title}</span><br/><span style={{ fontSize: '0.8rem', color: colors.grayDark }}>Query: "{result.query}"</span></div>
           {result.type === 'chiefs' && result.pdfParams && <button onClick={() => onOpenPrint(result.pdfParams.year, result.pdfParams.month, result.pdfParams.category)} style={{ ...s.btn, ...s.btnGreen }}>🖨️ Print</button>}
         </div>
       </div>
