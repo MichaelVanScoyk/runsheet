@@ -17,7 +17,7 @@ function ReportsPage() {
   const [queryResult, setQueryResult] = useState(null);
   
   // Report selection
-  const [activeReport, setActiveReport] = useState('chiefs'); // chiefs, overview, personnel, unit, custom
+  const [activeReport, setActiveReport] = useState('chiefs');
   const [categoryFilter, setCategoryFilter] = useState('FIRE');
   
   // Date controls
@@ -129,7 +129,6 @@ function ReportsPage() {
     setQueryResult(null);
     
     try {
-      // Parse natural language query and execute
       const result = await executeNaturalQuery(query);
       setQueryResult(result);
       setActiveReport('custom');
@@ -142,10 +141,8 @@ function ReportsPage() {
   };
 
   const executeNaturalQuery = async (naturalQuery) => {
-    // Simple query parsing - in production this would use Claude API
     const q = naturalQuery.toLowerCase();
     
-    // Detect date ranges
     let queryStart = startDate;
     let queryEnd = endDate;
     let queryCategory = null;
@@ -170,13 +167,10 @@ function ReportsPage() {
       queryEnd = new Date(now.getFullYear() - 1, 11, 31).toISOString().split('T')[0];
     }
     
-    // Detect category
     if (q.includes('fire')) queryCategory = 'FIRE';
     else if (q.includes('ems') || q.includes('medical')) queryCategory = 'EMS';
     
-    // Detect report type and fetch data
     if (q.includes('chiefs') || q.includes('monthly report') || q.includes('chief')) {
-      // Extract month/year if specified
       const monthMatch = q.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i);
       const yearMatch = q.match(/\b(20\d{2})\b/);
       
@@ -200,7 +194,6 @@ function ReportsPage() {
         title: `Chiefs Report - ${data.month_name} ${data.year} (${cat})`,
         data,
         query: naturalQuery,
-        // Store params for PDF download
         pdfParams: { year, month, category: cat },
       };
     }
@@ -239,7 +232,6 @@ function ReportsPage() {
       const res = await fetch(`${API_BASE}/api/reports/by-type?${params}`);
       const data = await res.json();
       
-      // Filter to accidents
       const accidents = data.call_types?.filter(t => 
         t.call_type?.toLowerCase().includes('accident') ||
         t.call_type?.toLowerCase().includes('mva')
@@ -253,7 +245,6 @@ function ReportsPage() {
       };
     }
     
-    // Default: summary
     const cat = queryCategory || categoryFilter;
     const params = `start_date=${queryStart}&end_date=${queryEnd}&category=${cat}`;
     const res = await fetch(`${API_BASE}/api/reports/summary?${params}`);
@@ -272,263 +263,221 @@ function ReportsPage() {
     setTimeout(() => handleQuerySubmit(), 100);
   };
 
-  // =========================================================================
-  // PDF DOWNLOAD - Shared function that works for both direct and query results
-  // =========================================================================
-
   const openPrintableReport = (year, month, category) => {
-    // Open WeasyPrint PDF - styled HTML converted to PDF, prints consistently
     const url = `${API_BASE}/api/reports/pdf/monthly-weasy?year=${year}&month=${month}&category=${category}`;
     window.open(url, '_blank');
   };
 
-
+  // =========================================================================
+  // STYLES - Light Theme
+  // =========================================================================
+  const styles = {
+    page: { minHeight: '100vh', color: '#333' },
+    header: { background: '#fff', borderBottom: '3px solid #016a2b', padding: '1rem 1.5rem', marginBottom: '1rem' },
+    headerTitle: { fontSize: '1.5rem', fontWeight: '700', color: '#016a2b', margin: 0 },
+    headerSub: { color: '#666', fontSize: '0.85rem', marginTop: '0.25rem' },
+    queryBar: { background: '#fff', border: '1px solid #e0e0e0', borderRadius: '6px', padding: '1rem', marginBottom: '1rem' },
+    input: { width: '100%', padding: '0.75rem', border: '1px solid #ddd', borderRadius: '4px', fontSize: '0.9rem', background: '#fff', color: '#333' },
+    btn: { padding: '0.5rem 1rem', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: '500', fontSize: '0.85rem' },
+    btnPrimary: { background: '#016a2b', color: '#fff' },
+    btnSecondary: { background: '#f0f0f0', color: '#333', border: '1px solid #ddd' },
+    btnActive: { background: '#016a2b', color: '#fff' },
+    card: { background: '#fff', borderRadius: '6px', padding: '1.25rem', border: '1px solid #e0e0e0', marginBottom: '1rem' },
+    cardTitle: { fontSize: '1rem', fontWeight: '600', color: '#016a2b', borderBottom: '1px solid #e0e0e0', paddingBottom: '0.5rem', marginBottom: '1rem' },
+    statCard: { background: '#fff', borderRadius: '6px', padding: '1rem', textAlign: 'center', border: '1px solid #e0e0e0' },
+    statValue: { fontSize: '1.75rem', fontWeight: '700' },
+    statLabel: { color: '#666', fontSize: '0.8rem', marginTop: '0.25rem' },
+    table: { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' },
+    th: { textAlign: 'left', padding: '0.5rem', borderBottom: '2px solid #016a2b', color: '#016a2b', fontWeight: '600' },
+    td: { padding: '0.5rem', borderBottom: '1px solid #e0e0e0' },
+    quickBtn: { padding: '0.35rem 0.75rem', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer', color: '#333' },
+  };
 
   // =========================================================================
   // RENDER
   // =========================================================================
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100">
+    <div style={styles.page}>
       {/* Header */}
-      <div className="bg-gray-800 border-b border-gray-700 px-6 py-4">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold">Reports</h1>
-          <p className="text-gray-400 text-sm mt-1">
-            Generate monthly chiefs reports or ask questions in plain English
-          </p>
-        </div>
+      <div style={styles.header}>
+        <h1 style={styles.headerTitle}>Reports</h1>
+        <p style={styles.headerSub}>Generate monthly chiefs reports or ask questions in plain English</p>
       </div>
 
       {/* AI Query Bar */}
-      <div className="bg-gray-800/50 border-b border-gray-700 px-6 py-4">
-        <div className="max-w-7xl mx-auto">
-          <form onSubmit={handleQuerySubmit} className="flex gap-3">
-            <div className="flex-1 relative">
-              <input
-                ref={queryInputRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder='Try: "Show me fire calls for November 2025" or "Who ran the most calls this year?"'
-                className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-              />
-              {queryLoading && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full" />
-                </div>
-              )}
-            </div>
-            <button
-              type="submit"
-              disabled={queryLoading || !query.trim()}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg font-medium transition-colors"
-            >
-              Run Query
-            </button>
-          </form>
-          
-          {/* Quick Query Buttons */}
-          <div className="flex flex-wrap gap-2 mt-3">
-            <span className="text-gray-500 text-sm py-1">Quick:</span>
-            <button onClick={() => quickQuery('Show me the chiefs report for this month')} className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm">
-              This Month Chiefs
-            </button>
-            <button onClick={() => quickQuery('Fire calls year to date')} className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm">
-              YTD Fire
-            </button>
-            <button onClick={() => quickQuery('Top personnel responders this year')} className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm">
-              Top Responders
-            </button>
-            <button onClick={() => quickQuery('Auto accidents last 90 days')} className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm">
-              Recent Accidents
-            </button>
-            <button onClick={() => quickQuery('Unit response counts this year')} className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm">
-              Unit Stats
-            </button>
+      <div style={styles.queryBar}>
+        <form onSubmit={handleQuerySubmit} style={{ display: 'flex', gap: '0.75rem' }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <input
+              ref={queryInputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder='Try: "Show me fire calls for November 2025" or "Who ran the most calls this year?"'
+              style={styles.input}
+            />
           </div>
+          <button
+            type="submit"
+            disabled={queryLoading || !query.trim()}
+            style={{ ...styles.btn, ...styles.btnPrimary, opacity: queryLoading || !query.trim() ? 0.6 : 1 }}
+          >
+            {queryLoading ? 'Running...' : 'Run Query'}
+          </button>
+        </form>
+        
+        {/* Quick Query Buttons */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem', alignItems: 'center' }}>
+          <span style={{ color: '#888', fontSize: '0.8rem' }}>Quick:</span>
+          <button onClick={() => quickQuery('Show me the chiefs report for this month')} style={styles.quickBtn}>This Month Chiefs</button>
+          <button onClick={() => quickQuery('Fire calls year to date')} style={styles.quickBtn}>YTD Fire</button>
+          <button onClick={() => quickQuery('Top personnel responders this year')} style={styles.quickBtn}>Top Responders</button>
+          <button onClick={() => quickQuery('Auto accidents last 90 days')} style={styles.quickBtn}>Recent Accidents</button>
+          <button onClick={() => quickQuery('Unit response counts this year')} style={styles.quickBtn}>Unit Stats</button>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-6">
-        {/* Report Tabs + Controls */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="flex gap-2">
+      {/* Report Tabs + Controls */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {['chiefs', 'overview', 'personnel', 'unit'].map(tab => (
             <button
-              onClick={() => setActiveReport('chiefs')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeReport === 'chiefs' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-              }`}
+              key={tab}
+              onClick={() => setActiveReport(tab)}
+              style={{
+                ...styles.btn,
+                ...(activeReport === tab ? styles.btnActive : styles.btnSecondary),
+              }}
             >
-              📋 Monthly Report
+              {tab === 'chiefs' && '📋 Monthly Report'}
+              {tab === 'overview' && '📊 Date Range'}
+              {tab === 'personnel' && '👥 Personnel'}
+              {tab === 'unit' && '🚒 Units'}
             </button>
+          ))}
+          {queryResult && (
             <button
-              onClick={() => setActiveReport('overview')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeReport === 'overview' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-              }`}
+              onClick={() => setActiveReport('custom')}
+              style={{
+                ...styles.btn,
+                background: activeReport === 'custom' ? '#7c3aed' : '#ede9fe',
+                color: activeReport === 'custom' ? '#fff' : '#7c3aed',
+              }}
             >
-              📊 Date Range
+              ✨ Query Result
             </button>
-            <button
-              onClick={() => setActiveReport('personnel')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeReport === 'personnel' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              👥 Personnel
-            </button>
-            <button
-              onClick={() => setActiveReport('unit')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeReport === 'unit' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              🚒 Units
-            </button>
-            {queryResult && (
-              <button
-                onClick={() => setActiveReport('custom')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeReport === 'custom' 
-                    ? 'bg-purple-600 text-white' 
-                    : 'bg-purple-900/50 text-purple-300 hover:bg-purple-900'
-                }`}
-              >
-                ✨ Query Result
-              </button>
-            )}
-          </div>
-
-          {/* Category Toggle */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCategoryFilter('FIRE')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                categoryFilter === 'FIRE'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
-            >
-              🔥 Fire
-            </button>
-            <button
-              onClick={() => setCategoryFilter('EMS')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                categoryFilter === 'EMS'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
-            >
-              🚑 EMS
-            </button>
-          </div>
+          )}
         </div>
 
-        {/* Report Content */}
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
-            <p className="text-gray-400">Loading report...</p>
-          </div>
-        ) : (
-          <>
-            {/* Chiefs Report */}
-            {activeReport === 'chiefs' && (
-              <ChiefsReportView
-                report={chiefsReport}
-                month={reportMonth}
-                year={reportYear}
-                category={categoryFilter}
-                onMonthChange={setReportMonth}
-                onYearChange={setReportYear}
-                onOpenPrint={() => openPrintableReport(reportYear, reportMonth, categoryFilter)}
-                showControls={true}
-              />
-            )}
-
-            {/* Overview */}
-            {activeReport === 'overview' && summaryData && (
-              <OverviewReport
-                summary={summaryData}
-                trend={trendData}
-                startDate={startDate}
-                endDate={endDate}
-                onStartDateChange={setStartDate}
-                onEndDateChange={setEndDate}
-                year={reportYear}
-                onYearChange={setReportYear}
-              />
-            )}
-
-            {/* Personnel */}
-            {activeReport === 'personnel' && personnelData && (
-              <PersonnelReport
-                data={personnelData}
-                startDate={startDate}
-                endDate={endDate}
-                onStartDateChange={setStartDate}
-                onEndDateChange={setEndDate}
-              />
-            )}
-
-            {/* Unit */}
-            {activeReport === 'unit' && unitData && (
-              <UnitReport
-                data={unitData}
-                startDate={startDate}
-                endDate={endDate}
-                onStartDateChange={setStartDate}
-                onEndDateChange={setEndDate}
-              />
-            )}
-
-            {/* Custom Query Result */}
-            {activeReport === 'custom' && queryResult && (
-              <CustomQueryResult 
-                result={queryResult} 
-                onOpenPrint={openPrintableReport}
-              />
-            )}
-          </>
-        )}
+        {/* Category Toggle */}
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            onClick={() => setCategoryFilter('FIRE')}
+            style={{
+              ...styles.btn,
+              background: categoryFilter === 'FIRE' ? '#dc2626' : '#fee2e2',
+              color: categoryFilter === 'FIRE' ? '#fff' : '#dc2626',
+            }}
+          >
+            🔥 Fire
+          </button>
+          <button
+            onClick={() => setCategoryFilter('EMS')}
+            style={{
+              ...styles.btn,
+              background: categoryFilter === 'EMS' ? '#2563eb' : '#dbeafe',
+              color: categoryFilter === 'EMS' ? '#fff' : '#2563eb',
+            }}
+          >
+            🚑 EMS
+          </button>
+        </div>
       </div>
+
+      {/* Report Content */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '3rem', color: '#888' }}>Loading report...</div>
+      ) : (
+        <>
+          {activeReport === 'chiefs' && (
+            <ChiefsReportView
+              report={chiefsReport}
+              month={reportMonth}
+              year={reportYear}
+              category={categoryFilter}
+              onMonthChange={setReportMonth}
+              onYearChange={setReportYear}
+              onOpenPrint={() => openPrintableReport(reportYear, reportMonth, categoryFilter)}
+              showControls={true}
+              styles={styles}
+            />
+          )}
+
+          {activeReport === 'overview' && summaryData && (
+            <OverviewReport
+              summary={summaryData}
+              trend={trendData}
+              startDate={startDate}
+              endDate={endDate}
+              onStartDateChange={setStartDate}
+              onEndDateChange={setEndDate}
+              year={reportYear}
+              onYearChange={setReportYear}
+              styles={styles}
+            />
+          )}
+
+          {activeReport === 'personnel' && personnelData && (
+            <PersonnelReport
+              data={personnelData}
+              startDate={startDate}
+              endDate={endDate}
+              onStartDateChange={setStartDate}
+              onEndDateChange={setEndDate}
+              styles={styles}
+            />
+          )}
+
+          {activeReport === 'unit' && unitData && (
+            <UnitReport
+              data={unitData}
+              startDate={startDate}
+              endDate={endDate}
+              onStartDateChange={setStartDate}
+              onEndDateChange={setEndDate}
+              styles={styles}
+            />
+          )}
+
+          {activeReport === 'custom' && queryResult && (
+            <CustomQueryResult result={queryResult} onOpenPrint={openPrintableReport} styles={styles} />
+          )}
+        </>
+      )}
     </div>
   );
 }
 
 
 // =============================================================================
-// CHIEFS REPORT VIEW - Matches Paper Format
+// CHIEFS REPORT VIEW
 // =============================================================================
 
-function ChiefsReportView({ report, month, year, category, onMonthChange, onYearChange, onOpenPrint, showControls = false }) {
+function ChiefsReportView({ report, month, year, category, onMonthChange, onYearChange, onOpenPrint, showControls = false, styles }) {
   if (!report) return null;
 
   const cs = report.call_summary || {};
   const isFireReport = category === 'FIRE';
   
   return (
-    <div className="space-y-6">
-      {/* Controls - only shown for main view, not embedded */}
+    <div>
+      {/* Controls */}
       {showControls && (
-        <div className="flex flex-wrap items-center gap-4 bg-gray-800 rounded-lg p-4">
-          <div className="flex items-center gap-2">
-            <label className="text-gray-400 text-sm">Month:</label>
-            <select
-              value={month}
-              onChange={(e) => onMonthChange(parseInt(e.target.value))}
-              className="bg-gray-900 border border-gray-600 rounded px-3 py-2"
-            >
+        <div style={{ ...styles.card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ color: '#666', fontSize: '0.85rem' }}>Month:</label>
+            <select value={month} onChange={(e) => onMonthChange(parseInt(e.target.value))} style={styles.input}>
               {[...Array(12)].map((_, i) => (
                 <option key={i + 1} value={i + 1}>
                   {new Date(2000, i, 1).toLocaleString('default', { month: 'long' })}
@@ -536,24 +485,17 @@ function ChiefsReportView({ report, month, year, category, onMonthChange, onYear
               ))}
             </select>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-gray-400 text-sm">Year:</label>
-            <select
-              value={year}
-              onChange={(e) => onYearChange(parseInt(e.target.value))}
-              className="bg-gray-900 border border-gray-600 rounded px-3 py-2"
-            >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ color: '#666', fontSize: '0.85rem' }}>Year:</label>
+            <select value={year} onChange={(e) => onYearChange(parseInt(e.target.value))} style={styles.input}>
               {[...Array(5)].map((_, i) => {
                 const y = new Date().getFullYear() - i;
                 return <option key={y} value={y}>{y}</option>;
               })}
             </select>
           </div>
-          <div className="ml-auto flex gap-2">
-            <button
-              onClick={onOpenPrint}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors flex items-center gap-2"
-            >
+          <div style={{ marginLeft: 'auto' }}>
+            <button onClick={onOpenPrint} style={{ ...styles.btn, ...styles.btnPrimary }}>
               🖨️ Print Report
             </button>
           </div>
@@ -561,180 +503,160 @@ function ChiefsReportView({ report, month, year, category, onMonthChange, onYear
       )}
 
       {/* Report Header */}
-      <div className="text-center bg-gray-800 rounded-lg p-6">
-        <h2 className="text-xl font-bold">GLEN MOORE FIRE CO. MONTHLY REPORT</h2>
-        <p className="text-lg text-gray-300 mt-1">
+      <div style={{ ...styles.card, textAlign: 'center' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#016a2b', margin: 0 }}>GLEN MOORE FIRE CO. MONTHLY REPORT</h2>
+        <p style={{ color: '#666', marginTop: '0.25rem' }}>
           {report.month_name} {report.year} - {category === 'FIRE' ? '🔥 Fire' : '🚑 EMS'}
         </p>
       </div>
 
       {/* Call Summary */}
-      <div className="bg-gray-800 rounded-lg p-6">
-        <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-4">CALL SUMMARY</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-gray-900 rounded-lg p-4 text-center">
-            <div className="text-3xl font-bold text-blue-400">{cs.number_of_calls || 0}</div>
-            <div className="text-gray-400 text-sm">Calls for Month</div>
+      <div style={styles.card}>
+        <h3 style={styles.cardTitle}>CALL SUMMARY</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
+          <div style={styles.statCard}>
+            <div style={{ ...styles.statValue, color: '#2563eb' }}>{cs.number_of_calls || 0}</div>
+            <div style={styles.statLabel}>Calls for Month</div>
           </div>
-          <div className="bg-gray-900 rounded-lg p-4 text-center">
-            <div className="text-3xl font-bold text-green-400">{cs.number_of_men || 0}</div>
-            <div className="text-gray-400 text-sm">Number of Men</div>
+          <div style={styles.statCard}>
+            <div style={{ ...styles.statValue, color: '#16a34a' }}>{cs.number_of_men || 0}</div>
+            <div style={styles.statLabel}>Number of Men</div>
           </div>
-          <div className="bg-gray-900 rounded-lg p-4 text-center">
-            <div className="text-3xl font-bold text-yellow-400">{(cs.hours || 0).toFixed(1)}</div>
-            <div className="text-gray-400 text-sm">Hours</div>
+          <div style={styles.statCard}>
+            <div style={{ ...styles.statValue, color: '#ca8a04' }}>{(cs.hours || 0).toFixed(1)}</div>
+            <div style={styles.statLabel}>Hours</div>
           </div>
-          <div className="bg-gray-900 rounded-lg p-4 text-center">
-            <div className="text-3xl font-bold text-purple-400">{(cs.man_hours || 0).toFixed(1)}</div>
-            <div className="text-gray-400 text-sm">Man Hours</div>
+          <div style={styles.statCard}>
+            <div style={{ ...styles.statValue, color: '#9333ea' }}>{(cs.man_hours || 0).toFixed(1)}</div>
+            <div style={styles.statLabel}>Man Hours</div>
           </div>
         </div>
         
-        {/* Damage/Injury Stats - FIRE ONLY */}
         {isFireReport && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-            <div className="bg-gray-900 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-orange-400">${((cs.property_at_risk || 0) / 100).toLocaleString()}</div>
-              <div className="text-gray-400 text-sm">Property at Risk</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+            <div style={styles.statCard}>
+              <div style={{ ...styles.statValue, color: '#ea580c', fontSize: '1.25rem' }}>${((cs.property_at_risk || 0) / 100).toLocaleString()}</div>
+              <div style={styles.statLabel}>Property at Risk</div>
             </div>
-            <div className="bg-gray-900 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-red-400">${((cs.fire_damages || 0) / 100).toLocaleString()}</div>
-              <div className="text-gray-400 text-sm">Fire Damages</div>
+            <div style={styles.statCard}>
+              <div style={{ ...styles.statValue, color: '#dc2626', fontSize: '1.25rem' }}>${((cs.fire_damages || 0) / 100).toLocaleString()}</div>
+              <div style={styles.statLabel}>Fire Damages</div>
             </div>
-            <div className="bg-gray-900 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-yellow-500">{cs.ff_injuries || 0}</div>
-              <div className="text-gray-400 text-sm">FF Injuries</div>
+            <div style={styles.statCard}>
+              <div style={{ ...styles.statValue, color: '#eab308' }}>{cs.ff_injuries || 0}</div>
+              <div style={styles.statLabel}>FF Injuries</div>
             </div>
-            <div className="bg-gray-900 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-pink-400">{cs.civilian_injuries || 0}</div>
-              <div className="text-gray-400 text-sm">Civilian Injuries</div>
+            <div style={styles.statCard}>
+              <div style={{ ...styles.statValue, color: '#ec4899' }}>{cs.civilian_injuries || 0}</div>
+              <div style={styles.statLabel}>Civilian Injuries</div>
             </div>
           </div>
         )}
         
-        {/* YoY Comparison */}
-        <div className="mt-4 flex items-center justify-center gap-2 text-sm">
-          <span className="text-gray-400">vs Same Month Last Year:</span>
-          <span className={`font-semibold ${cs.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+        <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '0.85rem' }}>
+          <span style={{ color: '#666' }}>vs Same Month Last Year: </span>
+          <span style={{ fontWeight: '600', color: cs.change >= 0 ? '#16a34a' : '#dc2626' }}>
             {cs.change >= 0 ? '+' : ''}{cs.change || 0} ({cs.percent_change >= 0 ? '+' : ''}{cs.percent_change || 0}%)
           </span>
         </div>
       </div>
 
       {/* Two Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
         {/* Municipality Summary */}
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-4">MUNICIPALITY SUMMARY</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-gray-400">
-                  <th className="text-left pb-2">Municipality</th>
-                  <th className="text-right pb-2">Calls</th>
-                  <th className="text-right pb-2">Man Hrs</th>
-                  {isFireReport && (
-                    <>
-                      <th className="text-right pb-2">Prop Risk</th>
-                      <th className="text-right pb-2">Damages</th>
-                      <th className="text-right pb-2">FF Inj</th>
-                      <th className="text-right pb-2">Civ Inj</th>
-                    </>
-                  )}
+        <div style={styles.card}>
+          <h3 style={styles.cardTitle}>MUNICIPALITY SUMMARY</h3>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Municipality</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>Calls</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>Man Hrs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(report.municipalities || []).map((m, i) => (
+                <tr key={i}>
+                  <td style={styles.td}>{m.municipality}</td>
+                  <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace' }}>{m.calls}</td>
+                  <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace' }}>{m.manhours?.toFixed(1)}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {(report.municipalities || []).map((m, i) => (
-                  <tr key={i} className="border-t border-gray-700">
-                    <td className="py-2">{m.municipality}</td>
-                    <td className="py-2 text-right font-mono">{m.calls}</td>
-                    <td className="py-2 text-right font-mono">{m.manhours?.toFixed(1)}</td>
-                    {isFireReport && (
-                      <>
-                        <td className="py-2 text-right font-mono text-orange-400">${((m.property_at_risk || 0) / 100).toLocaleString()}</td>
-                        <td className="py-2 text-right font-mono text-red-400">${((m.fire_damages || 0) / 100).toLocaleString()}</td>
-                        <td className="py-2 text-right font-mono text-yellow-500">{m.ff_injuries || 0}</td>
-                        <td className="py-2 text-right font-mono text-pink-400">{m.civilian_injuries || 0}</td>
-                      </>
-                    )}
-                  </tr>
-                ))}
-                {(!report.municipalities || report.municipalities.length === 0) && (
-                  <tr><td colSpan={isFireReport ? 7 : 3} className="py-4 text-center text-gray-500">No data</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              ))}
+              {(!report.municipalities || report.municipalities.length === 0) && (
+                <tr><td colSpan="3" style={{ ...styles.td, textAlign: 'center', color: '#888' }}>No data</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
         {/* Responses Per Unit */}
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-4">RESPONSES PER UNIT</h3>
-          <table className="w-full">
+        <div style={styles.card}>
+          <h3 style={styles.cardTitle}>RESPONSES PER UNIT</h3>
+          <table style={styles.table}>
             <thead>
-              <tr className="text-gray-400 text-sm">
-                <th className="text-left pb-2">Unit</th>
-                <th className="text-right pb-2">Responses</th>
+              <tr>
+                <th style={styles.th}>Unit</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>Responses</th>
               </tr>
             </thead>
             <tbody>
               {(report.responses_per_unit || []).map((u, i) => (
-                <tr key={i} className="border-t border-gray-700">
-                  <td className="py-2">{u.unit_name || u.unit}</td>
-                  <td className="py-2 text-right font-mono">{u.responses}</td>
+                <tr key={i}>
+                  <td style={styles.td}>{u.unit_name || u.unit}</td>
+                  <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace' }}>{u.responses}</td>
                 </tr>
               ))}
               {(!report.responses_per_unit || report.responses_per_unit.length === 0) && (
-                <tr><td colSpan="2" className="py-4 text-center text-gray-500">No data</td></tr>
+                <tr><td colSpan="2" style={{ ...styles.td, textAlign: 'center', color: '#888' }}>No data</td></tr>
               )}
             </tbody>
           </table>
         </div>
 
         {/* Type of Incident */}
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-4">TYPE OF INCIDENT</h3>
-          <table className="w-full">
+        <div style={styles.card}>
+          <h3 style={styles.cardTitle}>TYPE OF INCIDENT</h3>
+          <table style={styles.table}>
             <thead>
-              <tr className="text-gray-400 text-sm">
-                <th className="text-left pb-2">Type</th>
-                <th className="text-right pb-2">Count</th>
+              <tr>
+                <th style={styles.th}>Type</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>Count</th>
               </tr>
             </thead>
             <tbody>
               {(report.incident_types || []).map((t, i) => (
-                <tr key={i} className="border-t border-gray-700">
-                  <td className="py-2">{t.type}</td>
-                  <td className="py-2 text-right font-mono">{t.count}</td>
+                <tr key={i}>
+                  <td style={styles.td}>{t.type}</td>
+                  <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace' }}>{t.count}</td>
                 </tr>
               ))}
               {(!report.incident_types || report.incident_types.length === 0) && (
-                <tr><td colSpan="2" className="py-4 text-center text-gray-500">No data</td></tr>
+                <tr><td colSpan="2" style={{ ...styles.td, textAlign: 'center', color: '#888' }}>No data</td></tr>
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Mutual Aid - FIRE ONLY */}
+        {/* Mutual Aid */}
         {isFireReport && (
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-4">MUTUAL AID ASSIST TO</h3>
-            <table className="w-full">
+          <div style={styles.card}>
+            <h3 style={styles.cardTitle}>MUTUAL AID ASSIST TO</h3>
+            <table style={styles.table}>
               <thead>
-                <tr className="text-gray-400 text-sm">
-                  <th className="text-left pb-2">Station</th>
-                  <th className="text-right pb-2">Count</th>
+                <tr>
+                  <th style={styles.th}>Station</th>
+                  <th style={{ ...styles.th, textAlign: 'right' }}>Count</th>
                 </tr>
               </thead>
               <tbody>
                 {(report.mutual_aid || []).map((ma, i) => (
-                  <tr key={i} className="border-t border-gray-700">
-                    <td className="py-2">{ma.station}</td>
-                    <td className="py-2 text-right font-mono">{ma.count}</td>
+                  <tr key={i}>
+                    <td style={styles.td}>{ma.station}</td>
+                    <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace' }}>{ma.count}</td>
                   </tr>
                 ))}
                 {(!report.mutual_aid || report.mutual_aid.length === 0) && (
-                  <tr><td colSpan="2" className="py-4 text-center text-gray-500">None</td></tr>
+                  <tr><td colSpan="2" style={{ ...styles.td, textAlign: 'center', color: '#888' }}>None</td></tr>
                 )}
               </tbody>
             </table>
@@ -744,26 +666,26 @@ function ChiefsReportView({ report, month, year, category, onMonthChange, onYear
 
       {/* Response Times */}
       {report.response_times && (
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-4">RESPONSE TIMES</h3>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-400">
+        <div style={styles.card}>
+          <h3 style={styles.cardTitle}>RESPONSE TIMES</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#2563eb' }}>
                 {report.response_times.avg_turnout_minutes?.toFixed(1) || '-'} min
               </div>
-              <div className="text-gray-400 text-sm">Avg Turnout</div>
+              <div style={{ color: '#666', fontSize: '0.85rem' }}>Avg Turnout</div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-400">
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#16a34a' }}>
                 {report.response_times.avg_response_minutes?.toFixed(1) || '-'} min
               </div>
-              <div className="text-gray-400 text-sm">Avg Response</div>
+              <div style={{ color: '#666', fontSize: '0.85rem' }}>Avg Response</div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-yellow-400">
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#ca8a04' }}>
                 {report.response_times.avg_on_scene_minutes?.toFixed(1) || '-'} min
               </div>
-              <div className="text-gray-400 text-sm">Avg On Scene</div>
+              <div style={{ color: '#666', fontSize: '0.85rem' }}>Avg On Scene</div>
             </div>
           </div>
         </div>
@@ -777,91 +699,72 @@ function ChiefsReportView({ report, month, year, category, onMonthChange, onYear
 // OVERVIEW REPORT
 // =============================================================================
 
-function OverviewReport({ summary, trend, startDate, endDate, onStartDateChange, onEndDateChange, year, onYearChange }) {
+function OverviewReport({ summary, trend, startDate, endDate, onStartDateChange, onEndDateChange, year, onYearChange, styles }) {
   if (!summary) return null;
 
   return (
-    <div className="space-y-6">
+    <div>
       {/* Date Range Controls */}
-      <div className="flex flex-wrap items-center gap-4 bg-gray-800 rounded-lg p-4">
-        <div className="flex items-center gap-2">
-          <label className="text-gray-400 text-sm">From:</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => onStartDateChange(e.target.value)}
-            className="bg-gray-900 border border-gray-600 rounded px-3 py-2"
-          />
+      <div style={{ ...styles.card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ color: '#666', fontSize: '0.85rem' }}>From:</label>
+          <input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} style={{ ...styles.input, width: 'auto' }} />
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-gray-400 text-sm">To:</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => onEndDateChange(e.target.value)}
-            className="bg-gray-900 border border-gray-600 rounded px-3 py-2"
-          />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ color: '#666', fontSize: '0.85rem' }}>To:</label>
+          <input type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} style={{ ...styles.input, width: 'auto' }} />
         </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-gray-800 rounded-lg p-6 text-center">
-          <div className="text-4xl font-bold text-blue-400">{summary.total_incidents}</div>
-          <div className="text-gray-400 mt-1">Total Incidents</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+        <div style={styles.statCard}>
+          <div style={{ ...styles.statValue, color: '#2563eb' }}>{summary.total_incidents}</div>
+          <div style={styles.statLabel}>Total Incidents</div>
         </div>
-        <div className="bg-gray-800 rounded-lg p-6 text-center">
-          <div className="text-4xl font-bold text-green-400">{summary.total_personnel_responses}</div>
-          <div className="text-gray-400 mt-1">Personnel Responses</div>
+        <div style={styles.statCard}>
+          <div style={{ ...styles.statValue, color: '#16a34a' }}>{summary.total_personnel_responses}</div>
+          <div style={styles.statLabel}>Personnel Responses</div>
         </div>
-        <div className="bg-gray-800 rounded-lg p-6 text-center">
-          <div className="text-4xl font-bold text-yellow-400">{summary.total_manhours?.toFixed(1)}</div>
-          <div className="text-gray-400 mt-1">Total Manhours</div>
+        <div style={styles.statCard}>
+          <div style={{ ...styles.statValue, color: '#ca8a04' }}>{summary.total_manhours?.toFixed(1)}</div>
+          <div style={styles.statLabel}>Total Manhours</div>
         </div>
-        <div className="bg-gray-800 rounded-lg p-6 text-center">
-          <div className="text-4xl font-bold text-purple-400">
-            {summary.response_times?.avg_response_minutes?.toFixed(1) || '-'}
-          </div>
-          <div className="text-gray-400 mt-1">Avg Response (min)</div>
+        <div style={styles.statCard}>
+          <div style={{ ...styles.statValue, color: '#9333ea' }}>{summary.response_times?.avg_response_minutes?.toFixed(1) || '-'}</div>
+          <div style={styles.statLabel}>Avg Response (min)</div>
         </div>
       </div>
 
       {/* Monthly Trend */}
       {trend && (
-        <div className="bg-gray-800 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">Monthly Trend - {year}</h3>
-            <select
-              value={year}
-              onChange={(e) => onYearChange(parseInt(e.target.value))}
-              className="bg-gray-900 border border-gray-600 rounded px-3 py-1 text-sm"
-            >
+        <div style={styles.card}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+            <h3 style={{ ...styles.cardTitle, marginBottom: 0, borderBottom: 'none', paddingBottom: 0 }}>Monthly Trend - {year}</h3>
+            <select value={year} onChange={(e) => onYearChange(parseInt(e.target.value))} style={{ ...styles.input, width: 'auto' }}>
               {[...Array(5)].map((_, i) => {
                 const y = new Date().getFullYear() - i;
                 return <option key={y} value={y}>{y}</option>;
               })}
             </select>
           </div>
-          <div className="flex items-end gap-1 h-48">
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: '180px' }}>
             {trend.months?.map((m, i) => {
               const maxCount = Math.max(...trend.months.map(x => x.incident_count), 1);
               const height = (m.incident_count / maxCount) * 100;
               return (
-                <div key={i} className="flex-1 flex flex-col items-center">
-                  <div className="w-full flex flex-col items-center justify-end h-40">
-                    <span className="text-xs text-gray-400 mb-1">{m.incident_count || ''}</span>
-                    <div
-                      className="w-full bg-blue-500 rounded-t transition-all"
-                      style={{ height: `${height}%`, minHeight: m.incident_count > 0 ? '4px' : '0' }}
-                    />
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '150px' }}>
+                    <span style={{ fontSize: '0.7rem', color: '#666', marginBottom: '2px' }}>{m.incident_count || ''}</span>
+                    <div style={{ width: '100%', maxWidth: '40px', background: '#016a2b', borderRadius: '3px 3px 0 0', height: `${height}%`, minHeight: m.incident_count > 0 ? '4px' : '0' }} />
                   </div>
-                  <span className="text-xs text-gray-500 mt-2">{m.month_name?.slice(0, 3)}</span>
+                  <span style={{ fontSize: '0.65rem', color: '#888', marginTop: '4px' }}>{m.month_name?.slice(0, 3)}</span>
                 </div>
               );
             })}
           </div>
-          <div className="text-center mt-4 text-gray-400">
-            Total: <span className="font-bold text-white">{trend.total_incidents}</span> incidents
+          <div style={{ textAlign: 'center', marginTop: '1rem', color: '#666', fontSize: '0.85rem' }}>
+            Total: <span style={{ fontWeight: '700', color: '#333' }}>{trend.total_incidents}</span> incidents
           </div>
         </div>
       )}
@@ -874,60 +777,46 @@ function OverviewReport({ summary, trend, startDate, endDate, onStartDateChange,
 // PERSONNEL REPORT
 // =============================================================================
 
-function PersonnelReport({ data, startDate, endDate, onStartDateChange, onEndDateChange }) {
+function PersonnelReport({ data, startDate, endDate, onStartDateChange, onEndDateChange, styles }) {
   if (!data) return null;
 
   return (
-    <div className="space-y-6">
-      {/* Date Controls */}
-      <div className="flex flex-wrap items-center gap-4 bg-gray-800 rounded-lg p-4">
-        <div className="flex items-center gap-2">
-          <label className="text-gray-400 text-sm">From:</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => onStartDateChange(e.target.value)}
-            className="bg-gray-900 border border-gray-600 rounded px-3 py-2"
-          />
+    <div>
+      <div style={{ ...styles.card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ color: '#666', fontSize: '0.85rem' }}>From:</label>
+          <input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} style={{ ...styles.input, width: 'auto' }} />
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-gray-400 text-sm">To:</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => onEndDateChange(e.target.value)}
-            className="bg-gray-900 border border-gray-600 rounded px-3 py-2"
-          />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ color: '#666', fontSize: '0.85rem' }}>To:</label>
+          <input type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} style={{ ...styles.input, width: 'auto' }} />
         </div>
       </div>
 
-      {/* Personnel Table */}
-      <div className="bg-gray-800 rounded-lg p-6">
-        <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-4">Top Responders</h3>
-        <table className="w-full">
+      <div style={styles.card}>
+        <h3 style={styles.cardTitle}>Top Responders</h3>
+        <table style={styles.table}>
           <thead>
-            <tr className="text-gray-400 text-sm">
-              <th className="text-left pb-3">#</th>
-              <th className="text-left pb-3">Name</th>
-              <th className="text-left pb-3">Rank</th>
-              <th className="text-right pb-3">Calls</th>
-              <th className="text-right pb-3">Hours</th>
+            <tr>
+              <th style={styles.th}>#</th>
+              <th style={styles.th}>Name</th>
+              <th style={styles.th}>Rank</th>
+              <th style={{ ...styles.th, textAlign: 'right' }}>Calls</th>
+              <th style={{ ...styles.th, textAlign: 'right' }}>Hours</th>
             </tr>
           </thead>
           <tbody>
             {(data.personnel || []).map((p, i) => (
-              <tr key={p.id} className={`border-t border-gray-700 ${i < 3 ? 'bg-gray-700/30' : ''}`}>
-                <td className="py-3 text-2xl">
-                  {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-gray-500 text-sm">{i + 1}</span>}
-                </td>
-                <td className="py-3 font-medium">{p.name}</td>
-                <td className="py-3 text-gray-400">{p.rank || '-'}</td>
-                <td className="py-3 text-right font-mono text-blue-400">{p.incident_count}</td>
-                <td className="py-3 text-right font-mono text-green-400">{p.total_hours?.toFixed(1)}</td>
+              <tr key={p.id} style={{ background: i < 3 ? '#f0fdf4' : 'transparent' }}>
+                <td style={styles.td}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
+                <td style={{ ...styles.td, fontWeight: '500' }}>{p.name}</td>
+                <td style={{ ...styles.td, color: '#666' }}>{p.rank || '-'}</td>
+                <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace', color: '#2563eb' }}>{p.incident_count}</td>
+                <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace', color: '#16a34a' }}>{p.total_hours?.toFixed(1)}</td>
               </tr>
             ))}
             {(!data.personnel || data.personnel.length === 0) && (
-              <tr><td colSpan="5" className="py-8 text-center text-gray-500">No data</td></tr>
+              <tr><td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#888' }}>No data</td></tr>
             )}
           </tbody>
         </table>
@@ -941,55 +830,43 @@ function PersonnelReport({ data, startDate, endDate, onStartDateChange, onEndDat
 // UNIT REPORT
 // =============================================================================
 
-function UnitReport({ data, startDate, endDate, onStartDateChange, onEndDateChange }) {
+function UnitReport({ data, startDate, endDate, onStartDateChange, onEndDateChange, styles }) {
   if (!data) return null;
 
   return (
-    <div className="space-y-6">
-      {/* Date Controls */}
-      <div className="flex flex-wrap items-center gap-4 bg-gray-800 rounded-lg p-4">
-        <div className="flex items-center gap-2">
-          <label className="text-gray-400 text-sm">From:</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => onStartDateChange(e.target.value)}
-            className="bg-gray-900 border border-gray-600 rounded px-3 py-2"
-          />
+    <div>
+      <div style={{ ...styles.card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ color: '#666', fontSize: '0.85rem' }}>From:</label>
+          <input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} style={{ ...styles.input, width: 'auto' }} />
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-gray-400 text-sm">To:</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => onEndDateChange(e.target.value)}
-            className="bg-gray-900 border border-gray-600 rounded px-3 py-2"
-          />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ color: '#666', fontSize: '0.85rem' }}>To:</label>
+          <input type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} style={{ ...styles.input, width: 'auto' }} />
         </div>
       </div>
 
-      {/* Unit Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
         {(data.apparatus || []).map((u, i) => (
-          <div key={i} className="bg-gray-800 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-lg font-bold">{u.unit_designator}</span>
-              <span className="text-gray-400 text-sm">{u.name}</span>
+          <div key={i} style={styles.card}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '1.1rem', fontWeight: '700' }}>{u.unit_designator}</span>
+              <span style={{ color: '#666', fontSize: '0.8rem' }}>{u.name}</span>
             </div>
-            <div className="grid grid-cols-2 gap-4 mt-4">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-blue-400">{u.incident_count}</div>
-                <div className="text-gray-400 text-xs">Incidents</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#2563eb' }}>{u.incident_count}</div>
+                <div style={{ fontSize: '0.7rem', color: '#666' }}>Incidents</div>
               </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-green-400">{u.total_responses}</div>
-                <div className="text-gray-400 text-xs">Responses</div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#16a34a' }}>{u.total_responses}</div>
+                <div style={{ fontSize: '0.7rem', color: '#666' }}>Responses</div>
               </div>
             </div>
           </div>
         ))}
         {(!data.apparatus || data.apparatus.length === 0) && (
-          <div className="col-span-full py-8 text-center text-gray-500">No unit data</div>
+          <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#888', padding: '2rem' }}>No unit data</div>
         )}
       </div>
     </div>
@@ -1001,34 +878,33 @@ function UnitReport({ data, startDate, endDate, onStartDateChange, onEndDateChan
 // CUSTOM QUERY RESULT
 // =============================================================================
 
-function CustomQueryResult({ result, onOpenPrint }) {
+function CustomQueryResult({ result, onOpenPrint, styles }) {
   if (!result) return null;
 
   if (result.error) {
     return (
-      <div className="bg-red-900/30 border border-red-700 rounded-lg p-6">
-        <h3 className="text-red-400 font-semibold mb-2">Query Error</h3>
-        <p className="text-gray-300">{result.error}</p>
+      <div style={{ ...styles.card, background: '#fef2f2', border: '1px solid #fecaca' }}>
+        <h3 style={{ color: '#dc2626', fontWeight: '600', marginBottom: '0.5rem' }}>Query Error</h3>
+        <p style={{ color: '#666' }}>{result.error}</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Query Info + PDF Button for chiefs reports */}
-      <div className="bg-purple-900/30 border border-purple-700 rounded-lg p-4">
-        <div className="flex items-center justify-between">
+    <div>
+      <div style={{ ...styles.card, background: '#f5f3ff', border: '1px solid #c4b5fd' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div className="flex items-center gap-2 text-purple-300">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#7c3aed' }}>
               <span>✨</span>
-              <span className="font-medium">{result.title}</span>
+              <span style={{ fontWeight: '500' }}>{result.title}</span>
             </div>
-            <p className="text-gray-400 text-sm mt-1">Query: "{result.query}"</p>
+            <p style={{ color: '#666', fontSize: '0.85rem', marginTop: '0.25rem' }}>Query: "{result.query}"</p>
           </div>
           {result.type === 'chiefs' && result.pdfParams && (
             <button
               onClick={() => onOpenPrint(result.pdfParams.year, result.pdfParams.month, result.pdfParams.category)}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors flex items-center gap-2"
+              style={{ ...styles.btn, ...styles.btnPrimary }}
             >
               🖨️ Print Report
             </button>
@@ -1036,7 +912,6 @@ function CustomQueryResult({ result, onOpenPrint }) {
         </div>
       </div>
 
-      {/* Result based on type */}
       {result.type === 'chiefs' && result.data && (
         <ChiefsReportView
           report={result.data}
@@ -1047,30 +922,31 @@ function CustomQueryResult({ result, onOpenPrint }) {
           onYearChange={() => {}}
           onOpenPrint={() => onOpenPrint(result.pdfParams.year, result.pdfParams.month, result.pdfParams.category)}
           showControls={false}
+          styles={styles}
         />
       )}
 
       {result.type === 'personnel' && result.data && (
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-4">Personnel Results</h3>
-          <table className="w-full">
+        <div style={styles.card}>
+          <h3 style={styles.cardTitle}>Personnel Results</h3>
+          <table style={styles.table}>
             <thead>
-              <tr className="text-gray-400 text-sm">
-                <th className="text-left pb-3">#</th>
-                <th className="text-left pb-3">Name</th>
-                <th className="text-left pb-3">Rank</th>
-                <th className="text-right pb-3">Calls</th>
-                <th className="text-right pb-3">Hours</th>
+              <tr>
+                <th style={styles.th}>#</th>
+                <th style={styles.th}>Name</th>
+                <th style={styles.th}>Rank</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>Calls</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>Hours</th>
               </tr>
             </thead>
             <tbody>
               {(result.data.personnel || []).map((p, i) => (
-                <tr key={p.id} className={`border-t border-gray-700 ${i < 3 ? 'bg-gray-700/30' : ''}`}>
-                  <td className="py-3">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
-                  <td className="py-3 font-medium">{p.name}</td>
-                  <td className="py-3 text-gray-400">{p.rank || '-'}</td>
-                  <td className="py-3 text-right font-mono text-blue-400">{p.incident_count}</td>
-                  <td className="py-3 text-right font-mono text-green-400">{p.total_hours?.toFixed(1)}</td>
+                <tr key={p.id} style={{ background: i < 3 ? '#f0fdf4' : 'transparent' }}>
+                  <td style={styles.td}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
+                  <td style={{ ...styles.td, fontWeight: '500' }}>{p.name}</td>
+                  <td style={{ ...styles.td, color: '#666' }}>{p.rank || '-'}</td>
+                  <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace', color: '#2563eb' }}>{p.incident_count}</td>
+                  <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace', color: '#16a34a' }}>{p.total_hours?.toFixed(1)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1079,19 +955,19 @@ function CustomQueryResult({ result, onOpenPrint }) {
       )}
 
       {result.type === 'unit' && result.data && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
           {(result.data.apparatus || []).map((u, i) => (
-            <div key={i} className="bg-gray-800 rounded-lg p-6">
-              <div className="font-bold text-lg">{u.unit_designator}</div>
-              <div className="text-gray-400 text-sm">{u.name}</div>
-              <div className="mt-4 grid grid-cols-2 gap-4">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-400">{u.incident_count}</div>
-                  <div className="text-xs text-gray-400">Incidents</div>
+            <div key={i} style={styles.card}>
+              <div style={{ fontWeight: '700', fontSize: '1.1rem' }}>{u.unit_designator}</div>
+              <div style={{ color: '#666', fontSize: '0.8rem' }}>{u.name}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#2563eb' }}>{u.incident_count}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#666' }}>Incidents</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-400">{u.total_responses}</div>
-                  <div className="text-xs text-gray-400">Responses</div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#16a34a' }}>{u.total_responses}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#666' }}>Responses</div>
                 </div>
               </div>
             </div>
@@ -1100,23 +976,23 @@ function CustomQueryResult({ result, onOpenPrint }) {
       )}
 
       {result.type === 'filtered' && result.data && (
-        <div className="bg-gray-800 rounded-lg p-6">
-          <div className="text-center mb-4">
-            <div className="text-4xl font-bold text-blue-400">{result.data.total}</div>
-            <div className="text-gray-400">Total Incidents</div>
+        <div style={styles.card}>
+          <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+            <div style={{ fontSize: '2rem', fontWeight: '700', color: '#2563eb' }}>{result.data.total}</div>
+            <div style={{ color: '#666' }}>Total Incidents</div>
           </div>
-          <table className="w-full">
+          <table style={styles.table}>
             <thead>
-              <tr className="text-gray-400 text-sm">
-                <th className="text-left pb-3">Call Type</th>
-                <th className="text-right pb-3">Count</th>
+              <tr>
+                <th style={styles.th}>Call Type</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>Count</th>
               </tr>
             </thead>
             <tbody>
               {(result.data.call_types || []).map((t, i) => (
-                <tr key={i} className="border-t border-gray-700">
-                  <td className="py-3">{t.call_type}</td>
-                  <td className="py-3 text-right font-mono">{t.incident_count}</td>
+                <tr key={i}>
+                  <td style={styles.td}>{t.call_type}</td>
+                  <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace' }}>{t.incident_count}</td>
                 </tr>
               ))}
             </tbody>
@@ -1125,24 +1001,22 @@ function CustomQueryResult({ result, onOpenPrint }) {
       )}
 
       {result.type === 'summary' && result.data && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-gray-800 rounded-lg p-6 text-center">
-            <div className="text-4xl font-bold text-blue-400">{result.data.total_incidents}</div>
-            <div className="text-gray-400 mt-1">Total Incidents</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+          <div style={styles.statCard}>
+            <div style={{ ...styles.statValue, color: '#2563eb' }}>{result.data.total_incidents}</div>
+            <div style={styles.statLabel}>Total Incidents</div>
           </div>
-          <div className="bg-gray-800 rounded-lg p-6 text-center">
-            <div className="text-4xl font-bold text-green-400">{result.data.total_personnel_responses}</div>
-            <div className="text-gray-400 mt-1">Personnel Responses</div>
+          <div style={styles.statCard}>
+            <div style={{ ...styles.statValue, color: '#16a34a' }}>{result.data.total_personnel_responses}</div>
+            <div style={styles.statLabel}>Personnel Responses</div>
           </div>
-          <div className="bg-gray-800 rounded-lg p-6 text-center">
-            <div className="text-4xl font-bold text-yellow-400">{result.data.total_manhours?.toFixed(1)}</div>
-            <div className="text-gray-400 mt-1">Total Manhours</div>
+          <div style={styles.statCard}>
+            <div style={{ ...styles.statValue, color: '#ca8a04' }}>{result.data.total_manhours?.toFixed(1)}</div>
+            <div style={styles.statLabel}>Total Manhours</div>
           </div>
-          <div className="bg-gray-800 rounded-lg p-6 text-center">
-            <div className="text-4xl font-bold text-purple-400">
-              {result.data.response_times?.avg_response_minutes?.toFixed(1) || '-'}
-            </div>
-            <div className="text-gray-400 mt-1">Avg Response (min)</div>
+          <div style={styles.statCard}>
+            <div style={{ ...styles.statValue, color: '#9333ea' }}>{result.data.response_times?.avg_response_minutes?.toFixed(1) || '-'}</div>
+            <div style={styles.statLabel}>Avg Response (min)</div>
           </div>
         </div>
       )}
