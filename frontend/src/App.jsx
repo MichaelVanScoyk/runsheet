@@ -289,25 +289,26 @@ function AppContent({ tenant, onTenantLogout }) {
         
         {/* Tenant info */}
         <div style={{ 
-          padding: '8px 10px', 
-          background: 'rgba(var(--primary-rgb), 0.15)', 
-          margin: '0 10px 5px', 
+          padding: '8px 12px', 
+          background: 'rgba(0,0,0,0.2)', 
+          margin: '0 10px 8px', 
           borderRadius: '4px',
           fontSize: '0.8rem',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <span style={{ color: 'var(--primary-color)' }}>🏢 {tenant?.slug}</span>
+          <span style={{ color: 'rgba(255,255,255,0.9)' }}>🏢 {tenant?.slug}</span>
           <button 
             onClick={onTenantLogout}
             style={{ 
-              background: 'none', 
+              background: 'rgba(255,255,255,0.15)', 
               border: 'none', 
-              color: '#666', 
+              color: 'rgba(255,255,255,0.8)', 
               cursor: 'pointer',
-              fontSize: '0.75rem',
-              padding: '2px 5px'
+              fontSize: '0.7rem',
+              padding: '3px 8px',
+              borderRadius: '3px'
             }}
             title="Switch department"
           >
@@ -318,7 +319,7 @@ function AppContent({ tenant, onTenantLogout }) {
         {/* User session / login area */}
         <div className="user-auth-area" style={{ 
           padding: '10px', 
-          background: '#2a2a2a', 
+          background: 'rgba(0,0,0,0.25)', 
           margin: '0 10px 10px', 
           borderRadius: '4px',
           fontSize: '0.85rem'
