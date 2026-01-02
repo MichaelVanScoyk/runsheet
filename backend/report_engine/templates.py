@@ -104,7 +104,8 @@ def generate_css(branding: dict) -> str:
         }}
         
         .header-classic .header-text {{
-            /* Text block beside logo */
+            text-align: center;
+            flex: 1;
         }}
         
         .header-modern {{
@@ -150,12 +151,12 @@ def generate_css(branding: dict) -> str:
         }}
         
         .station-name {{
-            font-size: {header_font_size};
+            font-size: 16pt;
             font-weight: bold;
         }}
         
         .subtitle {{
-            font-size: {body_font_size};
+            font-size: 10pt;
             color: {muted_color};
         }}
         
