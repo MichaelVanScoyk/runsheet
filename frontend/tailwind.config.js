@@ -10,34 +10,28 @@ export default {
         primary: {
           DEFAULT: '#016a2b',
           hover: '#015a24',
+          light: '#e8f5e9',
         },
-        // REMAP dark-* to LIGHT colors
+        // Remap dark theme to light
         dark: {
-          bg: '#f5f5f5',
-          card: '#ffffff',
+          bg: '#ffffff',
+          card: '#ffffff', 
           border: '#e0e0e0',
-          hover: '#f0f0f0',
+          hover: '#f5f5f5',
           input: '#ffffff',
-          sidebar: '#016a2b',
         },
-        // Remap accent-red to green
         accent: {
           red: '#016a2b',
           redHover: '#015a24',
         },
         status: {
-          open: '#27ae60',
-          closed: '#7f8c8d',
-          completed: '#3498db',
-          warning: '#f39c12',
-          error: '#e74c3c',
+          open: '#28a745',
+          closed: '#6c757d',
+          completed: '#007bff',
+          warning: '#ffc107',
+          error: '#dc3545',
         }
       },
-      textColor: {
-        // Force gray text to be visible on light backgrounds
-        'gray-400': '#666666',
-        'gray-500': '#555555',
-      }
     },
   },
   plugins: [],

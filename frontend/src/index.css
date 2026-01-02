@@ -2,135 +2,75 @@
 @tailwind components;
 @tailwind utilities;
 
-/* FORCE LIGHT THEME EVERYWHERE */
 :root {
   --primary-color: #016a2b;
   --primary-hover: #015a24;
   --secondary-color: #eeee01;
-  color-scheme: light !important;
+  --bg-page: #e8e8e8;
+  --bg-card: #ffffff;
+  --border-color: #e0e0e0;
+  --text-primary: #333333;
+  --text-muted: #666666;
 }
 
-/* Global overrides - LIGHT THEME */
-body, html {
-  background: #f5f5f5 !important;
-  color: #1a1a1a !important;
+body {
+  background: var(--bg-page);
+  color: var(--text-primary);
 }
 
-/* Force all dark backgrounds to light */
-.bg-dark-bg, [class*="bg-dark"], [class*="bg-gray-9"], [class*="bg-gray-8"], [class*="bg-slate"] {
-  background-color: #ffffff !important;
+/* Remap Tailwind dark classes to light */
+.bg-dark-bg { background-color: var(--bg-card) !important; }
+.bg-dark-card { background-color: var(--bg-card) !important; }
+.bg-dark-border { background-color: #f5f5f5 !important; }
+.bg-dark-hover { background-color: #f8f8f8 !important; }
+
+.border-dark-border { border-color: var(--border-color) !important; }
+
+.text-gray-400 { color: var(--text-muted) !important; }
+.text-gray-500 { color: #555 !important; }
+
+/* Accent colors → green */
+.text-accent-red { color: var(--primary-color) !important; }
+.border-accent-red { border-color: var(--primary-color) !important; }
+.bg-accent-red { background-color: var(--primary-color) !important; }
+
+/* RunSheet form styling */
+.rounded-lg {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
-/* Force text to dark */
-.text-gray-400, .text-gray-500, [class*="text-gray"] {
-  color: #666666 !important;
-}
-
-.text-white, [class*="text-white"] {
-  color: #1a1a1a !important;
-}
-
-/* Fix borders */
-[class*="border-dark"], .border-dark-border {
-  border-color: #e0e0e0 !important;
-}
-
-/* Accent colors - use green */
-.text-accent-red, .border-accent-red, [class*="accent-red"] {
-  color: #016a2b !important;
-  border-color: #016a2b !important;
-}
-
-.bg-accent-red {
-  background-color: #016a2b !important;
-}
-
-/* Cards and containers */
-.rounded-lg, .rounded-md, [class*="rounded"] {
-  background-color: #ffffff;
-  border: 1px solid #e0e0e0;
-}
-
-/* Input fields */
+/* Form inputs */
 input, select, textarea {
-  background: #ffffff !important;
-  color: #1a1a1a !important;
-  border: 1px solid #e0e0e0 !important;
+  background: #fff !important;
+  color: #333 !important;
+  border: 1px solid #ddd !important;
 }
 
 input:focus, select:focus, textarea:focus {
-  border-color: #016a2b !important;
+  border-color: var(--primary-color) !important;
   outline: none;
+  box-shadow: 0 0 0 3px rgba(1,106,43,0.1);
 }
 
 /* Tables */
-table {
-  background: #ffffff !important;
-}
-
 th {
-  background: #016a2b !important;
-  color: #ffffff !important;
+  background: var(--primary-color) !important;
+  color: #fff !important;
 }
 
 td {
-  color: #1a1a1a !important;
-  border-bottom: 1px solid #e0e0e0 !important;
+  color: var(--text-primary) !important;
+  border-bottom-color: #eee !important;
 }
 
-tr:hover {
-  background: #f9f9f9 !important;
+/* Section headers in forms */
+h2, h3, h4 {
+  color: var(--primary-color);
 }
 
-/* Buttons */
-.btn-primary, [class*="btn-primary"] {
-  background: #016a2b !important;
-  color: #ffffff !important;
-}
-
-.btn-secondary, [class*="btn-secondary"] {
-  background: #e0e0e0 !important;
-  color: #1a1a1a !important;
-}
-
-/* Labels and small text */
+/* Labels */
 label {
-  color: #666666 !important;
-}
-
-/* Status badges - keep these colored */
-.badge-open { background: #27ae60 !important; color: white !important; }
-.badge-closed { background: #7f8c8d !important; color: white !important; }
-.badge-completed { background: #3498db !important; color: white !important; }
-
-/* Headings */
-h1, h2, h3, h4, h5, h6 {
-  color: #016a2b !important;
-}
-
-/* Links */
-a {
-  color: #016a2b;
-}
-
-/* Modal overlays - keep dark backdrop */
-.modal-overlay, [class*="modal-overlay"] {
-  background: rgba(0,0,0,0.5) !important;
-}
-
-/* Modal content - white */
-.modal, .modal-content, [class*="modal-content"] {
-  background: #ffffff !important;
-  color: #1a1a1a !important;
-}
-
-/* Page backgrounds */
-.content, main, .page {
-  background: #f5f5f5 !important;
-}
-
-/* Sections and cards */
-section, article, .card, [class*="card"] {
-  background: #ffffff !important;
-  border: 1px solid #e0e0e0 !important;
+  color: var(--text-muted) !important;
 }
