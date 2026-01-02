@@ -276,8 +276,9 @@ function AppContent({ tenant, onTenantLogout }) {
               src={branding.logoUrl} 
               alt="Logo" 
               style={{ 
-                width: '72px', 
-                height: '72px', 
+                width: '90%', 
+                maxWidth: '198px',
+                height: 'auto', 
                 objectFit: 'contain',
                 marginBottom: '0.5rem'
               }} 
