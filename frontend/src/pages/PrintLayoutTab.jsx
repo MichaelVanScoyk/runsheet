@@ -88,7 +88,7 @@ export default function PrintLayoutTab() {
     updateBlock(blockId, { page: targetPage });
   };
 
-  if (loading) return <div className="p-4">Loading...</div>;
+  if (loading) return <div className="p-4 text-gray-600">Loading...</div>;
 
   // Group blocks by page, then by row
   const getPageRows = (page) => {
@@ -123,7 +123,7 @@ export default function PrintLayoutTab() {
         key={block.id}
         className={`
           border rounded mb-1 overflow-hidden
-          ${block.locked ? 'bg-gray-700 border-gray-600' : 'bg-gray-800 border-gray-600'}
+          ${block.locked ? 'bg-gray-100 border-gray-300' : 'bg-white border-gray-300'}
           ${!block.enabled ? 'opacity-60' : ''}
         `}
       >
@@ -132,7 +132,7 @@ export default function PrintLayoutTab() {
           {/* Lock/expand indicator */}
           <button
             onClick={() => setExpandedBlock(isExpanded ? null : block.id)}
-            className="text-gray-400 hover:text-white w-5"
+            className="text-gray-500 hover:text-gray-800 w-5"
             disabled={block.locked && block.id !== 'footer'}
           >
             {block.locked && block.id !== 'footer' ? '[L]' : (isExpanded ? '[-]' : '[+]')}
@@ -147,7 +147,7 @@ export default function PrintLayoutTab() {
           />
           
           {/* Name */}
-          <span className={`flex-1 text-sm ${!block.enabled ? 'text-gray-500' : 'text-white'}`}>
+          <span className={`flex-1 text-sm ${!block.enabled ? 'text-gray-400' : 'text-gray-800'}`}>
             {block.name}
           </span>
           
@@ -156,43 +156,43 @@ export default function PrintLayoutTab() {
             R{block.row ?? '?'}.{block.order ?? '?'}
           </span>
           
-          <span className="text-xs bg-gray-700 text-gray-300 px-1 rounded">
+          <span className="text-xs bg-gray-200 text-gray-700 px-1 rounded">
             {block.width || 'auto'}
           </span>
           
           {/* Font size badge (if not default) */}
           {block.fontSize && block.fontSize !== 'base' && (
-            <span className="text-xs bg-purple-700 text-white px-1 rounded">
+            <span className="text-xs bg-purple-100 text-purple-700 px-1 rounded border border-purple-300">
               {block.fontSize}
             </span>
           )}
           
           {/* Bold badge */}
           {block.bold && (
-            <span className="text-xs bg-yellow-600 text-white px-1 rounded font-bold">B</span>
+            <span className="text-xs bg-yellow-100 text-yellow-800 px-1 rounded border border-yellow-400 font-bold">B</span>
           )}
           
           {block.fireOnly && (
-            <span className="text-xs bg-red-600 text-white px-1 rounded">FIRE</span>
+            <span className="text-xs bg-red-100 text-red-700 px-1 rounded border border-red-300">FIRE</span>
           )}
           
           {block.float && (
-            <span className="text-xs bg-blue-600 text-white px-1 rounded">float</span>
+            <span className="text-xs bg-blue-100 text-blue-700 px-1 rounded border border-blue-300">float</span>
           )}
           
           {block.headerPosition && (
-            <span className="text-xs bg-cyan-600 text-white px-1 rounded">hdr</span>
+            <span className="text-xs bg-cyan-100 text-cyan-700 px-1 rounded border border-cyan-300">hdr</span>
           )}
           
           {block.stickyFooter && (
-            <span className="text-xs bg-orange-600 text-white px-1 rounded">sticky</span>
+            <span className="text-xs bg-orange-100 text-orange-700 px-1 rounded border border-orange-300">sticky</span>
           )}
           
           {/* Move button */}
           {!block.locked && (
             <button
               onClick={() => moveToPage(block.id, page === 1 ? 2 : 1)}
-              className="text-xs px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded"
+              className="text-xs px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded text-gray-700"
             >
               {page === 1 ? '> P2' : '< P1'}
             </button>
@@ -201,42 +201,42 @@ export default function PrintLayoutTab() {
         
         {/* Expanded controls */}
         {isExpanded && (!block.locked || block.id === 'footer') && (
-          <div className="px-2 pb-2 pt-1 border-t border-gray-700 bg-gray-750">
+          <div className="px-2 pb-2 pt-1 border-t border-gray-200 bg-gray-50">
             {/* Row 1: Position controls */}
             <div className="grid grid-cols-4 gap-2 mb-2">
               {/* Row */}
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Row</label>
+                <label className="text-xs text-gray-600 block mb-1">Row</label>
                 <input
                   type="number"
                   min="0"
                   max="99"
                   value={block.row ?? 1}
                   onChange={(e) => updateBlock(block.id, { row: parseInt(e.target.value) || 1 })}
-                  className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
+                  className="w-full px-2 py-1 bg-white border border-gray-300 rounded text-sm text-gray-800"
                 />
               </div>
               
               {/* Order */}
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Order</label>
+                <label className="text-xs text-gray-600 block mb-1">Order</label>
                 <input
                   type="number"
                   min="1"
                   max="99"
                   value={block.order ?? 1}
                   onChange={(e) => updateBlock(block.id, { order: parseInt(e.target.value) || 1 })}
-                  className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
+                  className="w-full px-2 py-1 bg-white border border-gray-300 rounded text-sm text-gray-800"
                 />
               </div>
               
               {/* Width */}
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Width</label>
+                <label className="text-xs text-gray-600 block mb-1">Width</label>
                 <select
                   value={block.width || 'auto'}
                   onChange={(e) => updateBlock(block.id, { width: e.target.value })}
-                  className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
+                  className="w-full px-2 py-1 bg-white border border-gray-300 rounded text-sm text-gray-800"
                 >
                   {WIDTH_OPTIONS.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -246,11 +246,11 @@ export default function PrintLayoutTab() {
               
               {/* Page */}
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Page</label>
+                <label className="text-xs text-gray-600 block mb-1">Page</label>
                 <select
                   value={block.page}
                   onChange={(e) => updateBlock(block.id, { page: parseInt(e.target.value) })}
-                  className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
+                  className="w-full px-2 py-1 bg-white border border-gray-300 rounded text-sm text-gray-800"
                 >
                   <option value={1}>Page 1</option>
                   <option value={2}>Page 2</option>
@@ -262,11 +262,11 @@ export default function PrintLayoutTab() {
             <div className="grid grid-cols-4 gap-2">
               {/* Font Size */}
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Font Size</label>
+                <label className="text-xs text-gray-600 block mb-1">Font Size</label>
                 <select
                   value={block.fontSize || 'base'}
                   onChange={(e) => updateBlock(block.id, { fontSize: e.target.value })}
-                  className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm"
+                  className="w-full px-2 py-1 bg-white border border-gray-300 rounded text-sm text-gray-800"
                 >
                   {SIZE_OPTIONS.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -276,13 +276,13 @@ export default function PrintLayoutTab() {
               
               {/* Bold */}
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Bold</label>
+                <label className="text-xs text-gray-600 block mb-1">Bold</label>
                 <button
                   onClick={() => updateBlock(block.id, { bold: !block.bold })}
                   className={`w-full px-2 py-1 rounded text-sm font-bold ${
                     block.bold 
-                      ? 'bg-yellow-600 text-white' 
-                      : 'bg-gray-700 border border-gray-600 text-gray-400'
+                      ? 'bg-yellow-400 text-yellow-900 border border-yellow-500' 
+                      : 'bg-white border border-gray-300 text-gray-500'
                   }`}
                 >
                   {block.bold ? 'Bold ON' : 'Bold OFF'}
@@ -291,13 +291,13 @@ export default function PrintLayoutTab() {
               
               {/* Label Bold (for label: value fields) */}
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Label Bold</label>
+                <label className="text-xs text-gray-600 block mb-1">Label Bold</label>
                 <button
                   onClick={() => updateBlock(block.id, { labelBold: !block.labelBold })}
                   className={`w-full px-2 py-1 rounded text-sm ${
                     block.labelBold !== false
-                      ? 'bg-green-700 text-white' 
-                      : 'bg-gray-700 border border-gray-600 text-gray-400'
+                      ? 'bg-green-500 text-white border border-green-600' 
+                      : 'bg-white border border-gray-300 text-gray-500'
                   }`}
                 >
                   {block.labelBold !== false ? 'ON' : 'OFF'}
@@ -306,13 +306,13 @@ export default function PrintLayoutTab() {
               
               {/* Hide Label */}
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Hide Label</label>
+                <label className="text-xs text-gray-600 block mb-1">Hide Label</label>
                 <button
                   onClick={() => updateBlock(block.id, { hideLabel: !block.hideLabel })}
                   className={`w-full px-2 py-1 rounded text-sm ${
                     block.hideLabel 
-                      ? 'bg-red-700 text-white' 
-                      : 'bg-gray-700 border border-gray-600 text-gray-400'
+                      ? 'bg-red-500 text-white border border-red-600' 
+                      : 'bg-white border border-gray-300 text-gray-500'
                   }`}
                 >
                   {block.hideLabel ? 'Hidden' : 'Visible'}
@@ -324,13 +324,13 @@ export default function PrintLayoutTab() {
             {block.id === 'times_group' && (
               <div className="grid grid-cols-4 gap-2 mt-2">
                 <div className="col-span-2">
-                  <label className="text-xs text-gray-400 block mb-1">Position in Header</label>
+                  <label className="text-xs text-gray-600 block mb-1">Position in Header</label>
                   <button
                     onClick={() => updateBlock(block.id, { headerPosition: !block.headerPosition })}
                     className={`w-full px-2 py-1 rounded text-sm ${
                       block.headerPosition 
-                        ? 'bg-cyan-600 text-white' 
-                        : 'bg-gray-700 border border-gray-600 text-gray-400'
+                        ? 'bg-cyan-500 text-white border border-cyan-600' 
+                        : 'bg-white border border-gray-300 text-gray-500'
                     }`}
                   >
                     {block.headerPosition ? 'In Header (above line)' : 'Below Header'}
@@ -343,13 +343,13 @@ export default function PrintLayoutTab() {
             {block.id === 'footer' && (
               <div className="grid grid-cols-4 gap-2 mt-2">
                 <div className="col-span-2">
-                  <label className="text-xs text-gray-400 block mb-1">Sticky Footer</label>
+                  <label className="text-xs text-gray-600 block mb-1">Sticky Footer</label>
                   <button
                     onClick={() => updateBlock(block.id, { stickyFooter: !block.stickyFooter })}
                     className={`w-full px-2 py-1 rounded text-sm ${
                       block.stickyFooter 
-                        ? 'bg-orange-600 text-white' 
-                        : 'bg-gray-700 border border-gray-600 text-gray-400'
+                        ? 'bg-orange-500 text-white border border-orange-600' 
+                        : 'bg-white border border-gray-300 text-gray-500'
                     }`}
                   >
                     {block.stickyFooter ? 'Sticky (bottom of page)' : 'Normal (after content)'}
@@ -367,8 +367,8 @@ export default function PrintLayoutTab() {
     const sortedRowNums = Object.keys(rows).map(Number).sort((a, b) => a - b);
     
     return (
-      <div className="bg-gray-900 p-3 rounded min-h-96">
-        <h3 className="font-bold mb-2 text-sm">
+      <div className="bg-gray-100 p-3 rounded border border-gray-300 min-h-96">
+        <h3 className="font-bold mb-2 text-sm text-gray-800">
           Page {pageNum} <span className="text-gray-500">({enabledCount} enabled)</span>
         </h3>
         
@@ -376,15 +376,15 @@ export default function PrintLayoutTab() {
           <div key={rowNum} className="mb-2">
             {/* Row header */}
             <div className="text-xs text-gray-500 mb-1 flex items-center gap-2">
-              <span className="bg-gray-700 px-2 py-0.5 rounded">Row {rowNum}</span>
-              <span className="text-gray-600">
+              <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded">Row {rowNum}</span>
+              <span className="text-gray-500">
                 {rows[rowNum].length} field{rows[rowNum].length !== 1 ? 's' : ''}
                 {rows[rowNum].length > 1 && ' (side-by-side)'}
               </span>
             </div>
             
             {/* Row blocks */}
-            <div className="pl-2 border-l-2 border-gray-700">
+            <div className="pl-2 border-l-2 border-gray-300">
               {rows[rowNum].map(block => renderBlock(block, pageNum))}
             </div>
           </div>
@@ -401,24 +401,25 @@ export default function PrintLayoutTab() {
     <div className="p-4">
       <div className="flex justify-between items-center mb-4">
         <div>
-          <h2 className="text-xl font-bold">Print Layout Designer</h2>
-          <p className="text-sm text-gray-400">
+          <h2 className="text-xl font-bold text-gray-800" style={{ color: 'var(--primary-color)' }}>Print Layout Designer</h2>
+          <p className="text-sm text-gray-600">
             V{layout?.version || '?'} - Click [+] to edit position and style. Same row = side-by-side.
           </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={handleReset}
-            className="px-3 py-1 bg-gray-600 hover:bg-gray-500 rounded text-sm"
+            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded text-sm text-gray-700 border border-gray-300"
           >
             Reset to V4 Defaults
           </button>
           <button
             onClick={handleSave}
             disabled={!hasChanges || saving}
-            className={`px-4 py-1 rounded text-sm ${
-              hasChanges ? 'bg-green-600 hover:bg-green-500' : 'bg-gray-600'
+            className={`px-4 py-1 rounded text-sm text-white ${
+              hasChanges ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400'
             }`}
+            style={hasChanges ? { backgroundColor: 'var(--primary-color)' } : {}}
           >
             {saving ? 'Saving...' : 'Save Layout'}
           </button>
@@ -426,11 +427,11 @@ export default function PrintLayoutTab() {
       </div>
 
       {error && (
-        <div className="bg-red-900 text-red-200 p-2 rounded mb-4">{error}</div>
+        <div className="bg-red-100 text-red-700 border border-red-300 p-2 rounded mb-4">{error}</div>
       )}
       
       {hasChanges && (
-        <div className="bg-yellow-900 text-yellow-200 p-2 rounded mb-4">
+        <div className="bg-yellow-100 text-yellow-800 border border-yellow-400 p-2 rounded mb-4">
           Unsaved changes
         </div>
       )}
@@ -440,8 +441,8 @@ export default function PrintLayoutTab() {
         {renderPage(2, page2Rows, page2Enabled)}
       </div>
 
-      <div className="mt-4 p-3 bg-gray-800 rounded text-xs text-gray-400">
-        <strong>V4 Layout Tips:</strong><br/>
+      <div className="mt-4 p-3 bg-white rounded border border-gray-300 text-xs text-gray-600">
+        <strong className="text-gray-800">V4 Layout Tips:</strong><br/>
         - <strong>Row</strong> - Fields with same row number appear side-by-side<br/>
         - <strong>Order</strong> - Left-to-right order within a row (1 = leftmost)<br/>
         - <strong>Width</strong> - Horizontal space: auto, 25%, 33%, 50%, 67%, 75%, 100%<br/>
@@ -449,7 +450,7 @@ export default function PrintLayoutTab() {
         - <strong>Bold</strong> - Make the entire field bold<br/>
         - <strong>Label Bold</strong> - Bold just the label (e.g., "Address:")<br/>
         - <strong>Hide Label</strong> - Show only the value, no label<br/>
-        - <span className="bg-blue-600 text-white px-1 rounded">float</span> fields position absolutely (like Times)
+        - <span className="bg-blue-100 text-blue-700 px-1 rounded border border-blue-300">float</span> fields position absolutely (like Times)
       </div>
     </div>
   );

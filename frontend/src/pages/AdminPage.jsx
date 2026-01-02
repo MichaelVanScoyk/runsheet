@@ -1354,8 +1354,8 @@ function DataExportTab() {
 
   return (
     <div className="data-export-tab">
-      <h3>Export Department Data</h3>
-      <p style={{ color: '#888', marginBottom: '1.5rem' }}>
+      <h3 style={{ color: 'var(--primary-color)' }}>Export Department Data</h3>
+      <p style={{ color: '#666', marginBottom: '1.5rem' }}>
         Download your incident records, personnel assignments, and CAD data. 
         This is your data - export it anytime.
       </p>
@@ -1403,9 +1403,9 @@ function DataExportTab() {
         </button>
       </div>
       
-      <div style={{ marginTop: '2rem', padding: '1rem', background: '#2a2a2a', borderRadius: '4px' }}>
-        <h4 style={{ marginBottom: '0.5rem' }}>What's included:</h4>
-        <ul style={{ color: '#888', marginLeft: '1.5rem' }}>
+      <div style={{ marginTop: '2rem', padding: '1rem', background: '#f8f8f8', borderRadius: '4px', border: '1px solid #e0e0e0' }}>
+        <h4 style={{ marginBottom: '0.5rem', color: '#333' }}>What's included:</h4>
+        <ul style={{ color: '#666', marginLeft: '1.5rem' }}>
           <li>All incident records with full details</li>
           <li>Personnel assignments per incident</li>
           <li>Unit/apparatus response data</li>
@@ -1432,10 +1432,10 @@ function BrandingTab({ onRefresh }) {
   const [pickingFor, setPickingFor] = useState(null); // 'primary' or 'secondary'
   
   // Color state - local until saved
-  const [primaryColor, setPrimaryColor] = useState('#e94560');
-  const [secondaryColor, setSecondaryColor] = useState('#0f3460');
-  const [savedPrimary, setSavedPrimary] = useState('#e94560');
-  const [savedSecondary, setSavedSecondary] = useState('#0f3460');
+  const [primaryColor, setPrimaryColor] = useState('#016a2b');
+  const [secondaryColor, setSecondaryColor] = useState('#eeee01');
+  const [savedPrimary, setSavedPrimary] = useState('#016a2b');
+  const [savedSecondary, setSavedSecondary] = useState('#eeee01');
   
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
@@ -1683,7 +1683,7 @@ function BrandingTab({ onRefresh }) {
 
   return (
     <div className="branding-tab">
-      <h3>Department Branding</h3>
+      <h3 style={{ color: 'var(--primary-color)' }}>Department Branding</h3>
       <p className="tab-intro">
         Upload your department's logo and set brand colors for reports.
       </p>
@@ -1700,11 +1700,11 @@ function BrandingTab({ onRefresh }) {
         <div 
           className="logo-preview" 
           style={{
-            background: '#2a2a2a',
+            background: '#f5f5f5',
             borderRadius: '8px',
             padding: '1.5rem',
             textAlign: 'center',
-            border: pickingFor ? '2px solid #e94560' : '2px dashed #444',
+            border: pickingFor ? '2px solid var(--primary-color)' : '2px dashed #ccc',
             cursor: pickingFor && logo?.has_logo ? 'crosshair' : 'default',
             position: 'relative'
           }}
@@ -1719,7 +1719,7 @@ function BrandingTab({ onRefresh }) {
                 style={{ maxWidth: '200px', maxHeight: '200px', objectFit: 'contain', display: 'block', margin: '0 auto' }}
               />
               <canvas ref={canvasRef} style={{ display: 'none' }} />
-              <p style={{ marginTop: '0.5rem', color: '#888', fontSize: '0.85rem' }}>
+              <p style={{ marginTop: '0.5rem', color: '#666', fontSize: '0.85rem' }}>
                 {pickingFor ? `Click logo to pick ${pickingFor} color` : 'Current logo'}
               </p>
             </>
@@ -1760,15 +1760,15 @@ function BrandingTab({ onRefresh }) {
         </div>
 
         {/* Color Pickers */}
-        <div style={{ marginTop: '1.5rem', borderTop: '1px solid #333', paddingTop: '1.5rem' }}>
-          <h4 style={{ marginBottom: '1rem', color: '#ccc' }}>Brand Colors</h4>
+        <div style={{ marginTop: '1.5rem', borderTop: '1px solid #ddd', paddingTop: '1.5rem' }}>
+          <h4 style={{ marginBottom: '1rem', color: '#333' }}>Brand Colors</h4>
           
           {/* Primary Color */}
           <div className="color-row" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-            <label style={{ width: '90px', color: '#aaa' }}>Primary:</label>
+            <label style={{ width: '90px', color: '#555' }}>Primary:</label>
             <input
               type="color"
-              value={primaryColor.length === 7 ? primaryColor : '#e94560'}
+              value={primaryColor.length === 7 ? primaryColor : '#016a2b'}
               onChange={(e) => setPrimaryColor(e.target.value)}
               style={{ width: '50px', height: '36px', padding: 0, border: 'none', cursor: 'pointer' }}
             />
@@ -1780,10 +1780,10 @@ function BrandingTab({ onRefresh }) {
               style={{ 
                 width: '90px', 
                 padding: '0.5rem', 
-                background: '#1a1a2e', 
-                border: '1px solid #0f3460', 
+                background: '#fff', 
+                border: '1px solid #ddd', 
                 borderRadius: '4px', 
-                color: '#fff',
+                color: '#333',
                 fontFamily: 'monospace'
               }}
             />
@@ -1801,16 +1801,16 @@ function BrandingTab({ onRefresh }) {
               height: '24px', 
               background: primaryColor, 
               borderRadius: '4px',
-              border: '1px solid #555'
+              border: '1px solid #ccc'
             }} />
           </div>
           
           {/* Secondary Color */}
           <div className="color-row" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-            <label style={{ width: '90px', color: '#aaa' }}>Secondary:</label>
+            <label style={{ width: '90px', color: '#555' }}>Secondary:</label>
             <input
               type="color"
-              value={secondaryColor.length === 7 ? secondaryColor : '#0f3460'}
+              value={secondaryColor.length === 7 ? secondaryColor : '#eeee01'}
               onChange={(e) => setSecondaryColor(e.target.value)}
               style={{ width: '50px', height: '36px', padding: 0, border: 'none', cursor: 'pointer' }}
             />
@@ -1822,10 +1822,10 @@ function BrandingTab({ onRefresh }) {
               style={{ 
                 width: '90px', 
                 padding: '0.5rem', 
-                background: '#1a1a2e', 
-                border: '1px solid #0f3460', 
+                background: '#fff', 
+                border: '1px solid #ddd', 
                 borderRadius: '4px', 
-                color: '#fff',
+                color: '#333',
                 fontFamily: 'monospace'
               }}
             />
@@ -1843,7 +1843,7 @@ function BrandingTab({ onRefresh }) {
               height: '24px', 
               background: secondaryColor, 
               borderRadius: '4px',
-              border: '1px solid #555'
+              border: '1px solid #ccc'
             }} />
           </div>
 
@@ -1865,14 +1865,15 @@ function BrandingTab({ onRefresh }) {
 
         {/* Guidelines */}
         <div style={{ 
-          background: '#1e1e1e', 
+          background: '#f8f8f8', 
           borderRadius: '4px', 
           padding: '0.75rem 1rem',
           fontSize: '0.85rem',
-          color: '#888',
-          marginTop: '1.5rem'
+          color: '#666',
+          marginTop: '1.5rem',
+          border: '1px solid #e0e0e0'
         }}>
-          <strong style={{ color: '#ccc' }}>Guidelines:</strong>
+          <strong style={{ color: '#333' }}>Guidelines:</strong>
           <ul style={{ margin: '0.5rem 0 0 1.2rem', padding: 0 }}>
             <li>PNG or WebP recommended (supports transparency)</li>
             <li>Max size: 500KB</li>
@@ -1882,7 +1883,7 @@ function BrandingTab({ onRefresh }) {
         </div>
 
         {/* Debug info */}
-        <div style={{ marginTop: '1rem', padding: '0.5rem', background: '#111', borderRadius: '4px', fontSize: '0.75rem', color: '#666' }}>
+        <div style={{ marginTop: '1rem', padding: '0.5rem', background: '#f5f5f5', borderRadius: '4px', fontSize: '0.75rem', color: '#888', border: '1px solid #e0e0e0' }}>
           <details>
             <summary style={{ cursor: 'pointer' }}>Debug Info</summary>
             <pre style={{ margin: '0.5rem 0 0 0', whiteSpace: 'pre-wrap' }}>
@@ -1977,7 +1978,7 @@ function ComCatTab() {
 
   return (
     <div className="comcat-tab">
-      <h3>Comment Categorizer (ComCat) ML</h3>
+      <h3 style={{ color: 'var(--primary-color)' }}>Comment Categorizer (ComCat) ML</h3>
       <p className="tab-intro">
         Machine learning model that categorizes CAD event comments. Officer corrections improve accuracy over time.
       </p>
@@ -1991,53 +1992,53 @@ function ComCatTab() {
       {/* Status Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         {/* ML Status */}
-        <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '1rem' }}>
-          <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '0.5rem' }}>ML Status</div>
+        <div style={{ background: '#f5f5f5', borderRadius: '8px', padding: '1rem', border: '1px solid #e0e0e0' }}>
+          <div style={{ color: '#666', fontSize: '0.85rem', marginBottom: '0.5rem' }}>ML Status</div>
           <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: stats?.ml_available ? '#22c55e' : '#ef4444' }}>
             {stats?.ml_available ? '✓ Available' : '✗ Unavailable'}
           </div>
-          <div style={{ color: '#666', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+          <div style={{ color: '#888', fontSize: '0.8rem', marginTop: '0.25rem' }}>
             sklearn: {stats?.sklearn_installed ? 'installed' : 'missing'}
           </div>
         </div>
 
         {/* Model Status */}
-        <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '1rem' }}>
-          <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Model Trained</div>
+        <div style={{ background: '#f5f5f5', borderRadius: '8px', padding: '1rem', border: '1px solid #e0e0e0' }}>
+          <div style={{ color: '#666', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Model Trained</div>
           <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: stats?.model_trained ? '#22c55e' : '#f59e0b' }}>
             {stats?.model_trained ? '✓ Yes' : '⚠ No'}
           </div>
-          <div style={{ color: '#666', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+          <div style={{ color: '#888', fontSize: '0.8rem', marginTop: '0.25rem' }}>
             {stats?.last_trained_at ? `Last: ${new Date(stats.last_trained_at).toLocaleDateString()}` : 'Never trained'}
           </div>
         </div>
 
         {/* Accuracy */}
-        <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '1rem' }}>
-          <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '0.5rem' }}>CV Accuracy</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#4ecdc4' }}>
+        <div style={{ background: '#f5f5f5', borderRadius: '8px', padding: '1rem', border: '1px solid #e0e0e0' }}>
+          <div style={{ color: '#666', fontSize: '0.85rem', marginBottom: '0.5rem' }}>CV Accuracy</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--primary-color)' }}>
             {stats?.cv_accuracy ? `${(stats.cv_accuracy * 100).toFixed(1)}%` : 'N/A'}
           </div>
-          <div style={{ color: '#666', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+          <div style={{ color: '#888', fontSize: '0.8rem', marginTop: '0.25rem' }}>
             Cross-validation score
           </div>
         </div>
 
         {/* Training Data */}
-        <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '1rem' }}>
-          <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Training Examples</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#fff' }}>
+        <div style={{ background: '#f5f5f5', borderRadius: '8px', padding: '1rem', border: '1px solid #e0e0e0' }}>
+          <div style={{ color: '#666', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Training Examples</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#333' }}>
             {stats?.total_training_examples || 0}
           </div>
-          <div style={{ color: '#666', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+          <div style={{ color: '#888', fontSize: '0.8rem', marginTop: '0.25rem' }}>
             {stats?.seed_examples || 0} seed + {stats?.officer_examples || 0} officer
           </div>
         </div>
       </div>
 
       {/* Category Distribution */}
-      <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem' }}>
-        <h4 style={{ marginBottom: '1rem', color: '#ccc' }}>Officer Corrections by Category</h4>
+      <div style={{ background: '#f5f5f5', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem', border: '1px solid #e0e0e0' }}>
+        <h4 style={{ marginBottom: '1rem', color: '#333' }}>Officer Corrections by Category</h4>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           {Object.entries(stats?.category_counts || {}).map(([cat, count]) => (
             <div 
@@ -2046,28 +2047,29 @@ function ComCatTab() {
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: '0.5rem',
-                background: '#1e1e1e',
+                background: '#fff',
                 padding: '0.5rem 1rem',
                 borderRadius: '4px',
-                borderLeft: `4px solid ${categoryColors[cat] || '#666'}`
+                borderLeft: `4px solid ${categoryColors[cat] || '#888'}`,
+                border: '1px solid #e0e0e0'
               }}
             >
-              <span style={{ color: '#aaa' }}>{cat}:</span>
-              <span style={{ fontWeight: 'bold', color: '#fff' }}>{count}</span>
+              <span style={{ color: '#666' }}>{cat}:</span>
+              <span style={{ fontWeight: 'bold', color: '#333' }}>{count}</span>
             </div>
           ))}
         </div>
         {(stats?.officer_examples || 0) === 0 && (
-          <p style={{ color: '#888', marginTop: '1rem', fontSize: '0.9rem' }}>
+          <p style={{ color: '#666', marginTop: '1rem', fontSize: '0.9rem' }}>
             No officer corrections yet. Corrections made in the Comment Categorizer modal become training data.
           </p>
         )}
       </div>
 
       {/* Retrain Section */}
-      <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem' }}>
-        <h4 style={{ marginBottom: '0.5rem', color: '#ccc' }}>Retrain Model</h4>
-        <p style={{ color: '#888', fontSize: '0.9rem', marginBottom: '1rem' }}>
+      <div style={{ background: '#f5f5f5', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem', border: '1px solid #e0e0e0' }}>
+        <h4 style={{ marginBottom: '0.5rem', color: '#333' }}>Retrain Model</h4>
+        <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '1rem' }}>
           Retrain the ML model with all seed data plus officer corrections. 
           You can batch corrections from multiple incidents before retraining.
         </p>
@@ -2086,9 +2088,9 @@ function ComCatTab() {
       </div>
 
       {/* How It Works */}
-      <div style={{ background: '#1e1e1e', borderRadius: '8px', padding: '1rem' }}>
-        <h4 style={{ marginBottom: '0.75rem', color: '#ccc' }}>How ComCat Works</h4>
-        <ol style={{ color: '#888', margin: 0, paddingLeft: '1.25rem', lineHeight: 1.8 }}>
+      <div style={{ background: '#f8f8f8', borderRadius: '8px', padding: '1rem', border: '1px solid #e0e0e0' }}>
+        <h4 style={{ marginBottom: '0.75rem', color: '#333' }}>How ComCat Works</h4>
+        <ol style={{ color: '#666', margin: 0, paddingLeft: '1.25rem', lineHeight: 1.8 }}>
           <li><strong>ML Classification</strong> - All comments categorized by Random Forest using text + operator type (calltaker, dispatcher, unit)</li>
           <li><strong>Context-Aware Learning</strong> - Model learns patterns like "calltaker comments tend to be caller info" from your corrections</li>
           <li><strong>Review Flagging</strong> - ML predictions below {((stats?.confidence_threshold || 0.5) * 100).toFixed(0)}% confidence are flagged for officer review</li>
