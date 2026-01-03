@@ -1,50 +1,40 @@
 """
-Database connection for RunSheet - Multi-tenant aware
+Database connection for RunSheet - Multi-tenant
 
-Routes to correct database based on subdomain:
-- glenmoorefc.cadreport.com -> runsheet_db
-- gmfc2.cadreport.com -> runsheet_gmfc2
-- etc.
+Routes to correct database based on subdomain.
+Uses FastAPI dependency injection - the correct way.
 """
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from fastapi import Request, HTTPException
-from contextvars import ContextVar
-from typing import Optional
+from sqlalchemy.orm import sessionmaker
+from fastapi import Request
+import psycopg2
 import logging
 
 logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
-# Context variable to hold current tenant's database URL
-_current_db_url: ContextVar[str] = ContextVar('current_db_url', default='postgresql:///runsheet_db')
-
-# Cache of engines per database URL
+# Cache engines to avoid recreating connections
 _engines = {}
 
-# Default database (fallback)
-DEFAULT_DATABASE = "runsheet_db"
 
-
-def get_engine(db_url: str):
-    """Get or create engine for a database URL"""
-    if db_url not in _engines:
-        _engines[db_url] = create_engine(
-            db_url,
+def _get_engine(db_name: str):
+    """Get or create engine for a database"""
+    if db_name not in _engines:
+        _engines[db_name] = create_engine(
+            f"postgresql:///{db_name}",
             pool_size=5,
             max_overflow=10,
             pool_timeout=30,
             pool_pre_ping=True,
         )
-    return _engines[db_url]
+    return _engines[db_name]
 
 
-def get_tenant_database(slug: str) -> Optional[str]:
-    """Look up tenant's database name from master database"""
-    import psycopg2
+def _get_tenant_database(slug: str) -> str:
+    """Look up tenant's database from master. Returns database name or default."""
     try:
         conn = psycopg2.connect('postgresql:///cadreport_master')
         cur = conn.cursor()
@@ -57,66 +47,33 @@ def get_tenant_database(slug: str) -> Optional[str]:
         
         if result and result[0]:
             return result[0]
-        return None
     except Exception as e:
-        logger.error(f"Failed to look up tenant {slug}: {e}")
-        return None
-
-
-def extract_tenant_slug(host: str) -> Optional[str]:
-    """Extract tenant slug from Host header
+        logger.error(f"Tenant lookup failed for {slug}: {e}")
     
-    Examples:
-        glenmoorefc.cadreport.com -> glenmoorefc
-        gmfc2.cadreport.com -> gmfc2
-        cadreport.com -> None (main site)
-        localhost:5173 -> None (dev)
-    """
+    return "runsheet_db"  # Default fallback
+
+
+def _extract_slug(host: str) -> str:
+    """Extract tenant slug from Host header"""
     if not host:
-        return None
+        return "glenmoorefc"
     
-    # Remove port if present
-    host = host.split(':')[0]
+    host = host.split(':')[0]  # Remove port
     
-    # Check if it's a subdomain of cadreport.com
     if host.endswith('.cadreport.com'):
-        subdomain = host.replace('.cadreport.com', '')
-        if subdomain and subdomain != 'www':
-            return subdomain
+        slug = host.replace('.cadreport.com', '')
+        if slug and slug != 'www':
+            return slug
     
-    # For local development, check for subdomain pattern
-    if host.endswith('.localhost'):
-        return host.replace('.localhost', '')
-    
-    return None
+    return "glenmoorefc"  # Default
 
 
-def set_tenant_db_from_request(request: Request) -> str:
-    """Set the current tenant database based on request Host header"""
-    host = request.headers.get('host', '')
-    slug = extract_tenant_slug(host)
+def get_db(request: Request):
+    """FastAPI dependency - yields database session for the tenant in the request"""
+    slug = _extract_slug(request.headers.get('host', ''))
+    db_name = _get_tenant_database(slug)
     
-    if slug:
-        db_name = get_tenant_database(slug)
-        if db_name:
-            db_url = f"postgresql:///{db_name}"
-            _current_db_url.set(db_url)
-            return db_name
-        else:
-            # Tenant slug in URL but not found/active in database
-            logger.warning(f"Tenant not found: {slug}")
-            # Fall through to default
-    
-    # Default to main database
-    db_url = f"postgresql:///{DEFAULT_DATABASE}"
-    _current_db_url.set(db_url)
-    return DEFAULT_DATABASE
-
-
-def get_db():
-    """FastAPI dependency - yields database session for current tenant"""
-    db_url = _current_db_url.get()
-    engine = get_engine(db_url)
+    engine = _get_engine(db_name)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
     try:
@@ -125,6 +82,6 @@ def get_db():
         db.close()
 
 
-# Legacy support - direct engine for scripts that don't go through HTTP
-engine = get_engine(f"postgresql:///{DEFAULT_DATABASE}")
+# Legacy: default engine for scripts/migrations that don't go through HTTP
+engine = _get_engine("runsheet_db")
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
