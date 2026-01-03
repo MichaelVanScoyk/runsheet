@@ -13,7 +13,7 @@ const api = axios.create({
 // ============================================================================
 
 export const getIncidents = (year, category, status) => {
-  const params = {};
+  const params = { limit: 1000 };
   if (year) params.year = year;
   if (category) params.category = category;
   if (status) params.status = status;
@@ -41,6 +41,8 @@ export const getIncidentAuditLog = (id, limit = 50) =>
 
 export const suggestIncidentNumber = (category = 'FIRE') => 
   api.get('/incidents/suggest-number', { params: { category } });
+
+export const getIncidentYears = () => api.get('/incidents/years');
 
 // ============================================================================
 // PERSONNEL

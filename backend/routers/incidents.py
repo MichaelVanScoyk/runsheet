@@ -441,6 +441,26 @@ def parse_incident_number(number: str) -> tuple:
     return (category, year, seq_num)
 
 
+@router.get("/years")
+async def get_incident_years(db: Session = Depends(get_db)):
+    """Get list of years that have incident data, plus current year"""
+    result = db.execute(text("""
+        SELECT DISTINCT year_prefix 
+        FROM incidents 
+        WHERE deleted_at IS NULL 
+        ORDER BY year_prefix DESC
+    """))
+    
+    years = [row[0] for row in result]
+    current_year = datetime.now().year
+    
+    # Always include current year even if no incidents yet
+    if current_year not in years:
+        years.insert(0, current_year)
+    
+    return {"years": years}
+
+
 @router.get("/suggest-number")
 async def suggest_incident_number(
     year: Optional[int] = None,

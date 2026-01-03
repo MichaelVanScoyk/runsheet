@@ -942,7 +942,7 @@ def provision_tenant_database(slug: str, db_name: str) -> dict:
         if result.returncode != 0:
             return {'success': False, 'error': f'Schema dump failed: {result.stderr}'}
         
-        # Step 2: Dump reference data (NERIS codes, ranks, settings, municipalities)
+        # Step 2: Dump reference data (NERIS codes, ranks only)
         seed_file = os.path.join(BACKUP_DIR, f'.tmp_seed_{slug}.sql')
         
         result = run_pg_command([
@@ -952,8 +952,6 @@ def provision_tenant_database(slug: str, db_name: str) -> dict:
             '--no-privileges',
             '--table=neris_codes',
             '--table=ranks',
-            '--table=settings',
-            '--table=municipalities',
             '-f', seed_file,
             TEMPLATE_DATABASE
         ])

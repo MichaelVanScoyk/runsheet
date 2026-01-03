@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getIncidents, getIncident } from '../api';
+import { getIncidents, getIncident, getIncidentYears } from '../api';
 import { useBranding } from '../contexts/BrandingContext';
 import RunSheetForm from '../components/RunSheetForm';
 import IncidentHubModal from '../components/IncidentHubModal';
@@ -40,6 +40,7 @@ function IncidentsPage() {
   const [loading, setLoading] = useState(true);
   const [loadingIncident, setLoadingIncident] = useState(false);
   const [year, setYear] = useState(new Date().getFullYear());
+  const [availableYears, setAvailableYears] = useState([new Date().getFullYear()]);
   const [showForm, setShowForm] = useState(false);
   const [editingIncident, setEditingIncident] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -89,6 +90,21 @@ function IncidentsPage() {
   }, [year, categoryFilter]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Load available years on mount
+  useEffect(() => {
+    const loadYears = async () => {
+      try {
+        const res = await getIncidentYears();
+        if (res.data.years && res.data.years.length > 0) {
+          setAvailableYears(res.data.years);
+        }
+      } catch (err) {
+        console.error('Failed to load years:', err);
+      }
+    };
+    loadYears();
+  }, []);
 
   const loadQualifyingIncidents = useCallback(async () => {
     try {
@@ -310,7 +326,7 @@ function IncidentsPage() {
 
       <div className="filter-bar" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <select value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
-          {Array.from({ length: new Date().getFullYear() - 2022 }, (_, i) => new Date().getFullYear() - i).map(y => (
+          {availableYears.map(y => (
             <option key={y} value={y}>{y}</option>
           ))}
         </select>
