@@ -26,7 +26,6 @@ router = APIRouter()
 
 SESSION_COOKIE_NAME = "tenant_session"
 SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
-COOKIE_DOMAIN = ".cadreport.com"  # Dot prefix = shared across all subdomains
 
 
 class TenantLoginRequest(BaseModel):
@@ -157,7 +156,7 @@ async def tenant_login(
     tenant.last_login_at = datetime.now(timezone.utc)
     db.commit()
     
-    # Set cookie with domain for cross-subdomain sharing
+    # Set cookie - no domain = this subdomain only
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=session_token,
@@ -165,7 +164,6 @@ async def tenant_login(
         httponly=True,
         secure=False,  # Set True in production with HTTPS
         samesite="lax",
-        domain=COOKIE_DOMAIN,
     )
     
     logger.info(f"Tenant login: {tenant.slug}")
@@ -192,8 +190,8 @@ async def tenant_logout(
         db.delete(session)
         db.commit()
     
-    # Delete cookie with same domain
-    response.delete_cookie(SESSION_COOKIE_NAME, domain=COOKIE_DOMAIN)
+    # Delete cookie
+    response.delete_cookie(SESSION_COOKIE_NAME)
     
     return {"status": "ok", "message": "Logged out"}
 
