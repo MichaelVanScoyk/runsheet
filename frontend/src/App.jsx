@@ -303,7 +303,7 @@ function AppContent({ tenant, onTenantLogout }) {
           <button 
             onClick={onTenantLogout}
             style={{ 
-              background: branding.primaryColor, 
+              background: '#dc2626', 
               border: 'none', 
               color: '#fff', 
               cursor: 'pointer',
@@ -311,9 +311,9 @@ function AppContent({ tenant, onTenantLogout }) {
               padding: '3px 8px',
               borderRadius: '3px'
             }}
-            title="Switch department"
+            title="Logout from this department"
           >
-            Switch
+            Logout
           </button>
         </div>
         
