@@ -605,7 +605,7 @@ async def create_tenant(
     request: Request,
     admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
 ):
-    """Create a new tenant directly (bypassing signup request)"""
+    """Create a new tenant directly (bypassing signup request) and provision database"""
     slug = data.slug.lower().strip()
     
     # Validate slug
@@ -635,35 +635,63 @@ async def create_tenant(
                 )
         
         password_hash = hash_password(data.password)
+        db_name = f"runsheet_{slug}"
         
         db.execute("""
             INSERT INTO tenants (
-                slug, name, password_hash, status, cad_port,
+                slug, name, password_hash, database_name, status, cad_port,
                 contact_name, contact_email, county, state,
                 approved_at, approved_by
-            ) VALUES (%s, %s, %s, 'active', %s, %s, %s, %s, %s, NOW(), %s)
+            ) VALUES (%s, %s, %s, %s, 'active', %s, %s, %s, %s, %s, NOW(), %s)
         """, (
-            slug, data.name, password_hash, cad_port,
+            slug, data.name, password_hash, db_name, cad_port,
             data.contact_name, data.contact_email,
             data.county, data.state, admin['id']
         ))
         db.commit()
         
         new_id = db.fetchone("SELECT id FROM tenants WHERE slug = %s", (slug,))[0]
-        
+    
+    # Provision the database (outside the master db context)
+    provision_result = provision_tenant_database(slug, db_name)
+    
+    if not provision_result['success']:
+        # Database provisioning failed - log but keep tenant record
+        # Admin can retry via the Database tab
+        logger.error(f"Database provisioning failed for {slug}: {provision_result['error']}")
+        with get_master_db() as db:
+            log_audit(
+                db, admin['id'], admin['email'], 'CREATE_TENANT',
+                'TENANT', new_id, data.name,
+                {'slug': slug, 'cad_port': cad_port, 'db_error': provision_result['error']},
+                get_client_ip(request)
+            )
+        return {
+            'status': 'partial',
+            'id': new_id,
+            'slug': slug,
+            'cad_port': cad_port,
+            'database_error': provision_result['error'],
+            'message': f'Tenant created but database provisioning failed: {provision_result["error"]}. Use Database tab to retry.'
+        }
+    
+    # Success - log and return
+    with get_master_db() as db:
         log_audit(
             db, admin['id'], admin['email'], 'CREATE_TENANT',
             'TENANT', new_id, data.name,
-            {'slug': slug, 'cad_port': cad_port},
+            {'slug': slug, 'cad_port': cad_port, 'database': db_name},
             get_client_ip(request)
         )
-        
-        return {
-            'status': 'ok',
-            'id': new_id,
-            'slug': slug,
-            'cad_port': cad_port
-        }
+    
+    return {
+        'status': 'ok',
+        'id': new_id,
+        'slug': slug,
+        'cad_port': cad_port,
+        'database': db_name,
+        'message': f'Tenant created with database {db_name}'
+    }
 
 
 # =============================================================================
@@ -844,7 +872,6 @@ async def get_audit_log(
 # =============================================================================
 
 BACKUP_DIR = '/opt/runsheet/backups'
-MIGRATIONS_DIR = '/opt/runsheet/migrations'
 
 # PostgreSQL tool paths (Ubuntu default)
 PG_DUMP = '/usr/bin/pg_dump'
@@ -856,6 +883,9 @@ DROPDB = '/usr/bin/dropdb'
 DB_USER = 'dashboard'
 DB_PASSWORD = 'dashboard'
 DB_HOST = 'localhost'
+
+# Template database to copy schema from
+TEMPLATE_DATABASE = 'runsheet_db'
 
 
 def get_pg_env():
@@ -874,6 +904,142 @@ def run_pg_command(cmd: list, check_success: bool = True) -> subprocess.Complete
         logger.error(f"stderr: {result.stderr}")
         logger.error(f"stdout: {result.stdout}")
     return result
+
+
+def provision_tenant_database(slug: str, db_name: str) -> dict:
+    """
+    Provision a new tenant database by copying schema from template.
+    
+    Steps:
+    1. Dump schema (no data) from template database
+    2. Dump reference data (NERIS codes, ranks, settings) from template
+    3. Create new database
+    4. Apply schema
+    5. Apply reference data
+    6. Clear any incident/personnel data (safety)
+    
+    Returns dict with success status and any error message.
+    """
+    schema_file = None
+    seed_file = None
+    
+    try:
+        # Ensure backup directory exists for temp files
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        
+        # Step 1: Dump schema from template
+        schema_file = os.path.join(BACKUP_DIR, f'.tmp_schema_{slug}.sql')
+        
+        result = run_pg_command([
+            PG_DUMP, '-U', DB_USER, '-h', DB_HOST,
+            '--schema-only',   # Structure only, no data
+            '--no-owner',      # Don't set ownership (new db user will own)
+            '--no-privileges', # Don't include GRANT statements
+            '-f', schema_file,
+            TEMPLATE_DATABASE
+        ])
+        
+        if result.returncode != 0:
+            return {'success': False, 'error': f'Schema dump failed: {result.stderr}'}
+        
+        # Step 2: Dump reference data (NERIS codes, ranks, settings, municipalities)
+        seed_file = os.path.join(BACKUP_DIR, f'.tmp_seed_{slug}.sql')
+        
+        result = run_pg_command([
+            PG_DUMP, '-U', DB_USER, '-h', DB_HOST,
+            '--data-only',     # Data only
+            '--no-owner',
+            '--no-privileges',
+            '--table=neris_codes',
+            '--table=ranks',
+            '--table=settings',
+            '--table=municipalities',
+            '-f', seed_file,
+            TEMPLATE_DATABASE
+        ])
+        
+        if result.returncode != 0:
+            # Non-fatal - some tables might not exist
+            logger.warning(f'Seed data dump warning: {result.stderr}')
+        
+        # Step 3: Create new database
+        result = run_pg_command([
+            CREATEDB, '-U', DB_USER, '-h', DB_HOST, db_name
+        ])
+        
+        if result.returncode != 0:
+            if 'already exists' in result.stderr:
+                return {'success': False, 'error': f'Database {db_name} already exists'}
+            return {'success': False, 'error': f'Database creation failed: {result.stderr}'}
+        
+        # Step 4: Apply schema
+        result = run_pg_command([
+            PSQL, '-U', DB_USER, '-h', DB_HOST, db_name, '-f', schema_file
+        ])
+        
+        if result.returncode != 0:
+            # Try to clean up the empty database
+            run_pg_command([DROPDB, '-U', DB_USER, '-h', DB_HOST, '--if-exists', db_name], check_success=False)
+            return {'success': False, 'error': f'Schema apply failed: {result.stderr}'}
+        
+        # Step 5: Apply seed data
+        if os.path.exists(seed_file) and os.path.getsize(seed_file) > 0:
+            result = run_pg_command([
+                PSQL, '-U', DB_USER, '-h', DB_HOST, db_name, '-f', seed_file
+            ])
+            
+            if result.returncode != 0:
+                logger.warning(f'Seed data apply warning: {result.stderr}')
+                # Continue anyway - schema is applied
+        
+        # Step 6: Clean any leftover data and reset sequences
+        cleanup_sql = """
+            -- Clear any data that shouldn't be copied
+            TRUNCATE incidents CASCADE;
+            TRUNCATE audit_log CASCADE;
+            TRUNCATE personnel CASCADE;
+            TRUNCATE apparatus CASCADE;
+            
+            -- Reset sequences to 1
+            DO $
+            DECLARE
+                seq_name TEXT;
+            BEGIN
+                FOR seq_name IN 
+                    SELECT c.relname FROM pg_class c WHERE c.relkind = 'S'
+                LOOP
+                    EXECUTE format('ALTER SEQUENCE %I RESTART WITH 1', seq_name);
+                END LOOP;
+            END $;
+        """
+        
+        # Run cleanup via psql
+        cleanup_result = subprocess.run(
+            [PSQL, '-U', DB_USER, '-h', DB_HOST, db_name, '-c', cleanup_sql],
+            capture_output=True, text=True, env=get_pg_env()
+        )
+        
+        if cleanup_result.returncode != 0:
+            logger.warning(f'Cleanup warning (non-fatal): {cleanup_result.stderr}')
+        
+        return {'success': True, 'database': db_name}
+        
+    except Exception as e:
+        logger.exception(f'Provision failed for {slug}')
+        return {'success': False, 'error': str(e)}
+        
+    finally:
+        # Clean up temp files
+        if schema_file and os.path.exists(schema_file):
+            try:
+                os.unlink(schema_file)
+            except:
+                pass
+        if seed_file and os.path.exists(seed_file):
+            try:
+                os.unlink(seed_file)
+            except:
+                pass
 
 
 def format_size(size_bytes):
@@ -995,7 +1161,7 @@ async def provision_database(
     request: Request,
     admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
 ):
-    """Create database and run migrations for a tenant"""
+    """Create database for a tenant by copying schema from template"""
     with get_master_db() as db:
         result = db.fetchone("""
             SELECT slug, name, database_name FROM tenants WHERE id = %s
@@ -1007,37 +1173,25 @@ async def provision_database(
         slug, name, database_name = result
         db_name = database_name or f"runsheet_{slug}"
     
-    try:
-        # Create database
-        result = run_pg_command([CREATEDB, '-U', DB_USER, '-h', DB_HOST, db_name])
-        if result.returncode != 0 and 'already exists' not in result.stderr:
-            raise HTTPException(status_code=500, detail=f"Failed to create database: {result.stderr}")
+    # Use the provision function
+    provision_result = provision_tenant_database(slug, db_name)
+    
+    if not provision_result['success']:
+        raise HTTPException(status_code=500, detail=provision_result['error'])
+    
+    # Update tenant record with database name (if not already set)
+    with get_master_db() as db:
+        db.execute("UPDATE tenants SET database_name = %s WHERE id = %s", (db_name, tenant_id))
+        db.commit()
         
-        # Run initial schema migration
-        schema_file = os.path.join(MIGRATIONS_DIR, '001_initial_schema.sql')
-        if os.path.exists(schema_file):
-            result = run_pg_command([PSQL, '-U', DB_USER, '-h', DB_HOST, db_name, '-f', schema_file])
-            if result.returncode != 0:
-                raise HTTPException(status_code=500, detail=f"Migration failed: {result.stderr}")
-        
-        # Update tenant record with database name
-        with get_master_db() as db:
-            db.execute("UPDATE tenants SET database_name = %s WHERE id = %s", (db_name, tenant_id))
-            db.commit()
-            
-            log_audit(
-                db, admin['id'], admin['email'], 'PROVISION_DATABASE',
-                'TENANT', tenant_id, name,
-                {'database': db_name},
-                get_client_ip(request)
-            )
-        
-        return {'status': 'ok', 'database_name': db_name}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        log_audit(
+            db, admin['id'], admin['email'], 'PROVISION_DATABASE',
+            'TENANT', tenant_id, name,
+            {'database': db_name},
+            get_client_ip(request)
+        )
+    
+    return {'status': 'ok', 'database_name': db_name}
 
 
 @router.post("/tenants/{tenant_id}/backup")

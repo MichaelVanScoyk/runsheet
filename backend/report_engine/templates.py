@@ -173,7 +173,7 @@ def generate_css(branding: dict) -> str:
         }}
         
         .cad-number {{
-            color: {muted_color};
+            /* Color controlled by block settings */
         }}
         
         .inc-date {{
@@ -185,7 +185,7 @@ def generate_css(branding: dict) -> str:
         }}
         
         .esz {{
-            color: {muted_color};
+            /* Color controlled by block settings */
         }}
         
         /* Badges */
@@ -271,7 +271,6 @@ def generate_css(branding: dict) -> str:
         
         .cross-streets {{
             font-size: {body_font_size};
-            color: {muted_color};
             display: inline;
         }}
         
@@ -283,7 +282,6 @@ def generate_css(branding: dict) -> str:
         .cad-subtype {{
             font-size: inherit;
             font-weight: inherit;
-            color: {muted_color};
         }}
         
         .narrative-box {{

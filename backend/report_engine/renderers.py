@@ -737,6 +737,14 @@ FONT_SIZE_MAP = {
     'xl': '18px',
 }
 
+TEXT_COLOR_MAP = {
+    'muted': '#666666',
+    'primary': '#016a2b',
+    'secondary': '#b8860b',  # Darker yellow for readability
+    'danger': '#c0392b',
+    'info': '#2980b9',
+}
+
 
 def get_block_style(block: dict) -> str:
     """Build inline style string from block settings."""
@@ -750,6 +758,11 @@ def get_block_style(block: dict) -> str:
     # Bold
     if block.get('bold'):
         styles.append('font-weight: bold')
+    
+    # Text color
+    text_color = block.get('textColor')
+    if text_color and text_color in TEXT_COLOR_MAP:
+        styles.append(f'color: {TEXT_COLOR_MAP[text_color]}')
     
     return '; '.join(styles) if styles else ''
 

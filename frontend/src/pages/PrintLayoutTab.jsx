@@ -19,6 +19,15 @@ const SIZE_OPTIONS = [
   { value: 'xl', label: 'XL (18px)' },
 ];
 
+const COLOR_OPTIONS = [
+  { value: '', label: 'Default (black)' },
+  { value: 'muted', label: 'Muted (grey)' },
+  { value: 'primary', label: 'Primary (green)' },
+  { value: 'secondary', label: 'Secondary (yellow)' },
+  { value: 'danger', label: 'Danger (red)' },
+  { value: 'info', label: 'Info (blue)' },
+];
+
 export default function PrintLayoutTab() {
   const [layout, setLayout] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -192,6 +201,17 @@ export default function PrintLayoutTab() {
             <span className="text-xs bg-green-100 text-green-700 px-1 rounded border border-green-300">always</span>
           )}
           
+          {block.textColor && (
+            <span className={`text-xs px-1 rounded border ${
+              block.textColor === 'muted' ? 'bg-gray-200 text-gray-600 border-gray-400' :
+              block.textColor === 'primary' ? 'bg-green-200 text-green-800 border-green-400' :
+              block.textColor === 'secondary' ? 'bg-yellow-200 text-yellow-800 border-yellow-400' :
+              block.textColor === 'danger' ? 'bg-red-200 text-red-800 border-red-400' :
+              block.textColor === 'info' ? 'bg-blue-200 text-blue-800 border-blue-400' :
+              'bg-gray-200 text-gray-600 border-gray-400'
+            }`}>{block.textColor}</span>
+          )}
+          
           {/* Move button */}
           {!block.locked && (
             <button
@@ -263,7 +283,7 @@ export default function PrintLayoutTab() {
             </div>
             
             {/* Row 2: Style controls */}
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               {/* Font Size */}
               <div>
                 <label className="text-xs text-gray-600 block mb-1">Font Size</label>
@@ -273,6 +293,20 @@ export default function PrintLayoutTab() {
                   className="w-full px-2 py-1 bg-white border border-gray-300 rounded text-sm text-gray-800"
                 >
                   {SIZE_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Text Color */}
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">Text Color</label>
+                <select
+                  value={block.textColor || ''}
+                  onChange={(e) => updateBlock(block.id, { textColor: e.target.value })}
+                  className="w-full px-2 py-1 bg-white border border-gray-300 rounded text-sm text-gray-800"
+                >
+                  {COLOR_OPTIONS.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>

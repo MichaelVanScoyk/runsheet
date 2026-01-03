@@ -24,3 +24,6 @@ raw_adi_log_samples.txt
 test_cad_samples.txt
 *.sql
 data/
+
+# ADI historical data
+adi/
