@@ -24,36 +24,20 @@ export default function CADDataModal() {
     w.print();
   };
 
-  // CSS to override CAD HTML styling for dark theme
-  const cadCss = `
-    .cad-html-content table { width: 100%; border-collapse: collapse; }
-    .cad-html-content td, .cad-html-content th { 
-      border: 1px solid #0f3460; 
-      padding: 4px 8px; 
-      color: #ccc !important;
-      background: transparent !important;
-    }
-    .cad-html-content tr { background: transparent !important; }
-    .cad-html-content font { color: #ccc !important; }
-    .cad-html-content b { color: #e94560; }
-  `;
-
   return (
     <div 
-      className="fixed inset-0 bg-black/85 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       onClick={() => setShowCadModal(false)}
     >
       <div 
-        className="bg-dark-bg rounded-lg w-[95%] max-w-[900px] max-h-[90vh] flex flex-col shadow-2xl"
+        className="bg-white rounded-lg w-[95%] max-w-[900px] max-h-[90vh] flex flex-col shadow-2xl border border-gray-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <style>{cadCss}</style>
-        
         {/* Header */}
-        <div className="px-5 py-4 border-b border-dark-border flex justify-between items-center">
-          <h3 className="text-accent-red text-lg font-semibold m-0">CAD Data</h3>
+        <div className="px-5 py-4 border-b border-gray-200 flex justify-between items-center">
+          <h3 className="text-primary-color text-lg font-semibold m-0">CAD Data</h3>
           <button 
-            className="bg-transparent border-none text-gray-500 hover:text-white text-2xl cursor-pointer leading-none p-0"
+            className="bg-transparent border-none text-gray-500 hover:text-gray-800 text-2xl cursor-pointer leading-none p-0"
             onClick={() => setShowCadModal(false)}
           >
             ×
@@ -66,7 +50,7 @@ export default function CADDataModal() {
           {formData.cad_raw_dispatch && (
             <div className="mb-4">
               <div className="flex justify-between items-center mb-2">
-                <h4 className="text-accent-red text-sm font-semibold m-0">Dispatch Report</h4>
+                <h4 className="text-primary-color text-sm font-semibold m-0">Dispatch Report</h4>
                 <button 
                   className="btn btn-sm btn-secondary"
                   onClick={() => printContent(formData.cad_raw_dispatch, 'Dispatch Report')}
@@ -75,7 +59,7 @@ export default function CADDataModal() {
                 </button>
               </div>
               <div 
-                className="cad-html-content bg-dark-card border border-dark-border rounded p-3 text-sm overflow-x-auto"
+                className="cad-html-content bg-gray-50 border border-gray-200 rounded p-3 text-sm overflow-x-auto"
                 dangerouslySetInnerHTML={{ __html: formData.cad_raw_dispatch }}
               />
             </div>
@@ -84,11 +68,11 @@ export default function CADDataModal() {
           {/* Updates */}
           {formData.cad_raw_updates && formData.cad_raw_updates.length > 0 && (
             <div className="mb-4">
-              <h4 className="text-accent-red text-sm font-semibold mb-2">Updates ({formData.cad_raw_updates.length})</h4>
+              <h4 className="text-primary-color text-sm font-semibold mb-2">Updates ({formData.cad_raw_updates.length})</h4>
               {formData.cad_raw_updates.map((update, idx) => (
                 <div key={idx} className="mb-2">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-gray-400 text-xs">Update {idx + 1}</span>
+                    <span className="text-gray-600 text-xs">Update {idx + 1}</span>
                     <button 
                       className="btn btn-sm btn-secondary"
                       onClick={() => printContent(update, `Update ${idx + 1}`)}
@@ -97,7 +81,7 @@ export default function CADDataModal() {
                     </button>
                   </div>
                   <div 
-                    className="cad-html-content bg-dark-card border border-dark-border rounded p-3 text-sm overflow-x-auto"
+                    className="cad-html-content bg-gray-50 border border-gray-200 rounded p-3 text-sm overflow-x-auto"
                     dangerouslySetInnerHTML={{ __html: update }}
                   />
                 </div>
@@ -109,7 +93,7 @@ export default function CADDataModal() {
           {formData.cad_raw_clear && (
             <div className="mb-4">
               <div className="flex justify-between items-center mb-2">
-                <h4 className="text-accent-red text-sm font-semibold m-0">Clear Report</h4>
+                <h4 className="text-primary-color text-sm font-semibold m-0">Clear Report</h4>
                 <button 
                   className="btn btn-sm btn-secondary"
                   onClick={() => printContent(formData.cad_raw_clear, 'Clear Report')}
@@ -118,7 +102,7 @@ export default function CADDataModal() {
                 </button>
               </div>
               <div 
-                className="cad-html-content bg-dark-card border border-dark-border rounded p-3 text-sm overflow-x-auto"
+                className="cad-html-content bg-gray-50 border border-gray-200 rounded p-3 text-sm overflow-x-auto"
                 dangerouslySetInnerHTML={{ __html: formData.cad_raw_clear }}
               />
             </div>
@@ -130,7 +114,7 @@ export default function CADDataModal() {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-dark-border flex justify-end">
+        <div className="px-5 py-3 border-t border-gray-200 flex justify-end">
           <button className="btn btn-primary" onClick={() => setShowCadModal(false)}>Close</button>
         </div>
       </div>

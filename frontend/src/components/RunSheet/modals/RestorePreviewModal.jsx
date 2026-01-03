@@ -37,20 +37,20 @@ export default function RestorePreviewModal() {
 
   return (
     <div 
-      className="fixed inset-0 bg-black/85 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       onClick={handleClose}
     >
       <div 
-        className="bg-dark-bg rounded-lg w-[95%] max-w-[700px] max-h-[85vh] flex flex-col shadow-2xl"
+        className="bg-theme-card rounded-lg w-[95%] max-w-[700px] max-h-[85vh] flex flex-col shadow-2xl border border-theme"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-5 py-4 border-b border-dark-border flex justify-between items-center">
+        <div className="px-5 py-4 border-b border-theme flex justify-between items-center">
           <h3 className={`text-lg font-semibold m-0 ${restoreComplete ? 'text-status-open' : 'text-accent-red'}`}>
             {restoreComplete ? '✓ Reparse Complete' : 'Reparse from CAD'}
           </h3>
           <button 
-            className="bg-transparent border-none text-gray-500 hover:text-white text-2xl cursor-pointer leading-none p-0"
+            className="bg-transparent border-none text-theme-hint hover:text-theme-primary text-2xl cursor-pointer leading-none p-0"
             onClick={handleClose}
           >
             ×
@@ -60,7 +60,7 @@ export default function RestorePreviewModal() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {!restoreComplete && (
-            <p className="text-gray-400 text-sm mb-4">
+            <p className="text-theme-muted text-sm mb-4">
               This will reparse the stored CAD data and update all CAD-derived fields,
               including unit configurations (is_mutual_aid, counts_for_response_times).
             </p>
@@ -78,12 +78,12 @@ export default function RestorePreviewModal() {
           {/* Field Changes */}
           {hasFieldChanges && (
             <>
-              <h4 className="text-gray-300 text-sm font-medium mb-2">
+              <h4 className="text-theme-secondary text-sm font-medium mb-2">
                 {restoreComplete ? 'Fields Updated' : 'Field Changes'}
               </h4>
               <table className="w-full text-sm border-collapse mb-4">
                 <thead>
-                  <tr className="bg-dark-border text-accent-red text-xs uppercase">
+                  <tr className="bg-accent-red text-white text-xs uppercase">
                     <th className="px-3 py-2 text-left">Field</th>
                     <th className="px-3 py-2 text-left">{restoreComplete ? 'Was' : 'Current Value'}</th>
                     <th className="px-3 py-2 text-left">{restoreComplete ? 'Now' : 'CAD Value'}</th>
@@ -91,13 +91,13 @@ export default function RestorePreviewModal() {
                 </thead>
                 <tbody>
                   {restorePreview.changes.map((change, idx) => (
-                    <tr key={idx} className="border-b border-dark-border">
-                      <td className="px-3 py-2 text-gray-300 font-medium">{change.field}</td>
-                      <td className={`px-3 py-2 ${restoreComplete ? 'text-gray-500 line-through' : 'text-status-error'}`}>
-                        {formatFieldValue(change.field, change.current) || <span className="text-gray-600 italic">empty</span>}
+                    <tr key={idx} className="border-b border-theme">
+                      <td className="px-3 py-2 text-theme-secondary font-medium">{change.field}</td>
+                      <td className={`px-3 py-2 ${restoreComplete ? 'text-theme-hint line-through' : 'text-status-error'}`}>
+                        {formatFieldValue(change.field, change.current) || <span className="text-theme-hint italic">empty</span>}
                       </td>
                       <td className="px-3 py-2 text-status-open">
-                        {formatFieldValue(change.field, change.cad) || <span className="text-gray-600 italic">empty</span>}
+                        {formatFieldValue(change.field, change.cad) || <span className="text-theme-hint italic">empty</span>}
                       </td>
                     </tr>
                   ))}
@@ -109,12 +109,12 @@ export default function RestorePreviewModal() {
           {/* Unit Config Changes */}
           {hasUnitChanges && (
             <>
-              <h4 className="text-gray-300 text-sm font-medium mb-2">
+              <h4 className="text-theme-secondary text-sm font-medium mb-2">
                 {restoreComplete ? 'Units Updated' : 'Unit Configuration Changes'}
               </h4>
               <table className="w-full text-sm border-collapse mb-4">
                 <thead>
-                  <tr className="bg-dark-border text-accent-red text-xs uppercase">
+                  <tr className="bg-accent-red text-white text-xs uppercase">
                     <th className="px-3 py-2 text-left">Unit</th>
                     <th className="px-3 py-2 text-left">Field</th>
                     <th className="px-3 py-2 text-left">{restoreComplete ? 'Was' : 'Current'}</th>
@@ -123,11 +123,11 @@ export default function RestorePreviewModal() {
                 </thead>
                 <tbody>
                   {restorePreview.unitChanges.map((change, idx) => (
-                    <tr key={idx} className="border-b border-dark-border">
-                      <td className="px-3 py-2 text-gray-300 font-medium">{change.unit_id}</td>
-                      <td className="px-3 py-2 text-gray-400">{change.field}</td>
-                      <td className={`px-3 py-2 ${restoreComplete ? 'text-gray-500 line-through' : 'text-status-error'}`}>
-                        {change.current === null ? <span className="text-gray-600 italic">none</span> : String(change.current)}
+                    <tr key={idx} className="border-b border-theme">
+                      <td className="px-3 py-2 text-theme-secondary font-medium">{change.unit_id}</td>
+                      <td className="px-3 py-2 text-theme-muted">{change.field}</td>
+                      <td className={`px-3 py-2 ${restoreComplete ? 'text-theme-hint line-through' : 'text-status-error'}`}>
+                        {change.current === null ? <span className="text-theme-hint italic">none</span> : String(change.current)}
                       </td>
                       <td className="px-3 py-2 text-status-open">
                         {typeof change.will_be === 'object' ? JSON.stringify(change.will_be) : String(change.will_be)}
@@ -141,21 +141,21 @@ export default function RestorePreviewModal() {
 
           {/* No visible changes message */}
           {!hasFieldChanges && !hasUnitChanges && !restoreComplete && (
-            <p className="text-gray-500 italic mb-4">
+            <p className="text-theme-hint italic mb-4">
               No changes detected. You can still reparse to ensure data is in sync with current apparatus configuration.
             </p>
           )}
           
           {!hasFieldChanges && !hasUnitChanges && restoreComplete && (
-            <p className="text-gray-400 italic mb-4">
+            <p className="text-theme-muted italic mb-4">
               No changes were needed. Data was already in sync.
             </p>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-dark-border flex justify-between items-center">
-          <span className="text-gray-500 text-sm">
+        <div className="px-5 py-3 border-t border-theme flex justify-between items-center">
+          <span className="text-theme-hint text-sm">
             {restoreComplete 
               ? (totalChanges > 0 ? `${totalChanges} change${totalChanges !== 1 ? 's' : ''} applied` : 'No changes needed')
               : (totalChanges > 0 ? `${totalChanges} change${totalChanges !== 1 ? 's' : ''} detected` : 'Full reparse will sync with current config')

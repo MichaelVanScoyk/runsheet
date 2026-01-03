@@ -41,16 +41,16 @@ export default function MutualAidSection() {
   };
   
   return (
-    <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
-      <h3 className="text-sm font-semibold text-gray-300 border-b border-gray-700 pb-2 mb-4 flex items-center gap-2">
+    <div className="bg-theme-section rounded-lg p-4 mb-4 border border-theme">
+      <h3 className="text-sm font-semibold text-theme-muted border-b border-theme-light pb-2 mb-4 flex items-center gap-2">
         <span>🤝</span>
         Mutual Aid
-        <span className="text-xs text-gray-500 font-normal ml-auto">For Chiefs Report & NERIS</span>
+        <span className="text-xs text-theme-hint font-normal ml-auto">For Chiefs Report & NERIS</span>
       </h3>
       
       {/* Main Question */}
       <div className="mb-4">
-        <p className="text-gray-300 text-sm mb-3">Was mutual aid given or received on this call?</p>
+        <p className="text-theme-primary text-sm mb-3">Was mutual aid given or received on this call?</p>
         
         <div className="flex flex-wrap gap-2">
           <button
@@ -59,7 +59,7 @@ export default function MutualAidSection() {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               direction === 'NONE'
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                : 'bg-theme-section-alt text-theme-muted hover:bg-gray-200 border border-theme'
             }`}
           >
             No - Our First Due
@@ -70,7 +70,7 @@ export default function MutualAidSection() {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               direction === 'GIVEN'
                 ? 'bg-green-600 text-white'
-                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                : 'bg-theme-section-alt text-theme-muted hover:bg-gray-200 border border-theme'
             }`}
           >
             Yes - We Gave Aid
@@ -81,7 +81,7 @@ export default function MutualAidSection() {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               direction === 'RECEIVED'
                 ? 'bg-orange-600 text-white'
-                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                : 'bg-theme-section-alt text-theme-muted hover:bg-gray-200 border border-theme'
             }`}
           >
             Yes - We Received Aid
@@ -89,7 +89,7 @@ export default function MutualAidSection() {
         </div>
         
         {!hasAnswered && (
-          <p className="text-xs text-yellow-500 mt-2">
+          <p className="text-xs text-amber-700 mt-2">
             ⚠️ Please answer to continue with damage assessment
           </p>
         )}
@@ -97,28 +97,28 @@ export default function MutualAidSection() {
       
       {/* Expanded Fields when Mutual Aid (Given or Received) */}
       {isMutualAid && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-gray-700">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-theme-light">
           {/* Type */}
           <div className="flex flex-col gap-1">
-            <label className="text-gray-400 text-xs">Aid Type</label>
+            <label className="text-theme-muted text-xs">Aid Type</label>
             <select
               value={formData.neris_aid_type || ''}
               onChange={(e) => handleChange('neris_aid_type', e.target.value || null)}
-              className="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none"
+              className="w-full bg-white border border-theme rounded px-3 py-2 text-theme-primary focus:border-primary-color focus:outline-none"
             >
               <option value="">Select type...</option>
               <option value="AUTOMATIC">Automatic Aid</option>
               <option value="MUTUAL">Mutual Aid</option>
               <option value="OTHER">Other</option>
             </select>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-theme-hint mt-1">
               Automatic = pre-arranged, Mutual = requested
             </p>
           </div>
           
           {/* Station */}
           <div className="flex flex-col gap-1">
-            <label className="text-gray-400 text-xs">
+            <label className="text-theme-muted text-xs">
               {direction === 'GIVEN' ? 'Station We Assisted' : 'Station That Assisted Us'}
             </label>
             <input
@@ -126,7 +126,7 @@ export default function MutualAidSection() {
               placeholder="e.g., 49"
               value={formData.neris_aid_departments?.[0] || ''}
               onChange={(e) => handleStationInput(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+              className="w-full bg-white border border-theme rounded px-3 py-2 text-theme-primary placeholder-theme-hint focus:border-primary-color focus:outline-none"
             />
           </div>
         </div>
@@ -134,7 +134,7 @@ export default function MutualAidSection() {
       
       {/* Contextual help text */}
       {hasAnswered && (
-        <p className="text-xs text-gray-500 mt-3">
+        <p className="text-xs text-theme-hint mt-3">
           {direction === 'NONE' && '✓ This is our incident - damage assessment applies'}
           {direction === 'GIVEN' && '✓ We assisted another station - they track damage for their report'}
           {direction === 'RECEIVED' && '✓ This is our incident with assistance - damage assessment applies'}

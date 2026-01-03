@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 :root {
+  /* Brand colors */
   --primary-color: #016a2b;
   --primary-hover: #015a24;
   --primary-light: #e6f4ea;
@@ -11,11 +12,27 @@
   --secondary-light: #fffde6;
   --primary-rgb: 1, 106, 43;
   --secondary-rgb: 238, 238, 1;
+  
+  /* Semantic backgrounds */
   --bg-page: #e8e8e8;
   --bg-card: #ffffff;
+  --bg-section: #f8f8f8;
+  --bg-section-alt: #f0f0f0;
+  --bg-input: #ffffff;
+  --bg-hover: #f5f5f5;
+  
+  /* Semantic borders */
   --border-color: #e0e0e0;
+  --border-light: #eee;
+  --border-section: #ddd;
+  
+  /* Semantic text */
   --text-primary: #333333;
+  --text-secondary: #555555;
   --text-muted: #666666;
+  --text-hint: #888888;
+  --text-placeholder: #999999;
+  --text-on-primary: #ffffff;
 }
 
 body {
@@ -23,16 +40,87 @@ body {
   color: var(--text-primary);
 }
 
+/* ============================================
+   SEMANTIC UTILITY CLASSES (Light Theme)
+   Use these in components instead of gray-* 
+   ============================================ */
+
+/* Text utilities */
+.text-theme-primary { color: var(--text-primary) !important; }
+.text-theme-secondary { color: var(--text-secondary) !important; }
+.text-theme-muted { color: var(--text-muted) !important; }
+.text-theme-hint { color: var(--text-hint) !important; }
+
+/* Background utilities */
+.bg-theme-card { background-color: var(--bg-card) !important; }
+.bg-theme-section { background-color: var(--bg-section) !important; }
+.bg-theme-section-alt { background-color: var(--bg-section-alt) !important; }
+.bg-theme-hover { background-color: var(--bg-hover) !important; }
+
+/* Border utilities */
+.border-theme { border-color: var(--border-color) !important; }
+.border-theme-light { border-color: var(--border-light) !important; }
+.border-theme-section { border-color: var(--border-section) !important; }
+
+/* ============================================
+   LEGACY DARK THEME CLASS REMAPPING
+   For backward compatibility with existing code
+   ============================================ */
+
 /* Remap Tailwind dark classes to light */
 .bg-dark-bg { background-color: var(--bg-card) !important; }
 .bg-dark-card { background-color: var(--bg-card) !important; }
-.bg-dark-border { background-color: #f5f5f5 !important; }
-.bg-dark-hover { background-color: #f8f8f8 !important; }
+.bg-dark-border { background-color: var(--bg-section) !important; }
+.bg-dark-hover { background-color: var(--bg-hover) !important; }
+.bg-dark-hover\/50 { background-color: var(--bg-hover) !important; }
 
 .border-dark-border { border-color: var(--border-color) !important; }
+.border-dark-border\/50 { border-color: var(--border-light) !important; }
 
+/* Gray text scale remapping - COMPREHENSIVE */
+.text-gray-100 { color: var(--text-primary) !important; }
+.text-gray-200 { color: var(--text-primary) !important; }
+.text-gray-300 { color: var(--text-primary) !important; }
 .text-gray-400 { color: var(--text-muted) !important; }
-.text-gray-500 { color: #555 !important; }
+.text-gray-500 { color: var(--text-secondary) !important; }
+.text-gray-600 { color: var(--text-hint) !important; }
+
+/* Dark background remapping - COMPREHENSIVE */
+.bg-gray-600 { background-color: var(--bg-section-alt) !important; }
+.bg-gray-700 { background-color: var(--bg-section-alt) !important; }
+.bg-gray-800 { background-color: var(--bg-section) !important; }
+.bg-gray-900 { background-color: var(--bg-card) !important; }
+
+/* Opacity variants */
+.bg-gray-800\/50 { background-color: var(--bg-section) !important; }
+.bg-gray-700\/50 { background-color: var(--bg-section-alt) !important; }
+
+/* Dark border remapping */
+.border-gray-500 { border-color: var(--border-section) !important; }
+.border-gray-600 { border-color: var(--border-section) !important; }
+.border-gray-700 { border-color: var(--border-color) !important; }
+
+/* text-white MUST become dark text on light backgrounds */
+.text-white { color: var(--text-primary) !important; }
+
+/* EXCEPTION: text-white should stay white on colored backgrounds */
+.bg-primary .text-white,
+.bg-accent-red .text-white,
+.bg-blue-600 .text-white,
+.bg-green-600 .text-white,
+.bg-orange-600 .text-white,
+.bg-status-completed .text-white,
+.bg-status-open .text-white,
+.bg-status-error .text-white,
+th .text-white,
+th.text-white { 
+  color: #ffffff !important; 
+}
+
+/* Placeholder text */
+.placeholder-gray-500::placeholder { color: var(--text-placeholder) !important; }
+.placeholder-gray-600::placeholder { color: var(--text-placeholder) !important; }
+.text-yellow-500 { color: #b45309 !important; } /* Darken yellow for visibility */
 
 /* Accent colors → primary */
 .text-accent-red { color: var(--primary-color) !important; }
@@ -121,6 +209,31 @@ label {
 /* Badge accents for open/active status */
 .badge-open {
   border-left: 3px solid var(--secondary-color) !important;
+}
+
+/* ============================================
+   CAD HTML CONTENT STYLING (Light Theme)
+   For raw CAD data displayed in modals
+   ============================================ */
+.cad-html-content table { 
+  width: 100%; 
+  border-collapse: collapse; 
+}
+.cad-html-content td, 
+.cad-html-content th { 
+  border: 1px solid var(--border-color); 
+  padding: 4px 8px; 
+  color: var(--text-primary) !important;
+  background: transparent !important;
+}
+.cad-html-content tr { 
+  background: transparent !important; 
+}
+.cad-html-content font { 
+  color: var(--text-primary) !important; 
+}
+.cad-html-content b { 
+  color: var(--primary-color); 
 }
 
 /* Keyframes for pulse animation */

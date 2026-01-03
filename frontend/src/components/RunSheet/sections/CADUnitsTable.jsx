@@ -6,7 +6,7 @@ import { formatTimeLocal } from '../../../utils/timeUtils';
 function SortIndicator({ active, direction }) {
   if (!active) {
     return (
-      <span className="ml-1 text-gray-600 opacity-50">⇅</span>
+      <span className="ml-1 text-theme-hint opacity-50">⇅</span>
     );
   }
   return (
@@ -119,7 +119,7 @@ export default function CADUnitsTable() {
   ];
   
   return (
-    <div className="pt-3 border-t border-dark-border">
+    <div className="pt-3 border-t border-theme">
       <div className="flex items-center justify-between mb-2">
         <h4 className="text-accent-red text-sm font-semibold">
           CAD Units ({formData.cad_units.length})
@@ -127,23 +127,23 @@ export default function CADUnitsTable() {
         {sortingEnabled && sortConfig.field && (
           <button
             onClick={() => setSortConfig({ field: null, direction: 'asc' })}
-            className="text-xs text-gray-400 hover:text-accent-red transition-colors"
+            className="text-xs text-theme-muted hover:text-accent-red transition-colors"
           >
             Clear Sort
           </button>
         )}
       </div>
       {sortingEnabled && (
-        <p className="text-xs text-gray-500 mb-2">Click column headers to sort</p>
+        <p className="text-xs text-theme-hint mb-2">Click column headers to sort</p>
       )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-dark-border text-accent-red text-xs uppercase">
+            <tr className="bg-theme-section text-accent-red text-xs uppercase">
               {columns.map(col => (
                 <th
                   key={col.key}
-                  className={`px-2 py-1.5 text-left ${sortingEnabled ? 'cursor-pointer hover:bg-dark-hover select-none' : ''}`}
+                  className={`px-2 py-1.5 text-left border-b border-theme ${sortingEnabled ? 'cursor-pointer hover:bg-theme-hover select-none' : ''}`}
                   onClick={() => handleSort(col.key)}
                 >
                   <span className="inline-flex items-center">
@@ -169,26 +169,27 @@ export default function CADUnitsTable() {
               // Cleared highlights for any unit that matches
               const isLastCleared = timesMatch(unit.time_cleared, formData.time_last_cleared);
               
-              const highlightClass = 'text-green-400 font-semibold';
+              // Use darker green for visibility on light background
+              const highlightClass = 'text-green-700 font-semibold';
               
               return (
                 <tr 
                   key={`${unit.unit_id}-${idx}`} 
-                  className={unit.is_mutual_aid ? 'bg-status-completed/10 border-x-2 border-status-completed' : 'bg-status-open/10 border-x-2 border-status-open'}
+                  className={unit.is_mutual_aid ? 'bg-blue-50 border-x-2 border-blue-400' : 'bg-green-50 border-x-2 border-green-400'}
                 >
-                  <td className="px-2 py-1.5 border-b border-dark-border">
-                    <span className="font-semibold">{unit.unit_id}</span>
+                  <td className="px-2 py-1.5 border-b border-theme">
+                    <span className="font-semibold text-theme-primary">{unit.unit_id}</span>
                     {unit.is_mutual_aid && (
-                      <span className="ml-1.5 bg-status-completed text-white text-[10px] px-1 py-0.5 rounded font-semibold">
+                      <span className="ml-1.5 bg-blue-600 text-white text-[10px] px-1 py-0.5 rounded font-semibold">
                         MA
                       </span>
                     )}
                   </td>
-                  <td className={`px-2 py-1.5 border-b border-dark-border ${isFirstDispatch ? highlightClass : 'text-gray-400'}`}>{formatTime(unit.time_dispatched)}</td>
-                  <td className={`px-2 py-1.5 border-b border-dark-border ${isFirstEnroute ? highlightClass : 'text-gray-400'}`}>{formatTime(unit.time_enroute)}</td>
-                  <td className={`px-2 py-1.5 border-b border-dark-border ${isFirstArrived ? highlightClass : 'text-gray-400'}`}>{formatTime(unit.time_arrived)}</td>
-                  <td className={`px-2 py-1.5 border-b border-dark-border ${isLastCleared ? highlightClass : 'text-gray-400'}`}>{formatTime(unit.time_cleared)}</td>
-                  <td className="px-2 py-1.5 border-b border-dark-border text-gray-400">{unit.is_mutual_aid ? 'Mutual Aid' : 'Station 48'}</td>
+                  <td className={`px-2 py-1.5 border-b border-theme ${isFirstDispatch ? highlightClass : 'text-theme-muted'}`}>{formatTime(unit.time_dispatched)}</td>
+                  <td className={`px-2 py-1.5 border-b border-theme ${isFirstEnroute ? highlightClass : 'text-theme-muted'}`}>{formatTime(unit.time_enroute)}</td>
+                  <td className={`px-2 py-1.5 border-b border-theme ${isFirstArrived ? highlightClass : 'text-theme-muted'}`}>{formatTime(unit.time_arrived)}</td>
+                  <td className={`px-2 py-1.5 border-b border-theme ${isLastCleared ? highlightClass : 'text-theme-muted'}`}>{formatTime(unit.time_cleared)}</td>
+                  <td className="px-2 py-1.5 border-b border-theme text-theme-muted">{unit.is_mutual_aid ? 'Mutual Aid' : 'Station 48'}</td>
                 </tr>
               );
             })}

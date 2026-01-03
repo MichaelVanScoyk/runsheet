@@ -47,22 +47,23 @@ export default function PersonnelGrid() {
   );
   
   return (
-    <div className="pt-3 border-t border-dark-border">
+    <div className="pt-3 border-t border-theme">
       <h4 className="text-accent-red text-sm font-semibold mb-2">Personnel Assignments</h4>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse" style={{ tableLayout: 'auto' }}>
           <thead>
             <tr>
-              <th className="w-8 bg-dark-border text-gray-400 text-xs font-semibold px-1 py-1.5 border border-dark-border">#</th>
+              <th className="w-8 bg-theme-section text-theme-muted text-xs font-semibold px-1 py-1.5 border border-theme">#</th>
               {trucksWithSlots.map(t => {
                 const responded = actuallyResponded(t);
+                // On light theme: responded units are green, non-responded are dimmed
                 const headerClass = hasCadData 
-                  ? (responded ? 'bg-status-open/30 text-status-open' : 'opacity-40 text-gray-500')
-                  : 'text-accent-red';
+                  ? (responded ? 'text-green-700 font-bold' : 'text-theme-hint opacity-60')
+                  : 'text-accent-red font-semibold';
                 return (
                   <th 
                     key={t.id} 
-                    className={`bg-dark-border text-xs font-semibold px-2 py-1.5 border border-dark-border min-w-[120px] ${headerClass}`}
+                    className={`bg-theme-section text-xs px-2 py-1.5 border border-theme min-w-[120px] ${headerClass}`}
                   >
                     {t.name}
                   </th>
@@ -73,7 +74,7 @@ export default function PersonnelGrid() {
           <tbody>
             {Array.from({ length: maxSlots }, (_, slot) => (
               <tr key={slot}>
-                <td className="w-8 bg-dark-border text-gray-400 text-xs font-semibold text-center px-1 py-1 border border-dark-border">
+                <td className="w-8 bg-theme-section text-theme-muted text-xs font-semibold text-center px-1 py-1 border border-theme">
                   {getSlotLabel(slot)}
                 </td>
                 {trucksWithSlots.map(t => {
@@ -81,7 +82,7 @@ export default function PersonnelGrid() {
                   
                   // Slot doesn't exist for this truck
                   if (slot >= slotCount) {
-                    return <td key={t.id} className="bg-dark-hover/50 border border-dark-border" />;
+                    return <td key={t.id} className="bg-theme-section-alt border border-theme" />;
                   }
                   
                   const val = assignments[t.unit_designator]?.[slot] || '';
@@ -91,7 +92,7 @@ export default function PersonnelGrid() {
                   return (
                     <td 
                       key={t.id} 
-                      className={`bg-dark-card border border-dark-border p-1 ${shouldDim ? 'opacity-35 hover:opacity-70' : ''}`}
+                      className={`bg-white border border-theme p-1 ${shouldDim ? 'opacity-40 hover:opacity-80' : ''}`}
                     >
                       <PersonnelTypeahead
                         value={val}

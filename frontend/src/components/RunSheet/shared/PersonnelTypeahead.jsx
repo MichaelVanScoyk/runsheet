@@ -101,7 +101,7 @@ export default function PersonnelTypeahead({ value, availablePersonnel, allPerso
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         placeholder="-"
-        className="flex-1 min-w-0 bg-dark-input border border-dark-border rounded px-2 py-1 text-white text-sm w-full focus:outline-none focus:border-accent-red"
+        className="flex-1 min-w-0 bg-theme-card border border-theme rounded px-2 py-1 text-theme-primary text-sm w-full focus:outline-none focus:border-accent-red"
       />
       {value && !isOpen && (
         <button 
@@ -113,11 +113,11 @@ export default function PersonnelTypeahead({ value, availablePersonnel, allPerso
         </button>
       )}
       {isOpen && filtered.length > 0 && (
-        <div className="absolute top-full left-0 right-0 bg-dark-card border border-dark-border border-t-0 rounded-b max-h-48 overflow-y-auto z-50">
+        <div className="absolute top-full left-0 right-0 bg-theme-card border border-theme border-t-0 rounded-b max-h-48 overflow-y-auto z-50 shadow-lg">
           {filtered.slice(0, 10).map((p, idx) => (
             <div
               key={p.id}
-              className={`px-2 py-1.5 cursor-pointer text-sm ${idx === highlightedIndex ? 'bg-dark-border text-white' : 'text-gray-400 hover:bg-dark-border hover:text-white'}`}
+              className={`px-2 py-1.5 cursor-pointer text-sm ${idx === highlightedIndex ? 'bg-theme-section text-theme-primary' : 'text-theme-muted hover:bg-theme-section hover:text-theme-primary'}`}
               onMouseDown={() => handleSelect(p)}
               onMouseEnter={() => setHighlightedIndex(idx)}
             >
@@ -127,8 +127,8 @@ export default function PersonnelTypeahead({ value, availablePersonnel, allPerso
         </div>
       )}
       {isOpen && searchText && filtered.length === 0 && (
-        <div className="absolute top-full left-0 right-0 bg-dark-card border border-dark-border border-t-0 rounded-b z-50">
-          <div className="px-2 py-1.5 text-gray-500 text-sm italic">No matches</div>
+        <div className="absolute top-full left-0 right-0 bg-theme-card border border-theme border-t-0 rounded-b z-50 shadow-lg">
+          <div className="px-2 py-1.5 text-theme-hint text-sm italic">No matches</div>
         </div>
       )}
     </div>

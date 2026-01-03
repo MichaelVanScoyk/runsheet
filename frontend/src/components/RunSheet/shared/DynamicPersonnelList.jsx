@@ -165,17 +165,17 @@ export default function DynamicPersonnelList({
     );
   }
 
-  // Dark mode (original)
+  // Theme-aware mode (default)
   return (
-    <div className="bg-dark-card rounded-md p-3 border border-dark-border">
-      <div className="text-accent-red font-semibold text-sm mb-2 pb-2 border-b border-dark-border">
+    <div className="bg-theme-card rounded-md p-3 border border-theme">
+      <div className="text-accent-red font-semibold text-sm mb-2 pb-2 border-b border-theme">
         {label}
       </div>
       <div className="flex flex-col gap-2">
         {/* Existing assignments */}
         {assigned.map((personId, idx) => (
           <div key={idx} className="flex items-center gap-2">
-            <span className="flex-1 px-2 py-1 bg-dark-border rounded text-white text-sm">
+            <span className="flex-1 px-2 py-1 bg-theme-section rounded text-theme-primary text-sm">
               {getPersonName(personId)}
             </span>
             <button 
@@ -196,21 +196,21 @@ export default function DynamicPersonnelList({
             onChange={(e) => setSearchText(e.target.value)}
             onFocus={() => setShowDropdown(assigned.length)}
             onBlur={() => setTimeout(() => setShowDropdown(null), 200)}
-            className="flex-1 px-2 py-1 bg-dark-hover border border-dashed border-dark-border rounded text-white text-sm placeholder-gray-600 focus:outline-none focus:border-accent-red focus:border-solid"
+            className="flex-1 px-2 py-1 bg-theme-hover border border-dashed border-theme rounded text-theme-primary text-sm placeholder-theme-hint focus:outline-none focus:border-accent-red focus:border-solid"
           />
           {showDropdown === assigned.length && (
-            <div className="absolute top-full left-0 right-0 mt-0.5 bg-dark-bg border border-dark-border rounded max-h-48 overflow-y-auto z-50 shadow-lg">
+            <div className="absolute top-full left-0 right-0 mt-0.5 bg-theme-card border border-theme rounded max-h-48 overflow-y-auto z-50 shadow-lg">
               {getFiltered(assigned.length).slice(0, 10).map(p => (
                 <div
                   key={p.id}
-                  className="px-2 py-1.5 cursor-pointer text-sm text-gray-400 hover:bg-dark-border hover:text-white"
+                  className="px-2 py-1.5 cursor-pointer text-sm text-theme-muted hover:bg-theme-section hover:text-theme-primary"
                   onMouseDown={() => handleSelect(assigned.length, p.id)}
                 >
                   {p.last_name}, {p.first_name}
                 </div>
               ))}
               {getFiltered(assigned.length).length === 0 && (
-                <div className="px-2 py-1.5 text-gray-500 text-sm italic">No matches</div>
+                <div className="px-2 py-1.5 text-theme-hint text-sm italic">No matches</div>
               )}
             </div>
           )}

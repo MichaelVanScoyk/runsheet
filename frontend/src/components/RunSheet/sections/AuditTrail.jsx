@@ -48,7 +48,7 @@ export default function AuditTrail() {
   return (
     <div 
       ref={auditLogRef}
-      className="bg-dark-hover rounded px-3 py-2 mb-2 text-xs"
+      className="bg-theme-section rounded px-3 py-2 mb-2 text-xs border border-theme-light"
     >
       <div 
         className="flex items-center justify-between cursor-pointer"
@@ -56,52 +56,52 @@ export default function AuditTrail() {
       >
         <div>
           <span className="mr-2">📝</span>
-          Last edit: <span className="text-white">{getDisplayName(auditLog[0])}</span>
+          Last edit: <span className="text-theme-primary font-medium">{getDisplayName(auditLog[0])}</span>
           {' — '}
-          <span className="text-gray-400">{auditLog[0]?.summary}</span>
+          <span className="text-theme-muted">{auditLog[0]?.summary}</span>
           {' — '}
-          <span className="text-gray-500">
+          <span className="text-theme-hint">
             {formatDateTimeLocal(auditLog[0]?.created_at)}
           </span>
         </div>
-        <span className="text-gray-500">
+        <span className="text-theme-hint">
           {showFullAuditLog ? '▲' : '▼'} {auditLog.length} edit{auditLog.length !== 1 ? 's' : ''}
         </span>
       </div>
       
       {showFullAuditLog && (
-        <div className="mt-2 pt-2 border-t border-dark-border max-h-96 overflow-y-auto">
+        <div className="mt-2 pt-2 border-t border-theme-light max-h-96 overflow-y-auto">
           {auditLog.map((entry, idx) => {
             const fieldChanges = formatFieldChanges(entry.fields_changed);
             
             return (
               <div 
                 key={entry.id || idx} 
-                className={`py-2 ${idx < auditLog.length - 1 ? 'border-b border-dark-border/50' : ''}`}
+                className={`py-2 ${idx < auditLog.length - 1 ? 'border-b border-theme-light' : ''}`}
               >
                 {/* Main row */}
                 <div className="flex justify-between items-start">
                   <div>
-                    <span className="text-gray-500 mr-2 text-[10px] uppercase">{entry.action}</span>
-                    <span className="text-white">{getDisplayName(entry)}</span>
+                    <span className="text-theme-hint mr-2 text-[10px] uppercase">{entry.action}</span>
+                    <span className="text-theme-primary font-medium">{getDisplayName(entry)}</span>
                     {entry.summary && (
-                      <span className="text-gray-400 ml-2">— {entry.summary}</span>
+                      <span className="text-theme-muted ml-2">— {entry.summary}</span>
                     )}
                   </div>
-                  <span className="text-gray-500 text-[11px] whitespace-nowrap ml-2">
+                  <span className="text-theme-hint text-[11px] whitespace-nowrap ml-2">
                     {formatDateTimeLocal(entry.created_at)}
                   </span>
                 </div>
                 
                 {/* Field changes detail */}
                 {fieldChanges && fieldChanges.length > 0 && (
-                  <div className="mt-1.5 ml-4 pl-2 border-l-2 border-dark-border">
+                  <div className="mt-1.5 ml-4 pl-2 border-l-2 border-theme">
                     {fieldChanges.map((fc, fcIdx) => (
                       <div key={fcIdx} className="text-[11px] py-0.5">
-                        <span className="text-gray-500">{fc.field}:</span>
-                        <span className="text-status-error ml-1">{fc.old}</span>
-                        <span className="text-gray-600 mx-1">→</span>
-                        <span className="text-status-open">{fc.new}</span>
+                        <span className="text-theme-hint">{fc.field}:</span>
+                        <span className="text-red-600 ml-1">{fc.old}</span>
+                        <span className="text-theme-hint mx-1">→</span>
+                        <span className="text-green-600">{fc.new}</span>
                       </div>
                     ))}
                   </div>

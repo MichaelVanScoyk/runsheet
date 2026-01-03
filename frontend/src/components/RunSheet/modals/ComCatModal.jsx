@@ -13,32 +13,32 @@ const CATEGORY_STYLES = {
   CALLER: { 
     label: 'Caller Information', 
     color: 'bg-blue-600', 
-    textColor: 'text-blue-400',
+    textColor: 'text-blue-600',
     borderColor: 'border-blue-600'
   },
   TACTICAL: { 
     label: 'Command & Tactical', 
     color: 'bg-red-600', 
-    textColor: 'text-red-400',
+    textColor: 'text-red-600',
     borderColor: 'border-red-600'
   },
   OPERATIONS: { 
     label: 'Operations', 
     color: 'bg-amber-600', 
-    textColor: 'text-amber-400',
+    textColor: 'text-amber-600',
     borderColor: 'border-amber-600'
   },
   UNIT: { 
     label: 'Unit Activity', 
     color: 'bg-green-600', 
-    textColor: 'text-green-400',
+    textColor: 'text-green-600',
     borderColor: 'border-green-600'
   },
   OTHER: { 
     label: 'Other', 
-    color: 'bg-gray-600', 
-    textColor: 'text-gray-400',
-    borderColor: 'border-gray-600'
+    color: 'bg-gray-500', 
+    textColor: 'text-theme-muted',
+    borderColor: 'border-gray-500'
   },
 };
 
@@ -209,28 +209,28 @@ export default function ComCatModal() {
   
   return (
     <div 
-      className="fixed inset-0 bg-black/85 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       onClick={() => !saving && setShowComCatModal(false)}
     >
       <div 
-        className="bg-dark-bg rounded-lg w-[95%] max-w-[1000px] max-h-[90vh] flex flex-col shadow-2xl"
+        className="bg-theme-card rounded-lg w-[95%] max-w-[1000px] max-h-[90vh] flex flex-col shadow-2xl border border-theme"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-5 py-4 border-b border-dark-border flex justify-between items-center">
+        <div className="px-5 py-4 border-b border-theme flex justify-between items-center">
           <div>
             <h3 className="text-accent-red text-lg font-semibold m-0">
               Comment Categorizer
             </h3>
-            <p className="text-gray-500 text-sm m-0 mt-1">
+            <p className="text-theme-hint text-sm m-0 mt-1">
               {incident?.internal_incident_number} • {displayComments.length} comments
               {reviewCount > 0 && (
-                <span className="text-amber-400 ml-2">• {reviewCount} need review</span>
+                <span className="text-amber-600 ml-2">• {reviewCount} need review</span>
               )}
             </p>
           </div>
           <button 
-            className="bg-transparent border-none text-gray-500 hover:text-white text-2xl cursor-pointer leading-none p-0"
+            className="bg-transparent border-none text-theme-hint hover:text-theme-primary text-2xl cursor-pointer leading-none p-0"
             onClick={() => !saving && setShowComCatModal(false)}
             disabled={saving}
           >
@@ -239,14 +239,14 @@ export default function ComCatModal() {
         </div>
         
         {/* Stats bar */}
-        <div className="px-5 py-2 bg-dark-card border-b border-dark-border flex justify-between items-center text-xs">
-          <div className="flex gap-4 text-gray-400">
+        <div className="px-5 py-2 bg-theme-section border-b border-theme flex justify-between items-center text-xs">
+          <div className="flex gap-4 text-theme-muted">
             {stats && (
               <>
                 <span>ML: {stats.ml_available ? (
-                  <span className="text-green-400">Available</span>
+                  <span className="text-green-600">Available</span>
                 ) : (
-                  <span className="text-red-400">Unavailable</span>
+                  <span className="text-red-600">Unavailable</span>
                 )}</span>
                 {stats.ml_available && (
                   <>
@@ -258,18 +258,18 @@ export default function ComCatModal() {
           </div>
           <div className="text-right">
             {reviewedAt ? (
-              <span className="text-green-400">
+              <span className="text-green-600">
                 ✓ Reviewed by {reviewedByName || 'Officer'} • {formatReviewTime(reviewedAt)}
               </span>
             ) : (
-              <span className="text-amber-400">⚠️ Not yet reviewed</span>
+              <span className="text-amber-600">⚠️ Not yet reviewed</span>
             )}
           </div>
         </div>
         
         {/* Filter toggle */}
-        <div className="px-5 py-2 border-b border-dark-border flex justify-between items-center">
-          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+        <div className="px-5 py-2 border-b border-theme flex justify-between items-center">
+          <label className="flex items-center gap-2 text-sm text-theme-muted cursor-pointer">
             <input
               type="checkbox"
               checked={filterReviewOnly}
@@ -279,18 +279,18 @@ export default function ComCatModal() {
             Show only comments needing review ({reviewCount})
           </label>
           {changeCount > 0 && (
-            <span className="text-amber-400 text-sm">{changeCount} unsaved changes</span>
+            <span className="text-amber-600 text-sm">{changeCount} unsaved changes</span>
           )}
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {loading ? (
-            <div className="text-center text-gray-400 py-12">Loading comments...</div>
+            <div className="text-center text-theme-muted py-12">Loading comments...</div>
           ) : error ? (
-            <div className="text-center text-red-400 py-12">{error}</div>
+            <div className="text-center text-red-600 py-12">{error}</div>
           ) : displayComments.length === 0 ? (
-            <div className="text-center text-gray-400 py-12">
+            <div className="text-center text-theme-muted py-12">
               {filterReviewOnly ? 'No comments need review' : 'No comments to display'}
             </div>
           ) : (
@@ -305,35 +305,35 @@ export default function ComCatModal() {
                   <div 
                     key={actualIndex}
                     className={`
-                      bg-dark-card rounded border-l-4 p-3 flex gap-4 items-start
+                      bg-theme-section rounded border-l-4 p-3 flex gap-4 items-start
                       ${style.borderColor}
                       ${hasChange ? 'ring-1 ring-amber-500/50' : ''}
-                      ${comment.needs_review ? 'bg-dark-card/80' : ''}
+                      ${comment.needs_review ? 'bg-amber-50' : ''}
                     `}
                   >
                     {/* Time */}
-                    <div className="text-gray-500 text-sm font-mono w-20 shrink-0">
+                    <div className="text-theme-hint text-sm font-mono w-20 shrink-0">
                       {comment.time}
                     </div>
                     
                     {/* Text */}
                     <div className="flex-1 min-w-0">
-                      <div className="text-gray-200 text-sm break-words">
+                      <div className="text-theme-primary text-sm break-words">
                         {comment.text}
                       </div>
-                      <div className="flex gap-3 mt-1 text-xs text-gray-500">
+                      <div className="flex gap-3 mt-1 text-xs text-theme-hint">
                         <span>{comment.operator}</span>
                         {comment.category_source === 'ML' && (
-                          <span className={comment.needs_review ? 'text-amber-400' : 'text-gray-400'}>
+                          <span className={comment.needs_review ? 'text-amber-600' : 'text-theme-muted'}>
                             ML: {(comment.category_confidence * 100).toFixed(0)}%
                             {comment.needs_review && ' ⚠️'}
                           </span>
                         )}
                         {comment.category_source === 'PATTERN' && (
-                          <span className="text-blue-400">Pattern</span>
+                          <span className="text-blue-600">Pattern</span>
                         )}
                         {comment.category_source === 'OFFICER' && (
-                          <span className="text-green-400">Officer ✓</span>
+                          <span className="text-green-600">Officer ✓</span>
                         )}
                       </div>
                     </div>
@@ -367,10 +367,10 @@ export default function ComCatModal() {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-dark-border flex justify-between items-center gap-3">
-          <div className="text-xs text-gray-500">
+        <div className="px-5 py-3 border-t border-theme flex justify-between items-center gap-3">
+          <div className="text-xs text-theme-hint">
             {!canEdit ? (
-              <span className="text-amber-400">⚠️ View only - Officer or Admin role required to edit</span>
+              <span className="text-amber-600">⚠️ View only - Officer or Admin role required to edit</span>
             ) : mlAvailable ? (
               'Corrections train the ML model • Retrain in Admin > ComCat ML'
             ) : (
