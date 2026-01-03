@@ -431,26 +431,63 @@ class ADILogImporter:
         
         call_category = self._determine_category(event_type, event_subtype)
         
+        # Get year from event number first (e.g., F25052996 -> 2025)
+        year = datetime.now().year
+        try:
+            year_prefix = event_number[1:3]
+            year = 2000 + int(year_prefix)
+        except:
+            pass
+        
         # Try to get incident date from report_time
+        # Format can be "HH:MM MM/DD" (e.g., "03:18 09/28") or "MM-DD-YY HH:MM:SS"
         incident_date = None
+        report_time_hour = None
         if report.get('report_time'):
+            rt = report['report_time'].strip()
             try:
-                # report_time format varies: "HH:MM MM/DD" or "MM-DD-YY HH:MM:SS"
-                rt = report['report_time']
                 if '-' in rt and len(rt) > 10:
+                    # Format: MM-DD-YY HH:MM:SS
                     dt = datetime.strptime(rt, '%m-%d-%y %H:%M:%S')
                     incident_date = dt.strftime('%Y-%m-%d')
-            except:
-                pass
+                    report_time_hour = dt.hour
+                elif '/' in rt:
+                    # Format: HH:MM MM/DD (e.g., "03:18 09/28")
+                    date_match = re.search(r'(\d{1,2})/(\d{1,2})', rt)
+                    time_match = re.search(r'^(\d{1,2}):(\d{2})', rt)
+                    if date_match:
+                        month = int(date_match.group(1))
+                        day = int(date_match.group(2))
+                        incident_date = f"{year}-{month:02d}-{day:02d}"
+                    if time_match:
+                        report_time_hour = int(time_match.group(1))
+            except Exception as e:
+                logger.warning(f"Could not parse report_time '{rt}': {e}")
         
-        # Fall back to event number year
-        if not incident_date:
+        # Get first_dispatch for midnight crossover detection
+        # This matches the logic used in _handle_clear when DISPATCH exists
+        dispatch_time_str = report.get('first_dispatch')  # e.g., "20:54:26"
+        
+        # Detect midnight crossover: if dispatch was in evening and report_time
+        # is in early morning, the incident started the PREVIOUS day
+        # Example: dispatch 20:54, report 03:18 → incident started day before
+        if incident_date and dispatch_time_str and report_time_hour is not None:
             try:
-                year_prefix = event_number[1:3]
-                year = 2000 + int(year_prefix)
-                incident_date = f"{year}-01-01"
-            except:
-                incident_date = datetime.now().strftime('%Y-%m-%d')
+                dispatch_hour = int(dispatch_time_str.split(':')[0])
+                # If dispatch in evening (>= 12) and report in early morning (< 12)
+                # and dispatch hour > report hour, it crossed midnight
+                if dispatch_hour >= 12 and report_time_hour < 12 and dispatch_hour > report_time_hour:
+                    dt = datetime.strptime(incident_date, '%Y-%m-%d')
+                    dt = dt - timedelta(days=1)
+                    incident_date = dt.strftime('%Y-%m-%d')
+                    logger.info(f"Midnight crossover detected for {event_number}, adjusted incident_date to {incident_date}")
+            except Exception as e:
+                logger.warning(f"Could not check midnight crossover for {event_number}: {e}")
+        
+        # Fall back to Jan 1 of event year
+        if not incident_date:
+            incident_date = f"{year}-01-01"
+            logger.warning(f"No date parsed for {event_number}, defaulting to {incident_date}")
         
         create_data = {
             'cad_event_number': event_number,
@@ -513,11 +550,11 @@ class ADILogImporter:
                 'apparatus_id': unit_info['apparatus_id'],
                 'unit_category': unit_info['category'],
                 'counts_for_response_times': unit_info['counts_for_response_times'],
-                'time_dispatched': self._parse_cad_time(ut.get('time_dispatched'), incident_date, None),
-                'time_enroute': self._parse_cad_time(ut.get('time_enroute'), incident_date, None),
-                'time_arrived': self._parse_cad_time(ut.get('time_arrived'), incident_date, None),
-                'time_available': self._parse_cad_time(ut.get('time_available'), incident_date, None),
-                'time_cleared': self._parse_cad_time(ut.get('time_at_quarters'), incident_date, None),
+                'time_dispatched': self._parse_cad_time(ut.get('time_dispatched'), incident_date, dispatch_time_str),
+                'time_enroute': self._parse_cad_time(ut.get('time_enroute'), incident_date, dispatch_time_str),
+                'time_arrived': self._parse_cad_time(ut.get('time_arrived'), incident_date, dispatch_time_str),
+                'time_available': self._parse_cad_time(ut.get('time_available'), incident_date, dispatch_time_str),
+                'time_cleared': self._parse_cad_time(ut.get('time_at_quarters'), incident_date, dispatch_time_str),
             })
         
         update_data = {
@@ -530,7 +567,7 @@ class ADILogImporter:
         
         if report.get('first_dispatch'):
             update_data['time_dispatched'] = self._parse_cad_time(
-                report['first_dispatch'], incident_date, None
+                report['first_dispatch'], incident_date, dispatch_time_str
             )
         
         # Calculate metrics
