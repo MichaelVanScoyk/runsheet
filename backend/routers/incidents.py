@@ -487,7 +487,7 @@ async def list_incidents(
     year: Optional[int] = None,
     status: Optional[str] = None,
     category: Optional[str] = None,  # FIRE, EMS, or None for all
-    limit: int = Query(100, le=500),
+    limit: int = Query(100, le=1000),
     offset: int = 0,
     db: Session = Depends(get_db)
 ):
