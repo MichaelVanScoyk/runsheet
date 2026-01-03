@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from routers import incidents, lookups, apparatus, personnel, settings, neris_codes, admin, backup, tenant_auth, master_admin
 from routers import branding, print_layout, comcat
 from routers.reports import router as reports_router
-from database import engine, Base
+from database import engine, Base, set_tenant_db_from_request
 from master_database import MasterSessionLocal
 from master_models import TenantSession, Tenant
 from datetime import datetime, timezone
@@ -67,6 +67,9 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
+        
+        # Set the correct database based on subdomain (MUST be first)
+        db_name = set_tenant_db_from_request(request)
         
         # Allow public paths
         if path in PUBLIC_PATHS or not path.startswith("/api"):
