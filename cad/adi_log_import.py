@@ -328,7 +328,8 @@ class ADILogImporter:
         if report.get('caller_phone'):
             update_data['caller_phone'] = report['caller_phone']
         
-        if report.get('first_dispatch'):
+        # Only set dispatch time if not already set from DISPATCH report
+        if report.get('first_dispatch') and not incident.get('time_dispatched'):
             update_data['time_dispatched'] = self._parse_cad_time(
                 report['first_dispatch'], incident_date, dispatch_time_str
             )
