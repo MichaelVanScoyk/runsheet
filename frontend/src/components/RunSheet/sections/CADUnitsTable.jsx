@@ -137,7 +137,7 @@ export default function CADUnitsTable() {
         <p className="text-xs text-theme-hint mb-2">Click column headers to sort</p>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse cad-units-table">
+        <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-theme-section text-accent-red text-xs uppercase">
               {columns.map(col => (

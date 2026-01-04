@@ -2,8 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================
+   CSS CUSTOM PROPERTIES (Set by BrandingContext)
+   These are defaults - tenant branding overrides via JS
+   ============================================ */
 :root {
-  /* Brand colors */
+  /* Brand colors - overridden by BrandingContext */
   --primary-color: #016a2b;
   --primary-hover: #015a24;
   --primary-light: #e6f4ea;
@@ -35,76 +39,77 @@
   --text-on-primary: #ffffff;
 }
 
+/* ============================================
+   MINIMAL GLOBAL RESETS
+   Only truly global defaults - no !important
+   ============================================ */
 body {
   background: var(--bg-page);
   color: var(--text-primary);
 }
 
 /* ============================================
-   SEMANTIC UTILITY CLASSES (Light Theme)
-   Use these in components instead of gray-* 
+   SEMANTIC UTILITY CLASSES
+   Use these in components for consistent theming
    ============================================ */
 
 /* Text utilities */
-.text-theme-primary { color: var(--text-primary) !important; }
-.text-theme-secondary { color: var(--text-secondary) !important; }
-.text-theme-muted { color: var(--text-muted) !important; }
-.text-theme-hint { color: var(--text-hint) !important; }
+.text-theme-primary { color: var(--text-primary); }
+.text-theme-secondary { color: var(--text-secondary); }
+.text-theme-muted { color: var(--text-muted); }
+.text-theme-hint { color: var(--text-hint); }
+.text-brand-primary { color: var(--primary-color); }
 
 /* Background utilities */
-.bg-theme-card { background-color: var(--bg-card) !important; }
-.bg-theme-section { background-color: var(--bg-section) !important; }
-.bg-theme-section-alt { background-color: var(--bg-section-alt) !important; }
-.bg-theme-hover { background-color: var(--bg-hover) !important; }
+.bg-theme-page { background-color: var(--bg-page); }
+.bg-theme-card { background-color: var(--bg-card); }
+.bg-theme-section { background-color: var(--bg-section); }
+.bg-theme-section-alt { background-color: var(--bg-section-alt); }
+.bg-theme-hover { background-color: var(--bg-hover); }
+.bg-brand-primary { background-color: var(--primary-color); }
 
 /* Border utilities */
-.border-theme { border-color: var(--border-color) !important; }
-.border-theme-light { border-color: var(--border-light) !important; }
-.border-theme-section { border-color: var(--border-section) !important; }
+.border-theme { border-color: var(--border-color); }
+.border-theme-light { border-color: var(--border-light); }
+.border-theme-section { border-color: var(--border-section); }
+.border-brand-primary { border-color: var(--primary-color); }
 
 /* ============================================
    LEGACY DARK THEME CLASS REMAPPING
    For backward compatibility with existing code
    ============================================ */
+.bg-dark-bg { background-color: var(--bg-card); }
+.bg-dark-card { background-color: var(--bg-card); }
+.bg-dark-border { background-color: var(--bg-section); }
+.bg-dark-hover { background-color: var(--bg-hover); }
+.bg-dark-hover\/50 { background-color: var(--bg-hover); }
 
-/* Remap Tailwind dark classes to light */
-.bg-dark-bg { background-color: var(--bg-card) !important; }
-.bg-dark-card { background-color: var(--bg-card) !important; }
-.bg-dark-border { background-color: var(--bg-section) !important; }
-.bg-dark-hover { background-color: var(--bg-hover) !important; }
-.bg-dark-hover\/50 { background-color: var(--bg-hover) !important; }
+.border-dark-border { border-color: var(--border-color); }
+.border-dark-border\/50 { border-color: var(--border-light); }
 
-.border-dark-border { border-color: var(--border-color) !important; }
-.border-dark-border\/50 { border-color: var(--border-light) !important; }
+/* Gray text scale remapping */
+.text-gray-100, .text-gray-200, .text-gray-300 { color: var(--text-primary); }
+.text-gray-400 { color: var(--text-muted); }
+.text-gray-500 { color: var(--text-secondary); }
+.text-gray-600 { color: var(--text-hint); }
 
-/* Gray text scale remapping - COMPREHENSIVE */
-.text-gray-100 { color: var(--text-primary) !important; }
-.text-gray-200 { color: var(--text-primary) !important; }
-.text-gray-300 { color: var(--text-primary) !important; }
-.text-gray-400 { color: var(--text-muted) !important; }
-.text-gray-500 { color: var(--text-secondary) !important; }
-.text-gray-600 { color: var(--text-hint) !important; }
-
-/* Dark background remapping - COMPREHENSIVE */
-.bg-gray-600 { background-color: var(--bg-section-alt) !important; }
-.bg-gray-700 { background-color: var(--bg-section-alt) !important; }
-.bg-gray-800 { background-color: var(--bg-section) !important; }
-.bg-gray-900 { background-color: var(--bg-card) !important; }
-
-/* Opacity variants */
-.bg-gray-800\/50 { background-color: var(--bg-section) !important; }
-.bg-gray-700\/50 { background-color: var(--bg-section-alt) !important; }
+/* Dark background remapping */
+.bg-gray-600, .bg-gray-700 { background-color: var(--bg-section-alt); }
+.bg-gray-800, .bg-gray-800\/50 { background-color: var(--bg-section); }
+.bg-gray-900 { background-color: var(--bg-card); }
+.bg-gray-700\/50 { background-color: var(--bg-section-alt); }
 
 /* Dark border remapping */
-.border-gray-500 { border-color: var(--border-section) !important; }
-.border-gray-600 { border-color: var(--border-section) !important; }
-.border-gray-700 { border-color: var(--border-color) !important; }
+.border-gray-500, .border-gray-600 { border-color: var(--border-section); }
+.border-gray-700 { border-color: var(--border-color); }
 
-/* text-white MUST become dark text on light backgrounds */
-.text-white { color: var(--text-primary) !important; }
+/* ============================================
+   TEXT-WHITE HANDLING
+   Remap to dark text, except on colored backgrounds
+   ============================================ */
+.text-white { color: var(--text-primary); }
 
-/* EXCEPTION: text-white should stay white on colored backgrounds */
-/* Use compound selectors for same-element cases (not descendant) */
+/* Compound selectors for same-element colored backgrounds */
 .bg-primary.text-white,
 .bg-accent-red.text-white,
 .bg-blue-600.text-white,
@@ -113,110 +118,56 @@ body {
 .bg-red-600.text-white,
 .bg-status-completed.text-white,
 .bg-status-open.text-white,
-.bg-status-error.text-white,
-th.text-white { 
-  color: #ffffff !important; 
+.bg-status-error.text-white { 
+  color: #ffffff; 
 }
 
-/* Placeholder text */
-.placeholder-gray-500::placeholder { color: var(--text-placeholder) !important; }
-.placeholder-gray-600::placeholder { color: var(--text-placeholder) !important; }
-.text-yellow-500 { color: #b45309 !important; } /* Darken yellow for visibility */
-
-/* Accent colors → primary */
-.text-accent-red { color: var(--primary-color) !important; }
-.border-accent-red { border-color: var(--primary-color) !important; }
-.bg-accent-red { background-color: var(--primary-color) !important; }
+/* ============================================
+   ACCENT COLOR UTILITIES
+   Maps accent-red to tenant's primary color
+   ============================================ */
+.text-accent-red { color: var(--primary-color); }
+.border-accent-red { border-color: var(--primary-color); }
+.bg-accent-red { background-color: var(--primary-color); }
 
 /* Secondary accent utilities */
-.text-secondary { color: var(--secondary-color) !important; }
-.bg-secondary { background-color: var(--secondary-color) !important; }
-.border-secondary { border-color: var(--secondary-color) !important; }
-.bg-secondary-light { background-color: var(--secondary-light) !important; }
+.text-secondary-accent { color: var(--secondary-color); }
+.bg-secondary-accent { background-color: var(--secondary-color); }
+.border-secondary-accent { border-color: var(--secondary-color); }
+.bg-secondary-light { background-color: var(--secondary-light); }
 
-/* Card containers - use .card or explicit bg-white for white backgrounds */
-/* DO NOT style .rounded-lg - it's a Tailwind utility for border-radius only */
+/* ============================================
+   OPT-IN COMPONENT CLASSES
+   Apply these explicitly where needed
+   ============================================ */
+
+/* Card container */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
-/* Form inputs */
-input, select, textarea {
-  background: #fff !important;
-  color: #333 !important;
-  border: 1px solid #ddd !important;
-}
-
-input:focus, select:focus, textarea:focus {
-  border-color: var(--primary-color) !important;
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
-}
-
-/* Tables - only style headers in tables that need branded headers */
-/* Use .table-branded for tables that should have green headers */
-.table-branded th {
-  background: var(--primary-color) !important;
-  color: #fff !important;
-}
-
-td {
-  color: var(--text-primary) !important;
-  border-bottom-color: #eee !important;
-}
-
-/* Section headers in forms */
-h2, h3, h4 {
-  color: var(--primary-color);
-}
-
-/* Labels */
-label {
-  color: var(--text-muted) !important;
-}
-
-/* Highlighted/selected states using secondary color */
+/* Highlighted row */
 .highlight-row {
-  background: var(--secondary-light) !important;
-  border-left: 3px solid var(--secondary-color) !important;
-}
-
-/* Active nav item accent */
-.nav-links li a.active {
-  box-shadow: inset 3px 0 0 var(--secondary-color);
-}
-
-/* Button hover accent */
-.btn-primary:hover:not(:disabled) {
-  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.3), 
-              0 0 0 2px var(--secondary-color);
-}
-
-/* Page header accent underline */
-.page-header {
-  position: relative;
-}
-
-.page-header::after {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  width: 60px;
-  height: 3px;
-  background: var(--secondary-color);
-}
-
-/* Badge accents for open/active status */
-.badge-open {
-  border-left: 3px solid var(--secondary-color) !important;
+  background: var(--secondary-light);
+  border-left: 3px solid var(--secondary-color);
 }
 
 /* ============================================
-   CAD HTML CONTENT STYLING (Light Theme)
-   For raw CAD data displayed in modals
+   PLACEHOLDER TEXT
+   ============================================ */
+.placeholder-gray-500::placeholder,
+.placeholder-gray-600::placeholder { 
+  color: var(--text-placeholder); 
+}
+
+/* Yellow text visibility fix */
+.text-yellow-500 { color: #b45309; }
+
+/* ============================================
+   CAD HTML CONTENT STYLING
+   For raw CAD HTML displayed in modals
    ============================================ */
 .cad-html-content table { 
   width: 100%; 
@@ -226,28 +177,22 @@ label {
 .cad-html-content th { 
   border: 1px solid var(--border-color); 
   padding: 4px 8px; 
-  color: var(--text-primary) !important;
-  background: transparent !important;
+  color: var(--text-primary);
+  background: transparent;
 }
 .cad-html-content tr { 
-  background: transparent !important; 
+  background: transparent; 
 }
 .cad-html-content font { 
-  color: var(--text-primary) !important; 
+  color: var(--text-primary); 
 }
 .cad-html-content b { 
   color: var(--primary-color); 
 }
 
-/* RunSheet internal tables - exempt from global th styling */
-/* These tables use conditional highlighting and section backgrounds */
-.personnel-grid th,
-.cad-units-table th {
-  background: var(--bg-section) !important;
-  color: inherit !important;
-}
-
-/* Keyframes for pulse animation */
+/* ============================================
+   ANIMATIONS
+   ============================================ */
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
