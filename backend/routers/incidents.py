@@ -6,7 +6,7 @@ All NERIS fields use TEXT codes (not integers).
 What you store is what you send to NERIS API.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional, List, Dict, Any
@@ -14,7 +14,7 @@ from datetime import datetime, timezone, date
 from pydantic import BaseModel, Field
 import logging
 
-from database import get_db
+from database import get_db, _extract_slug, _is_internal_ip
 from models import (
     Incident, IncidentUnit, IncidentPersonnel, 
     Municipality, Apparatus, Personnel, Rank, AuditLog,
@@ -38,6 +38,53 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Import WebSocket broadcast helper (deferred to avoid circular imports)
+_ws_broadcast = None
+
+def _get_ws_broadcast():
+    """Lazy import of WebSocket broadcast function"""
+    global _ws_broadcast
+    if _ws_broadcast is None:
+        try:
+            from routers.websocket import broadcast_to_tenant
+            _ws_broadcast = broadcast_to_tenant
+        except ImportError:
+            _ws_broadcast = False  # Mark as unavailable
+    return _ws_broadcast if _ws_broadcast else None
+
+
+async def emit_incident_event(request, event_type: str, incident_data: dict):
+    """
+    Emit WebSocket event for incident changes.
+    
+    Args:
+        request: FastAPI request (to extract tenant)
+        event_type: One of 'incident_created', 'incident_updated', 'incident_closed'
+        incident_data: Dict of incident fields to broadcast
+    """
+    broadcast = _get_ws_broadcast()
+    if not broadcast:
+        return
+    
+    # Extract tenant slug (same logic as database routing)
+    x_tenant = request.headers.get('x-tenant')
+    client_ip = request.client.host if request.client else None
+    
+    if x_tenant and _is_internal_ip(client_ip):
+        tenant_slug = x_tenant
+    else:
+        tenant_slug = _extract_slug(request.headers.get('host', ''))
+    
+    try:
+        await broadcast(tenant_slug, {
+            "type": event_type,
+            "incident": incident_data,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+        logger.debug(f"WebSocket broadcast: {event_type} to {tenant_slug}")
+    except Exception as e:
+        logger.warning(f"WebSocket broadcast failed: {e}")
 
 
 # =============================================================================
@@ -1006,6 +1053,8 @@ async def get_incident(
 @router.post("")
 async def create_incident(
     data: IncidentCreate,
+    request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """Create new incident"""
@@ -1120,6 +1169,27 @@ async def create_incident(
     )
     db.commit()
     
+    # Emit WebSocket event for real-time updates
+    background_tasks.add_task(
+        emit_incident_event,
+        request,
+        "incident_created",
+        {
+            "id": incident.id,
+            "internal_incident_number": incident_number,
+            "call_category": call_category,
+            "cad_event_number": data.cad_event_number,
+            "cad_event_type": data.cad_event_type,
+            "cad_event_subtype": data.cad_event_subtype,
+            "status": "OPEN",
+            "incident_date": incident_date.isoformat() if incident_date else None,
+            "address": data.address,
+            "municipality_code": data.municipality_code,
+            "created_at": format_utc_iso(incident.created_at),
+            "updated_at": format_utc_iso(incident.updated_at),
+        }
+    )
+    
     return {
         "id": incident.id, 
         "internal_incident_number": incident_number,
@@ -1138,6 +1208,8 @@ async def create_incident(
 async def update_incident(
     incident_id: int,
     data: IncidentUpdate,
+    request: Request,
+    background_tasks: BackgroundTasks,
     edited_by: Optional[int] = Query(None, description="Personnel ID of logged-in user making the edit"),
     db: Session = Depends(get_db)
 ):
@@ -1280,6 +1352,28 @@ async def update_incident(
     
     db.commit()
     
+    # Emit WebSocket event for real-time updates
+    background_tasks.add_task(
+        emit_incident_event,
+        request,
+        "incident_updated",
+        {
+            "id": incident.id,
+            "internal_incident_number": incident.internal_incident_number,
+            "call_category": incident.call_category,
+            "cad_event_number": incident.cad_event_number,
+            "cad_event_type": incident.cad_event_type,
+            "cad_event_subtype": incident.cad_event_subtype,
+            "status": incident.status,
+            "incident_date": incident.incident_date.isoformat() if incident.incident_date else None,
+            "address": incident.address,
+            "municipality_code": incident.municipality_code,
+            "time_dispatched": format_utc_iso(incident.time_dispatched),
+            "updated_at": format_utc_iso(incident.updated_at),
+            "cad_clear_received_at": format_utc_iso(incident.cad_clear_received_at),
+        }
+    )
+    
     return {"status": "ok", "id": incident_id, "neris_id": incident.neris_id}
 
 
@@ -1290,6 +1384,8 @@ async def update_incident(
 @router.post("/{incident_id}/close")
 async def close_incident(
     incident_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
     edited_by: Optional[int] = Query(None, description="Personnel ID of logged-in user"),
     db: Session = Depends(get_db)
 ):
@@ -1322,6 +1418,24 @@ async def close_incident(
     )
     
     db.commit()
+    
+    # Emit WebSocket event for real-time updates
+    background_tasks.add_task(
+        emit_incident_event,
+        request,
+        "incident_closed",
+        {
+            "id": incident.id,
+            "internal_incident_number": incident.internal_incident_number,
+            "call_category": incident.call_category,
+            "cad_event_number": incident.cad_event_number,
+            "status": "CLOSED",
+            "incident_date": incident.incident_date.isoformat() if incident.incident_date else None,
+            "address": incident.address,
+            "updated_at": format_utc_iso(incident.updated_at),
+            "cad_clear_received_at": format_utc_iso(incident.cad_clear_received_at),
+        }
+    )
     
     return {"status": "ok", "id": incident_id}
 

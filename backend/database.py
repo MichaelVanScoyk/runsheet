@@ -53,6 +53,31 @@ def _get_tenant_database(slug: str) -> str:
     return "runsheet_db"  # Default fallback
 
 
+def _is_internal_ip(ip: str) -> bool:
+    """Check if IP is localhost or private network (CAD listener, etc.)"""
+    if not ip:
+        return False
+    
+    # Localhost
+    if ip in ("127.0.0.1", "::1", "localhost"):
+        return True
+    
+    # Private networks (RFC 1918)
+    if ip.startswith("192.168."):
+        return True
+    if ip.startswith("10."):
+        return True
+    if ip.startswith("172."):
+        try:
+            second_octet = int(ip.split(".")[1])
+            if 16 <= second_octet <= 31:
+                return True
+        except:
+            pass
+    
+    return False
+
+
 def _extract_slug(host: str) -> str:
     """Extract tenant slug from Host header"""
     if not host:
@@ -65,12 +90,35 @@ def _extract_slug(host: str) -> str:
         if slug and slug != 'www':
             return slug
     
+    if host.endswith('.cadreports.com'):
+        slug = host.replace('.cadreports.com', '')
+        if slug and slug != 'www':
+            return slug
+    
     return "glenmoorefc"  # Default
 
 
 def get_db(request: Request):
-    """FastAPI dependency - yields database session for the tenant in the request"""
-    slug = _extract_slug(request.headers.get('host', ''))
+    """
+    FastAPI dependency - yields database session for the tenant in the request.
+    
+    Tenant is determined by:
+    1. X-Tenant header (trusted only from internal IPs - CAD listener)
+    2. Host header subdomain (browser requests)
+    3. Default fallback (glenmoorefc)
+    """
+    # Check for X-Tenant header from internal IPs (CAD listener)
+    x_tenant = request.headers.get('x-tenant')
+    client_ip = request.client.host if request.client else None
+    
+    if x_tenant and _is_internal_ip(client_ip):
+        # Trust X-Tenant from internal network
+        slug = x_tenant
+        logger.debug(f"Using X-Tenant header: {slug} from {client_ip}")
+    else:
+        # Extract from Host header (browser requests)
+        slug = _extract_slug(request.headers.get('host', ''))
+    
     db_name = _get_tenant_database(slug)
     
     engine = _get_engine(db_name)

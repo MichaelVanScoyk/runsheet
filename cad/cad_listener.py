@@ -59,6 +59,12 @@ class CADListener:
         self.api_url = api_url.rstrip('/')  # Remove trailing slash if present
         self.tenant = tenant
         self.timezone = timezone
+        
+        # Standard headers for all API requests (tenant routing for internal calls)
+        self._api_headers = {
+            'X-Tenant': tenant,
+            'Content-Type': 'application/json',
+        }
         self.running = False
         self.server_socket = None
         
@@ -152,6 +158,7 @@ class CADListener:
             resp = requests.get(
                 f"{self.api_url}/api/apparatus/lookup",
                 params={'unit_id': unit_id},
+                headers=self._api_headers,
                 timeout=5
             )
             if resp.status_code == 200:
@@ -357,7 +364,7 @@ class CADListener:
         
         # Check if incident exists
         try:
-            resp = requests.get(f"{self.api_url}/api/incidents/by-cad/{event_number}", timeout=10)
+            resp = requests.get(f"{self.api_url}/api/incidents/by-cad/{event_number}", headers=self._api_headers, timeout=10)
             exists = resp.status_code == 200
             existing_incident = resp.json() if exists else None
         except Exception as e:
@@ -374,6 +381,7 @@ class CADListener:
                 requests.post(
                     f"{self.api_url}/api/lookups/municipalities/auto-create",
                     params={'code': municipality_code},
+                    headers=self._api_headers,
                     timeout=10
                 )
             except Exception as e:
@@ -460,6 +468,7 @@ class CADListener:
             resp = requests.put(
                 f"{self.api_url}/api/incidents/{existing_incident['id']}",
                 json=update_data,
+                headers=self._api_headers,
                 timeout=10
             )
             
@@ -492,6 +501,7 @@ class CADListener:
             resp = requests.post(
                 f"{self.api_url}/api/incidents",
                 json=create_data,
+                headers=self._api_headers,
                 timeout=10
             )
             
@@ -516,6 +526,7 @@ class CADListener:
                 requests.put(
                     f"{self.api_url}/api/incidents/{incident_id}",
                     json=update_data,
+                    headers=self._api_headers,
                     timeout=10
                 )
             else:
@@ -529,7 +540,7 @@ class CADListener:
         
         # Get incident
         try:
-            resp = requests.get(f"{self.api_url}/api/incidents/by-cad/{event_number}", timeout=10)
+            resp = requests.get(f"{self.api_url}/api/incidents/by-cad/{event_number}", headers=self._api_headers, timeout=10)
             if resp.status_code != 200:
                 logger.warning(f"Incident {event_number} not found - creating from CLEAR report")
                 self._create_incident_from_clear(report, raw_html)
@@ -627,6 +638,7 @@ class CADListener:
                 requests.post(
                     f"{self.api_url}/api/lookups/municipalities/auto-create",
                     params={'code': report['municipality']},
+                    headers=self._api_headers,
                     timeout=10
                 )
             except:
@@ -729,6 +741,7 @@ class CADListener:
             resp = requests.put(
                 f"{self.api_url}/api/incidents/{incident_id}",
                 json=update_data,
+                headers=self._api_headers,
                 timeout=10
             )
             if resp.status_code == 200:
@@ -737,7 +750,7 @@ class CADListener:
                 raise Exception(f"API returned {resp.status_code}: {resp.text}")
         
         # Close incident
-        resp = requests.post(f"{self.api_url}/api/incidents/{incident_id}/close", timeout=10)
+        resp = requests.post(f"{self.api_url}/api/incidents/{incident_id}/close", headers=self._api_headers, timeout=10)
         if resp.status_code == 200:
             logger.info(f"Closed incident {event_number}")
             self.stats['incidents_closed'] += 1
@@ -769,12 +782,13 @@ class CADListener:
                 requests.post(
                     f"{self.api_url}/api/lookups/municipalities/auto-create",
                     params={'code': report['municipality']},
+                    headers=self._api_headers,
                     timeout=10
                 )
             except:
                 pass
         
-        resp = requests.post(f"{self.api_url}/api/incidents", json=create_data, timeout=10)
+        resp = requests.post(f"{self.api_url}/api/incidents", json=create_data, headers=self._api_headers, timeout=10)
         
         if resp.status_code != 200:
             raise Exception(f"API returned {resp.status_code}: {resp.text}")
@@ -838,8 +852,8 @@ class CADListener:
             if cleared_times:
                 update_data['time_last_cleared'] = max(cleared_times)
         
-        requests.put(f"{self.api_url}/api/incidents/{incident_id}", json=update_data, timeout=10)
-        requests.post(f"{self.api_url}/api/incidents/{incident_id}/close", timeout=10)
+        requests.put(f"{self.api_url}/api/incidents/{incident_id}", json=update_data, headers=self._api_headers, timeout=10)
+        requests.post(f"{self.api_url}/api/incidents/{incident_id}/close", headers=self._api_headers, timeout=10)
         logger.info(f"Closed incident {event_number} (created from clear)")
         self.stats['incidents_closed'] += 1
     
@@ -853,6 +867,7 @@ class CADListener:
             resp = requests.get(
                 f"{self.api_url}/api/lookups/cad-type-mappings/lookup",
                 params=params,
+                headers=self._api_headers,
                 timeout=5
             )
             

@@ -5,9 +5,10 @@ import RunSheetForm from '../components/RunSheetForm';
 import IncidentHubModal from '../components/IncidentHubModal';
 import { incidentQualifiesForModal } from '../components/IncidentHubModal/hooks/useActiveIncidents';
 import { formatTimeLocal } from '../utils/timeUtils';
+import { useIncidentWebSocket } from '../hooks/useIncidentWebSocket';
 
 const FILTER_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-const POLL_INTERVAL_MS = 5000; // 5 seconds
+const POLL_INTERVAL_MS = 5000; // 5 seconds - fallback when WebSocket disconnected
 const ACK_STORAGE_KEY = 'hubModalAcknowledged';
 
 function getAcknowledged() {
@@ -43,7 +44,6 @@ function IncidentsPage() {
   const [availableYears, setAvailableYears] = useState([new Date().getFullYear()]);
   const [showForm, setShowForm] = useState(false);
   const [editingIncident, setEditingIncident] = useState(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   
   // Modal state
@@ -53,6 +53,101 @@ function IncidentsPage() {
   const [selectedModalIncidentId, setSelectedModalIncidentId] = useState(null);
   
   const filterTimeoutRef = useRef(null);
+  
+  // Track if WebSocket connected to control fallback polling
+  const wsConnectedRef = useRef(false);
+
+  // WebSocket handlers for real-time updates
+  const handleIncidentCreated = useCallback((incident) => {
+    // Add to list if current year matches
+    const incidentYear = incident.incident_date ? new Date(incident.incident_date).getFullYear() : new Date().getFullYear();
+    if (incidentYear === year) {
+      setIncidents(prev => {
+        // Avoid duplicates
+        if (prev.some(i => i.id === incident.id)) return prev;
+        return [incident, ...prev];
+      });
+    }
+    
+    // Check if qualifies for modal auto-popup
+    if (!showForm && !showHubModal) {
+      // Fetch full incident to check qualification
+      getIncident(incident.id).then(res => {
+        const fullIncident = res.data;
+        if (incidentQualifiesForModal(fullIncident) && needsAutoShow(fullIncident)) {
+          setQualifyingIncidents(prev => [fullIncident, ...prev.filter(i => i.id !== fullIncident.id)]);
+          setModalIncidents([fullIncident]);
+          setSelectedModalIncidentId(fullIncident.id);
+          setShowHubModal(true);
+        }
+      }).catch(err => console.error('Failed to fetch new incident:', err));
+    }
+  }, [year, showForm, showHubModal]);
+
+  const handleIncidentUpdated = useCallback((incident) => {
+    // Update in list
+    setIncidents(prev => prev.map(i => i.id === incident.id ? { ...i, ...incident } : i));
+    
+    // Update qualifying incidents list
+    setQualifyingIncidents(prev => {
+      const existing = prev.find(i => i.id === incident.id);
+      if (existing) {
+        return prev.map(i => i.id === incident.id ? { ...i, ...incident } : i);
+      }
+      return prev;
+    });
+    
+    // Update modal incidents if showing
+    setModalIncidents(prev => prev.map(i => i.id === incident.id ? { ...i, ...incident } : i));
+    
+    // Check if now qualifies for modal (e.g., CAD clear just received)
+    if (!showForm && !showHubModal) {
+      getIncident(incident.id).then(res => {
+        const fullIncident = res.data;
+        if (incidentQualifiesForModal(fullIncident) && needsAutoShow(fullIncident)) {
+          setQualifyingIncidents(prev => {
+            if (prev.some(i => i.id === fullIncident.id)) {
+              return prev.map(i => i.id === fullIncident.id ? fullIncident : i);
+            }
+            return [fullIncident, ...prev];
+          });
+          setModalIncidents([fullIncident]);
+          setSelectedModalIncidentId(fullIncident.id);
+          setShowHubModal(true);
+        }
+      }).catch(err => console.error('Failed to fetch updated incident:', err));
+    }
+  }, [showForm, showHubModal]);
+
+  const handleIncidentClosed = useCallback((incident) => {
+    // Update status in list
+    setIncidents(prev => prev.map(i => 
+      i.id === incident.id ? { ...i, status: 'CLOSED', ...incident } : i
+    ));
+    
+    // Update qualifying incidents
+    setQualifyingIncidents(prev => prev.map(i => 
+      i.id === incident.id ? { ...i, status: 'CLOSED', ...incident } : i
+    ));
+    
+    // Update modal if showing
+    setModalIncidents(prev => prev.map(i => 
+      i.id === incident.id ? { ...i, status: 'CLOSED', ...incident } : i
+    ));
+  }, []);
+
+  // WebSocket connection
+  const { connected: wsConnected } = useIncidentWebSocket({
+    onIncidentCreated: handleIncidentCreated,
+    onIncidentUpdated: handleIncidentUpdated,
+    onIncidentClosed: handleIncidentClosed,
+    enabled: true,
+  });
+  
+  // Update ref for use in polling decision
+  useEffect(() => {
+    wsConnectedRef.current = wsConnected;
+  }, [wsConnected]);
 
   const resetFilterTimeout = useCallback(() => {
     if (filterTimeoutRef.current) clearTimeout(filterTimeoutRef.current);
@@ -144,17 +239,26 @@ function IncidentsPage() {
     }
   }, [showHubModal, showForm]);
 
+  // Initial load of qualifying incidents
   useEffect(() => {
     loadQualifyingIncidents();
-    const interval = setInterval(loadQualifyingIncidents, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [loadQualifyingIncidents]);
+  }, []);
 
+  // Fallback polling - only when WebSocket is disconnected
   useEffect(() => {
-    if (!autoRefresh || showForm || showHubModal) return;
-    const interval = setInterval(loadData, POLL_INTERVAL_MS);
+    // If WebSocket is connected, don't poll
+    if (wsConnected) return;
+    
+    // Fallback polling when WebSocket disconnected
+    if (showForm || showHubModal) return;
+    
+    const interval = setInterval(() => {
+      loadData();
+      loadQualifyingIncidents();
+    }, POLL_INTERVAL_MS);
+    
     return () => clearInterval(interval);
-  }, [autoRefresh, loadData, showForm, showHubModal]);
+  }, [wsConnected, loadData, loadQualifyingIncidents, showForm, showHubModal]);
 
   const handleNewIncident = () => { setEditingIncident(null); setShowForm(true); };
 
@@ -316,10 +420,28 @@ function IncidentsPage() {
               🚨 {activeCount} Active
             </button>
           )}
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#888', fontSize: '0.85rem' }}>
-            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
-            Auto-refresh
-          </label>
+          <span 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.35rem', 
+              color: wsConnected ? '#22c55e' : '#f59e0b', 
+              fontSize: '0.85rem',
+              padding: '0.25rem 0.5rem',
+              borderRadius: '4px',
+              backgroundColor: wsConnected ? 'rgba(34, 197, 94, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+            }}
+            title={wsConnected ? 'Real-time updates active' : 'Reconnecting... (using fallback polling)'}
+          >
+            <span style={{ 
+              width: '8px', 
+              height: '8px', 
+              borderRadius: '50%', 
+              backgroundColor: wsConnected ? '#22c55e' : '#f59e0b',
+              animation: wsConnected ? 'none' : 'pulse 1.5s infinite',
+            }} />
+            {wsConnected ? 'Live' : 'Connecting...'}
+          </span>
           <button className="btn btn-primary" onClick={handleNewIncident}>+ New Incident</button>
         </div>
       </div>
