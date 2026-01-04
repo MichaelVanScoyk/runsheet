@@ -77,11 +77,13 @@ export function BrandingProvider({ children }) {
           ? `${newBranding.stationName} — CADReport`
           : 'CADReport';
         
-        // Set favicon to station number
+        // Set favicon to station number (dynamic size based on digit count)
         if (newBranding.stationNumber) {
           const favicon = document.querySelector("link[rel='icon']");
           if (favicon) {
-            favicon.href = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-weight='bold'>${newBranding.stationNumber}</text></svg>`;
+            const len = newBranding.stationNumber.length;
+            const fontSize = len <= 2 ? 90 : len === 3 ? 65 : 50;
+            favicon.href = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='${fontSize}' font-weight='bold'>${newBranding.stationNumber}</text></svg>`;
           }
         }
         
