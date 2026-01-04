@@ -64,6 +64,33 @@ class ADILogImporter:
             'parse_errors': 0,
         }
     
+    def _parse_dispatch_datetime_str(self, dt_str: str) -> Optional[datetime]:
+        """
+        Parse dispatch datetime string handling multiple formats:
+        - MM-DD-YY HH:MM:SS (newer format)
+        - DD-MM-YY HH:MM:SS (older 2018 format)
+        Also strips timezone suffixes (ED, EDT, EST, ES).
+        """
+        if not dt_str:
+            return None
+        
+        # Strip timezone suffixes
+        dt_str = re.sub(r'\s+(ED|EDT|EST|ES)$', '', dt_str.strip())
+        
+        # Try MM-DD-YY first (newer format)
+        try:
+            return datetime.strptime(dt_str, '%m-%d-%y %H:%M:%S')
+        except ValueError:
+            pass
+        
+        # Try DD-MM-YY (older 2018 format)
+        try:
+            return datetime.strptime(dt_str, '%d-%m-%y %H:%M:%S')
+        except ValueError:
+            pass
+        
+        return None
+    
     def import_log_file(self, filepath: str):
         """Import all reports from an ADI log file."""
         path = Path(filepath)
@@ -221,13 +248,11 @@ class ADILogImporter:
         # Parse incident date from dispatch_time
         incident_date = None
         if report.get('dispatch_time'):
-            # Strip timezone suffixes (ED, EDT, EST, ES) from old CAD data
-            dt_str = re.sub(r'\s+(ED|EDT|EST|ES)$', '', report['dispatch_time'].strip())
-            try:
-                dt = datetime.strptime(dt_str, '%m-%d-%y %H:%M:%S')
+            dt = self._parse_dispatch_datetime_str(report['dispatch_time'])
+            if dt:
                 incident_date = dt.strftime('%Y-%m-%d')
-            except Exception as e:
-                logger.warning(f"Could not parse dispatch_time '{report['dispatch_time']}' for {event_number}: {e}")
+            else:
+                logger.warning(f"Could not parse dispatch_time '{report['dispatch_time']}' for {event_number}")
         
         # Fall back to Jan 1 of event year if parsing failed
         if not incident_date:
@@ -462,10 +487,11 @@ class ADILogImporter:
             rt = report['report_time'].strip()
             try:
                 if '-' in rt and len(rt) > 10:
-                    # Format: MM-DD-YY HH:MM:SS
-                    dt = datetime.strptime(rt, '%m-%d-%y %H:%M:%S')
-                    incident_date = dt.strftime('%Y-%m-%d')
-                    report_time_hour = dt.hour
+                    # Try both date formats
+                    dt = self._parse_dispatch_datetime_str(rt)
+                    if dt:
+                        incident_date = dt.strftime('%Y-%m-%d')
+                        report_time_hour = dt.hour
                 elif '/' in rt:
                     # Format: HH:MM MM/DD (e.g., "03:18 09/28")
                     date_match = re.search(r'(\d{1,2})/(\d{1,2})', rt)
@@ -623,13 +649,9 @@ class ADILogImporter:
         
         dispatch_time_str = None
         if report.get('dispatch_time'):
-            # Strip timezone suffixes before parsing
-            dt_str = re.sub(r'\s+(ED|EDT|EST|ES)$', '', report['dispatch_time'].strip())
-            try:
-                dt = datetime.strptime(dt_str, '%m-%d-%y %H:%M:%S')
+            dt = self._parse_dispatch_datetime_str(report['dispatch_time'])
+            if dt:
                 dispatch_time_str = dt.strftime('%H:%M:%S')
-            except:
-                pass
         
         for unit in report.get('responding_units', []):
             unit_id = unit.get('unit_id')
@@ -691,19 +713,22 @@ class ADILogImporter:
         return 'FIRE'
     
     def _parse_cad_datetime(self, dt_str: str) -> Optional[str]:
-        """Parse CAD datetime (MM-DD-YY HH:MM:SS) to UTC ISO format."""
+        """Parse CAD datetime to UTC ISO format. Handles both MM-DD-YY and DD-MM-YY formats."""
         if not dt_str:
             return None
-        # Strip timezone suffixes (ED, EDT, EST, ES) from old CAD data
-        dt_str = re.sub(r'\s+(ED|EDT|EST|ES)$', '', dt_str.strip())
+        
+        dt = self._parse_dispatch_datetime_str(dt_str)
+        if not dt:
+            logger.warning(f"Could not parse datetime {dt_str}")
+            return None
+        
         try:
-            dt = datetime.strptime(dt_str, '%m-%d-%y %H:%M:%S')
             local_tz = ZoneInfo(self.timezone)
             local_dt = dt.replace(tzinfo=local_tz)
             utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
             return utc_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
         except Exception as e:
-            logger.warning(f"Could not parse datetime {dt_str}: {e}")
+            logger.warning(f"Could not convert datetime {dt_str}: {e}")
             return None
     
     def _parse_cad_time(self, time_str: str, incident_date: str = None, dispatch_time_str: str = None) -> Optional[str]:
