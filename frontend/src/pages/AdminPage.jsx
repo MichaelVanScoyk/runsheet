@@ -406,11 +406,11 @@ function IncidentSequenceTab() {
       {/* Confirmation Modal */}
       {showConfirm && (
         <div className="modal-overlay">
-          <div className="modal-content">
-            <h3>Fix Incident Sequence</h3>
-            <p>This will renumber the following incidents:</p>
+          <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0' }}>Fix Incident Sequence</h3>
+            <p style={{ margin: '0 0 1rem 0' }}>This will renumber {data.changes_preview?.length || 0} incident{(data.changes_preview?.length || 0) !== 1 ? 's' : ''}:</p>
             
-            <div className="changes-preview">
+            <div className="changes-preview" style={{ flex: 1, overflowY: 'auto', maxHeight: '50vh', marginBottom: '1rem', border: '1px solid #ddd', borderRadius: '4px', padding: '0.5rem' }}>
               {data.changes_preview?.map((change, idx) => (
                 <div key={idx} className="change-item">
                   <span className="change-number">{change.current_number}</span>
@@ -421,7 +421,7 @@ function IncidentSequenceTab() {
               ))}
             </div>
             
-            <div className="modal-actions">
+            <div className="modal-actions" style={{ flexShrink: 0, paddingTop: '0.5rem', borderTop: '1px solid #eee' }}>
               <button className="btn btn-secondary" onClick={() => setShowConfirm(false)}>
                 Cancel
               </button>
