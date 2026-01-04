@@ -72,6 +72,11 @@ export function BrandingProvider({ children }) {
         setBranding(newBranding);
         applyBrandingToCSS(newBranding);
         
+        // Set browser tab title
+        document.title = newBranding.stationName 
+          ? `${newBranding.stationName} — CADReport`
+          : 'CADReport';
+        
       } catch (err) {
         console.error('Failed to load branding:', err);
         setError(err.message);
