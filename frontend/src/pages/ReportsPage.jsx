@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBranding } from '../contexts/BrandingContext';
+import { getIncidentYears } from '../api';
 
 const API_BASE = '';
 
@@ -18,6 +19,7 @@ function ReportsPage() {
   const [categoryFilter, setCategoryFilter] = useState('FIRE');
   const [reportMonth, setReportMonth] = useState(() => new Date().getMonth() + 1);
   const [reportYear, setReportYear] = useState(() => new Date().getFullYear());
+  const [availableYears, setAvailableYears] = useState([new Date().getFullYear()]);
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 1);
@@ -32,6 +34,21 @@ function ReportsPage() {
   const [loading, setLoading] = useState(false);
 
   const queryInputRef = useRef(null);
+
+  // Load available years on mount
+  useEffect(() => {
+    const loadYears = async () => {
+      try {
+        const res = await getIncidentYears();
+        if (res.data.years && res.data.years.length > 0) {
+          setAvailableYears(res.data.years);
+        }
+      } catch (err) {
+        console.error('Failed to load years:', err);
+      }
+    };
+    loadYears();
+  }, []);
 
   // Load data
   useEffect(() => { loadChiefsReport(); }, [reportMonth, reportYear, categoryFilter]);
@@ -325,7 +342,7 @@ function ReportsPage() {
               {[...Array(12)].map((_, i) => <option key={i+1} value={i+1}>{new Date(2000, i).toLocaleString('default', { month: 'long' })}</option>)}
             </select>
             <select value={reportYear} onChange={(e) => setReportYear(parseInt(e.target.value))} style={s.select}>
-              {[...Array(5)].map((_, i) => { const y = new Date().getFullYear() - i; return <option key={y} value={y}>{y}</option>; })}
+              {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
             <button onClick={() => openPrintableReport(reportYear, reportMonth, categoryFilter)} style={{ ...s.btn, ...s.btnGreen }}>🖨️ Print PDF</button>
           </>
@@ -366,7 +383,7 @@ function ReportsPage() {
       ) : (
         <>
           {activeReport === 'chiefs' && chiefsReport && <ChiefsReportView report={chiefsReport} category={categoryFilter} s={s} colors={colors} />}
-          {activeReport === 'overview' && summaryData && <OverviewReport summary={summaryData} trend={trendData} year={reportYear} onYearChange={setReportYear} s={s} colors={colors} />}
+          {activeReport === 'overview' && summaryData && <OverviewReport summary={summaryData} trend={trendData} year={reportYear} onYearChange={setReportYear} availableYears={availableYears} s={s} colors={colors} />}
           {activeReport === 'personnel' && personnelData && <PersonnelReport data={personnelData} s={s} colors={colors} />}
           {activeReport === 'unit' && unitData && <UnitReport data={unitData} s={s} colors={colors} />}
           {activeReport === 'custom' && queryResult && <CustomQueryResult result={queryResult} onOpenPrint={openPrintableReport} s={s} colors={colors} />}
@@ -555,7 +572,7 @@ function ChiefsReportView({ report, category, s, colors }) {
 // =============================================================================
 // OVERVIEW REPORT
 // =============================================================================
-function OverviewReport({ summary, trend, year, onYearChange, s, colors }) {
+function OverviewReport({ summary, trend, year, onYearChange, availableYears, s, colors }) {
   if (!summary) return null;
   return (
     <div>
@@ -575,7 +592,7 @@ function OverviewReport({ summary, trend, year, onYearChange, s, colors }) {
           <div style={{ ...s.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Monthly Trend</span>
             <select value={year} onChange={(e) => onYearChange(parseInt(e.target.value))} style={{ ...s.select, padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
-              {[...Array(5)].map((_, i) => { const y = new Date().getFullYear() - i; return <option key={y} value={y}>{y}</option>; })}
+              {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
           <div style={s.cardBody}>
