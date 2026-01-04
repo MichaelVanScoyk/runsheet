@@ -210,14 +210,29 @@ class ADILogImporter:
         # Determine category
         call_category = self._determine_category(event_type, event_subtype)
         
+        # Get year from event number as fallback (e.g., F18013845 -> 2018)
+        fallback_year = datetime.now().year
+        try:
+            year_prefix = event_number[1:3]
+            fallback_year = 2000 + int(year_prefix)
+        except:
+            pass
+        
         # Parse incident date from dispatch_time
         incident_date = None
         if report.get('dispatch_time'):
+            # Strip timezone suffixes (ED, EDT, EST, ES) from old CAD data
+            dt_str = re.sub(r'\s+(ED|EDT|EST|ES)$', '', report['dispatch_time'].strip())
             try:
-                dt = datetime.strptime(report['dispatch_time'], '%m-%d-%y %H:%M:%S')
+                dt = datetime.strptime(dt_str, '%m-%d-%y %H:%M:%S')
                 incident_date = dt.strftime('%Y-%m-%d')
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not parse dispatch_time '{report['dispatch_time']}' for {event_number}: {e}")
+        
+        # Fall back to Jan 1 of event year if parsing failed
+        if not incident_date:
+            incident_date = f"{fallback_year}-01-01"
+            logger.warning(f"No date parsed for {event_number}, defaulting to {incident_date}")
         
         create_data = {
             'cad_event_number': event_number,
@@ -608,8 +623,10 @@ class ADILogImporter:
         
         dispatch_time_str = None
         if report.get('dispatch_time'):
+            # Strip timezone suffixes before parsing
+            dt_str = re.sub(r'\s+(ED|EDT|EST|ES)$', '', report['dispatch_time'].strip())
             try:
-                dt = datetime.strptime(report['dispatch_time'], '%m-%d-%y %H:%M:%S')
+                dt = datetime.strptime(dt_str, '%m-%d-%y %H:%M:%S')
                 dispatch_time_str = dt.strftime('%H:%M:%S')
             except:
                 pass
@@ -677,6 +694,8 @@ class ADILogImporter:
         """Parse CAD datetime (MM-DD-YY HH:MM:SS) to UTC ISO format."""
         if not dt_str:
             return None
+        # Strip timezone suffixes (ED, EDT, EST, ES) from old CAD data
+        dt_str = re.sub(r'\s+(ED|EDT|EST|ES)$', '', dt_str.strip())
         try:
             dt = datetime.strptime(dt_str, '%m-%d-%y %H:%M:%S')
             local_tz = ZoneInfo(self.timezone)
