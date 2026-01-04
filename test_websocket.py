@@ -325,7 +325,7 @@ def main():
     
     # Generate test event number in real format: F26XXXXXX
     now = datetime.now()
-    event_number = f"F26999{now.strftime('%H%M')}"  # e.g. F269991423
+    event_number = f"F269{now.strftime('%H%M%S')}"  # e.g. F269143025 - unique per second
     
     # Generate times
     dispatch_time = now.strftime('%H:%M:%S')

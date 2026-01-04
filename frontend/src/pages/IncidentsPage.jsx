@@ -120,20 +120,30 @@ function IncidentsPage() {
   }, [showForm, showHubModal]);
 
   const handleIncidentClosed = useCallback((incident) => {
-    // Update status in list
+    // Update status in list immediately for responsiveness
     setIncidents(prev => prev.map(i => 
       i.id === incident.id ? { ...i, status: 'CLOSED', ...incident } : i
     ));
     
-    // Update qualifying incidents
-    setQualifyingIncidents(prev => prev.map(i => 
-      i.id === incident.id ? { ...i, status: 'CLOSED', ...incident } : i
-    ));
-    
-    // Update modal if showing
-    setModalIncidents(prev => prev.map(i => 
-      i.id === incident.id ? { ...i, status: 'CLOSED', ...incident } : i
-    ));
+    // Fetch full incident to get unit times, narrative, etc.
+    getIncident(incident.id).then(res => {
+      const fullIncident = res.data;
+      
+      // Update list with full data
+      setIncidents(prev => prev.map(i => 
+        i.id === fullIncident.id ? fullIncident : i
+      ));
+      
+      // Update qualifying incidents with full data
+      setQualifyingIncidents(prev => prev.map(i => 
+        i.id === fullIncident.id ? fullIncident : i
+      ));
+      
+      // Update modal with full data (unit times, narrative, etc.)
+      setModalIncidents(prev => prev.map(i => 
+        i.id === fullIncident.id ? fullIncident : i
+      ));
+    }).catch(err => console.error('Failed to fetch closed incident:', err));
   }, []);
 
   // WebSocket connection
