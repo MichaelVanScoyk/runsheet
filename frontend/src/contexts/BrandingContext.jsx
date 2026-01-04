@@ -81,7 +81,7 @@ export function BrandingProvider({ children }) {
         if (newBranding.stationNumber) {
           const favicon = document.querySelector("link[rel='icon']");
           if (favicon) {
-            favicon.href = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='70' font-weight='bold'>${newBranding.stationNumber}</text></svg>`;
+            favicon.href = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-weight='bold'>${newBranding.stationNumber}</text></svg>`;
           }
         }
         
