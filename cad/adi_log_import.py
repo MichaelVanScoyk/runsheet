@@ -67,27 +67,44 @@ class ADILogImporter:
     def _parse_dispatch_datetime_str(self, dt_str: str) -> Optional[datetime]:
         """
         Parse dispatch datetime string handling multiple formats:
-        - MM-DD-YY HH:MM:SS (newer format)
-        - DD-MM-YY HH:MM:SS (older 2018 format)
-        Also strips timezone suffixes (ED, EDT, EST, ES).
+        - MM-DD-YY HH:MM:SS (standard format, no timezone suffix)
+        - DD-MM-YY HH:MM:SS (mid-2018 format, has ED/EDT/EST/ES suffix)
+        
+        The presence of timezone suffix (ED, EDT, EST, ES) indicates DD-MM-YY format.
         """
         if not dt_str:
             return None
         
-        # Strip timezone suffixes
-        dt_str = re.sub(r'\s+(ED|EDT|EST|ES)$', '', dt_str.strip())
+        dt_str = dt_str.strip()
         
-        # Try MM-DD-YY first (newer format)
-        try:
-            return datetime.strptime(dt_str, '%m-%d-%y %H:%M:%S')
-        except ValueError:
-            pass
+        # Check for timezone suffix - indicates DD-MM-YY format
+        has_tz_suffix = bool(re.search(r'\s+(ED|EDT|EST|ES)$', dt_str))
         
-        # Try DD-MM-YY (older 2018 format)
-        try:
-            return datetime.strptime(dt_str, '%d-%m-%y %H:%M:%S')
-        except ValueError:
-            pass
+        # Strip timezone suffix for parsing
+        clean_str = re.sub(r'\s+(ED|EDT|EST|ES)$', '', dt_str)
+        
+        if has_tz_suffix:
+            # DD-MM-YY format (mid-2018 with timezone suffix)
+            try:
+                return datetime.strptime(clean_str, '%d-%m-%y %H:%M:%S')
+            except ValueError:
+                pass
+            # Fallback to MM-DD-YY if DD-MM-YY fails
+            try:
+                return datetime.strptime(clean_str, '%m-%d-%y %H:%M:%S')
+            except ValueError:
+                pass
+        else:
+            # MM-DD-YY format (standard, no suffix)
+            try:
+                return datetime.strptime(clean_str, '%m-%d-%y %H:%M:%S')
+            except ValueError:
+                pass
+            # Fallback to DD-MM-YY if day > 12 (unambiguous)
+            try:
+                return datetime.strptime(clean_str, '%d-%m-%y %H:%M:%S')
+            except ValueError:
+                pass
         
         return None
     
