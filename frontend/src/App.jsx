@@ -1,14 +1,17 @@
 /**
  * App.jsx - Main Application Component
  * 
- * INACTIVITY TIMEOUT SYSTEM (Updated January 2025):
+ * INACTIVITY TIMEOUT & CROSS-TAB SESSION SYSTEM (Updated January 2025):
  * - Uses react-idle-timer library for robust idle detection
  * - 15-minute inactivity timeout for all users
+ * - Cross-tab session sharing via localStorage (login/logout syncs across tabs)
+ * - Cross-tab idle timer sync via BroadcastChannel
  * - If logged in (personnel session): silently logs out and redirects to incidents page
  * - If not logged in but on other pages: silently redirects to incidents page
  * - Tenant session (department-level cookie) is NOT affected by inactivity timeout
  * 
- * Previous implementation used custom SessionManager component with setInterval.
+ * Previous implementation used custom SessionManager component with setInterval
+ * and sessionStorage (per-tab isolation).
  * See App.jsx.bak-pre-inactivity-timeout for original code.
  */
 
@@ -39,6 +42,7 @@ import {
   personnelGetAuthStatus,
   checkTenantSession,
   tenantLogout,
+  USER_SESSION_KEY,
 } from './api';
 import PrintView from './components/PrintView';
 import './App.css';
@@ -64,6 +68,7 @@ function PrintPage() {
  * - Only tracked logged-in users, not general page inactivity
  * - Manual event listener management prone to edge cases
  * - No WebWorker support (browser could throttle background tabs)
+ * - sessionStorage meant no cross-tab session sharing
  */
 // function SessionManager({ userSession, onSessionExpired }) { ... }
 
@@ -89,7 +94,7 @@ function AppContent({ tenant, onTenantLogout }) {
 
   /**
    * Callback for when inactivity timeout clears user session
-   * Syncs local React state with cleared sessionStorage
+   * Syncs local React state with cleared localStorage
    */
   const handleInactivityLogout = useCallback(() => {
     setUserSessionState(null);
@@ -123,7 +128,42 @@ function AppContent({ tenant, onTenantLogout }) {
       .catch(err => console.error('Failed to load timezone:', err));
   }, []);
 
-  // Refresh session state periodically (keeps UI in sync if session cleared elsewhere)
+  /**
+   * CROSS-TAB SESSION SYNC
+   * Listen for localStorage changes from other tabs to sync login/logout state immediately
+   */
+  useEffect(() => {
+    const handleStorageChange = (event) => {
+      if (event.key !== USER_SESSION_KEY) return;
+      
+      if (event.newValue === null) {
+        // Session cleared in another tab - sync logout
+        console.log('[CrossTab] Session cleared in another tab');
+        setUserSessionState(null);
+        setSelectedPersonnelId('');
+        setAuthStatus(null);
+        setAuthPassword('');
+        setAuthError('');
+      } else if (event.newValue && !event.oldValue) {
+        // Session created in another tab - sync login
+        console.log('[CrossTab] Session created in another tab');
+        try {
+          const session = JSON.parse(event.newValue);
+          setUserSessionState(session);
+          setSelectedPersonnelId('');
+          setAuthPassword('');
+          setAuthError('');
+        } catch (e) {
+          console.error('[CrossTab] Failed to parse session:', e);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  // Refresh session state periodically (backup for cross-tab sync)
   useEffect(() => {
     const checkSession = () => {
       const session = getUserSession();

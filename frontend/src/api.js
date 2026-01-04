@@ -214,14 +214,22 @@ export const changeAdminPassword = (currentPassword, newPassword) =>
 export const getAuditLog = (params) => api.get('/admin/audit-log', { params });
 
 // ============================================================================
-// USER SESSION AUTH (15 min timeout)
+// USER SESSION AUTH (15 min timeout, cross-tab via localStorage)
 // ============================================================================
+// 
+// CROSS-TAB SUPPORT (Updated January 2025):
+// - Changed from sessionStorage to localStorage for cross-tab session sharing
+// - Login in one tab = logged in across all tabs
+// - Logout/timeout in one tab = logged out across all tabs
+// - Other tabs detect changes via storage event listener (see App.jsx)
+//
+// Previous implementation used sessionStorage (per-tab isolation).
 
 const SESSION_KEY = 'userSession';
 const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes in ms
 
 export const getUserSession = () => {
-  const data = sessionStorage.getItem(SESSION_KEY);
+  const data = localStorage.getItem(SESSION_KEY);
   if (!data) return null;
   
   try {
@@ -243,23 +251,23 @@ export const setUserSession = (authResult) => {
     lastActivity: Date.now(),
     loginTime: Date.now(),
   };
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 };
 
 export const updateSessionActivity = () => {
   const session = getUserSession();
   if (session) {
     session.lastActivity = Date.now();
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   }
 };
 
 export const clearUserSession = () => {
-  sessionStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SESSION_KEY);
 };
 
 export const isSessionExpired = () => {
-  const data = sessionStorage.getItem(SESSION_KEY);
+  const data = localStorage.getItem(SESSION_KEY);
   if (!data) return true;
   
   try {
@@ -269,6 +277,9 @@ export const isSessionExpired = () => {
     return true;
   }
 };
+
+// Key exported for storage event listeners in other components
+export const USER_SESSION_KEY = SESSION_KEY;
 
 // ============================================================================
 // TENANT AUTH (Department-level login)

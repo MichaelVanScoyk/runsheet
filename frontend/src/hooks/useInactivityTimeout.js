@@ -4,6 +4,12 @@
  * Handles automatic session timeout after 15 minutes of user inactivity.
  * Uses react-idle-timer library for robust idle detection.
  * 
+ * CROSS-TAB SUPPORT (Updated January 2025):
+ * - crossTab: true enables idle timer sync across all browser tabs
+ * - Inactivity in one tab = inactivity across all tabs
+ * - Timeout triggers simultaneously in all tabs
+ * - Uses BroadcastChannel API with localStorage fallback
+ * 
  * Behavior:
  * - If user is logged in (personnel session) and goes idle: logs them out silently
  * - If user is on any page other than "/" (IncidentsPage) and goes idle: redirects to "/"
@@ -15,10 +21,10 @@
  * @module hooks/useInactivityTimeout
  */
 
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useIdleTimer } from 'react-idle-timer';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { clearUserSession, getUserSession } from '../api';
+import { clearUserSession, getUserSession, USER_SESSION_KEY } from '../api';
 
 // 15 minutes in milliseconds
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
@@ -59,7 +65,33 @@ export function useInactivityTimeout({ onUserLogout } = {}) {
     }
   }, [location.pathname, navigate, onUserLogout]);
 
-  // Initialize the idle timer
+  /**
+   * Listen for storage events from other tabs
+   * When another tab clears the session, sync this tab's state
+   */
+  useEffect(() => {
+    const handleStorageChange = (event) => {
+      // Only react to userSession changes
+      if (event.key !== USER_SESSION_KEY) return;
+      
+      // Session was cleared in another tab
+      if (event.newValue === null && event.oldValue !== null) {
+        console.log('[InactivityTimeout] Session cleared in another tab, syncing...');
+        if (onUserLogout) {
+          onUserLogout();
+        }
+        // Redirect to incidents page if not already there
+        if (location.pathname !== '/') {
+          navigate('/');
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [location.pathname, navigate, onUserLogout]);
+
+  // Initialize the idle timer with cross-tab support
   const { reset, getRemainingTime, isIdle } = useIdleTimer({
     timeout: INACTIVITY_TIMEOUT_MS,
     onIdle: handleIdle,
@@ -82,6 +114,12 @@ export function useInactivityTimeout({ onUserLogout } = {}) {
     startOnMount: true,
     // Don't stop the timer when idle (we want continuous monitoring)
     stopOnIdle: false,
+    // CROSS-TAB SUPPORT: Sync idle state across all browser tabs
+    crossTab: true,
+    // Name for the cross-tab channel (unique per app)
+    name: 'cadreport-idle-timer',
+    // Sync timers across tabs every 500ms for consistency
+    syncTimers: 500,
   });
 
   return {
