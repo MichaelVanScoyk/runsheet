@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings, getPrintLayout, updatePrintLayout, resetPrintLayout } from '../api';
+import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings, getPrintLayout, updatePrintLayout, resetPrintLayout, getIncidentYears } from '../api';
 import { useBranding } from '../contexts/BrandingContext';
 import { formatDateTimeLocal } from '../utils/timeUtils';
 import './AdminPage.css';
@@ -262,9 +262,25 @@ function IncidentSequenceTab() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [year, setYear] = useState(new Date().getFullYear());
+  const [availableYears, setAvailableYears] = useState([new Date().getFullYear()]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [fixResult, setFixResult] = useState(null);
+
+  // Load available years on mount
+  useEffect(() => {
+    const loadYears = async () => {
+      try {
+        const res = await getIncidentYears();
+        if (res.data.years && res.data.years.length > 0) {
+          setAvailableYears(res.data.years);
+        }
+      } catch (err) {
+        console.error('Failed to load years:', err);
+      }
+    };
+    loadYears();
+  }, []);
 
   useEffect(() => {
     loadSequence();
@@ -312,10 +328,9 @@ function IncidentSequenceTab() {
         <div className="sequence-year-selector">
           <label>Year:</label>
           <select value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
-            {[...Array(5)].map((_, i) => {
-              const y = new Date().getFullYear() - i;
-              return <option key={y} value={y}>{y}</option>;
-            })}
+            {availableYears.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
           </select>
         </div>
         
