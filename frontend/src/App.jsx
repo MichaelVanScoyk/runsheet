@@ -1,7 +1,22 @@
+/**
+ * App.jsx - Main Application Component
+ * 
+ * INACTIVITY TIMEOUT SYSTEM (Updated January 2025):
+ * - Uses react-idle-timer library for robust idle detection
+ * - 15-minute inactivity timeout for all users
+ * - If logged in (personnel session): silently logs out and redirects to incidents page
+ * - If not logged in but on other pages: silently redirects to incidents page
+ * - Tenant session (department-level cookie) is NOT affected by inactivity timeout
+ * 
+ * Previous implementation used custom SessionManager component with setInterval.
+ * See App.jsx.bak-pre-inactivity-timeout for original code.
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink, useNavigate, useParams } from 'react-router-dom';
 import { BrandingProvider, useBranding } from './contexts/BrandingContext';
 import { setStationTimezone } from './utils/timeUtils';
+import { useInactivityTimeout } from './hooks/useInactivityTimeout';
 import IncidentsPage from './pages/IncidentsPage';
 import PersonnelPage from './pages/PersonnelPage';
 import ApparatusPage from './pages/ApparatusPage';
@@ -16,8 +31,6 @@ import {
   getUserSession, 
   setUserSession,
   clearUserSession, 
-  updateSessionActivity,
-  isSessionExpired,
   getPersonnel,
   personnelLogin,
   personnelRegister,
@@ -41,41 +54,22 @@ function PrintPage() {
   return <PrintView incidentId={parseInt(id)} onClose={() => window.close()} />;
 }
 
-// Session timeout checker component
-function SessionManager({ userSession, onSessionExpired }) {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!userSession) return;
-
-    // Check session every 30 seconds
-    const interval = setInterval(() => {
-      if (isSessionExpired()) {
-        onSessionExpired();
-        navigate('/');
-      }
-    }, 30000);
-
-    // Update activity on user interaction
-    const handleActivity = () => {
-      updateSessionActivity();
-    };
-
-    window.addEventListener('click', handleActivity);
-    window.addEventListener('keydown', handleActivity);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('click', handleActivity);
-      window.removeEventListener('keydown', handleActivity);
-    };
-  }, [userSession, onSessionExpired, navigate]);
-
-  return null;
-}
+/**
+ * DEPRECATED: Old SessionManager component
+ * Replaced by useInactivityTimeout hook using react-idle-timer
+ * Kept here for reference - see App.jsx.bak-pre-inactivity-timeout for full original
+ * 
+ * Issues with old approach:
+ * - Used alert() which blocked the UI requiring user interaction
+ * - Only tracked logged-in users, not general page inactivity
+ * - Manual event listener management prone to edge cases
+ * - No WebWorker support (browser could throttle background tabs)
+ */
+// function SessionManager({ userSession, onSessionExpired }) { ... }
 
 function AppContent({ tenant, onTenantLogout }) {
   const branding = useBranding();
+  const navigate = useNavigate();
   const [adminAuth, setAdminAuth] = useState(isAdminAuthenticated());
   const [userSession, setUserSessionState] = useState(getUserSession());
   const [personnel, setPersonnel] = useState([]);
@@ -93,7 +87,20 @@ function AppContent({ tenant, onTenantLogout }) {
   const [registerStep, setRegisterStep] = useState('email');
   const [registerLoading, setRegisterLoading] = useState(false);
 
-  const navigate = useNavigate();
+  /**
+   * Callback for when inactivity timeout clears user session
+   * Syncs local React state with cleared sessionStorage
+   */
+  const handleInactivityLogout = useCallback(() => {
+    setUserSessionState(null);
+    setSelectedPersonnelId('');
+    setAuthStatus(null);
+    setAuthPassword('');
+    setAuthError('');
+  }, []);
+
+  // Initialize inactivity timeout (replaces old SessionManager)
+  useInactivityTimeout({ onUserLogout: handleInactivityLogout });
 
   // Load personnel list and timezone setting
   useEffect(() => {
@@ -116,7 +123,7 @@ function AppContent({ tenant, onTenantLogout }) {
       .catch(err => console.error('Failed to load timezone:', err));
   }, []);
 
-  // Refresh session state periodically
+  // Refresh session state periodically (keeps UI in sync if session cleared elsewhere)
   useEffect(() => {
     const checkSession = () => {
       const session = getUserSession();
@@ -137,22 +144,20 @@ function AppContent({ tenant, onTenantLogout }) {
     setAdminAuth(false);
   };
 
-  const handleUserLogout = () => {
+  /**
+   * Handle explicit user logout (clicking Logout button)
+   * Clears session and navigates to incidents page
+   */
+  const handleUserLogout = useCallback(() => {
     clearUserSession();
     setUserSessionState(null);
     setSelectedPersonnelId('');
     setAuthStatus(null);
     setAuthPassword('');
     setAuthError('');
-  };
-
-  const handleSessionExpired = useCallback(() => {
-    clearUserSession();
-    setUserSessionState(null);
-    setSelectedPersonnelId('');
-    setAuthStatus(null);
-    alert('Session expired. Please log in again.');
-  }, []);
+    // Navigate to incidents page on explicit logout
+    navigate('/');
+  }, [navigate]);
 
   // Auth handlers
   const handlePersonnelSelect = async (personnelId) => {
@@ -267,7 +272,7 @@ function AppContent({ tenant, onTenantLogout }) {
 
   return (
     <div className="app">
-      <SessionManager userSession={userSession} onSessionExpired={handleSessionExpired} />
+      {/* SessionManager removed - replaced by useInactivityTimeout hook */}
       <nav className="sidebar">
         <div className="logo">
           {/* Show logo if available */}
