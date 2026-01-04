@@ -6,6 +6,10 @@ Imports historical CAD data from ADI .log files into CADReport.
 Each .log file contains raw HTML CAD reports (Dispatch and Clear) 
 that ADI received from Chester County.
 
+Supports both:
+- HTML format (2018 March onwards)
+- Plain text format (2017 and earlier, plus Jan-Feb 2018)
+
 Usage:
     # Import to test tenant (gmfc2)
     python adi_log_import.py ADI202201.log --tenant gmfc2
@@ -28,6 +32,7 @@ from typing import Optional, Dict, Any, List
 from zoneinfo import ZoneInfo
 
 from cad_parser import parse_cad_html, report_to_dict
+from plaintext_cad_parser import parse_plaintext_cad, plaintext_report_to_dict, is_plaintext_format
 
 logging.basicConfig(
     level=logging.INFO,
@@ -125,27 +130,43 @@ class ADILogImporter:
         segments = re.split(r'>>>[^\n]+\n', content)
         
         reports = []
+        html_count = 0
+        plaintext_count = 0
+        
         for segment in segments:
             segment = segment.strip()
-            if not segment or '<' not in segment:
+            if not segment:
                 continue
             
-            # Skip non-HTML segments (ADI status messages, etc)
-            if not ('<table' in segment.lower() or '<style' in segment.lower()):
-                continue
+            # Try HTML format first (2018 March onwards)
+            if '<table' in segment.lower() or '<style' in segment.lower():
+                try:
+                    parsed = parse_cad_html(segment)
+                    if parsed and parsed.event_number:
+                        report_dict = report_to_dict(parsed)
+                        report_dict['_raw_html'] = segment
+                        reports.append(report_dict)
+                        self.stats['reports_parsed'] += 1
+                        html_count += 1
+                except Exception as e:
+                    self.stats['parse_errors'] += 1
+                    logger.warning(f"HTML parse error: {e}")
             
-            try:
-                parsed = parse_cad_html(segment)
-                if parsed and parsed.event_number:
-                    report_dict = report_to_dict(parsed)
-                    report_dict['_raw_html'] = segment
-                    reports.append(report_dict)
-                    self.stats['reports_parsed'] += 1
-            except Exception as e:
-                self.stats['parse_errors'] += 1
-                logger.warning(f"Parse error: {e}")
+            # Try plain text format (2017 and earlier)
+            elif is_plaintext_format(segment):
+                try:
+                    parsed = parse_plaintext_cad(segment)
+                    if parsed and parsed.event_number:
+                        report_dict = plaintext_report_to_dict(parsed)
+                        report_dict['_raw_html'] = segment  # Store raw text in same field
+                        reports.append(report_dict)
+                        self.stats['reports_parsed'] += 1
+                        plaintext_count += 1
+                except Exception as e:
+                    self.stats['parse_errors'] += 1
+                    logger.warning(f"Plain text parse error: {e}")
         
-        logger.info(f"Parsed {len(reports)} reports from {path.name}")
+        logger.info(f"Parsed {len(reports)} reports from {path.name} (HTML: {html_count}, Plain text: {plaintext_count})")
         
         # Sort by event number and type (DISPATCH before CLEAR)
         def sort_key(r):
@@ -496,11 +517,19 @@ class ADILogImporter:
         except:
             pass
         
-        # Try to get incident date from report_time
-        # Format can be "HH:MM MM/DD" (e.g., "03:18 09/28") or "MM-DD-YY HH:MM:SS"
+        # Try to get incident date from report_time or dispatch_time
         incident_date = None
         report_time_hour = None
-        if report.get('report_time'):
+        
+        # Try dispatch_time first (more reliable)
+        if report.get('dispatch_time'):
+            dt = self._parse_dispatch_datetime_str(report['dispatch_time'])
+            if dt:
+                incident_date = dt.strftime('%Y-%m-%d')
+                report_time_hour = dt.hour
+        
+        # Fall back to report_time
+        if not incident_date and report.get('report_time'):
             rt = report['report_time'].strip()
             try:
                 if '-' in rt and len(rt) > 10:
@@ -523,18 +552,16 @@ class ADILogImporter:
                 logger.warning(f"Could not parse report_time '{rt}': {e}")
         
         # Get first_dispatch for midnight crossover detection
-        # This matches the logic used in _handle_clear when DISPATCH exists
         dispatch_time_str = report.get('first_dispatch')  # e.g., "20:54:26"
         
         # Detect midnight crossover: if dispatch was in evening and report_time
         # is in early morning, the incident started the PREVIOUS day
-        # Example: dispatch 20:54, report 03:18 → incident started day before
         if incident_date and dispatch_time_str and report_time_hour is not None:
             try:
                 dispatch_hour = int(dispatch_time_str.split(':')[0])
-                # If dispatch in evening (>= 12) and report in early morning (< 12)
-                # and dispatch hour > report hour, it crossed midnight
-                if dispatch_hour >= 12 and report_time_hour < 12 and dispatch_hour > report_time_hour:
+                # If dispatch in evening (>= 18) and report in early morning (< 6)
+                # it likely crossed midnight
+                if dispatch_hour >= 18 and report_time_hour < 6:
                     dt = datetime.strptime(incident_date, '%Y-%m-%d')
                     dt = dt - timedelta(days=1)
                     incident_date = dt.strftime('%Y-%m-%d')
