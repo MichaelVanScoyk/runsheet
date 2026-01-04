@@ -27,6 +27,9 @@ _connections: Dict[str, Set[WebSocket]] = {}
 # Lock for thread-safe connection management
 _connections_lock = asyncio.Lock()
 
+# Server-side ping interval (seconds) - keep under Cloudflare's 100s timeout
+SERVER_PING_INTERVAL = 30
+
 
 def _extract_tenant_from_host(host: str) -> str:
     """Extract tenant slug from Host header (same logic as database.py)"""
@@ -124,22 +127,52 @@ def get_connection_count(tenant_slug: str = None) -> dict:
     }
 
 
+async def _server_ping_loop(websocket: WebSocket, stop_event: asyncio.Event):
+    """Send periodic pings from server to keep connection alive through proxies"""
+    try:
+        while not stop_event.is_set():
+            await asyncio.sleep(SERVER_PING_INTERVAL)
+            if stop_event.is_set():
+                break
+            try:
+                await websocket.send_json({"type": "ping"})
+            except Exception:
+                break
+    except asyncio.CancelledError:
+        pass
+
+
+async def _receive_loop(websocket: WebSocket, stop_event: asyncio.Event):
+    """Handle incoming messages from client"""
+    try:
+        while not stop_event.is_set():
+            try:
+                data = await websocket.receive_text()
+                message = json.loads(data)
+                
+                if message.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                elif message.get("type") == "pong":
+                    # Client responded to our ping - connection is alive
+                    pass
+                    
+            except json.JSONDecodeError as e:
+                logger.warning(f"Invalid JSON received: {e}")
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"Receive loop error: {e}")
+    finally:
+        stop_event.set()
+
+
 @router.websocket("/ws/incidents")
 async def websocket_incidents(websocket: WebSocket):
     """
     WebSocket endpoint for real-time incident updates.
     
     Connection is automatically associated with tenant based on Host header.
-    
-    Client -> Server messages:
-        - {"type": "ping"} - Keepalive, server responds with {"type": "pong"}
-    
-    Server -> Client messages:
-        - {"type": "incident_created", "incident": {...}, "timestamp": "..."}
-        - {"type": "incident_updated", "incident": {...}, "timestamp": "..."}
-        - {"type": "incident_closed", "incident": {...}, "timestamp": "..."}
-        - {"type": "pong"} - Response to ping
-        - {"type": "connected", "tenant": "...", "message": "..."} - Connection confirmed
+    Server sends periodic pings to keep connection alive through Cloudflare/nginx.
     """
     # Extract tenant from Host header
     host = websocket.headers.get('host', '')
@@ -163,24 +196,34 @@ async def websocket_incidents(websocket: WebSocket):
         await _remove_connection(tenant_slug, websocket)
         return
     
+    # Use stop event to coordinate shutdown
+    stop_event = asyncio.Event()
+    
+    # Start server-side ping loop and receive loop concurrently
+    ping_task = asyncio.create_task(_server_ping_loop(websocket, stop_event))
+    receive_task = asyncio.create_task(_receive_loop(websocket, stop_event))
+    
     try:
-        while True:
-            # Wait for client messages (ping/pong keepalive)
+        # Wait for either task to complete (indicates disconnect)
+        done, pending = await asyncio.wait(
+            [ping_task, receive_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        
+        # Cancel pending tasks
+        for task in pending:
+            task.cancel()
             try:
-                data = await websocket.receive_text()
-                message = json.loads(data)
+                await task
+            except asyncio.CancelledError:
+                pass
                 
-                if message.get("type") == "ping":
-                    await websocket.send_json({"type": "pong"})
-                    
-            except json.JSONDecodeError:
-                logger.warning(f"Invalid JSON received from WebSocket: {data[:100]}")
-                
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket client disconnected: {tenant_slug}")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
     finally:
+        stop_event.set()
+        ping_task.cancel()
+        receive_task.cancel()
         await _remove_connection(tenant_slug, websocket)
 
 
