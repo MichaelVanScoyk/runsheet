@@ -104,15 +104,16 @@ body {
 .text-white { color: var(--text-primary) !important; }
 
 /* EXCEPTION: text-white should stay white on colored backgrounds */
-.bg-primary .text-white,
-.bg-accent-red .text-white,
-.bg-blue-600 .text-white,
-.bg-green-600 .text-white,
-.bg-orange-600 .text-white,
-.bg-status-completed .text-white,
-.bg-status-open .text-white,
-.bg-status-error .text-white,
-th .text-white,
+/* Use compound selectors for same-element cases (not descendant) */
+.bg-primary.text-white,
+.bg-accent-red.text-white,
+.bg-blue-600.text-white,
+.bg-green-600.text-white,
+.bg-orange-600.text-white,
+.bg-red-600.text-white,
+.bg-status-completed.text-white,
+.bg-status-open.text-white,
+.bg-status-error.text-white,
 th.text-white { 
   color: #ffffff !important; 
 }
@@ -133,8 +134,9 @@ th.text-white {
 .border-secondary { border-color: var(--secondary-color) !important; }
 .bg-secondary-light { background-color: var(--secondary-light) !important; }
 
-/* RunSheet form styling */
-.rounded-lg {
+/* Card containers - use .card or explicit bg-white for white backgrounds */
+/* DO NOT style .rounded-lg - it's a Tailwind utility for border-radius only */
+.card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
@@ -153,8 +155,9 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
 }
 
-/* Tables */
-th {
+/* Tables - only style headers in tables that need branded headers */
+/* Use .table-branded for tables that should have green headers */
+.table-branded th {
   background: var(--primary-color) !important;
   color: #fff !important;
 }
@@ -234,6 +237,14 @@ label {
 }
 .cad-html-content b { 
   color: var(--primary-color); 
+}
+
+/* RunSheet internal tables - exempt from global th styling */
+/* These tables use conditional highlighting and section backgrounds */
+.personnel-grid th,
+.cad-units-table th {
+  background: var(--bg-section) !important;
+  color: inherit !important;
 }
 
 /* Keyframes for pulse animation */

@@ -50,7 +50,7 @@ export default function PersonnelGrid() {
     <div className="pt-3 border-t border-theme">
       <h4 className="text-accent-red text-sm font-semibold mb-2">Personnel Assignments</h4>
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse" style={{ tableLayout: 'auto' }}>
+        <table className="w-full border-collapse personnel-grid" style={{ tableLayout: 'auto' }}>
           <thead>
             <tr>
               <th className="w-8 bg-theme-section text-theme-muted text-xs font-semibold px-1 py-1.5 border border-theme">#</th>
