@@ -1088,12 +1088,13 @@ def get_category_stats(
     if prefix not in ('F', 'E'):
         raise HTTPException(status_code=400, detail="Prefix must be F or E")
     
-    # Calculate previous period for trends (same length as current period)
-    current_days = (end_date - start_date).days
-    prev_end = start_date - timedelta(days=1)
-    prev_start = prev_end - timedelta(days=current_days)
+    # Calculate trend period (last 1/3 of selected range)
+    # Trend compares: full period average vs last 1/3 of period
+    total_days = (end_date - start_date).days
+    trend_days = max(total_days // 3, 7)  # At least 7 days for trend
+    trend_start = end_date - timedelta(days=trend_days)
     
-    # Current period stats - using incident-level times
+    # Current period stats - using incident-level times (ALL calls)
     current = db.execute(text("""
         SELECT 
             COUNT(*) as total_incidents,
@@ -1122,8 +1123,8 @@ def get_category_stats(
         'prefix': prefix
     }).fetchone()
     
-    # Previous period stats for trends
-    previous = db.execute(text("""
+    # Trend period stats (last 1/3 of selected range)
+    trend = db.execute(text("""
         SELECT 
             COUNT(*) as total_incidents,
             COUNT(*) FILTER (WHERE time_first_on_scene IS NOT NULL) as incidents_with_response,
@@ -1138,13 +1139,13 @@ def get_category_stats(
                 END
             )::numeric, 1) as avg_response_mins
         FROM incidents
-        WHERE incident_date >= :prev_start
-            AND incident_date < :prev_end
+        WHERE incident_date >= :trend_start
+            AND incident_date < :end_date
             AND deleted_at IS NULL
             AND internal_incident_number LIKE :prefix || '%'
     """), {
-        'prev_start': prev_start,
-        'prev_end': prev_end,
+        'trend_start': trend_start,
+        'end_date': end_date,
         'prefix': prefix
     }).fetchone()
     
@@ -1153,22 +1154,23 @@ def get_category_stats(
     if current.total_incidents and current.total_incidents > 0:
         current_response_rate = round((current.incidents_with_response / current.total_incidents) * 100, 1)
     
-    prev_response_rate = None
-    if previous.total_incidents and previous.total_incidents > 0:
-        prev_response_rate = round((previous.incidents_with_response / previous.total_incidents) * 100, 1)
+    trend_response_rate = None
+    if trend.total_incidents and trend.total_incidents > 0:
+        trend_response_rate = round((trend.incidents_with_response / trend.total_incidents) * 100, 1)
     
-    # Calculate trends (positive = improvement for response rate, negative = improvement for times)
+    # Calculate trends (compare full period to last 1/3)
+    # Positive = recent is higher, negative = recent is lower
     response_rate_trend = None
-    if current_response_rate is not None and prev_response_rate is not None:
-        response_rate_trend = round(current_response_rate - prev_response_rate, 1)
+    if current_response_rate is not None and trend_response_rate is not None:
+        response_rate_trend = round(trend_response_rate - current_response_rate, 1)
     
     turnout_trend = None
-    if current.avg_turnout_mins is not None and previous.avg_turnout_mins is not None:
-        turnout_trend = round(float(current.avg_turnout_mins) - float(previous.avg_turnout_mins), 1)
+    if current.avg_turnout_mins is not None and trend.avg_turnout_mins is not None:
+        turnout_trend = round(float(trend.avg_turnout_mins) - float(current.avg_turnout_mins), 1)
     
     response_trend = None
-    if current.avg_response_mins is not None and previous.avg_response_mins is not None:
-        response_trend = round(float(current.avg_response_mins) - float(previous.avg_response_mins), 1)
+    if current.avg_response_mins is not None and trend.avg_response_mins is not None:
+        response_trend = round(float(trend.avg_response_mins) - float(current.avg_response_mins), 1)
     
     return {
         "total_incidents": current.total_incidents or 0,
@@ -1183,9 +1185,10 @@ def get_category_stats(
             "start": start_date.isoformat(),
             "end": end_date.isoformat()
         },
-        "comparison_period": {
-            "start": prev_start.isoformat(),
-            "end": prev_end.isoformat()
+        "trend_period": {
+            "start": trend_start.isoformat(),
+            "end": end_date.isoformat(),
+            "description": f"Last {trend_days} days of selected range"
         }
     }
 
@@ -1196,7 +1199,7 @@ def get_long_duration_calls(
     start_date: date = Query(...),
     end_date: date = Query(...),
     prefix: str = Query(..., description="Incident number prefix: F for Fire, E for EMS"),
-    min_duration_mins: int = Query(25, description="Minimum on-scene duration in minutes"),
+    min_duration_mins: int = Query(20, description="Minimum on-scene duration in minutes"),
     db: Session = Depends(get_db)
 ):
     """

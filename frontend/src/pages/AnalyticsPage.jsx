@@ -73,8 +73,8 @@ const AnalyticsPage = () => {
       const [fireS, emsS, fireL, emsL] = await Promise.all([
         analyticsApi.getCategoryStats(dateRange.startDate, dateRange.endDate, 'F'),
         analyticsApi.getCategoryStats(dateRange.startDate, dateRange.endDate, 'E'),
-        analyticsApi.getLongCalls(dateRange.startDate, dateRange.endDate, 'F', 25),
-        analyticsApi.getLongCalls(dateRange.startDate, dateRange.endDate, 'E', 25)
+        analyticsApi.getLongCalls(dateRange.startDate, dateRange.endDate, 'F', 20),
+        analyticsApi.getLongCalls(dateRange.startDate, dateRange.endDate, 'E', 20)
       ]);
       setFireStats(fireS);
       setEmsStats(emsS);
@@ -151,6 +151,14 @@ const AnalyticsPage = () => {
 
       {/* Main Content - Side by Side */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Description */}
+        <div className="mb-4 text-sm text-gray-600 bg-gray-100 rounded-lg px-4 py-3">
+          <p>
+            <strong>Top metrics</strong> show all calls. <strong>Trend arrows</strong> compare the full period average to the last third of the selected range.
+            <strong> Bottom charts</strong> show only calls with 20+ minutes on scene (filters out recalls and quick assists).
+          </p>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* FIRE Column */}
           <CategoryColumn
@@ -246,7 +254,7 @@ const CategoryColumn = ({ title, icon: Icon, color, stats, longCalls }) => {
         <div className="flex items-center gap-2 mb-3">
           <AlertTriangle className={`w-5 h-5 ${colors.text}`} />
           <span className="font-semibold text-gray-900">
-            Calls 25+ Minutes On Scene
+            Calls 20+ Minutes On Scene
           </span>
           <span className={`ml-auto text-lg font-bold ${colors.text}`}>
             {longCalls?.total_long_calls || 0}
