@@ -1064,170 +1064,257 @@ def resolve_data_quality_issue(
 
 
 # ============================================================================
-# DASHBOARD CHART ENDPOINTS (with category filtering)
-# These provide direct data for charts without relying on saved queries
+# NEW ANALYTICS DASHBOARD - Fire/EMS Split View
 # ============================================================================
 
-@router.get("/charts/incidents-by-day")
-def get_incidents_by_day_of_week(
+@router.get("/dashboard/category-stats")
+def get_category_stats(
     request: Request,
     start_date: date = Query(...),
     end_date: date = Query(...),
-    category: Optional[str] = Query(None, description="Filter by call_category: FIRE or EMS"),
+    prefix: str = Query(..., description="Incident number prefix: F for Fire, E for EMS"),
     db: Session = Depends(get_db)
 ):
-    """Get incident counts by day of week"""
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND call_category = '{category.upper()}'"
+    """
+    Get stats for a specific category (FIRE or EMS) based on incident number prefix.
+    Includes comparison to previous month for trend arrows.
+    """
+    prefix = prefix.upper()
+    if prefix not in ('F', 'E'):
+        raise HTTPException(status_code=400, detail="Prefix must be F or E")
     
-    result = db.execute(text(f"""
+    # Calculate previous month range for trends
+    # Get the number of days in current period
+    current_days = (end_date - start_date).days
+    prev_end = start_date - timedelta(days=1)
+    prev_start = prev_end - timedelta(days=current_days)
+    
+    # Current period stats
+    current = db.execute(text("""
+        WITH incident_stats AS (
+            SELECT 
+                i.id,
+                i.internal_incident_number,
+                -- Check if any unit went on scene
+                EXISTS (
+                    SELECT 1 FROM incident_units iu 
+                    WHERE iu.incident_id = i.id 
+                    AND iu.time_on_scene IS NOT NULL
+                ) as had_response,
+                -- Get first unit turnout time (dispatch to enroute)
+                (
+                    SELECT MIN(EXTRACT(EPOCH FROM (iu.time_enroute_to_scene - iu.time_dispatch))/60)
+                    FROM incident_units iu
+                    JOIN apparatus a ON iu.apparatus_id = a.id
+                    WHERE iu.incident_id = i.id
+                    AND iu.time_dispatch IS NOT NULL
+                    AND iu.time_enroute_to_scene IS NOT NULL
+                    AND a.counts_for_response_times = TRUE
+                ) as turnout_mins,
+                -- Get first unit response time (dispatch to on scene)
+                (
+                    SELECT MIN(EXTRACT(EPOCH FROM (iu.time_on_scene - iu.time_dispatch))/60)
+                    FROM incident_units iu
+                    JOIN apparatus a ON iu.apparatus_id = a.id
+                    WHERE iu.incident_id = i.id
+                    AND iu.time_dispatch IS NOT NULL
+                    AND iu.time_on_scene IS NOT NULL
+                    AND a.counts_for_response_times = TRUE
+                ) as response_mins
+            FROM incidents i
+            WHERE i.incident_date >= :start_date
+                AND i.incident_date < :end_date
+                AND i.deleted_at IS NULL
+                AND i.internal_incident_number LIKE :prefix || '%'
+        )
         SELECT 
-            EXTRACT(dow FROM incident_date) as day_num,
-            CASE EXTRACT(dow FROM incident_date)
-                WHEN 0 THEN 'Sunday'
-                WHEN 1 THEN 'Monday'
-                WHEN 2 THEN 'Tuesday'
-                WHEN 3 THEN 'Wednesday'
-                WHEN 4 THEN 'Thursday'
-                WHEN 5 THEN 'Friday'
-                WHEN 6 THEN 'Saturday'
+            COUNT(*) as total_incidents,
+            COUNT(*) FILTER (WHERE had_response) as incidents_with_response,
+            ROUND(AVG(turnout_mins)::numeric, 1) as avg_turnout_mins,
+            ROUND(AVG(response_mins)::numeric, 1) as avg_response_mins
+        FROM incident_stats
+    """), {
+        'start_date': start_date,
+        'end_date': end_date,
+        'prefix': prefix
+    }).fetchone()
+    
+    # Previous period stats for trends
+    previous = db.execute(text("""
+        WITH incident_stats AS (
+            SELECT 
+                i.id,
+                EXISTS (
+                    SELECT 1 FROM incident_units iu 
+                    WHERE iu.incident_id = i.id 
+                    AND iu.time_on_scene IS NOT NULL
+                ) as had_response,
+                (
+                    SELECT MIN(EXTRACT(EPOCH FROM (iu.time_enroute_to_scene - iu.time_dispatch))/60)
+                    FROM incident_units iu
+                    JOIN apparatus a ON iu.apparatus_id = a.id
+                    WHERE iu.incident_id = i.id
+                    AND iu.time_dispatch IS NOT NULL
+                    AND iu.time_enroute_to_scene IS NOT NULL
+                    AND a.counts_for_response_times = TRUE
+                ) as turnout_mins,
+                (
+                    SELECT MIN(EXTRACT(EPOCH FROM (iu.time_on_scene - iu.time_dispatch))/60)
+                    FROM incident_units iu
+                    JOIN apparatus a ON iu.apparatus_id = a.id
+                    WHERE iu.incident_id = i.id
+                    AND iu.time_dispatch IS NOT NULL
+                    AND iu.time_on_scene IS NOT NULL
+                    AND a.counts_for_response_times = TRUE
+                ) as response_mins
+            FROM incidents i
+            WHERE i.incident_date >= :prev_start
+                AND i.incident_date < :prev_end
+                AND i.deleted_at IS NULL
+                AND i.internal_incident_number LIKE :prefix || '%'
+        )
+        SELECT 
+            COUNT(*) as total_incidents,
+            COUNT(*) FILTER (WHERE had_response) as incidents_with_response,
+            ROUND(AVG(turnout_mins)::numeric, 1) as avg_turnout_mins,
+            ROUND(AVG(response_mins)::numeric, 1) as avg_response_mins
+        FROM incident_stats
+    """), {
+        'prev_start': prev_start,
+        'prev_end': prev_end,
+        'prefix': prefix
+    }).fetchone()
+    
+    # Calculate response rate
+    current_response_rate = None
+    if current.total_incidents and current.total_incidents > 0:
+        current_response_rate = round((current.incidents_with_response / current.total_incidents) * 100, 1)
+    
+    prev_response_rate = None
+    if previous.total_incidents and previous.total_incidents > 0:
+        prev_response_rate = round((previous.incidents_with_response / previous.total_incidents) * 100, 1)
+    
+    # Calculate trends (positive = improvement for response rate, negative = improvement for times)
+    response_rate_trend = None
+    if current_response_rate is not None and prev_response_rate is not None:
+        response_rate_trend = round(current_response_rate - prev_response_rate, 1)
+    
+    turnout_trend = None
+    if current.avg_turnout_mins is not None and previous.avg_turnout_mins is not None:
+        turnout_trend = round(float(current.avg_turnout_mins) - float(previous.avg_turnout_mins), 1)
+    
+    response_trend = None
+    if current.avg_response_mins is not None and previous.avg_response_mins is not None:
+        response_trend = round(float(current.avg_response_mins) - float(previous.avg_response_mins), 1)
+    
+    return {
+        "total_incidents": current.total_incidents or 0,
+        "incidents_with_response": current.incidents_with_response or 0,
+        "response_rate": current_response_rate,
+        "response_rate_trend": response_rate_trend,
+        "avg_turnout_mins": float(current.avg_turnout_mins) if current.avg_turnout_mins else None,
+        "turnout_trend": turnout_trend,
+        "avg_response_mins": float(current.avg_response_mins) if current.avg_response_mins else None,
+        "response_trend": response_trend,
+        "period": {
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat()
+        },
+        "comparison_period": {
+            "start": prev_start.isoformat(),
+            "end": prev_end.isoformat()
+        }
+    }
+
+
+@router.get("/dashboard/long-calls")
+def get_long_duration_calls(
+    request: Request,
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    prefix: str = Query(..., description="Incident number prefix: F for Fire, E for EMS"),
+    min_duration_mins: int = Query(25, description="Minimum on-scene duration in minutes"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get calls where time on scene exceeded threshold, grouped by day of week and hour.
+    Duration = time_on_scene to time_unit_clear (or time_available)
+    """
+    prefix = prefix.upper()
+    if prefix not in ('F', 'E'):
+        raise HTTPException(status_code=400, detail="Prefix must be F or E")
+    
+    # Get long calls by day of week
+    by_day = db.execute(text("""
+        SELECT 
+            EXTRACT(dow FROM i.incident_date) as day_num,
+            CASE EXTRACT(dow FROM i.incident_date)
+                WHEN 0 THEN 'Sun'
+                WHEN 1 THEN 'Mon'
+                WHEN 2 THEN 'Tue'
+                WHEN 3 THEN 'Wed'
+                WHEN 4 THEN 'Thu'
+                WHEN 5 THEN 'Fri'
+                WHEN 6 THEN 'Sat'
             END as day_name,
-            COUNT(*) as count
-        FROM incidents
-        WHERE incident_date >= :start_date
-            AND incident_date < :end_date
-            AND deleted_at IS NULL
-            {cat_filter}
-        GROUP BY EXTRACT(dow FROM incident_date)
-        ORDER BY EXTRACT(dow FROM incident_date)
-    """), {'start_date': start_date, 'end_date': end_date}).fetchall()
-    
-    return {
-        "data": [{"day": r.day_name, "count": r.count} for r in result],
-        "chart_config": {"type": "bar", "xKey": "day", "yKey": "count"}
-    }
-
-
-@router.get("/charts/incidents-by-hour")
-def get_incidents_by_hour(
-    request: Request,
-    start_date: date = Query(...),
-    end_date: date = Query(...),
-    category: Optional[str] = Query(None, description="Filter by call_category: FIRE or EMS"),
-    db: Session = Depends(get_db)
-):
-    """Get incident counts by hour of day"""
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND call_category = '{category.upper()}'"
-    
-    result = db.execute(text(f"""
-        SELECT 
-            EXTRACT(hour FROM time_dispatched) as hour,
-            COUNT(*) as count
-        FROM incidents
-        WHERE incident_date >= :start_date
-            AND incident_date < :end_date
-            AND deleted_at IS NULL
-            AND time_dispatched IS NOT NULL
-            {cat_filter}
-        GROUP BY EXTRACT(hour FROM time_dispatched)
-        ORDER BY hour
-    """), {'start_date': start_date, 'end_date': end_date}).fetchall()
-    
-    # Fill in missing hours with 0
-    hour_counts = {int(r.hour): r.count for r in result}
-    data = []
-    for h in range(24):
-        hour_label = f"{h:02d}:00"
-        data.append({"hour": hour_label, "count": hour_counts.get(h, 0)})
-    
-    return {
-        "data": data,
-        "chart_config": {"type": "bar", "xKey": "hour", "yKey": "count"}
-    }
-
-
-@router.get("/charts/incidents-by-type")
-def get_incidents_by_type(
-    request: Request,
-    start_date: date = Query(...),
-    end_date: date = Query(...),
-    category: Optional[str] = Query(None, description="Filter by call_category: FIRE or EMS"),
-    limit: int = Query(10, description="Max number of types to return"),
-    db: Session = Depends(get_db)
-):
-    """Get incident counts by CAD event type"""
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND call_category = '{category.upper()}'"
-    
-    result = db.execute(text(f"""
-        SELECT 
-            COALESCE(cad_event_type, 'Unknown') as type,
-            COUNT(*) as count
-        FROM incidents
-        WHERE incident_date >= :start_date
-            AND incident_date < :end_date
-            AND deleted_at IS NULL
-            {cat_filter}
-        GROUP BY cad_event_type
-        ORDER BY count DESC
-        LIMIT :limit
-    """), {'start_date': start_date, 'end_date': end_date, 'limit': limit}).fetchall()
-    
-    return {
-        "data": [{"type": r.type, "count": r.count} for r in result],
-        "chart_config": {"type": "bar", "xKey": "type", "yKey": "count"}
-    }
-
-
-@router.get("/charts/response-times-by-hour")
-def get_response_times_by_hour(
-    request: Request,
-    start_date: date = Query(...),
-    end_date: date = Query(...),
-    category: Optional[str] = Query(None, description="Filter by call_category: FIRE or EMS"),
-    db: Session = Depends(get_db)
-):
-    """Get average response times by hour of day"""
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND i.call_category = '{category.upper()}'"
-    
-    result = db.execute(text(f"""
-        SELECT 
-            EXTRACT(hour FROM iu.time_dispatch) as hour,
-            ROUND(AVG(EXTRACT(EPOCH FROM (iu.time_on_scene - iu.time_dispatch))/60)::numeric, 1) as avg_mins,
-            COUNT(*) as count
+            COUNT(DISTINCT i.id) as count
         FROM incidents i
         JOIN incident_units iu ON i.id = iu.incident_id
-        JOIN apparatus a ON iu.apparatus_id = a.id
         WHERE i.incident_date >= :start_date
             AND i.incident_date < :end_date
             AND i.deleted_at IS NULL
+            AND i.internal_incident_number LIKE :prefix || '%'
             AND iu.time_on_scene IS NOT NULL
-            AND iu.time_dispatch IS NOT NULL
-            AND a.counts_for_response_times = TRUE
-            {cat_filter}
-        GROUP BY EXTRACT(hour FROM iu.time_dispatch)
-        ORDER BY hour
-    """), {'start_date': start_date, 'end_date': end_date}).fetchall()
+            AND COALESCE(iu.time_unit_clear, iu.time_available) IS NOT NULL
+            AND EXTRACT(EPOCH FROM (COALESCE(iu.time_unit_clear, iu.time_available) - iu.time_on_scene))/60 >= :min_duration
+        GROUP BY EXTRACT(dow FROM i.incident_date)
+        ORDER BY EXTRACT(dow FROM i.incident_date)
+    """), {
+        'start_date': start_date,
+        'end_date': end_date,
+        'prefix': prefix,
+        'min_duration': min_duration_mins
+    }).fetchall()
     
-    # Fill in missing hours
-    hour_data = {int(r.hour): {'avg_mins': float(r.avg_mins), 'count': r.count} for r in result}
-    data = []
-    for h in range(24):
-        hour_label = f"{h:02d}:00"
-        info = hour_data.get(h, {'avg_mins': None, 'count': 0})
-        data.append({
-            "hour": hour_label, 
-            "avg_mins": info['avg_mins'],
-            "count": info['count']
-        })
+    # Get long calls by hour of day
+    by_hour = db.execute(text("""
+        SELECT 
+            EXTRACT(hour FROM i.time_dispatched) as hour,
+            COUNT(DISTINCT i.id) as count
+        FROM incidents i
+        JOIN incident_units iu ON i.id = iu.incident_id
+        WHERE i.incident_date >= :start_date
+            AND i.incident_date < :end_date
+            AND i.deleted_at IS NULL
+            AND i.internal_incident_number LIKE :prefix || '%'
+            AND i.time_dispatched IS NOT NULL
+            AND iu.time_on_scene IS NOT NULL
+            AND COALESCE(iu.time_unit_clear, iu.time_available) IS NOT NULL
+            AND EXTRACT(EPOCH FROM (COALESCE(iu.time_unit_clear, iu.time_available) - iu.time_on_scene))/60 >= :min_duration
+        GROUP BY EXTRACT(hour FROM i.time_dispatched)
+        ORDER BY hour
+    """), {
+        'start_date': start_date,
+        'end_date': end_date,
+        'prefix': prefix,
+        'min_duration': min_duration_mins
+    }).fetchall()
+    
+    # Fill in all days
+    day_names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    day_counts = {int(r.day_num): r.count for r in by_day}
+    days_data = [{"day": day_names[d], "count": day_counts.get(d, 0)} for d in range(7)]
+    
+    # Fill in all hours
+    hour_counts = {int(r.hour): r.count for r in by_hour}
+    hours_data = [{"hour": h, "count": hour_counts.get(h, 0)} for h in range(24)]
+    
+    # Get total count
+    total_long_calls = sum(d['count'] for d in days_data)
     
     return {
-        "data": data,
-        "chart_config": {"type": "line", "xKey": "hour", "yKey": "avg_mins"}
+        "total_long_calls": total_long_calls,
+        "min_duration_mins": min_duration_mins,
+        "by_day": days_data,
+        "by_hour": hours_data
     }

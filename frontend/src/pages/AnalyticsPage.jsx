@@ -1,238 +1,68 @@
 /**
- * Analytics Page - Main Analytics Dashboard for CADReport
+ * Analytics Page - Fire/EMS Performance Dashboard
+ * Side-by-side comparison with response metrics and long call analysis
  */
 
 import React, { useState, useEffect } from 'react';
 import { 
-  BarChart3, TrendingUp, Search, AlertTriangle, 
-  Clock, Calendar, Zap, ChevronDown, Save,
-  Play, RefreshCw, Trash2, Share2
+  TrendingUp, TrendingDown, Minus,
+  Clock, Users, Timer, AlertTriangle,
+  RefreshCw, Flame, Heart
 } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
+} from 'recharts';
 
 import analyticsApi from '../api/analytics-api';
-import AnalyticsChart from '../components/Analytics/AnalyticsChart';
-import QueryInterface from '../components/Analytics/QueryInterface';
-import DataQualityPanel from '../components/Analytics/DataQualityPanel';
-import PredictionsPanel from '../components/Analytics/PredictionsPanel';
-import DateRangePicker from '../components/shared/DateRangePicker';
 
-// Helper function
-const formatHour = (hour) => {
-  if (hour === 0) return '12 AM';
-  if (hour === 12) return '12 PM';
-  return hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
+// Get YTD date range
+const getYTDRange = () => {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  return {
+    startDate: startOfYear.toISOString().split('T')[0],
+    endDate: now.toISOString().split('T')[0]
+  };
 };
 
 const AnalyticsPage = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [dateRange, setDateRange] = useState({
-    startDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0]
-  });
-  const [compareRange, setCompareRange] = useState(null);
-  const [categoryFilter, setCategoryFilter] = useState('FIRE');  // FIRE, EMS, or null for ALL
-  const [dashboardStats, setDashboardStats] = useState(null);
+  const [dateRange] = useState(getYTDRange());
+  const [fireStats, setFireStats] = useState(null);
+  const [emsStats, setEmsStats] = useState(null);
+  const [fireLongCalls, setFireLongCalls] = useState(null);
+  const [emsLongCalls, setEmsLongCalls] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [queryUsage, setQueryUsage] = useState(null);
 
   useEffect(() => {
-    loadDashboardData();
-    loadQueryUsage();
-  }, [dateRange, compareRange, categoryFilter]);
+    loadAllData();
+  }, [dateRange]);
 
-  const loadDashboardData = async () => {
+  const loadAllData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const stats = await analyticsApi.getDashboardStats(
-        dateRange.startDate,
-        dateRange.endDate,
-        compareRange?.startDate,
-        compareRange?.endDate,
-        categoryFilter  // Pass category filter to API
-      );
-      setDashboardStats(stats);
+      const [fireS, emsS, fireL, emsL] = await Promise.all([
+        analyticsApi.getCategoryStats(dateRange.startDate, dateRange.endDate, 'F'),
+        analyticsApi.getCategoryStats(dateRange.startDate, dateRange.endDate, 'E'),
+        analyticsApi.getLongCalls(dateRange.startDate, dateRange.endDate, 'F', 25),
+        analyticsApi.getLongCalls(dateRange.startDate, dateRange.endDate, 'E', 25)
+      ]);
+      setFireStats(fireS);
+      setEmsStats(emsS);
+      setFireLongCalls(fireL);
+      setEmsLongCalls(emsL);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load dashboard');
+      console.error('Failed to load analytics:', err);
+      setError(err.response?.data?.detail || 'Failed to load analytics data');
     } finally {
       setLoading(false);
     }
   };
 
-  const loadQueryUsage = async () => {
-    try {
-      const usage = await analyticsApi.getQueryUsage();
-      setQueryUsage(usage);
-    } catch (err) {
-      console.error('Failed to load query usage:', err);
-    }
-  };
-
-  const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-    { id: 'queries', label: 'Custom Queries', icon: Search },
-    { id: 'trends', label: 'Trends', icon: TrendingUp },
-    { id: 'predictions', label: 'Predictions', icon: Zap },
-    { id: 'quality', label: 'Data Quality', icon: AlertTriangle }
-  ];
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
-              <p className="text-sm text-gray-500">
-                Insights and trends from your {categoryFilter ? categoryFilter.toLowerCase() : ''} incident data
-              </p>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              {/* FIRE/EMS Toggle */}
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setCategoryFilter('FIRE')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    categoryFilter === 'FIRE'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-red-100 text-red-700 hover:bg-red-200'
-                  }`}
-                >
-                  🔥 Fire
-                </button>
-                <button
-                  onClick={() => setCategoryFilter('EMS')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    categoryFilter === 'EMS'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                  }`}
-                >
-                  🚑 EMS
-                </button>
-                <button
-                  onClick={() => setCategoryFilter(null)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    categoryFilter === null
-                      ? 'bg-gray-700 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  All
-                </button>
-              </div>
-              
-              {queryUsage && (
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-gray-500">AI Queries:</span>
-                  <span className={`font-medium ${
-                    queryUsage.queries_remaining_today <= 1 ? 'text-red-600' : 'text-green-600'
-                  }`}>
-                    {queryUsage.queries_remaining_today}/{queryUsage.daily_limit} remaining
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          {/* Tabs */}
-          <div className="flex gap-1 -mb-px">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <tab.icon className="w-4 h-4" />
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab !== 'predictions' && (
-          <div className="mb-6 flex flex-wrap items-center gap-4">
-            <DateRangePicker
-              startDate={dateRange.startDate}
-              endDate={dateRange.endDate}
-              onChange={setDateRange}
-            />
-            
-            {activeTab === 'dashboard' && (
-              <button
-                onClick={() => setCompareRange(compareRange ? null : {
-                  startDate: new Date(new Date(dateRange.startDate).setFullYear(new Date(dateRange.startDate).getFullYear() - 1)).toISOString().split('T')[0],
-                  endDate: new Date(new Date(dateRange.endDate).setFullYear(new Date(dateRange.endDate).getFullYear() - 1)).toISOString().split('T')[0]
-                })}
-                className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg border ${
-                  compareRange 
-                    ? 'bg-blue-50 border-blue-300 text-blue-700' 
-                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <TrendingUp className="w-4 h-4" />
-                {compareRange ? 'Comparing to Previous Year' : 'Compare Periods'}
-              </button>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'dashboard' && (
-          <DashboardTab 
-            stats={dashboardStats} 
-            loading={loading} 
-            error={error}
-            dateRange={dateRange}
-            hasComparison={!!compareRange}
-            categoryFilter={categoryFilter}
-          />
-        )}
-        
-        {activeTab === 'queries' && (
-          <QueryInterface 
-            dateRange={dateRange}
-            queryUsage={queryUsage}
-            onQueryExecuted={loadQueryUsage}
-          />
-        )}
-        
-        {activeTab === 'trends' && (
-          <TrendsTab dateRange={dateRange} />
-        )}
-        
-        {activeTab === 'predictions' && (
-          <PredictionsPanel />
-        )}
-        
-        {activeTab === 'quality' && (
-          <DataQualityPanel dateRange={dateRange} />
-        )}
-      </div>
-    </div>
-  );
-};
-
-
-// ============================================================================
-// DASHBOARD TAB
-// ============================================================================
-
-const DashboardTab = ({ stats, loading, error, dateRange, hasComparison, categoryFilter }) => {
-  // Build title suffix for category
-  const categoryLabel = categoryFilter ? ` (${categoryFilter})` : ' (All)';
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <RefreshCw className="w-8 h-8 animate-spin text-gray-400" />
       </div>
     );
@@ -240,353 +70,241 @@ const DashboardTab = ({ stats, loading, error, dateRange, hasComparison, categor
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-        {error}
-      </div>
-    );
-  }
-
-  if (!stats) return null;
-
-  const statCards = [
-    {
-      label: `Total ${categoryFilter || 'All'} Incidents`,
-      value: stats.total_incidents?.toLocaleString() || '0',
-      change: stats.incidents_change_pct,
-      icon: BarChart3
-    },
-    {
-      label: 'Avg Dispatch-to-Arrival Time',
-      value: stats.avg_response_time_mins ? `${stats.avg_response_time_mins} min` : 'N/A',
-      change: stats.response_time_change_pct ? -stats.response_time_change_pct : null,
-      icon: Clock
-    },
-    {
-      label: 'Unit Responses',
-      value: stats.total_unit_responses?.toLocaleString() || '0',
-      icon: TrendingUp
-    },
-    {
-      label: 'Busiest Hour of Day',
-      value: stats.busiest_hour !== null ? formatHour(stats.busiest_hour) : 'N/A',
-      icon: Clock
-    },
-    {
-      label: 'Busiest Day of Week',
-      value: stats.busiest_day || 'N/A',
-      icon: Calendar
-    },
-    {
-      label: 'Most Common CAD Type',
-      value: stats.most_common_type || 'N/A',
-      icon: AlertTriangle
-    }
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {statCards.map((card, idx) => (
-          <div key={idx} className="bg-white rounded-lg border p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-50 rounded-lg">
-                  <card.icon className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">{card.label}</p>
-                  <p className="text-xl font-semibold text-gray-900">{card.value}</p>
-                </div>
-              </div>
-              
-              {card.change !== undefined && card.change !== null && hasComparison && (
-                <div className={`text-sm font-medium ${
-                  card.change > 0 ? 'text-green-600' : card.change < 0 ? 'text-red-600' : 'text-gray-500'
-                }`}>
-                  {card.change > 0 ? '+' : ''}{card.change.toFixed(1)}%
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SystemQueryChart 
-          title={`Incident Count by Day of Week${categoryLabel}`}
-          systemQueryName="Incidents by Day of Week"
-          dateRange={dateRange}
-          category={categoryFilter}
-        />
-        <SystemQueryChart 
-          title={`Incident Count by Hour of Day${categoryLabel}`}
-          systemQueryName="Incidents by Hour"
-          dateRange={dateRange}
-          category={categoryFilter}
-        />
-        <SystemQueryChart 
-          title={`Incident Count by CAD Type${categoryLabel}`}
-          systemQueryName="Incidents by Type"
-          dateRange={dateRange}
-          category={categoryFilter}
-        />
-        <SystemQueryChart 
-          title={`Avg Response Time by Hour${categoryLabel}`}
-          systemQueryName="Response Times by Hour"
-          dateRange={dateRange}
-          category={categoryFilter}
-        />
-      </div>
-    </div>
-  );
-};
-
-
-// ============================================================================
-// TRENDS TAB
-// ============================================================================
-
-const TrendsTab = ({ dateRange }) => {
-  const [savedQueries, setSavedQueries] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadSavedQueries();
-  }, []);
-
-  const loadSavedQueries = async () => {
-    try {
-      const queries = await analyticsApi.getSavedQueries(true);
-      setSavedQueries(queries.filter(q => q.chart_config));
-    } catch (err) {
-      console.error('Failed to load queries:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const systemQueries = savedQueries.filter(q => q.is_system);
-  const userQueries = savedQueries.filter(q => !q.is_system);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <RefreshCw className="w-8 h-8 animate-spin text-gray-400" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-8">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Standard Reports</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {systemQueries.map(query => (
-            <SavedQueryChart 
-              key={query.id}
-              query={query}
-              dateRange={dateRange}
-            />
-          ))}
-        </div>
-      </div>
-
-      {userQueries.length > 0 && (
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Your Saved Reports</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {userQueries.map(query => (
-              <SavedQueryChart 
-                key={query.id}
-                query={query}
-                dateRange={dateRange}
-                canDelete
-                onDelete={() => loadSavedQueries()}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-
-// ============================================================================
-// SYSTEM QUERY CHART COMPONENT
-// ============================================================================
-
-const SystemQueryChart = ({ title, systemQueryName, dateRange, category }) => {
-  const [data, setData] = useState(null);
-  const [chartConfig, setChartConfig] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    loadData();
-  }, [systemQueryName, dateRange, category]);
-
-  const loadData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      let result;
-      
-      // Use direct chart endpoints based on query name
-      switch (systemQueryName) {
-        case 'Incidents by Day of Week':
-          result = await analyticsApi.getIncidentsByDay(
-            dateRange.startDate, dateRange.endDate, category
-          );
-          break;
-        case 'Incidents by Hour':
-          result = await analyticsApi.getIncidentsByHour(
-            dateRange.startDate, dateRange.endDate, category
-          );
-          break;
-        case 'Incidents by Type':
-          result = await analyticsApi.getIncidentsByType(
-            dateRange.startDate, dateRange.endDate, category, 10
-          );
-          break;
-        case 'Response Times by Hour':
-          result = await analyticsApi.getResponseTimesByHour(
-            dateRange.startDate, dateRange.endDate, category
-          );
-          break;
-        default:
-          // Fallback to saved query system for unknown names
-          const queries = await analyticsApi.getSavedQueries(true);
-          const systemQuery = queries.find(q => q.is_system && q.name === systemQueryName);
-          if (!systemQuery) {
-            setError(`Query "${systemQueryName}" not found`);
-            return;
-          }
-          result = await analyticsApi.executeSavedQuery(systemQuery.id, {
-            startDate: dateRange.startDate,
-            endDate: dateRange.endDate
-          });
-      }
-      
-      setData(result.data);
-      setChartConfig(result.chart_config);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load chart');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-lg border p-4">
-      <h3 className="font-medium text-gray-900 mb-4">{title}</h3>
-      
-      {loading && (
-        <div className="flex items-center justify-center h-48">
-          <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
-        </div>
-      )}
-      
-      {error && (
-        <div className="text-red-600 text-sm p-4 bg-red-50 rounded">
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
           {error}
         </div>
-      )}
-      
-      {!loading && !error && data && chartConfig && (
-        <div className="h-48">
-          <AnalyticsChart data={data} config={chartConfig} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Response Analytics</h1>
+              <p className="text-sm text-gray-500">
+                Year to Date: {new Date(dateRange.startDate).toLocaleDateString()} - {new Date(dateRange.endDate).toLocaleDateString()}
+              </p>
+            </div>
+            <button
+              onClick={loadAllData}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* Main Content - Side by Side */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* FIRE Column */}
+          <CategoryColumn
+            title="Fire"
+            icon={Flame}
+            color="red"
+            stats={fireStats}
+            longCalls={fireLongCalls}
+          />
+
+          {/* EMS Column */}
+          <CategoryColumn
+            title="EMS"
+            icon={Heart}
+            color="blue"
+            stats={emsStats}
+            longCalls={emsLongCalls}
+          />
+        </div>
+      </div>
     </div>
   );
 };
 
 
 // ============================================================================
-// SAVED QUERY CHART COMPONENT
+// CATEGORY COLUMN COMPONENT
 // ============================================================================
 
-const SavedQueryChart = ({ query, dateRange, canDelete, onDelete }) => {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    loadData();
-  }, [query.id, dateRange]);
-
-  const loadData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await analyticsApi.executeSavedQuery(query.id, {
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate
-      });
-      setData(result.data);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load');
-    } finally {
-      setLoading(false);
+const CategoryColumn = ({ title, icon: Icon, color, stats, longCalls }) => {
+  const colorClasses = {
+    red: {
+      bg: 'bg-red-50',
+      border: 'border-red-200',
+      text: 'text-red-700',
+      header: 'bg-red-600',
+      bar: '#dc2626'
+    },
+    blue: {
+      bg: 'bg-blue-50',
+      border: 'border-blue-200',
+      text: 'text-blue-700',
+      header: 'bg-blue-600',
+      bar: '#2563eb'
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm('Delete this saved query?')) return;
-    try {
-      await analyticsApi.deleteSavedQuery(query.id);
-      onDelete?.();
-    } catch (err) {
-      alert('Failed to delete query');
-    }
-  };
+  const colors = colorClasses[color];
 
   return (
-    <div className="bg-white rounded-lg border p-4">
-      <div className="flex items-center justify-between mb-4">
+    <div className={`rounded-xl border-2 ${colors.border} overflow-hidden`}>
+      {/* Column Header */}
+      <div className={`${colors.header} text-white px-4 py-3 flex items-center gap-3`}>
+        <Icon className="w-6 h-6" />
+        <span className="text-xl font-bold">{title}</span>
+        <span className="ml-auto text-lg font-semibold">
+          {stats?.total_incidents || 0} Incidents
+        </span>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="p-4 space-y-3">
+        <StatCard
+          label="Response Rate"
+          value={stats?.response_rate != null ? `${stats.response_rate}%` : 'N/A'}
+          trend={stats?.response_rate_trend}
+          trendPositiveIsGood={true}
+          icon={Users}
+          sublabel="Incidents with unit on-scene"
+        />
+        
+        <StatCard
+          label="Turnout Time"
+          value={stats?.avg_turnout_mins != null ? `${stats.avg_turnout_mins} min` : 'N/A'}
+          trend={stats?.turnout_trend}
+          trendPositiveIsGood={false}
+          icon={Timer}
+          sublabel="Dispatch → Enroute"
+        />
+        
+        <StatCard
+          label="Response Time"
+          value={stats?.avg_response_mins != null ? `${stats.avg_response_mins} min` : 'N/A'}
+          trend={stats?.response_trend}
+          trendPositiveIsGood={false}
+          icon={Clock}
+          sublabel="Dispatch → On Scene"
+        />
+      </div>
+
+      {/* Long Calls Section */}
+      <div className={`${colors.bg} p-4 border-t ${colors.border}`}>
+        <div className="flex items-center gap-2 mb-3">
+          <AlertTriangle className={`w-5 h-5 ${colors.text}`} />
+          <span className="font-semibold text-gray-900">
+            Calls 25+ Minutes On Scene
+          </span>
+          <span className={`ml-auto text-lg font-bold ${colors.text}`}>
+            {longCalls?.total_long_calls || 0}
+          </span>
+        </div>
+
+        {/* By Day of Week */}
+        <div className="mb-4">
+          <p className="text-xs text-gray-500 mb-2">By Day of Week</p>
+          <div className="h-24">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={longCalls?.by_day || []}>
+                <XAxis 
+                  dataKey="day" 
+                  tick={{ fontSize: 10 }} 
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis hide />
+                <Tooltip 
+                  formatter={(value) => [value, 'Calls']}
+                  contentStyle={{ fontSize: 12 }}
+                />
+                <Bar dataKey="count" fill={colors.bar} radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* By Hour of Day */}
         <div>
-          <h3 className="font-medium text-gray-900">{query.name}</h3>
-          {query.description && (
-            <p className="text-sm text-gray-500">{query.description}</p>
-          )}
+          <p className="text-xs text-gray-500 mb-2">By Hour of Day</p>
+          <div className="h-24">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={longCalls?.by_hour || []}>
+                <XAxis 
+                  dataKey="hour" 
+                  tick={{ fontSize: 8 }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval={2}
+                />
+                <YAxis hide />
+                <Tooltip 
+                  formatter={(value) => [value, 'Calls']}
+                  labelFormatter={(hour) => `${hour}:00`}
+                  contentStyle={{ fontSize: 12 }}
+                />
+                <Bar dataKey="count" fill={colors.bar} radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// ============================================================================
+// STAT CARD COMPONENT
+// ============================================================================
+
+const StatCard = ({ label, value, trend, trendPositiveIsGood, icon: Icon, sublabel }) => {
+  // Determine trend direction and color
+  let TrendIcon = Minus;
+  let trendColor = 'text-gray-400';
+  let trendBg = 'bg-gray-100';
+  
+  if (trend != null && trend !== 0) {
+    if (trend > 0) {
+      TrendIcon = TrendingUp;
+      trendColor = trendPositiveIsGood ? 'text-green-600' : 'text-red-600';
+      trendBg = trendPositiveIsGood ? 'bg-green-100' : 'bg-red-100';
+    } else {
+      TrendIcon = TrendingDown;
+      trendColor = trendPositiveIsGood ? 'text-red-600' : 'text-green-600';
+      trendBg = trendPositiveIsGood ? 'bg-red-100' : 'bg-green-100';
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-lg p-3 border">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-gray-100 rounded-lg">
+            <Icon className="w-5 h-5 text-gray-600" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900">{label}</p>
+            <p className="text-2xl font-bold text-gray-900">{value}</p>
+            {sublabel && (
+              <p className="text-xs text-gray-500">{sublabel}</p>
+            )}
+          </div>
         </div>
         
-        <div className="flex items-center gap-2">
-          {query.is_shared && (
-            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
-              Shared
+        {trend != null && (
+          <div className={`flex items-center gap-1 px-2 py-1 rounded ${trendBg}`}>
+            <TrendIcon className={`w-4 h-4 ${trendColor}`} />
+            <span className={`text-sm font-medium ${trendColor}`}>
+              {trend > 0 ? '+' : ''}{trend}
             </span>
-          )}
-          {canDelete && (
-            <button
-              onClick={handleDelete}
-              className="p-1 text-gray-400 hover:text-red-600"
-              title="Delete query"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-      
-      {loading && (
-        <div className="flex items-center justify-center h-48">
-          <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
-        </div>
-      )}
-      
-      {error && (
-        <div className="text-red-600 text-sm p-4 bg-red-50 rounded">
-          {error}
-        </div>
-      )}
-      
-      {!loading && !error && data && query.chart_config && (
-        <div className="h-48">
-          <AnalyticsChart data={data} config={query.chart_config} />
-        </div>
-      )}
     </div>
   );
 };

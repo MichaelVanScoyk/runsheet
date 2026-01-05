@@ -114,34 +114,23 @@ export const resolveDataQualityIssue = async (issueId, notes = null) => {
 };
 
 // ============================================================================
-// CHART DATA (direct endpoints with category filtering)
+// NEW DASHBOARD - Fire/EMS Split View
 // ============================================================================
 
-export const getIncidentsByDay = async (startDate, endDate, category = null) => {
-  const params = { start_date: startDate, end_date: endDate };
-  if (category) params.category = category;
-  const response = await api.get('/analytics/charts/incidents-by-day', { params });
+export const getCategoryStats = async (startDate, endDate, prefix) => {
+  const params = { start_date: startDate, end_date: endDate, prefix };
+  const response = await api.get('/analytics/dashboard/category-stats', { params });
   return response.data;
 };
 
-export const getIncidentsByHour = async (startDate, endDate, category = null) => {
-  const params = { start_date: startDate, end_date: endDate };
-  if (category) params.category = category;
-  const response = await api.get('/analytics/charts/incidents-by-hour', { params });
-  return response.data;
-};
-
-export const getIncidentsByType = async (startDate, endDate, category = null, limit = 10) => {
-  const params = { start_date: startDate, end_date: endDate, limit };
-  if (category) params.category = category;
-  const response = await api.get('/analytics/charts/incidents-by-type', { params });
-  return response.data;
-};
-
-export const getResponseTimesByHour = async (startDate, endDate, category = null) => {
-  const params = { start_date: startDate, end_date: endDate };
-  if (category) params.category = category;
-  const response = await api.get('/analytics/charts/response-times-by-hour', { params });
+export const getLongCalls = async (startDate, endDate, prefix, minDurationMins = 25) => {
+  const params = { 
+    start_date: startDate, 
+    end_date: endDate, 
+    prefix,
+    min_duration_mins: minDurationMins
+  };
+  const response = await api.get('/analytics/dashboard/long-calls', { params });
   return response.data;
 };
 
@@ -157,9 +146,7 @@ export default {
   scanForOutliers,
   getDataQualityIssues,
   resolveDataQualityIssue,
-  // Chart data with category filtering
-  getIncidentsByDay,
-  getIncidentsByHour,
-  getIncidentsByType,
-  getResponseTimesByHour
+  // New dashboard endpoints
+  getCategoryStats,
+  getLongCalls
 };
