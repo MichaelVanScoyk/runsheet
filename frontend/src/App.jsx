@@ -26,6 +26,7 @@ import ApparatusPage from './pages/ApparatusPage';
 import MunicipalitiesPage from './pages/MunicipalitiesPage';
 import AdminPage from './pages/AdminPage';
 import ReportsPage from './pages/ReportsPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 import TenantLogin from './components/TenantLogin';
 import LandingPage from './components/LandingPage';
 import { 
@@ -549,6 +550,11 @@ function AppContent({ tenant, onTenantLogout }) {
             </NavLink>
           </li>
           <li>
+            <NavLink to="/analytics" className={({ isActive }) => isActive ? 'active' : ''}>
+              📈 Analytics
+            </NavLink>
+          </li>
+          <li>
             <NavLink to="/admin" className={({ isActive }) => isActive ? 'active' : ''}>
               🔧 Admin
             </NavLink>
@@ -559,6 +565,7 @@ function AppContent({ tenant, onTenantLogout }) {
         <Routes>
           <Route path="/" element={<IncidentsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/personnel" element={<PersonnelPage />} />
           <Route path="/apparatus" element={<ApparatusPage />} />
           <Route path="/municipalities" element={<MunicipalitiesPage />} />
