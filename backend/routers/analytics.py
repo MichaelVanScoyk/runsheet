@@ -1078,61 +1078,44 @@ def get_category_stats(
     """
     Get stats for a specific category (FIRE or EMS) based on incident number prefix.
     Includes comparison to previous month for trend arrows.
+    
+    Uses incident-level times:
+    - time_dispatched: when call was dispatched
+    - time_first_enroute: when first unit went enroute (turnout)
+    - time_first_on_scene: when first unit arrived (response)
     """
     prefix = prefix.upper()
     if prefix not in ('F', 'E'):
         raise HTTPException(status_code=400, detail="Prefix must be F or E")
     
-    # Calculate previous month range for trends
-    # Get the number of days in current period
+    # Calculate previous period for trends (same length as current period)
     current_days = (end_date - start_date).days
     prev_end = start_date - timedelta(days=1)
     prev_start = prev_end - timedelta(days=current_days)
     
-    # Current period stats
+    # Current period stats - using incident-level times
     current = db.execute(text("""
-        WITH incident_stats AS (
-            SELECT 
-                i.id,
-                i.internal_incident_number,
-                -- Check if any unit went on scene
-                EXISTS (
-                    SELECT 1 FROM incident_units iu 
-                    WHERE iu.incident_id = i.id 
-                    AND iu.time_on_scene IS NOT NULL
-                ) as had_response,
-                -- Get first unit turnout time (dispatch to enroute)
-                (
-                    SELECT MIN(EXTRACT(EPOCH FROM (iu.time_enroute_to_scene - iu.time_dispatch))/60)
-                    FROM incident_units iu
-                    JOIN apparatus a ON iu.apparatus_id = a.id
-                    WHERE iu.incident_id = i.id
-                    AND iu.time_dispatch IS NOT NULL
-                    AND iu.time_enroute_to_scene IS NOT NULL
-                    AND a.counts_for_response_times = TRUE
-                ) as turnout_mins,
-                -- Get first unit response time (dispatch to on scene)
-                (
-                    SELECT MIN(EXTRACT(EPOCH FROM (iu.time_on_scene - iu.time_dispatch))/60)
-                    FROM incident_units iu
-                    JOIN apparatus a ON iu.apparatus_id = a.id
-                    WHERE iu.incident_id = i.id
-                    AND iu.time_dispatch IS NOT NULL
-                    AND iu.time_on_scene IS NOT NULL
-                    AND a.counts_for_response_times = TRUE
-                ) as response_mins
-            FROM incidents i
-            WHERE i.incident_date >= :start_date
-                AND i.incident_date < :end_date
-                AND i.deleted_at IS NULL
-                AND i.internal_incident_number LIKE :prefix || '%'
-        )
         SELECT 
             COUNT(*) as total_incidents,
-            COUNT(*) FILTER (WHERE had_response) as incidents_with_response,
-            ROUND(AVG(turnout_mins)::numeric, 1) as avg_turnout_mins,
-            ROUND(AVG(response_mins)::numeric, 1) as avg_response_mins
-        FROM incident_stats
+            -- Response rate: incidents where first unit made it on scene
+            COUNT(*) FILTER (WHERE time_first_on_scene IS NOT NULL) as incidents_with_response,
+            -- Turnout time: dispatch to first enroute (in minutes)
+            ROUND(AVG(
+                CASE WHEN time_dispatched IS NOT NULL AND time_first_enroute IS NOT NULL
+                THEN EXTRACT(EPOCH FROM (time_first_enroute - time_dispatched))/60
+                END
+            )::numeric, 1) as avg_turnout_mins,
+            -- Response time: dispatch to first on scene (in minutes)
+            ROUND(AVG(
+                CASE WHEN time_dispatched IS NOT NULL AND time_first_on_scene IS NOT NULL
+                THEN EXTRACT(EPOCH FROM (time_first_on_scene - time_dispatched))/60
+                END
+            )::numeric, 1) as avg_response_mins
+        FROM incidents
+        WHERE incident_date >= :start_date
+            AND incident_date < :end_date
+            AND deleted_at IS NULL
+            AND internal_incident_number LIKE :prefix || '%'
     """), {
         'start_date': start_date,
         'end_date': end_date,
@@ -1141,44 +1124,24 @@ def get_category_stats(
     
     # Previous period stats for trends
     previous = db.execute(text("""
-        WITH incident_stats AS (
-            SELECT 
-                i.id,
-                EXISTS (
-                    SELECT 1 FROM incident_units iu 
-                    WHERE iu.incident_id = i.id 
-                    AND iu.time_on_scene IS NOT NULL
-                ) as had_response,
-                (
-                    SELECT MIN(EXTRACT(EPOCH FROM (iu.time_enroute_to_scene - iu.time_dispatch))/60)
-                    FROM incident_units iu
-                    JOIN apparatus a ON iu.apparatus_id = a.id
-                    WHERE iu.incident_id = i.id
-                    AND iu.time_dispatch IS NOT NULL
-                    AND iu.time_enroute_to_scene IS NOT NULL
-                    AND a.counts_for_response_times = TRUE
-                ) as turnout_mins,
-                (
-                    SELECT MIN(EXTRACT(EPOCH FROM (iu.time_on_scene - iu.time_dispatch))/60)
-                    FROM incident_units iu
-                    JOIN apparatus a ON iu.apparatus_id = a.id
-                    WHERE iu.incident_id = i.id
-                    AND iu.time_dispatch IS NOT NULL
-                    AND iu.time_on_scene IS NOT NULL
-                    AND a.counts_for_response_times = TRUE
-                ) as response_mins
-            FROM incidents i
-            WHERE i.incident_date >= :prev_start
-                AND i.incident_date < :prev_end
-                AND i.deleted_at IS NULL
-                AND i.internal_incident_number LIKE :prefix || '%'
-        )
         SELECT 
             COUNT(*) as total_incidents,
-            COUNT(*) FILTER (WHERE had_response) as incidents_with_response,
-            ROUND(AVG(turnout_mins)::numeric, 1) as avg_turnout_mins,
-            ROUND(AVG(response_mins)::numeric, 1) as avg_response_mins
-        FROM incident_stats
+            COUNT(*) FILTER (WHERE time_first_on_scene IS NOT NULL) as incidents_with_response,
+            ROUND(AVG(
+                CASE WHEN time_dispatched IS NOT NULL AND time_first_enroute IS NOT NULL
+                THEN EXTRACT(EPOCH FROM (time_first_enroute - time_dispatched))/60
+                END
+            )::numeric, 1) as avg_turnout_mins,
+            ROUND(AVG(
+                CASE WHEN time_dispatched IS NOT NULL AND time_first_on_scene IS NOT NULL
+                THEN EXTRACT(EPOCH FROM (time_first_on_scene - time_dispatched))/60
+                END
+            )::numeric, 1) as avg_response_mins
+        FROM incidents
+        WHERE incident_date >= :prev_start
+            AND incident_date < :prev_end
+            AND deleted_at IS NULL
+            AND internal_incident_number LIKE :prefix || '%'
     """), {
         'prev_start': prev_start,
         'prev_end': prev_end,
@@ -1238,7 +1201,7 @@ def get_long_duration_calls(
 ):
     """
     Get calls where time on scene exceeded threshold, grouped by day of week and hour.
-    Duration = time_on_scene to time_unit_clear (or time_available)
+    Duration = time_first_on_scene to time_last_cleared
     """
     prefix = prefix.upper()
     if prefix not in ('F', 'E'):
@@ -1247,8 +1210,8 @@ def get_long_duration_calls(
     # Get long calls by day of week
     by_day = db.execute(text("""
         SELECT 
-            EXTRACT(dow FROM i.incident_date) as day_num,
-            CASE EXTRACT(dow FROM i.incident_date)
+            EXTRACT(dow FROM incident_date) as day_num,
+            CASE EXTRACT(dow FROM incident_date)
                 WHEN 0 THEN 'Sun'
                 WHEN 1 THEN 'Mon'
                 WHEN 2 THEN 'Tue'
@@ -1257,18 +1220,17 @@ def get_long_duration_calls(
                 WHEN 5 THEN 'Fri'
                 WHEN 6 THEN 'Sat'
             END as day_name,
-            COUNT(DISTINCT i.id) as count
-        FROM incidents i
-        JOIN incident_units iu ON i.id = iu.incident_id
-        WHERE i.incident_date >= :start_date
-            AND i.incident_date < :end_date
-            AND i.deleted_at IS NULL
-            AND i.internal_incident_number LIKE :prefix || '%'
-            AND iu.time_on_scene IS NOT NULL
-            AND COALESCE(iu.time_unit_clear, iu.time_available) IS NOT NULL
-            AND EXTRACT(EPOCH FROM (COALESCE(iu.time_unit_clear, iu.time_available) - iu.time_on_scene))/60 >= :min_duration
-        GROUP BY EXTRACT(dow FROM i.incident_date)
-        ORDER BY EXTRACT(dow FROM i.incident_date)
+            COUNT(*) as count
+        FROM incidents
+        WHERE incident_date >= :start_date
+            AND incident_date < :end_date
+            AND deleted_at IS NULL
+            AND internal_incident_number LIKE :prefix || '%'
+            AND time_first_on_scene IS NOT NULL
+            AND time_last_cleared IS NOT NULL
+            AND EXTRACT(EPOCH FROM (time_last_cleared - time_first_on_scene))/60 >= :min_duration
+        GROUP BY EXTRACT(dow FROM incident_date)
+        ORDER BY EXTRACT(dow FROM incident_date)
     """), {
         'start_date': start_date,
         'end_date': end_date,
@@ -1279,19 +1241,18 @@ def get_long_duration_calls(
     # Get long calls by hour of day
     by_hour = db.execute(text("""
         SELECT 
-            EXTRACT(hour FROM i.time_dispatched) as hour,
-            COUNT(DISTINCT i.id) as count
-        FROM incidents i
-        JOIN incident_units iu ON i.id = iu.incident_id
-        WHERE i.incident_date >= :start_date
-            AND i.incident_date < :end_date
-            AND i.deleted_at IS NULL
-            AND i.internal_incident_number LIKE :prefix || '%'
-            AND i.time_dispatched IS NOT NULL
-            AND iu.time_on_scene IS NOT NULL
-            AND COALESCE(iu.time_unit_clear, iu.time_available) IS NOT NULL
-            AND EXTRACT(EPOCH FROM (COALESCE(iu.time_unit_clear, iu.time_available) - iu.time_on_scene))/60 >= :min_duration
-        GROUP BY EXTRACT(hour FROM i.time_dispatched)
+            EXTRACT(hour FROM time_dispatched) as hour,
+            COUNT(*) as count
+        FROM incidents
+        WHERE incident_date >= :start_date
+            AND incident_date < :end_date
+            AND deleted_at IS NULL
+            AND internal_incident_number LIKE :prefix || '%'
+            AND time_dispatched IS NOT NULL
+            AND time_first_on_scene IS NOT NULL
+            AND time_last_cleared IS NOT NULL
+            AND EXTRACT(EPOCH FROM (time_last_cleared - time_first_on_scene))/60 >= :min_duration
+        GROUP BY EXTRACT(hour FROM time_dispatched)
         ORDER BY hour
     """), {
         'start_date': start_date,
