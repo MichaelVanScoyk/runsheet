@@ -30,6 +30,7 @@ const AnalyticsPage = () => {
     endDate: new Date().toISOString().split('T')[0]
   });
   const [compareRange, setCompareRange] = useState(null);
+  const [categoryFilter, setCategoryFilter] = useState('FIRE');  // FIRE, EMS, or null for ALL
   const [dashboardStats, setDashboardStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -38,7 +39,7 @@ const AnalyticsPage = () => {
   useEffect(() => {
     loadDashboardData();
     loadQueryUsage();
-  }, [dateRange, compareRange]);
+  }, [dateRange, compareRange, categoryFilter]);
 
   const loadDashboardData = async () => {
     setLoading(true);
@@ -48,7 +49,8 @@ const AnalyticsPage = () => {
         dateRange.startDate,
         dateRange.endDate,
         compareRange?.startDate,
-        compareRange?.endDate
+        compareRange?.endDate,
+        categoryFilter  // Pass category filter to API
       );
       setDashboardStats(stats);
     } catch (err) {
@@ -84,20 +86,56 @@ const AnalyticsPage = () => {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
               <p className="text-sm text-gray-500">
-                Insights and trends from your incident data
+                Insights and trends from your {categoryFilter ? categoryFilter.toLowerCase() : ''} incident data
               </p>
             </div>
             
-            {queryUsage && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-gray-500">AI Queries:</span>
-                <span className={`font-medium ${
-                  queryUsage.queries_remaining_today <= 1 ? 'text-red-600' : 'text-green-600'
-                }`}>
-                  {queryUsage.queries_remaining_today}/{queryUsage.daily_limit} remaining
-                </span>
+            <div className="flex items-center gap-4">
+              {/* FIRE/EMS Toggle */}
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setCategoryFilter('FIRE')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                    categoryFilter === 'FIRE'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-red-100 text-red-700 hover:bg-red-200'
+                  }`}
+                >
+                  🔥 Fire
+                </button>
+                <button
+                  onClick={() => setCategoryFilter('EMS')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                    categoryFilter === 'EMS'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                  }`}
+                >
+                  🚑 EMS
+                </button>
+                <button
+                  onClick={() => setCategoryFilter(null)}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                    categoryFilter === null
+                      ? 'bg-gray-700 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  All
+                </button>
               </div>
-            )}
+              
+              {queryUsage && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-gray-500">AI Queries:</span>
+                  <span className={`font-medium ${
+                    queryUsage.queries_remaining_today <= 1 ? 'text-red-600' : 'text-green-600'
+                  }`}>
+                    {queryUsage.queries_remaining_today}/{queryUsage.daily_limit} remaining
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
           
           {/* Tabs */}
@@ -156,6 +194,7 @@ const AnalyticsPage = () => {
             error={error}
             dateRange={dateRange}
             hasComparison={!!compareRange}
+            categoryFilter={categoryFilter}
           />
         )}
         
@@ -188,7 +227,9 @@ const AnalyticsPage = () => {
 // DASHBOARD TAB
 // ============================================================================
 
-const DashboardTab = ({ stats, loading, error, dateRange, hasComparison }) => {
+const DashboardTab = ({ stats, loading, error, dateRange, hasComparison, categoryFilter }) => {
+  // Build title suffix for category
+  const categoryLabel = categoryFilter ? ` (${categoryFilter})` : ' (All)';
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -209,13 +250,13 @@ const DashboardTab = ({ stats, loading, error, dateRange, hasComparison }) => {
 
   const statCards = [
     {
-      label: 'Total Incidents',
+      label: `Total ${categoryFilter || 'All'} Incidents`,
       value: stats.total_incidents?.toLocaleString() || '0',
       change: stats.incidents_change_pct,
       icon: BarChart3
     },
     {
-      label: 'Avg Response Time',
+      label: 'Avg Dispatch-to-Arrival Time',
       value: stats.avg_response_time_mins ? `${stats.avg_response_time_mins} min` : 'N/A',
       change: stats.response_time_change_pct ? -stats.response_time_change_pct : null,
       icon: Clock
@@ -226,17 +267,17 @@ const DashboardTab = ({ stats, loading, error, dateRange, hasComparison }) => {
       icon: TrendingUp
     },
     {
-      label: 'Busiest Hour',
+      label: 'Busiest Hour of Day',
       value: stats.busiest_hour !== null ? formatHour(stats.busiest_hour) : 'N/A',
       icon: Clock
     },
     {
-      label: 'Busiest Day',
+      label: 'Busiest Day of Week',
       value: stats.busiest_day || 'N/A',
       icon: Calendar
     },
     {
-      label: 'Top Incident Type',
+      label: 'Most Common CAD Type',
       value: stats.most_common_type || 'N/A',
       icon: AlertTriangle
     }
@@ -272,24 +313,28 @@ const DashboardTab = ({ stats, loading, error, dateRange, hasComparison }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <SystemQueryChart 
-          title="Incidents by Day of Week"
+          title={`Incident Count by Day of Week${categoryLabel}`}
           systemQueryName="Incidents by Day of Week"
           dateRange={dateRange}
+          category={categoryFilter}
         />
         <SystemQueryChart 
-          title="Incidents by Hour"
+          title={`Incident Count by Hour of Day${categoryLabel}`}
           systemQueryName="Incidents by Hour"
           dateRange={dateRange}
+          category={categoryFilter}
         />
         <SystemQueryChart 
-          title="Incidents by Type"
+          title={`Incident Count by CAD Type${categoryLabel}`}
           systemQueryName="Incidents by Type"
           dateRange={dateRange}
+          category={categoryFilter}
         />
         <SystemQueryChart 
-          title="Response Times by Hour"
+          title={`Avg Response Time by Hour${categoryLabel}`}
           systemQueryName="Response Times by Hour"
           dateRange={dateRange}
+          category={categoryFilter}
         />
       </div>
     </div>
@@ -371,7 +416,7 @@ const TrendsTab = ({ dateRange }) => {
 // SYSTEM QUERY CHART COMPONENT
 // ============================================================================
 
-const SystemQueryChart = ({ title, systemQueryName, dateRange }) => {
+const SystemQueryChart = ({ title, systemQueryName, dateRange, category }) => {
   const [data, setData] = useState(null);
   const [chartConfig, setChartConfig] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -379,25 +424,49 @@ const SystemQueryChart = ({ title, systemQueryName, dateRange }) => {
 
   useEffect(() => {
     loadData();
-  }, [systemQueryName, dateRange]);
+  }, [systemQueryName, dateRange, category]);
 
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      // First get the saved queries to find the system query ID
-      const queries = await analyticsApi.getSavedQueries(true);
-      const systemQuery = queries.find(q => q.is_system && q.name === systemQueryName);
+      let result;
       
-      if (!systemQuery) {
-        setError(`System query "${systemQueryName}" not found`);
-        return;
+      // Use direct chart endpoints based on query name
+      switch (systemQueryName) {
+        case 'Incidents by Day of Week':
+          result = await analyticsApi.getIncidentsByDay(
+            dateRange.startDate, dateRange.endDate, category
+          );
+          break;
+        case 'Incidents by Hour':
+          result = await analyticsApi.getIncidentsByHour(
+            dateRange.startDate, dateRange.endDate, category
+          );
+          break;
+        case 'Incidents by Type':
+          result = await analyticsApi.getIncidentsByType(
+            dateRange.startDate, dateRange.endDate, category, 10
+          );
+          break;
+        case 'Response Times by Hour':
+          result = await analyticsApi.getResponseTimesByHour(
+            dateRange.startDate, dateRange.endDate, category
+          );
+          break;
+        default:
+          // Fallback to saved query system for unknown names
+          const queries = await analyticsApi.getSavedQueries(true);
+          const systemQuery = queries.find(q => q.is_system && q.name === systemQueryName);
+          if (!systemQuery) {
+            setError(`Query "${systemQueryName}" not found`);
+            return;
+          }
+          result = await analyticsApi.executeSavedQuery(systemQuery.id, {
+            startDate: dateRange.startDate,
+            endDate: dateRange.endDate
+          });
       }
-
-      const result = await analyticsApi.executeSavedQuery(systemQuery.id, {
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate
-      });
       
       setData(result.data);
       setChartConfig(result.chart_config);

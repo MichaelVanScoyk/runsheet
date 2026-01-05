@@ -64,13 +64,14 @@ export const deleteSavedQuery = async (queryId) => {
 // DASHBOARD
 // ============================================================================
 
-export const getDashboardStats = async (startDate, endDate, compareStartDate = null, compareEndDate = null) => {
+export const getDashboardStats = async (startDate, endDate, compareStartDate = null, compareEndDate = null, category = null) => {
   const params = {
     start_date: startDate,
     end_date: endDate
   };
   if (compareStartDate) params.compare_start_date = compareStartDate;
   if (compareEndDate) params.compare_end_date = compareEndDate;
+  if (category) params.category = category;
   
   const response = await api.get('/analytics/dashboard/stats', { params });
   return response.data;
@@ -112,6 +113,38 @@ export const resolveDataQualityIssue = async (issueId, notes = null) => {
   return response.data;
 };
 
+// ============================================================================
+// CHART DATA (direct endpoints with category filtering)
+// ============================================================================
+
+export const getIncidentsByDay = async (startDate, endDate, category = null) => {
+  const params = { start_date: startDate, end_date: endDate };
+  if (category) params.category = category;
+  const response = await api.get('/analytics/charts/incidents-by-day', { params });
+  return response.data;
+};
+
+export const getIncidentsByHour = async (startDate, endDate, category = null) => {
+  const params = { start_date: startDate, end_date: endDate };
+  if (category) params.category = category;
+  const response = await api.get('/analytics/charts/incidents-by-hour', { params });
+  return response.data;
+};
+
+export const getIncidentsByType = async (startDate, endDate, category = null, limit = 10) => {
+  const params = { start_date: startDate, end_date: endDate, limit };
+  if (category) params.category = category;
+  const response = await api.get('/analytics/charts/incidents-by-type', { params });
+  return response.data;
+};
+
+export const getResponseTimesByHour = async (startDate, endDate, category = null) => {
+  const params = { start_date: startDate, end_date: endDate };
+  if (category) params.category = category;
+  const response = await api.get('/analytics/charts/response-times-by-hour', { params });
+  return response.data;
+};
+
 export default {
   getQueryUsage,
   executeNaturalLanguageQuery,
@@ -123,5 +156,10 @@ export default {
   getPredictions,
   scanForOutliers,
   getDataQualityIssues,
-  resolveDataQualityIssue
+  resolveDataQualityIssue,
+  // Chart data with category filtering
+  getIncidentsByDay,
+  getIncidentsByHour,
+  getIncidentsByType,
+  getResponseTimesByHour
 };
