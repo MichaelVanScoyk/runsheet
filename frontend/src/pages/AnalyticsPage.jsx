@@ -15,18 +15,46 @@ import {
 
 import analyticsApi from '../api/analytics-api';
 
-// Get YTD date range
-const getYTDRange = () => {
+// Date range presets
+const getDateRange = (preset) => {
   const now = new Date();
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-  return {
-    startDate: startOfYear.toISOString().split('T')[0],
-    endDate: now.toISOString().split('T')[0]
-  };
+  const end = now.toISOString().split('T')[0];
+  
+  switch (preset) {
+    case '30days':
+      const days30 = new Date(now);
+      days30.setDate(days30.getDate() - 30);
+      return { startDate: days30.toISOString().split('T')[0], endDate: end };
+    case '90days':
+      const days90 = new Date(now);
+      days90.setDate(days90.getDate() - 90);
+      return { startDate: days90.toISOString().split('T')[0], endDate: end };
+    case '6months':
+      const months6 = new Date(now);
+      months6.setMonth(months6.getMonth() - 6);
+      return { startDate: months6.toISOString().split('T')[0], endDate: end };
+    case '12months':
+      const months12 = new Date(now);
+      months12.setFullYear(months12.getFullYear() - 1);
+      return { startDate: months12.toISOString().split('T')[0], endDate: end };
+    case 'ytd':
+    default:
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      return { startDate: startOfYear.toISOString().split('T')[0], endDate: end };
+  }
 };
 
+const DATE_PRESETS = [
+  { id: '30days', label: 'Last 30 Days' },
+  { id: '90days', label: 'Last 90 Days' },
+  { id: '6months', label: 'Last 6 Months' },
+  { id: '12months', label: 'Last 12 Months' },
+  { id: 'ytd', label: 'Year to Date' },
+];
+
 const AnalyticsPage = () => {
-  const [dateRange] = useState(getYTDRange());
+  const [selectedPreset, setSelectedPreset] = useState('12months');
+  const [dateRange, setDateRange] = useState(getDateRange('12months'));
   const [fireStats, setFireStats] = useState(null);
   const [emsStats, setEmsStats] = useState(null);
   const [fireLongCalls, setFireLongCalls] = useState(null);
@@ -87,16 +115,36 @@ const AnalyticsPage = () => {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Response Analytics</h1>
               <p className="text-sm text-gray-500">
-                Year to Date: {new Date(dateRange.startDate).toLocaleDateString()} - {new Date(dateRange.endDate).toLocaleDateString()}
+                {new Date(dateRange.startDate).toLocaleDateString()} - {new Date(dateRange.endDate).toLocaleDateString()}
               </p>
             </div>
-            <button
-              onClick={loadAllData}
-              className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Refresh
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Date Range Selector */}
+              <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                {DATE_PRESETS.map(preset => (
+                  <button
+                    key={preset.id}
+                    onClick={() => {
+                      setSelectedPreset(preset.id);
+                      setDateRange(getDateRange(preset.id));
+                    }}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      selectedPreset === preset.id
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={loadAllData}
+                className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
