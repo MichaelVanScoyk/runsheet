@@ -70,6 +70,16 @@ function AcceptInvitePage() {
     );
   }
 
+  // Handle auto-redirect after success
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        window.location.href = '/';  // Full page reload to pick up new cookie
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
   if (success) {
     return (
       <div style={styles.container}>
@@ -78,14 +88,29 @@ function AcceptInvitePage() {
           <p style={styles.message}>
             Welcome, {inviteData?.first_name}! Your account has been created and approved.
           </p>
+          
+          <div style={styles.infoBox}>
+            <p style={styles.infoTitle}>📱 About Your Access</p>
+            <p style={styles.infoText}>
+              You're now logged into this browser. To maintain access, <strong>keep using this same browser on this device</strong>.
+            </p>
+            <p style={styles.infoText}>
+              If you need to access from a different device or browser, you'll need the department access code from your administrator.
+            </p>
+            <p style={styles.infoText}>
+              Your personal password is separate and keeps your account secure.
+            </p>
+          </div>
+          
           <p style={styles.message}>
-            You can now log in using your email and password.
+            Redirecting you to the app...
           </p>
+          <p style={styles.loading}>⏳</p>
           <button 
-            onClick={() => navigate('/')}
-            style={styles.button}
+            onClick={() => window.location.href = '/'}
+            style={styles.buttonSecondary}
           >
-            Go to Login
+            Click here if not redirected
           </button>
         </div>
       </div>
@@ -273,6 +298,26 @@ const styles = {
     fontSize: '0.9rem',
     marginBottom: '1rem',
     textAlign: 'center',
+  },
+  infoBox: {
+    background: '#1a1a2e',
+    border: '1px solid #444',
+    borderRadius: '8px',
+    padding: '1rem',
+    marginBottom: '1.5rem',
+  },
+  infoTitle: {
+    color: '#fff',
+    fontWeight: 'bold',
+    marginTop: 0,
+    marginBottom: '0.75rem',
+  },
+  infoText: {
+    color: '#aaa',
+    fontSize: '0.85rem',
+    marginTop: 0,
+    marginBottom: '0.5rem',
+    lineHeight: '1.5',
   },
 };
 

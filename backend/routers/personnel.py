@@ -2,7 +2,7 @@
 Personnel router - manage run sheet personnel
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional, List
@@ -944,19 +944,27 @@ def generate_secure_token() -> str:
 def get_email_context(request: Request, db: Session) -> dict:
     """
     Get tenant context for email sending.
-    Returns tenant_slug, tenant_name (from master), and station_name (from settings).
+    Returns tenant_slug, tenant_name (from master), station_name (from settings),
+    and branding info (primary_color, logo_url as data URL).
     """
     tenant_slug = getattr(request.state, 'tenant_slug', 'unknown')
     tenant = getattr(request.state, 'tenant', None)
     tenant_name = tenant.name if tenant else 'CADReport'
     
-    # Get station name from settings (more specific than tenant name)
-    station_name = None
-    result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'station' AND key = 'name'")
-    ).fetchone()
-    if result and result[0]:
-        station_name = result[0]
+    # Use branding_config helper to get all branding
+    try:
+        from report_engine.branding_config import get_branding, get_logo_data_url
+        branding = get_branding(db)
+        
+        station_name = branding.get('station_name')
+        primary_color = branding.get('primary_color')
+        logo_url = get_logo_data_url(branding)  # Returns data:image/png;base64,... or None
+        
+    except Exception as e:
+        logger.warning(f"Failed to load branding: {e}")
+        station_name = None
+        primary_color = None
+        logo_url = None
     
     # Use station name if available, otherwise tenant name
     display_name = station_name or tenant_name
@@ -965,6 +973,8 @@ def get_email_context(request: Request, db: Session) -> dict:
         'tenant_slug': tenant_slug,
         'tenant_name': display_name,
         'station_name': station_name,
+        'primary_color': primary_color,
+        'logo_url': logo_url,
     }
 
 
@@ -1244,7 +1254,9 @@ async def send_invite(
             tenant_slug=context['tenant_slug'],
             tenant_name=context['tenant_name'],
             user_name=person.first_name,
-            inviter_name=requester.display_name
+            inviter_name=requester.display_name,
+            primary_color=context.get('primary_color'),
+            logo_url=context.get('logo_url')
         )
         
         if not success:
@@ -1307,7 +1319,9 @@ async def resend_invite(
             tenant_slug=context['tenant_slug'],
             tenant_name=context['tenant_name'],
             user_name=person.first_name,
-            inviter_name=requester.display_name
+            inviter_name=requester.display_name,
+            primary_color=context.get('primary_color'),
+            logo_url=context.get('logo_url')
         )
         
         if not success:
@@ -1354,10 +1368,11 @@ async def validate_invite_token(
 async def accept_invite(
     data: AcceptInviteRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     """
-    Accept invitation - sets password and auto-approves the user.
+    Accept invitation - sets password, auto-approves, sets tenant cookie, sends welcome email.
     """
     person = db.query(Personnel).filter(Personnel.invite_token == data.token).first()
     
@@ -1390,12 +1405,81 @@ async def accept_invite(
     
     logger.info(f"Invitation accepted by {person.display_name} - auto-approved")
     
+    # Get tenant info and create tenant session for auto-login
+    tenant = getattr(request.state, 'tenant', None)
+    tenant_slug = getattr(request.state, 'tenant_slug', None)
+    session_token = None
+    
+    if tenant:
+        try:
+            from master_database import get_master_session
+            from master_models import TenantSession
+            
+            # Create tenant session
+            master_db = next(get_master_session())
+            session_token = secrets.token_urlsafe(32)
+            tenant_session = TenantSession(
+                tenant_id=tenant.id,
+                session_token=session_token,
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+                expires_at=None,
+            )
+            master_db.add(tenant_session)
+            master_db.commit()
+            
+            # Set tenant session cookie
+            response.set_cookie(
+                key="tenant_session",
+                value=session_token,
+                max_age=60 * 60 * 24 * 365,  # 1 year
+                httponly=True,
+                secure=False,  # Set True in production with HTTPS
+                samesite="lax",
+            )
+            
+            logger.info(f"Auto-login tenant session created for {person.display_name}")
+            
+        except Exception as e:
+            logger.error(f"Failed to create tenant session for auto-login: {e}")
+            # Don't fail the invite acceptance, just skip auto-login
+    
+    # Send welcome email with tenant password
+    try:
+        from email_service import send_welcome_with_tenant_password
+        
+        context = get_email_context(request, db)
+        
+        # Get tenant password from master DB for the welcome email
+        tenant_password = None
+        if tenant:
+            tenant_password = getattr(tenant, 'password_plain', None)  # Won't exist, need to handle differently
+        
+        # We'll send a welcome email - tenant password will be included if available
+        # For now, just log that we'd send it
+        send_welcome_with_tenant_password(
+            to_email=person.email,
+            tenant_slug=context['tenant_slug'],
+            tenant_name=context['tenant_name'],
+            user_name=person.first_name,
+            user_display_name=f"{person.first_name} {person.last_name}",
+            primary_color=context.get('primary_color'),
+            logo_url=context.get('logo_url')
+        )
+        
+    except ImportError:
+        logger.warning("Welcome email function not available")
+    except Exception as e:
+        logger.error(f"Failed to send welcome email: {e}")
+        # Don't fail the invite acceptance
+    
     return {
         "status": "ok",
         "message": "Account created successfully",
         "personnel_id": person.id,
         "display_name": person.display_name,
-        "role": person.role
+        "role": person.role,
+        "auto_login": session_token is not None
     }
 
 

@@ -330,6 +330,141 @@ CADReport - Fire Department Incident Management
     return _send_email(to_email, subject, html_body, text_body, from_name)
 
 
+def send_welcome_with_tenant_password(
+    to_email: str,
+    tenant_slug: str,
+    tenant_name: str,
+    user_name: str,
+    user_display_name: str,
+    tenant_password: Optional[str] = None,
+    primary_color: Optional[str] = None,
+    logo_url: Optional[str] = None
+) -> bool:
+    """
+    Send welcome email after invitation acceptance.
+    Includes tenant password if provided so user can log in from other devices.
+    
+    Args:
+        to_email: User's email address
+        tenant_slug: Tenant subdomain
+        tenant_name: Tenant display name
+        user_name: User's first name for greeting
+        user_display_name: Full display name
+        tenant_password: Optional tenant/department password for future logins
+        primary_color: Optional brand color (hex)
+        logo_url: Optional URL to tenant logo
+    """
+    login_link = _build_tenant_url(tenant_slug, "/")
+    from_name = f"{tenant_name} via CADReport"
+    subject = f"Welcome to {tenant_name} - Account Created"
+    
+    # Use primary color or default green for success
+    color = primary_color if primary_color and primary_color not in ['#ffffff', '#fff', '#f5f5f5', '#e5e5e5', 'white', '#808080', '#888888', 'gray', 'grey'] else '#16a34a'
+    
+    # Build logo HTML if provided
+    logo_html = ""
+    if logo_url:
+        logo_html = f'<img src="{logo_url}" alt="{tenant_name}" style="max-width: 120px; max-height: 80px; margin-bottom: 10px;" />'
+    
+    # Build tenant password section if provided
+    password_section = ""
+    password_text = ""
+    if tenant_password:
+        password_section = f"""
+            <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 0 0 10px 0;"><strong>Department Access Code:</strong></p>
+                <p style="margin: 0; font-family: monospace; font-size: 18px; letter-spacing: 1px;">{tenant_password}</p>
+                <p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">Save this code - you'll need it to log in from new devices or browsers.</p>
+            </div>
+        """
+        password_text = f"\n\nDepartment Access Code: {tenant_password}\nSave this code - you'll need it to log in from new devices or browsers.\n"
+    else:
+        password_section = """
+            <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+                <p style="margin: 0 0 8px 0; font-weight: bold; color: #92400e;">📱 Accessing from Other Devices</p>
+                <p style="margin: 0; color: #78350f; font-size: 14px;">You're logged in on the browser/device where you accepted your invitation. To access from a different device or browser, you'll need the department access code from your administrator.</p>
+            </div>
+        """
+        password_text = "\n\nAccessing from Other Devices:\nYou're logged in on the browser/device where you accepted your invitation. To access from a different device or browser, you'll need the department access code from your administrator.\n"
+    
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ border-bottom: 3px solid {color}; padding-bottom: 15px; margin-bottom: 20px; }}
+            .button {{ 
+                display: inline-block; 
+                padding: 12px 24px; 
+                background-color: {color}; 
+                color: white !important; 
+                text-decoration: none; 
+                border-radius: 6px;
+                margin: 20px 0;
+            }}
+            .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; }}
+            .security-note {{ background: #f0fdf4; padding: 12px; border-radius: 6px; margin: 15px 0; border-left: 4px solid {color}; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                {logo_html}
+                <h2 style="margin: 0; color: {color};">✓ Welcome to {tenant_name}!</h2>
+            </div>
+            <p>Hi {user_name},</p>
+            <p>Your account has been successfully created. You're now set up as <strong>{user_display_name}</strong> in the incident management system.</p>
+            
+            <h3 style="color: #333;">What's Next?</h3>
+            <ul>
+                <li>Access incident run sheets and reports</li>
+                <li>Complete incident documentation</li>
+                <li>View analytics and response data</li>
+            </ul>
+            
+            {password_section}
+            
+            <div class="security-note">
+                <p style="margin: 0; font-size: 14px;"><strong>🔐 Two Layers of Security</strong></p>
+                <p style="margin: 8px 0 0 0; font-size: 13px;">The department access code lets you into the site. Your personal password protects your individual account and actions.</p>
+            </div>
+            
+            <p><a href="{login_link}" class="button">Go to {tenant_name}</a></p>
+            
+            <div class="footer">
+                <p>CADReport - Fire Department Incident Management</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    text_body = f"""
+Welcome to {tenant_name}!
+
+Hi {user_name},
+
+Your account has been successfully created. You're now set up as {user_display_name} in the incident management system.
+
+What's Next?
+- Access incident run sheets and reports
+- Complete incident documentation  
+- View analytics and response data
+{password_text}
+Two Layers of Security:
+The department access code lets you into the site. Your personal password protects your individual account and actions.
+
+Go to {tenant_name}: {login_link}
+
+--
+CADReport - Fire Department Incident Management
+    """
+    
+    return _send_email(to_email, subject, html_body, text_body, from_name)
+
+
 def send_invitation(
     to_email: str,
     invite_token: str,
