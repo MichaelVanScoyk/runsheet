@@ -95,6 +95,68 @@ export const updatePersonnelRole = (personnelId, role, adminId, adminPassword) =
     admin_password: adminPassword 
   });
 
+// Personnel Full Details (for admin modal)
+export const getPersonnelFull = (personnelId) => 
+  api.get(`/personnel/${personnelId}/full`);
+
+// Password Reset (admin-triggered)
+export const sendPasswordReset = (personnelId, adminId, adminPassword) => 
+  api.post(`/personnel/${personnelId}/send-password-reset`, {
+    admin_id: adminId,
+    admin_password: adminPassword
+  });
+
+export const validateResetToken = (token) => 
+  api.get(`/personnel/auth/validate-reset/${token}`);
+
+export const completePasswordReset = (token, newPassword) => 
+  api.post('/personnel/auth/complete-reset', { token, new_password: newPassword });
+
+// Invitations
+export const sendInvite = (personnelId, email, adminId, adminPassword) => 
+  api.post(`/personnel/${personnelId}/send-invite`, {
+    email,
+    admin_id: adminId,
+    admin_password: adminPassword
+  });
+
+export const resendInvite = (personnelId, adminId, adminPassword) => 
+  api.post(`/personnel/${personnelId}/resend-invite`, {
+    admin_id: adminId,
+    admin_password: adminPassword
+  });
+
+export const validateInviteToken = (token) => 
+  api.get(`/personnel/auth/validate-invite/${token}`);
+
+export const acceptInvite = (token, password) => 
+  api.post('/personnel/auth/accept-invite', { token, password });
+
+// User Self-Service
+export const getMyProfile = (personnelId) => 
+  api.get('/personnel/me', { params: { personnel_id: personnelId } });
+
+export const updateMyNotifications = (personnelId, prefs) => 
+  api.put('/personnel/me/notifications', prefs, { params: { personnel_id: personnelId } });
+
+export const changeMyPassword = (personnelId, currentPassword, newPassword) => 
+  api.post('/personnel/me/change-password', 
+    { current_password: currentPassword, new_password: newPassword },
+    { params: { personnel_id: personnelId } }
+  );
+
+export const requestEmailChange = (personnelId, newEmail, password) => 
+  api.post('/personnel/me/request-email-change',
+    { new_email: newEmail, password },
+    { params: { personnel_id: personnelId } }
+  );
+
+export const validateEmailChangeToken = (token) => 
+  api.get(`/personnel/auth/validate-email-change/${token}`);
+
+export const confirmEmailChange = (token) => 
+  api.post('/personnel/auth/confirm-email-change', null, { params: { token } });
+
 // ============================================================================
 // APPARATUS
 // ============================================================================

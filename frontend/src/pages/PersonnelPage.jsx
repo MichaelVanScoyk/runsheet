@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getPersonnel, getRanks, createPersonnel, updatePersonnel, deletePersonnel } from '../api';
+import { getPersonnel, getRanks, createPersonnel, updatePersonnel, deletePersonnel, sendInvite, resendInvite, sendPasswordReset, getUserSession } from '../api';
 
 const API_BASE = '';
 
@@ -22,6 +22,16 @@ function PersonnelPage({ embedded = false }) {
   const [importFile, setImportFile] = useState(null);
   const [clearExisting, setClearExisting] = useState(false);
   const fileInputRef = useRef(null);
+
+  // Invite/Reset state
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authAction, setAuthAction] = useState(null); // 'invite', 'resend', 'reset'
+  const [authTarget, setAuthTarget] = useState(null); // personnel being acted on
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
 
   useEffect(() => {
     loadData();
@@ -180,6 +190,86 @@ function PersonnelPage({ embedded = false }) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // Invite/Reset handlers
+  const currentUser = getUserSession();
+  const isAdmin = currentUser?.role === 'ADMIN';
+  const isOfficerOrAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'OFFICER';
+
+  const handleStartInvite = (person) => {
+    setAuthAction('invite');
+    setAuthTarget(person);
+    setInviteEmail(person.email || '');
+    setAdminPassword('');
+    setAuthError('');
+    setAuthSuccess('');
+    setShowAuthModal(true);
+  };
+
+  const handleStartResendInvite = (person) => {
+    setAuthAction('resend');
+    setAuthTarget(person);
+    setInviteEmail(person.email || '');
+    setAdminPassword('');
+    setAuthError('');
+    setAuthSuccess('');
+    setShowAuthModal(true);
+  };
+
+  const handleStartPasswordReset = (person) => {
+    setAuthAction('reset');
+    setAuthTarget(person);
+    setInviteEmail('');
+    setAdminPassword('');
+    setAuthError('');
+    setAuthSuccess('');
+    setShowAuthModal(true);
+  };
+
+  const handleAuthSubmit = async () => {
+    if (!currentUser || !adminPassword) {
+      setAuthError('Please enter your password');
+      return;
+    }
+
+    if (authAction === 'invite' && !inviteEmail) {
+      setAuthError('Please enter an email address');
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError('');
+    setAuthSuccess('');
+
+    try {
+      if (authAction === 'invite') {
+        await sendInvite(authTarget.id, inviteEmail, currentUser.personnel_id, adminPassword);
+        setAuthSuccess(`Invitation sent to ${inviteEmail}`);
+      } else if (authAction === 'resend') {
+        await resendInvite(authTarget.id, currentUser.personnel_id, adminPassword);
+        setAuthSuccess(`Invitation resent to ${authTarget.email}`);
+      } else if (authAction === 'reset') {
+        await sendPasswordReset(authTarget.id, currentUser.personnel_id, adminPassword);
+        setAuthSuccess(`Password reset email sent to ${authTarget.email}`);
+      }
+      // Reload data to reflect changes
+      loadData();
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || 'Action failed');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleAuthModalClose = () => {
+    setShowAuthModal(false);
+    setAuthAction(null);
+    setAuthTarget(null);
+    setInviteEmail('');
+    setAdminPassword('');
+    setAuthError('');
+    setAuthSuccess('');
+  };
+
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
@@ -260,13 +350,46 @@ function PersonnelPage({ embedded = false }) {
                     </span>
                   </td>
                   <td>
-                    <div className="action-buttons">
+                    <div className="action-buttons" style={{ flexWrap: 'wrap', gap: '4px' }}>
                       <button 
                         className="btn btn-secondary btn-sm"
                         onClick={() => handleEdit(p)}
                       >
                         Edit
                       </button>
+                      {/* Invite button - for users without accounts (Admin only) */}
+                      {p.active && !p.is_registered && isAdmin && (
+                        p.has_pending_invite ? (
+                          <button 
+                            className="btn btn-sm"
+                            style={{ background: p.invite_expired ? '#b45309' : '#0369a1', color: '#fff' }}
+                            onClick={() => handleStartResendInvite(p)}
+                            title={p.invite_expired ? 'Invitation expired - click to resend' : 'Resend invitation'}
+                          >
+                            {p.invite_expired ? '⚠️ Resend' : '📧 Resend'}
+                          </button>
+                        ) : (
+                          <button 
+                            className="btn btn-sm"
+                            style={{ background: '#0369a1', color: '#fff' }}
+                            onClick={() => handleStartInvite(p)}
+                            title="Send invitation email"
+                          >
+                            📧 Invite
+                          </button>
+                        )
+                      )}
+                      {/* Reset button - for users with accounts (Admin/Officer) */}
+                      {p.active && p.is_registered && isOfficerOrAdmin && (
+                        <button 
+                          className="btn btn-sm"
+                          style={{ background: '#7c3aed', color: '#fff' }}
+                          onClick={() => handleStartPasswordReset(p)}
+                          title="Send password reset email"
+                        >
+                          🔑 Reset
+                        </button>
+                      )}
                       {p.active && (
                         <button 
                           className="btn btn-danger btn-sm"
@@ -442,6 +565,90 @@ function PersonnelPage({ embedded = false }) {
               >
                 {importLoading ? 'Importing...' : `Import ${importPreview.parsed_count} Personnel`}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Auth Action Modal (Invite/Reset) */}
+      {showAuthModal && authTarget && (
+        <div className="modal-overlay" onClick={handleAuthModalClose}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+            <h3>
+              {authAction === 'invite' && '📧 Send Invitation'}
+              {authAction === 'resend' && '📧 Resend Invitation'}
+              {authAction === 'reset' && '🔑 Reset Password'}
+            </h3>
+            
+            <p style={{ color: '#ccc', marginBottom: '1rem' }}>
+              {authAction === 'invite' && (
+                <>Send an invitation email to <strong>{authTarget.first_name} {authTarget.last_name}</strong>. When they accept, their account will be automatically activated and approved.</>
+              )}
+              {authAction === 'resend' && (
+                <>Resend the invitation email to <strong>{authTarget.first_name} {authTarget.last_name}</strong> at {authTarget.email}. This will generate a new invitation link.</>
+              )}
+              {authAction === 'reset' && (
+                <>Send a password reset email to <strong>{authTarget.first_name} {authTarget.last_name}</strong> at {authTarget.email}.</>
+              )}
+            </p>
+
+            {authAction === 'invite' && (
+              <div className="form-group">
+                <label>Email Address *</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="member@example.com"
+                  required
+                />
+              </div>
+            )}
+
+            <div className="form-group">
+              <label>Your Password (to confirm) *</label>
+              <input
+                type="password"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                placeholder="Enter your password"
+                required
+              />
+              <small style={{ color: '#888', marginTop: '0.25rem', display: 'block' }}>
+                This verifies you have permission to perform this action
+              </small>
+            </div>
+
+            {authError && (
+              <div style={{ color: '#dc2626', marginBottom: '1rem', padding: '0.5rem', background: '#4a0000', borderRadius: '4px' }}>
+                {authError}
+              </div>
+            )}
+
+            {authSuccess && (
+              <div style={{ color: '#22c55e', marginBottom: '1rem', padding: '0.5rem', background: '#003a00', borderRadius: '4px' }}>
+                ✓ {authSuccess}
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={handleAuthModalClose}>
+                {authSuccess ? 'Close' : 'Cancel'}
+              </button>
+              {!authSuccess && (
+                <button 
+                  type="button" 
+                  className="btn btn-primary" 
+                  onClick={handleAuthSubmit}
+                  disabled={authLoading}
+                >
+                  {authLoading ? 'Sending...' : (
+                    authAction === 'invite' ? 'Send Invitation' :
+                    authAction === 'resend' ? 'Resend Invitation' :
+                    'Send Reset Email'
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

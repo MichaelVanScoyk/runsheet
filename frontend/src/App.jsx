@@ -27,6 +27,8 @@ import MunicipalitiesPage from './pages/MunicipalitiesPage';
 import AdminPage from './pages/AdminPage';
 import ReportsPage from './pages/ReportsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
+import AcceptInvitePage from './pages/AcceptInvitePage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import TenantLogin from './components/TenantLogin';
 import LandingPage from './components/LandingPage';
 import { 
@@ -649,6 +651,9 @@ function App() {
     <BrandingProvider>
       <Router>
         <Routes>
+          {/* Standalone auth pages - no app shell needed */}
+          <Route path="/accept-invite" element={<AcceptInvitePage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           {/* Print route - standalone, no app shell */}
           <Route path="/print/:id" element={<PrintPage />} />
           {/* All other routes use the app shell */}
