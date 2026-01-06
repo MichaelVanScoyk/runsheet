@@ -330,6 +330,281 @@ CADReport - Fire Department Incident Management
     return _send_email(to_email, subject, html_body, text_body, from_name)
 
 
+def send_invitation(
+    to_email: str,
+    invite_token: str,
+    tenant_slug: str,
+    tenant_name: str,
+    user_name: str,
+    inviter_name: str = "An administrator"
+) -> bool:
+    """
+    Send invitation email to a personnel member.
+    
+    When they click the link and set their password, they are automatically
+    activated AND approved (no further admin action needed).
+    
+    Args:
+        to_email: User's email address
+        invite_token: Invitation token
+        tenant_slug: Tenant subdomain
+        tenant_name: Tenant display name
+        user_name: User's name for personalization
+        inviter_name: Name of admin who sent the invite
+    """
+    invite_link = _build_tenant_url(tenant_slug, f"/accept-invite?token={invite_token}")
+    from_name = f"{tenant_name} via CADReport"
+    subject = f"You've been invited to {tenant_name}"
+    
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ border-bottom: 3px solid #dc2626; padding-bottom: 15px; margin-bottom: 20px; }}
+            .button {{ 
+                display: inline-block; 
+                padding: 12px 24px; 
+                background-color: #dc2626; 
+                color: white !important; 
+                text-decoration: none; 
+                border-radius: 6px;
+                margin: 20px 0;
+            }}
+            .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; }}
+            .link-text {{ word-break: break-all; color: #666; font-size: 12px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h2 style="margin: 0; color: #dc2626;">{tenant_name}</h2>
+            </div>
+            <p>Hi {user_name},</p>
+            <p>{inviter_name} has invited you to join <strong>{tenant_name}</strong> on CADReport, our incident management system.</p>
+            <p>Click the button below to create your account:</p>
+            <p><a href="{invite_link}" class="button">Accept Invitation</a></p>
+            <p>This link will expire in 24 hours.</p>
+            <p class="link-text">Or copy this link: {invite_link}</p>
+            <div class="footer">
+                <p>CADReport - Fire Department Incident Management</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    text_body = f"""
+{tenant_name}
+
+Hi {user_name},
+
+{inviter_name} has invited you to join {tenant_name} on CADReport, our incident management system.
+
+Click the link below to create your account:
+
+{invite_link}
+
+This link will expire in 24 hours.
+
+--
+CADReport - Fire Department Incident Management
+    """
+    
+    return _send_email(to_email, subject, html_body, text_body, from_name)
+
+
+def send_admin_notification(
+    to_emails: list,
+    tenant_slug: str,
+    tenant_name: str,
+    notification_type: str,
+    subject_line: str,
+    message_body: str,
+    action_url: Optional[str] = None,
+    action_text: str = "View Details"
+) -> int:
+    """
+    Send notification email to admin users.
+    
+    Args:
+        to_emails: List of admin email addresses
+        tenant_slug: Tenant subdomain
+        tenant_name: Tenant display name
+        notification_type: Type of notification (for future filtering)
+        subject_line: Email subject
+        message_body: Main message content (can include HTML)
+        action_url: Optional URL for action button
+        action_text: Text for action button
+        
+    Returns:
+        Number of emails successfully sent
+    """
+    from_name = f"{tenant_name} via CADReport"
+    
+    action_button = ""
+    action_link = ""
+    if action_url:
+        full_url = _build_tenant_url(tenant_slug, action_url) if not action_url.startswith('http') else action_url
+        action_button = f'<p><a href="{full_url}" class="button">{action_text}</a></p>'
+        action_link = f"\n{action_text}: {full_url}\n"
+    
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ border-bottom: 3px solid #dc2626; padding-bottom: 15px; margin-bottom: 20px; }}
+            .notification-badge {{ 
+                display: inline-block;
+                padding: 4px 8px;
+                background-color: #fef3c7;
+                color: #92400e;
+                border-radius: 4px;
+                font-size: 12px;
+                margin-bottom: 10px;
+            }}
+            .button {{ 
+                display: inline-block; 
+                padding: 12px 24px; 
+                background-color: #dc2626; 
+                color: white !important; 
+                text-decoration: none; 
+                border-radius: 6px;
+                margin: 20px 0;
+            }}
+            .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h2 style="margin: 0; color: #dc2626;">{tenant_name}</h2>
+            </div>
+            <span class="notification-badge">Admin Notification</span>
+            <div style="margin-top: 15px;">
+                {message_body}
+            </div>
+            {action_button}
+            <div class="footer">
+                <p>You're receiving this because you have admin notifications enabled.</p>
+                <p>CADReport - Fire Department Incident Management</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Strip HTML for text version
+    import re
+    text_message = re.sub('<[^<]+?>', '', message_body)
+    
+    text_body = f"""
+{tenant_name} - Admin Notification
+
+{text_message}
+{action_link}
+--
+You're receiving this because you have admin notifications enabled.
+CADReport - Fire Department Incident Management
+    """
+    
+    success_count = 0
+    for email in to_emails:
+        if _send_email(email, subject_line, html_body, text_body, from_name):
+            success_count += 1
+    
+    return success_count
+
+
+def send_email_change_verification(
+    to_email: str,
+    verification_token: str,
+    tenant_slug: str,
+    tenant_name: str,
+    user_name: str
+) -> bool:
+    """
+    Send verification email when a user requests to change their email address.
+    
+    The link goes to the NEW email address to verify they own it.
+    
+    Args:
+        to_email: The NEW email address to verify
+        verification_token: Verification token
+        tenant_slug: Tenant subdomain
+        tenant_name: Tenant display name
+        user_name: User's name for personalization
+    """
+    verify_link = _build_tenant_url(tenant_slug, f"/verify-email-change?token={verification_token}")
+    from_name = f"{tenant_name} via CADReport"
+    subject = "Verify Your New Email Address"
+    
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ border-bottom: 3px solid #dc2626; padding-bottom: 15px; margin-bottom: 20px; }}
+            .button {{ 
+                display: inline-block; 
+                padding: 12px 24px; 
+                background-color: #dc2626; 
+                color: white !important; 
+                text-decoration: none; 
+                border-radius: 6px;
+                margin: 20px 0;
+            }}
+            .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; }}
+            .link-text {{ word-break: break-all; color: #666; font-size: 12px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h2 style="margin: 0; color: #dc2626;">{tenant_name}</h2>
+            </div>
+            <p>Hi {user_name},</p>
+            <p>You requested to change your email address to this address. Click the button below to confirm:</p>
+            <p><a href="{verify_link}" class="button">Verify New Email</a></p>
+            <p>This link will expire in 24 hours.</p>
+            <p>If you didn't request this change, you can safely ignore this email.</p>
+            <p class="link-text">Or copy this link: {verify_link}</p>
+            <div class="footer">
+                <p>CADReport - Fire Department Incident Management</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    text_body = f"""
+{tenant_name}
+
+Hi {user_name},
+
+You requested to change your email address to this address.
+Click the link below to confirm:
+
+{verify_link}
+
+This link will expire in 24 hours.
+
+If you didn't request this change, you can safely ignore this email.
+
+--
+CADReport - Fire Department Incident Management
+    """
+    
+    return _send_email(to_email, subject, html_body, text_body, from_name)
+
+
 def send_test_email(to_email: str, tenant_slug: str = "test", tenant_name: str = "Test Tenant") -> bool:
     """Send a test email to verify configuration"""
     from_name = f"{tenant_name} via CADReport"

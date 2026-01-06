@@ -50,6 +50,22 @@ class Personnel(Base):
     approved_by = Column(Integer, ForeignKey("personnel.id"))
     last_login_at = Column(TIMESTAMP(timezone=True))
     
+    # Password reset tokens (expires in 1 hour)
+    reset_token = Column(String(100))
+    reset_token_expires_at = Column(TIMESTAMP(timezone=True))
+    
+    # Invitation tokens (expires in 24 hours, auto-approves on accept)
+    invite_token = Column(String(100))
+    invite_token_expires_at = Column(TIMESTAMP(timezone=True))
+    
+    # Notification preferences: {"admin_notifications": bool, "incident_notifications": bool}
+    notification_preferences = Column(JSONB, default={})
+    
+    # Pending email change (requires verification before applying)
+    pending_email = Column(String(255))
+    pending_email_token = Column(String(100))
+    pending_email_expires_at = Column(TIMESTAMP(timezone=True))
+    
     created_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
     updated_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
     
