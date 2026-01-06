@@ -945,7 +945,7 @@ def get_email_context(request: Request, db: Session) -> dict:
     """
     Get tenant context for email sending.
     Returns tenant_slug, tenant_name (from master), station_name (from settings),
-    and branding info (primary_color, logo_url as data URL).
+    and branding info (primary_color).
     """
     tenant_slug = getattr(request.state, 'tenant_slug', 'unknown')
     tenant = getattr(request.state, 'tenant', None)
@@ -953,18 +953,16 @@ def get_email_context(request: Request, db: Session) -> dict:
     
     # Use branding_config helper to get all branding
     try:
-        from report_engine.branding_config import get_branding, get_logo_data_url
+        from report_engine.branding_config import get_branding
         branding = get_branding(db)
         
         station_name = branding.get('station_name')
         primary_color = branding.get('primary_color')
-        logo_url = get_logo_data_url(branding)  # Returns data:image/png;base64,... or None
         
     except Exception as e:
         logger.warning(f"Failed to load branding: {e}")
         station_name = None
         primary_color = None
-        logo_url = None
     
     # Use station name if available, otherwise tenant name
     display_name = station_name or tenant_name
@@ -974,7 +972,6 @@ def get_email_context(request: Request, db: Session) -> dict:
         'tenant_name': display_name,
         'station_name': station_name,
         'primary_color': primary_color,
-        'logo_url': logo_url,
     }
 
 
@@ -1255,8 +1252,7 @@ async def send_invite(
             tenant_name=context['tenant_name'],
             user_name=person.first_name,
             inviter_name=requester.display_name,
-            primary_color=context.get('primary_color'),
-            logo_url=context.get('logo_url')
+            primary_color=context.get('primary_color')
         )
         
         if not success:
@@ -1320,8 +1316,7 @@ async def resend_invite(
             tenant_name=context['tenant_name'],
             user_name=person.first_name,
             inviter_name=requester.display_name,
-            primary_color=context.get('primary_color'),
-            logo_url=context.get('logo_url')
+            primary_color=context.get('primary_color')
         )
         
         if not success:
@@ -1463,8 +1458,7 @@ async def accept_invite(
             tenant_name=context['tenant_name'],
             user_name=person.first_name,
             user_display_name=f"{person.first_name} {person.last_name}",
-            primary_color=context.get('primary_color'),
-            logo_url=context.get('logo_url')
+            primary_color=context.get('primary_color')
         )
         
     except ImportError:

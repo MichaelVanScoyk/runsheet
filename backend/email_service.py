@@ -337,8 +337,7 @@ def send_welcome_with_tenant_password(
     user_name: str,
     user_display_name: str,
     tenant_password: Optional[str] = None,
-    primary_color: Optional[str] = None,
-    logo_url: Optional[str] = None
+    primary_color: Optional[str] = None
 ) -> bool:
     """
     Send welcome email after invitation acceptance.
@@ -352,7 +351,6 @@ def send_welcome_with_tenant_password(
         user_display_name: Full display name
         tenant_password: Optional tenant/department password for future logins
         primary_color: Optional brand color (hex)
-        logo_url: Optional URL to tenant logo
     """
     login_link = _build_tenant_url(tenant_slug, "/")
     from_name = f"{tenant_name} via CADReport"
@@ -360,11 +358,6 @@ def send_welcome_with_tenant_password(
     
     # Use primary color or default green for success
     color = primary_color if primary_color and primary_color not in ['#ffffff', '#fff', '#f5f5f5', '#e5e5e5', 'white', '#808080', '#888888', 'gray', 'grey'] else '#16a34a'
-    
-    # Build logo HTML if provided
-    logo_html = ""
-    if logo_url:
-        logo_html = f'<img src="{logo_url}" alt="{tenant_name}" style="max-width: 120px; max-height: 80px; margin-bottom: 10px;" />'
     
     # Build tenant password section if provided
     password_section = ""
@@ -411,7 +404,6 @@ def send_welcome_with_tenant_password(
     <body>
         <div class="container">
             <div class="header">
-                {logo_html}
                 <h2 style="margin: 0; color: {color};">✓ Welcome to {tenant_name}!</h2>
             </div>
             <p>Hi {user_name},</p>
@@ -472,8 +464,7 @@ def send_invitation(
     tenant_name: str,
     user_name: str,
     inviter_name: str = "An administrator",
-    primary_color: Optional[str] = None,
-    logo_url: Optional[str] = None
+    primary_color: Optional[str] = None
 ) -> bool:
     """
     Send invitation email to a personnel member.
@@ -489,7 +480,6 @@ def send_invitation(
         user_name: User's name for personalization
         inviter_name: Name of admin who sent the invite
         primary_color: Optional brand color (hex, e.g., "#1e5631")
-        logo_url: Optional URL to tenant logo
     """
     invite_link = _build_tenant_url(tenant_slug, f"/accept-invite?token={invite_token}")
     from_name = f"{tenant_name} via CADReport"
@@ -497,11 +487,6 @@ def send_invitation(
     
     # Use primary color or default red
     color = primary_color if primary_color and primary_color not in ['#ffffff', '#fff', '#f5f5f5', '#e5e5e5', 'white', '#808080', '#888888', 'gray', 'grey'] else '#dc2626'
-    
-    # Build logo HTML if provided
-    logo_html = ""
-    if logo_url:
-        logo_html = f'<img src="{logo_url}" alt="{tenant_name}" style="max-width: 120px; max-height: 80px; margin-bottom: 10px;" />'
     
     html_body = f"""
     <!DOCTYPE html>
@@ -527,7 +512,6 @@ def send_invitation(
     <body>
         <div class="container">
             <div class="header">
-                {logo_html}
                 <h2 style="margin: 0; color: {color};">{tenant_name}</h2>
             </div>
             <p>Hi {user_name},</p>
