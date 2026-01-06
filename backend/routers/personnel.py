@@ -3,6 +3,7 @@ Personnel router - manage run sheet personnel
 """
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional, List
@@ -1363,7 +1364,6 @@ async def validate_invite_token(
 async def accept_invite(
     data: AcceptInviteRequest,
     request: Request,
-    response: Response,
     db: Session = Depends(get_db)
 ):
     """
@@ -1423,16 +1423,6 @@ async def accept_invite(
             master_db.add(tenant_session)
             master_db.commit()
             
-            # Set tenant session cookie
-            response.set_cookie(
-                key="tenant_session",
-                value=session_token,
-                max_age=60 * 60 * 24 * 365,  # 1 year
-                httponly=True,
-                secure=False,  # Set True in production with HTTPS
-                samesite="lax",
-            )
-            
             logger.info(f"Auto-login tenant session created for {person.display_name}")
             
         except Exception as e:
@@ -1445,13 +1435,7 @@ async def accept_invite(
         
         context = get_email_context(request, db)
         
-        # Get tenant password from master DB for the welcome email
-        tenant_password = None
-        if tenant:
-            tenant_password = getattr(tenant, 'password_plain', None)  # Won't exist, need to handle differently
-        
-        # We'll send a welcome email - tenant password will be included if available
-        # For now, just log that we'd send it
+        # We'll send a welcome email
         send_welcome_with_tenant_password(
             to_email=person.email,
             tenant_slug=context['tenant_slug'],
@@ -1467,7 +1451,8 @@ async def accept_invite(
         logger.error(f"Failed to send welcome email: {e}")
         # Don't fail the invite acceptance
     
-    return {
+    # Build response with cookie
+    response_data = {
         "status": "ok",
         "message": "Account created successfully",
         "personnel_id": person.id,
@@ -1475,6 +1460,22 @@ async def accept_invite(
         "role": person.role,
         "auto_login": session_token is not None
     }
+    
+    response = JSONResponse(content=response_data)
+    
+    # Set the tenant session cookie on the actual response
+    if session_token:
+        response.set_cookie(
+            key="tenant_session",
+            value=session_token,
+            max_age=60 * 60 * 24 * 365,  # 1 year
+            httponly=True,
+            secure=False,  # Set True in production with HTTPS
+            samesite="lax",
+        )
+        logger.info(f"Set tenant_session cookie for {person.display_name}")
+    
+    return response
 
 
 # -----------------------------------------------------------------------------
