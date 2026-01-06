@@ -30,6 +30,14 @@ PUBLIC_PATHS = [
     "/api/master/me",
 ]
 
+# Path prefixes that don't require tenant auth (for dynamic routes)
+PUBLIC_PATH_PREFIXES = [
+    "/api/personnel/auth/validate-invite/",
+    "/api/personnel/auth/accept-invite",
+    "/api/personnel/auth/validate-reset/",
+    "/api/personnel/auth/complete-reset",
+]
+
 
 def is_internal_ip(ip: str) -> bool:
     """Check if IP is localhost or private network (CAD listener, etc.)"""
@@ -71,6 +79,11 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         # Allow public paths
         if path in PUBLIC_PATHS or not path.startswith("/api"):
             return await call_next(request)
+        
+        # Allow public path prefixes (for dynamic routes like /validate-invite/{token})
+        for prefix in PUBLIC_PATH_PREFIXES:
+            if path.startswith(prefix):
+                return await call_next(request)
         
         # Allow all master admin routes (they have their own auth)
         if path.startswith("/api/master"):

@@ -16,6 +16,7 @@ function AcceptInvitePage() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  // Validate token on mount
   useEffect(() => {
     if (!token) {
       setError('No invitation token provided');
@@ -33,6 +34,16 @@ function AcceptInvitePage() {
         setLoading(false);
       });
   }, [token]);
+
+  // Handle auto-redirect after success (must be before any returns!)
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        window.location.href = '/';  // Full page reload to pick up new cookie
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -60,6 +71,8 @@ function AcceptInvitePage() {
     }
   };
 
+  // --- RENDER LOGIC (after all hooks) ---
+
   if (loading) {
     return (
       <div style={styles.container}>
@@ -69,16 +82,6 @@ function AcceptInvitePage() {
       </div>
     );
   }
-
-  // Handle auto-redirect after success
-  useEffect(() => {
-    if (success) {
-      const timer = setTimeout(() => {
-        window.location.href = '/';  // Full page reload to pick up new cookie
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [success]);
 
   if (success) {
     return (
