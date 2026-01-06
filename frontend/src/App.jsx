@@ -619,6 +619,22 @@ function App() {
   // Detect if we're on main domain or subdomain
   const hostname = window.location.hostname;
   const isMainDomain = hostname === 'cadreport.com' || hostname === 'www.cadreport.com' || hostname === 'localhost';
+  
+  // Check if we're on a standalone auth page that doesn't need tenant session
+  const pathname = window.location.pathname;
+  const isStandaloneAuthPage = pathname.startsWith('/accept-invite') || pathname.startsWith('/reset-password');
+
+  // Standalone auth pages bypass tenant login requirement
+  if (isStandaloneAuthPage) {
+    return (
+      <Router>
+        <Routes>
+          <Route path="/accept-invite" element={<AcceptInvitePage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+        </Routes>
+      </Router>
+    );
+  }
 
   // Show loading while checking session
   if (checkingSession) {

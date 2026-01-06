@@ -336,7 +336,9 @@ def send_invitation(
     tenant_slug: str,
     tenant_name: str,
     user_name: str,
-    inviter_name: str = "An administrator"
+    inviter_name: str = "An administrator",
+    primary_color: Optional[str] = None,
+    logo_url: Optional[str] = None
 ) -> bool:
     """
     Send invitation email to a personnel member.
@@ -351,10 +353,20 @@ def send_invitation(
         tenant_name: Tenant display name
         user_name: User's name for personalization
         inviter_name: Name of admin who sent the invite
+        primary_color: Optional brand color (hex, e.g., "#1e5631")
+        logo_url: Optional URL to tenant logo
     """
     invite_link = _build_tenant_url(tenant_slug, f"/accept-invite?token={invite_token}")
     from_name = f"{tenant_name} via CADReport"
     subject = f"You've been invited to {tenant_name}"
+    
+    # Use primary color or default red
+    color = primary_color if primary_color and primary_color not in ['#ffffff', '#fff', '#f5f5f5', '#e5e5e5', 'white', '#808080', '#888888', 'gray', 'grey'] else '#dc2626'
+    
+    # Build logo HTML if provided
+    logo_html = ""
+    if logo_url:
+        logo_html = f'<img src="{logo_url}" alt="{tenant_name}" style="max-width: 120px; max-height: 80px; margin-bottom: 10px;" />'
     
     html_body = f"""
     <!DOCTYPE html>
@@ -363,11 +375,11 @@ def send_invitation(
         <style>
             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ border-bottom: 3px solid #dc2626; padding-bottom: 15px; margin-bottom: 20px; }}
+            .header {{ border-bottom: 3px solid {color}; padding-bottom: 15px; margin-bottom: 20px; }}
             .button {{ 
                 display: inline-block; 
                 padding: 12px 24px; 
-                background-color: #dc2626; 
+                background-color: {color}; 
                 color: white !important; 
                 text-decoration: none; 
                 border-radius: 6px;
@@ -380,7 +392,8 @@ def send_invitation(
     <body>
         <div class="container">
             <div class="header">
-                <h2 style="margin: 0; color: #dc2626;">{tenant_name}</h2>
+                {logo_html}
+                <h2 style="margin: 0; color: {color};">{tenant_name}</h2>
             </div>
             <p>Hi {user_name},</p>
             <p>{inviter_name} has invited you to join <strong>{tenant_name}</strong> on CADReport, our incident management system.</p>
