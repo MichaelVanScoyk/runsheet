@@ -493,10 +493,9 @@ class CADListener:
                 'cad_raw_dispatch': raw_html,
             }
             
-            if report.get('dispatch_time'):
-                parsed_dt = self._parse_cad_datetime(report['dispatch_time'])
-                if parsed_dt:
-                    create_data['incident_date'] = parsed_dt.split('T')[0]
+            # Use incident_date_str (local date) computed earlier, NOT from UTC conversion
+            if incident_date_str:
+                create_data['incident_date'] = incident_date_str
             
             resp = requests.post(
                 f"{self.api_url}/api/incidents",
@@ -568,8 +567,15 @@ class CADListener:
                 logger.warning(f"Could not parse dispatch time: {e}")
         
         if not incident_date and incident.get('time_dispatched'):
+            # Convert UTC to local before extracting date
             try:
-                incident_date = incident['time_dispatched'].split('T')[0]
+                stored_dt_str = incident['time_dispatched']
+                if stored_dt_str.endswith('Z'):
+                    stored_dt_str = stored_dt_str[:-1] + '+00:00'
+                utc_dt = datetime.fromisoformat(stored_dt_str)
+                local_tz = self._get_local_timezone()
+                local_dt = utc_dt.astimezone(local_tz)
+                incident_date = local_dt.strftime('%Y-%m-%d')
             except:
                 pass
         
@@ -764,7 +770,27 @@ class CADListener:
         event_subtype = report.get('event_subtype', '')
         
         call_category = self._determine_category(event_type, event_subtype)
-        incident_date = datetime.now().strftime('%Y-%m-%d')
+        
+        # Extract incident_date from report_time (format: "HH:MM MM/DD") if available
+        # This is more accurate than server time if clear report is delayed
+        incident_date = None
+        if report.get('report_time'):
+            try:
+                # Parse "21:29 01/05" format - extract MM/DD from end
+                rt = report['report_time']
+                parts = rt.strip().split(' ')
+                if len(parts) >= 2:
+                    date_part = parts[-1]  # Get last part (MM/DD)
+                    if '/' in date_part:
+                        month, day = date_part.split('/')
+                        year = datetime.now().year
+                        incident_date = f"{year:04d}-{int(month):02d}-{int(day):02d}"
+            except:
+                pass
+        
+        # Fallback to server time if report_time parsing failed
+        if not incident_date:
+            incident_date = datetime.now().strftime('%Y-%m-%d')
         
         create_data = {
             'cad_event_number': event_number,
