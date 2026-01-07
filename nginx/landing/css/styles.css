@@ -31,19 +31,20 @@ body {
 /* ===== NAVIGATION ===== */
 .nav {
     background: var(--bg-white);
-    padding: 0.5rem 2rem;
+    padding: 0;
 }
 
 .nav-inner {
     max-width: 1200px;
     margin: 0 auto;
+    padding: 0 2rem;
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
 }
 
 .nav-logo img {
-    height: 200px;
+    height: 250px;
 }
 
 .nav-links {
@@ -51,7 +52,7 @@ body {
     align-items: center;
     gap: 2rem;
     list-style: none;
-    padding-top: 1rem;
+    padding-top: 2rem;
 }
 
 .nav-links a {
@@ -106,7 +107,7 @@ body {
 /* ===== HERO ===== */
 .hero {
     background: var(--bg-light);
-    padding: 2rem 2rem 4rem;
+    padding: 1rem 2rem 4rem;
     text-align: center;
 }
 
