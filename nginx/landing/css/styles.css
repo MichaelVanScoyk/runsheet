@@ -31,7 +31,7 @@ body {
 /* ===== NAVIGATION ===== */
 .nav {
     background: var(--bg-white);
-    padding: 1rem 2rem;
+    padding: 0.5rem 2rem;
 }
 
 .nav-inner {
@@ -39,11 +39,11 @@ body {
     margin: 0 auto;
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
 }
 
 .nav-logo img {
-    height: 250px;
+    height: 200px;
 }
 
 .nav-links {
@@ -51,6 +51,7 @@ body {
     align-items: center;
     gap: 2rem;
     list-style: none;
+    padding-top: 1rem;
 }
 
 .nav-links a {
@@ -105,7 +106,7 @@ body {
 /* ===== HERO ===== */
 .hero {
     background: var(--bg-light);
-    padding: 5rem 2rem;
+    padding: 2rem 2rem 4rem;
     text-align: center;
 }
 

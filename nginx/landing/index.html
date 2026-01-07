@@ -6,7 +6,7 @@
     <title>CADReport - Fire Department Incident Management</title>
     <meta name="description" content="Automatic CAD integration for PA fire departments. Stop manual data entry. Generate monthly chiefs reports in one click.">
     <link rel="icon" href="assets/cadreportlogo.png" type="image/png">
-    <link rel="stylesheet" href="css/styles.css?v=20260107e">
+    <link rel="stylesheet" href="css/styles.css?v=20260107f">
 </head>
 <body>
     <!-- Navigation -->
@@ -33,7 +33,7 @@
             <form onsubmit="handleLogin(event)">
                 <div class="form-group">
                     <label for="slug">Department Code or Admin Email</label>
-                    <input type="text" id="slug" placeholder="glenmoorefc or admin@email.com" required autocomplete="off">
+                    <input type="text" id="slug" placeholder="yourfdcode or admin@email.com" required autocomplete="off">
                 </div>
                 <div class="form-group">
                     <label for="password">Password</label>
@@ -118,7 +118,7 @@
                 <div class="feature-card">
                     <div class="feature-icon">📡</div>
                     <h3>Direct CAD Integration</h3>
-                    <p>Connect directly to Chester County CAD. All times captured automatically.</p>
+                    <p>Connect directly to your county CAD system. All times captured automatically.</p>
                     <ul class="feature-list">
                         <li>Incident address and municipality</li>
                         <li>All unit times (dispatch → clear)</li>
@@ -169,28 +169,28 @@
             <div class="contact-wrapper">
                 <form id="signupForm" onsubmit="handleSignup(event)">
                     <div class="form-group">
-                    <label for="deptName">Department Name</label>
-                    <input type="text" id="deptName" placeholder="e.g., Glen Moore Fire Company" required autocomplete="off">
+                        <label for="deptName">Department Name</label>
+                        <input type="text" id="deptName" required autocomplete="off">
                     </div>
                     <div class="form-group">
-                    <label for="deptSlug">Desired URL Code</label>
-                    <input type="text" id="deptSlug" placeholder="e.g., glenmoorefc (letters/numbers only)" required pattern="[a-zA-Z0-9]+" autocomplete="off">
+                        <label for="deptSlug">Desired URL Code</label>
+                        <input type="text" id="deptSlug" placeholder="letters and numbers only" required pattern="[a-zA-Z0-9]+" autocomplete="off">
                     </div>
                     <div class="form-group">
-                    <label for="contactName">Your Name</label>
-                    <input type="text" id="contactName" placeholder="Contact name" required autocomplete="off">
+                        <label for="contactName">Your Name</label>
+                        <input type="text" id="contactName" required autocomplete="off">
                     </div>
                     <div class="form-group">
-                    <label for="contactEmail">Email</label>
-                    <input type="email" id="contactEmail" placeholder="your@email.com" required autocomplete="off">
+                        <label for="contactEmail">Email</label>
+                        <input type="email" id="contactEmail" required autocomplete="off">
                     </div>
                     <div class="form-group">
-                    <label for="contactPhone">Phone (optional)</label>
-                    <input type="tel" id="contactPhone" placeholder="(555) 123-4567" autocomplete="off">
+                        <label for="contactPhone">Phone (optional)</label>
+                        <input type="tel" id="contactPhone" autocomplete="off">
                     </div>
                     <div class="form-group">
-                    <label for="county">County</label>
-                    <input type="text" id="county" placeholder="e.g., Chester" value="Chester" autocomplete="off">
+                        <label for="county">County</label>
+                        <input type="text" id="county" autocomplete="off">
                     </div>
                     <div class="form-error" id="signupError"></div>
                     <div class="form-success" id="signupSuccess"></div>
