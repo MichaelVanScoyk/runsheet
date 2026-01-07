@@ -465,8 +465,9 @@ export default function PrintLayoutTab() {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={handleReset}
-            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded text-sm text-gray-700 border border-gray-300"
+            disabled
+            title="Temporarily disabled - saved layout presets coming soon"
+            className="px-3 py-1 bg-gray-200 rounded text-sm text-gray-400 border border-gray-300 cursor-not-allowed"
           >
             Reset to V4 Defaults
           </button>
