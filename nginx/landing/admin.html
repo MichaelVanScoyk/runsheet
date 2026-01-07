@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CADReport Admin Dashboard</title>
+    <link rel="icon" href="assets/cadreportlogo.png" type="image/png">
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Header -->
+        <header class="admin-header">
+            <div class="admin-header-left">
+                <a href="/" class="logo">
+                    <img src="assets/cadreportlogo.png" alt="CADReport" style="height: 35px;">
+                </a>
+                <span class="admin-title">Admin Dashboard</span>
+            </div>
+            <div class="admin-header-right">
+                <span id="adminName"></span>
+                <span id="adminRole" class="badge"></span>
+                <button onclick="adminLogout()" class="btn btn-outline btn-small">Logout</button>
+            </div>
+        </header>
+
+        <!-- Stats Bar -->
+        <div class="admin-stats" id="adminStats"></div>
+
+        <!-- Tabs -->
+        <div class="admin-tabs">
+            <button class="admin-tab active" onclick="switchTab('tenants')">🏢 Tenants</button>
+            <button class="admin-tab" onclick="switchTab('create')">➕ Create Tenant</button>
+            <button class="admin-tab" onclick="switchTab('users')">👥 Users</button>
+            <button class="admin-tab" onclick="switchTab('database')">💾 Database</button>
+            <button class="admin-tab" onclick="switchTab('admins')">👤 Admins</button>
+            <button class="admin-tab" onclick="switchTab('audit')">📋 Audit Log</button>
+        </div>
+
+        <!-- Tab: Tenants -->
+        <div id="tab-tenants" class="tab-content active">
+            <div class="admin-content">
+                <div class="admin-section">
+                    <div class="admin-section-header">
+                        <h2>Tenants</h2>
+                        <select id="tenantFilter" onchange="loadTenants()">
+                            <option value="">All</option>
+                            <option value="PENDING">Pending</option>
+                            <option value="ACTIVE">Active</option>
+                            <option value="SUSPENDED">Suspended</option>
+                        </select>
+                    </div>
+                    <div id="tenantsList" class="tenants-list"></div>
+                </div>
+
+                <div class="admin-section" id="tenantDetail" style="display: none;">
+                    <h2>Tenant Details</h2>
+                    <div id="tenantDetailContent"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Create Tenant -->
+        <div id="tab-create" class="tab-content">
+            <div class="admin-form-container">
+                <h2>Create New Tenant</h2>
+                <p class="text-muted">Directly create a tenant without going through signup request</p>
+                <form id="createTenantForm" onsubmit="createTenant(event)">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Department Name *</label>
+                            <input type="text" id="newTenantName" required placeholder="Glen Moore Fire Company">
+                        </div>
+                        <div class="form-group">
+                            <label>Subdomain Slug *</label>
+                            <input type="text" id="newTenantSlug" required placeholder="glenmoorefc" pattern="[a-z0-9]+">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Password *</label>
+                            <input type="password" id="newTenantPassword" required placeholder="Department password">
+                        </div>
+                        <div class="form-group">
+                            <label>CAD Port</label>
+                            <input type="number" id="newTenantPort" placeholder="Auto-assign if empty">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Contact Name</label>
+                            <input type="text" id="newTenantContact" placeholder="Chief Smith">
+                        </div>
+                        <div class="form-group">
+                            <label>Contact Email</label>
+                            <input type="email" id="newTenantEmail" placeholder="chief@example.com">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>County</label>
+                            <input type="text" id="newTenantCounty" value="Chester">
+                        </div>
+                        <div class="form-group">
+                            <label>State</label>
+                            <input type="text" id="newTenantState" value="PA" maxlength="2">
+                        </div>
+                    </div>
+                    <div class="form-error" id="createTenantError"></div>
+                    <div class="form-success" id="createTenantSuccess"></div>
+                    <button type="submit" class="btn btn-primary">Create Tenant</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Tab: Users -->
+        <div id="tab-users" class="tab-content">
+            <div class="admin-form-container" style="max-width: 1000px;">
+                <h2>Tenant Users</h2>
+                <p class="text-muted">View and manage firefighters registered at each department</p>
+                
+                <div class="form-row" style="margin-bottom: 1.5rem;">
+                    <div class="form-group">
+                        <label>Select Tenant</label>
+                        <select id="usersTenantSelect" onchange="loadTenantUsers()">
+                            <option value="">Choose a department...</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: flex-end;">
+                        <span id="usersCount" class="text-muted"></span>
+                    </div>
+                </div>
+                
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Last Login</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersBody">
+                        <tr><td colspan="6" class="empty-state">Select a tenant to view users</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab: Database -->
+        <div id="tab-database" class="tab-content">
+            <div class="admin-form-container" style="max-width: 1000px;">
+                <h2>Database Management</h2>
+                <p class="text-muted">Provision, backup, and restore tenant databases</p>
+                
+                <div class="db-section">
+                    <h3>Tenant Databases</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Tenant</th>
+                                <th>Database</th>
+                                <th>Status</th>
+                                <th>Size</th>
+                                <th>Last Backup</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dbStatusBody"></tbody>
+                    </table>
+                </div>
+                
+                <div class="db-section">
+                    <h3>Recent Backups</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Tenant</th>
+                                <th>Filename</th>
+                                <th>Size</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="backupsBody"></tbody>
+                    </table>
+                </div>
+                
+                <div class="db-section">
+                    <h3>Restore from File</h3>
+                    <p class="text-muted small">Upload a .sql backup file to restore a tenant database</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Tenant</label>
+                            <select id="restoreTenant"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Backup File (.sql)</label>
+                            <input type="file" id="restoreFile" accept=".sql">
+                        </div>
+                    </div>
+                    <div class="form-error" id="restoreError"></div>
+                    <div class="form-success" id="restoreSuccess"></div>
+                    <button onclick="restoreFromFile()" class="btn btn-danger">⚠️ Restore Database</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Admins -->
+        <div id="tab-admins" class="tab-content">
+            <div class="admin-form-container">
+                <h2>System Administrators</h2>
+                <div id="adminsList" class="admins-list"></div>
+                
+                <h3 style="margin-top: 2rem;">Create New Admin</h3>
+                <form id="createAdminForm" onsubmit="createAdmin(event)">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Name *</label>
+                            <input type="text" id="newAdminName" required placeholder="John Smith">
+                        </div>
+                        <div class="form-group">
+                            <label>Email *</label>
+                            <input type="email" id="newAdminEmail" required placeholder="admin@cadreport.com">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Password *</label>
+                            <input type="password" id="newAdminPassword" required placeholder="Password">
+                        </div>
+                        <div class="form-group">
+                            <label>Role *</label>
+                            <select id="newAdminRole">
+                                <option value="ADMIN">Admin</option>
+                                <option value="SUPER_ADMIN">Super Admin</option>
+                                <option value="SUPPORT">Support</option>
+                                <option value="READONLY">Read Only</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-error" id="createAdminError"></div>
+                    <div class="form-success" id="createAdminSuccess"></div>
+                    <button type="submit" class="btn btn-primary">Create Admin</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Tab: Audit Log -->
+        <div id="tab-audit" class="tab-content">
+            <div class="admin-form-container" style="max-width: 1200px;">
+                <h2>Audit Log</h2>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Admin</th>
+                            <th>Action</th>
+                            <th>Target</th>
+                            <th>Details</th>
+                            <th>IP</th>
+                        </tr>
+                    </thead>
+                    <tbody id="auditLogBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/admin.js"></script>
+</body>
+</html>

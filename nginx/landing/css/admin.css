@@ -1,0 +1,443 @@
+/* CADReport Admin Dashboard Styles */
+
+.admin-container {
+    min-height: 100vh;
+    background: var(--bg-secondary);
+}
+
+.admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 2rem;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.admin-header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.admin-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    padding-left: 1rem;
+    border-left: 1px solid var(--border-color);
+}
+
+.admin-header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.admin-stats {
+    display: flex;
+    gap: 2rem;
+    padding: 1.5rem 2rem;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.admin-stat {
+    text-align: center;
+}
+
+.admin-stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--brand-blue);
+}
+
+.admin-stat-value.pending {
+    color: var(--accent-orange);
+}
+
+.admin-stat-label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.admin-tabs {
+    display: flex;
+    gap: 0;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 2rem;
+}
+
+.admin-tab {
+    padding: 1rem 1.5rem;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.admin-tab:hover {
+    color: var(--text-primary);
+}
+
+.admin-tab.active {
+    color: var(--brand-blue);
+    border-bottom-color: var(--brand-blue);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.admin-content {
+    display: grid;
+    grid-template-columns: 1fr 450px;
+    gap: 2rem;
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.admin-section {
+    background: var(--bg-primary);
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 1px solid var(--border-color);
+}
+
+.admin-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.admin-section h2 {
+    font-size: 1.1rem;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.admin-form-container {
+    max-width: 700px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background: var(--bg-primary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.admin-form-container h2 {
+    margin-bottom: 0.5rem;
+}
+
+.admin-form-container h3 {
+    margin-bottom: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* Tenant Cards */
+.tenants-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.tenant-card {
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border-left: 3px solid var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.tenant-card:hover {
+    background: var(--bg-tertiary);
+}
+
+.tenant-card.selected {
+    border-left-color: var(--brand-blue);
+    background: var(--bg-tertiary);
+}
+
+.tenant-card.status-pending {
+    border-left-color: var(--accent-orange);
+}
+
+.tenant-card.status-active {
+    border-left-color: var(--accent-green);
+}
+
+.tenant-card.status-suspended {
+    border-left-color: var(--brand-red);
+}
+
+.tenant-name {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--text-primary);
+}
+
+.tenant-slug {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.tenant-status {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+}
+
+.tenant-status.pending {
+    background: rgba(221, 107, 32, 0.1);
+    color: var(--accent-orange);
+}
+
+.tenant-status.active {
+    background: rgba(56, 161, 105, 0.1);
+    color: var(--accent-green);
+}
+
+.tenant-status.suspended {
+    background: rgba(196, 30, 58, 0.1);
+    color: var(--brand-red);
+}
+
+/* Detail Rows */
+.detail-row {
+    display: flex;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+    align-items: center;
+}
+
+.detail-row label {
+    width: 120px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+.detail-row span {
+    flex: 1;
+    color: var(--text-primary);
+}
+
+.detail-row input {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.detail-row input:focus {
+    outline: none;
+    border-color: var(--brand-blue);
+}
+
+.detail-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+
+/* Admin Cards */
+.admins-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.admin-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.admin-card-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-card-name {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.admin-card-email {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.admin-card-role {
+    padding: 0.25rem 0.5rem;
+    background: rgba(30, 58, 95, 0.1);
+    color: var(--brand-blue);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* Data Tables */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.data-table th,
+.data-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.data-table th {
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 0.85rem;
+    background: var(--bg-secondary);
+}
+
+.data-table td {
+    color: var(--text-primary);
+}
+
+/* Badges and Status */
+.badge {
+    padding: 0.2rem 0.5rem;
+    background: rgba(30, 58, 95, 0.1);
+    color: var(--brand-blue);
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.status-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.status-badge.active {
+    background: rgba(56, 161, 105, 0.1);
+    color: var(--accent-green);
+}
+
+.status-badge.inactive {
+    background: rgba(196, 30, 58, 0.1);
+    color: var(--brand-red);
+}
+
+/* Button variants */
+.btn-success {
+    background: var(--accent-green);
+    color: white;
+}
+
+.btn-success:hover {
+    background: #2f855a;
+}
+
+.btn-danger {
+    background: var(--brand-red);
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #9b1c31;
+}
+
+.btn-warning {
+    background: var(--accent-orange);
+    color: white;
+}
+
+.btn-warning:hover {
+    background: #c05621;
+}
+
+/* Database Section */
+.db-section {
+    margin-bottom: 2rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.db-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.db-section h3 {
+    margin-bottom: 1rem;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+/* Utility Classes */
+.empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 2rem;
+}
+
+.text-muted {
+    color: var(--text-muted);
+}
+
+.text-danger {
+    color: var(--brand-red);
+}
+
+.small {
+    font-size: 0.85rem;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .admin-content {
+        grid-template-columns: 1fr;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-tabs {
+        overflow-x: auto;
+    }
+}
