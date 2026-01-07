@@ -737,6 +737,118 @@ CADReport - Fire Department Incident Management
     return _send_email(to_email, subject, html_body, text_body, from_name)
 
 
+def send_onboarding_email(
+    to_email: str,
+    to_name: str,
+    subject: str,
+    message: str,
+    attachments: list = None
+) -> bool:
+    """
+    Send onboarding email with optional document attachments.
+    
+    Args:
+        to_email: Recipient email address
+        to_name: Recipient name
+        subject: Email subject
+        message: Message body (plain text, will be converted to HTML)
+        attachments: List of file paths to attach
+    """
+    from email.mime.base import MIMEBase
+    from email import encoders
+    
+    if not SMTP_PASSWORD:
+        logger.error("SMTP_PASSWORD not configured - cannot send email")
+        return False
+    
+    from_name = "CADReport"
+    
+    # Convert message to HTML (preserve line breaks)
+    html_message = message.replace('\n', '<br>')
+    
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ border-bottom: 3px solid #1e3a5f; padding-bottom: 15px; margin-bottom: 20px; }}
+            .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; }}
+            .attachments {{ background: #f3f4f6; padding: 15px; border-radius: 8px; margin-top: 20px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h2 style="margin: 0; color: #1e3a5f;">CADReport</h2>
+            </div>
+            <p>Hi {to_name},</p>
+            <div style="margin: 20px 0;">
+                {html_message}
+            </div>
+            {f'<div class="attachments"><strong>📎 Attachments:</strong> {len(attachments)} document(s) attached</div>' if attachments else ''}
+            <div class="footer">
+                <p>CADReport - Fire Department Incident Management</p>
+                <p><a href="https://cadreport.com">cadreport.com</a></p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    text_body = f"""Hi {to_name},
+
+{message}
+
+{'Attachments: ' + str(len(attachments)) + ' document(s) attached' if attachments else ''}
+
+--
+CADReport - Fire Department Incident Management
+https://cadreport.com
+    """
+    
+    try:
+        # Create message with mixed type to support attachments
+        msg = MIMEMultipart('mixed')
+        msg['Subject'] = subject
+        msg['From'] = f"{from_name} <{FROM_EMAIL}>"
+        msg['To'] = to_email
+        
+        # Create alternative part for text/html
+        alt_part = MIMEMultipart('alternative')
+        alt_part.attach(MIMEText(text_body, 'plain'))
+        alt_part.attach(MIMEText(html_body, 'html'))
+        msg.attach(alt_part)
+        
+        # Add attachments
+        if attachments:
+            for filepath in attachments:
+                try:
+                    filename = os.path.basename(filepath)
+                    with open(filepath, 'rb') as f:
+                        part = MIMEBase('application', 'octet-stream')
+                        part.set_payload(f.read())
+                    encoders.encode_base64(part)
+                    part.add_header('Content-Disposition', f'attachment; filename="{filename}"')
+                    msg.attach(part)
+                except Exception as e:
+                    logger.error(f"Failed to attach {filepath}: {e}")
+        
+        # Send
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(FROM_EMAIL, to_email, msg.as_string())
+        
+        logger.info(f"Onboarding email sent to {to_email}: {subject}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to send onboarding email: {e}")
+        return False
+
+
 def send_lead_notification(
     department_name: str,
     requested_slug: str,

@@ -30,7 +30,8 @@
 
         <!-- Tabs -->
         <div class="admin-tabs">
-            <button class="admin-tab active" onclick="switchTab('tenants')">🏢 Tenants</button>
+            <button class="admin-tab active" onclick="switchTab('requests')">📥 Signup Requests</button>
+            <button class="admin-tab" onclick="switchTab('tenants')">🏢 Tenants</button>
             <button class="admin-tab" onclick="switchTab('create')">➕ Create Tenant</button>
             <button class="admin-tab" onclick="switchTab('users')">👥 Users</button>
             <button class="admin-tab" onclick="switchTab('database')">💾 Database</button>
@@ -38,8 +39,81 @@
             <button class="admin-tab" onclick="switchTab('audit')">📋 Audit Log</button>
         </div>
 
+        <!-- Tab: Signup Requests -->
+        <div id="tab-requests" class="tab-content active">
+            <div class="admin-form-container" style="max-width: 1200px;">
+                <div class="admin-section-header">
+                    <h2>Signup Requests</h2>
+                    <select id="requestFilter" onchange="loadSignupRequests()">
+                        <option value="">All</option>
+                        <option value="PENDING" selected>Pending</option>
+                        <option value="CONTACTED">Contacted</option>
+                        <option value="APPROVED">Approved</option>
+                        <option value="REJECTED">Rejected</option>
+                    </select>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Department</th>
+                            <th>URL</th>
+                            <th>Contact</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="requestsBody">
+                        <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Email Modal -->
+        <div class="modal-overlay" id="emailModal">
+            <div class="modal" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h2>Send Email</h2>
+                    <p id="emailRecipient"></p>
+                </div>
+                <input type="hidden" id="emailRequestId">
+                <div class="form-group">
+                    <label>Subject</label>
+                    <input type="text" id="emailSubject" value="Welcome to CADReport - Next Steps">
+                </div>
+                <div class="form-group">
+                    <label>Message</label>
+                    <textarea id="emailMessage" rows="8" style="width: 100%; font-family: inherit;">Thank you for your interest in CADReport!
+
+I'd like to schedule a brief call to discuss your department's needs and walk you through the system.
+
+Please let me know a few times that work for you, or feel free to call me directly.
+
+Attached you'll find some information about our onboarding process.
+
+Best regards,
+Mike VanScoyk
+CADReport</textarea>
+                </div>
+                <div class="form-group">
+                    <label>Attach Documents</label>
+                    <div id="attachmentsList" class="attachments-list"></div>
+                </div>
+                <div class="form-error" id="emailError"></div>
+                <div class="form-success" id="emailSuccess"></div>
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <button onclick="sendEmail()" class="btn btn-primary">Send Email</button>
+                    <button onclick="closeEmailModal()" class="btn btn-outline">Cancel</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Tab: Tenants -->
-        <div id="tab-tenants" class="tab-content active">
+        <div id="tab-tenants" class="tab-content">
             <div class="admin-content">
                 <div class="admin-section">
                     <div class="admin-section-header">

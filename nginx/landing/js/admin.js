@@ -16,6 +16,7 @@ async function checkSession() {
             document.getElementById('adminRole').textContent = currentAdmin.role;
             loadStats();
             loadTenants();
+            loadSignupRequests();  // Load signup requests on init (default tab)
         } else {
             window.location.href = '/';
         }
@@ -32,6 +33,7 @@ function switchTab(tabName) {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById('tab-' + tabName).classList.add('active');
     
+    if (tabName === 'requests') loadSignupRequests();
     if (tabName === 'admins') loadAdmins();
     if (tabName === 'audit') loadAuditLog();
     if (tabName === 'database') loadDatabaseTab();
@@ -733,6 +735,186 @@ async function restoreFromFile() {
     } catch (err) {
         errorEl.textContent = 'Connection error';
         errorEl.classList.add('active');
+    }
+}
+
+// ===== SIGNUP REQUESTS =====
+let onboardingDocs = [];
+
+async function loadSignupRequests() {
+    const filter = document.getElementById('requestFilter').value;
+    const url = filter ? `/api/master/signup-requests?status=${filter}` : '/api/master/signup-requests';
+    
+    try {
+        const res = await fetch(url, { credentials: 'include' });
+        if (res.ok) {
+            const data = await res.json();
+            renderSignupRequests(data.requests || []);
+        }
+    } catch (err) {
+        console.error('Failed to load signup requests:', err);
+    }
+}
+
+function renderSignupRequests(requests) {
+    const body = document.getElementById('requestsBody');
+    if (requests.length === 0) {
+        body.innerHTML = '<tr><td colspan="9" class="empty-state">No signup requests found</td></tr>';
+        return;
+    }
+    
+    body.innerHTML = requests.map(r => `
+        <tr>
+            <td>${r.created_at ? new Date(r.created_at).toLocaleDateString() : '-'}</td>
+            <td><strong>${r.department_name}</strong></td>
+            <td><code>${r.requested_slug}.cadreport.com</code></td>
+            <td>${r.contact_name || '-'}</td>
+            <td><a href="mailto:${r.contact_email}">${r.contact_email}</a></td>
+            <td>${r.contact_phone || '-'}</td>
+            <td>${r.county || '-'}, ${r.state || 'PA'}</td>
+            <td><span class="status-badge ${r.status.toLowerCase()}">${r.status}</span></td>
+            <td>
+                <button onclick="openEmailModal(${r.id}, '${escapeHtml(r.contact_name)}', '${r.contact_email}', '${escapeHtml(r.department_name)}')" class="btn btn-primary btn-small">✉️ Email</button>
+                <select onchange="updateRequestStatus(${r.id}, this.value)" style="padding: 4px; font-size: 12px;">
+                    <option value="">Status...</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="CONTACTED">Contacted</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="REJECTED">Rejected</option>
+                </select>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+async function loadOnboardingDocs() {
+    try {
+        const res = await fetch('/api/master/onboarding-documents', { credentials: 'include' });
+        if (res.ok) {
+            const data = await res.json();
+            onboardingDocs = data.documents || [];
+            renderAttachmentsList();
+        }
+    } catch (err) {
+        console.error('Failed to load onboarding docs:', err);
+    }
+}
+
+function renderAttachmentsList() {
+    const container = document.getElementById('attachmentsList');
+    if (onboardingDocs.length === 0) {
+        container.innerHTML = '<span class="text-muted">No onboarding documents available</span>';
+        return;
+    }
+    
+    container.innerHTML = onboardingDocs.map(doc => `
+        <label class="attachment-item">
+            <input type="checkbox" name="attachment" value="${doc.filename}" checked>
+            <span>📄 ${doc.filename}</span>
+            <span class="text-muted">(${doc.size})</span>
+        </label>
+    `).join('');
+}
+
+function openEmailModal(requestId, contactName, contactEmail, departmentName) {
+    document.getElementById('emailRequestId').value = requestId;
+    document.getElementById('emailRecipient').textContent = `To: ${contactName} <${contactEmail}> - ${departmentName}`;
+    document.getElementById('emailError').classList.remove('active');
+    document.getElementById('emailSuccess').classList.remove('active');
+    
+    // Load onboarding docs if not already loaded
+    if (onboardingDocs.length === 0) {
+        loadOnboardingDocs();
+    } else {
+        renderAttachmentsList();
+    }
+    
+    document.getElementById('emailModal').classList.add('active');
+}
+
+function closeEmailModal() {
+    document.getElementById('emailModal').classList.remove('active');
+}
+
+async function sendEmail() {
+    const requestId = document.getElementById('emailRequestId').value;
+    const subject = document.getElementById('emailSubject').value;
+    const message = document.getElementById('emailMessage').value;
+    const errorEl = document.getElementById('emailError');
+    const successEl = document.getElementById('emailSuccess');
+    
+    // Get selected attachments
+    const attachments = [];
+    document.querySelectorAll('input[name="attachment"]:checked').forEach(cb => {
+        attachments.push(cb.value);
+    });
+    
+    errorEl.classList.remove('active');
+    successEl.classList.remove('active');
+    
+    if (!subject || !message) {
+        errorEl.textContent = 'Subject and message are required';
+        errorEl.classList.add('active');
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/master/signup-requests/${requestId}/send-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                request_id: parseInt(requestId),
+                subject,
+                message,
+                attachments
+            }),
+            credentials: 'include'
+        });
+        
+        if (res.ok) {
+            successEl.textContent = 'Email sent successfully!';
+            successEl.classList.add('active');
+            
+            // Update status to CONTACTED
+            await updateRequestStatus(requestId, 'CONTACTED');
+            
+            setTimeout(() => {
+                closeEmailModal();
+                loadSignupRequests();
+            }, 1500);
+        } else {
+            const err = await res.json();
+            errorEl.textContent = err.detail || 'Failed to send email';
+            errorEl.classList.add('active');
+        }
+    } catch (err) {
+        errorEl.textContent = 'Connection error';
+        errorEl.classList.add('active');
+    }
+}
+
+async function updateRequestStatus(requestId, newStatus) {
+    if (!newStatus) return;
+    
+    try {
+        const res = await fetch(`/api/master/signup-requests/${requestId}/update-status?new_status=${newStatus}`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        
+        if (res.ok) {
+            loadSignupRequests();
+        } else {
+            const err = await res.json();
+            alert('Failed to update status: ' + (err.detail || 'Unknown error'));
+        }
+    } catch (err) {
+        alert('Connection error');
     }
 }
 

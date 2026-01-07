@@ -1364,6 +1364,179 @@ async def restore_database(
 
 
 # =============================================================================
+# SIGNUP REQUESTS MANAGEMENT
+# =============================================================================
+
+ONBOARDING_DIR = '/opt/runsheet/static/onboarding'
+
+
+@router.get("/signup-requests")
+async def list_signup_requests(
+    status: Optional[str] = None,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN', 'SUPPORT', 'READONLY']))
+):
+    """List all signup requests from landing page form"""
+    with get_master_db() as db:
+        if status:
+            results = db.fetchall("""
+                SELECT id, requested_slug, department_name, contact_name, contact_email,
+                       contact_phone, county, state, notes, status, created_at,
+                       reviewed_by, reviewed_at
+                FROM tenant_requests
+                WHERE UPPER(status) = UPPER(%s)
+                ORDER BY created_at DESC
+            """, (status,))
+        else:
+            results = db.fetchall("""
+                SELECT id, requested_slug, department_name, contact_name, contact_email,
+                       contact_phone, county, state, notes, status, created_at,
+                       reviewed_by, reviewed_at
+                FROM tenant_requests
+                ORDER BY created_at DESC
+            """)
+        
+        return {
+            'requests': [{
+                'id': r[0],
+                'requested_slug': r[1],
+                'department_name': r[2],
+                'contact_name': r[3],
+                'contact_email': r[4],
+                'contact_phone': r[5],
+                'county': r[6],
+                'state': r[7],
+                'notes': r[8],
+                'status': r[9],
+                'created_at': r[10].isoformat() if r[10] else None,
+                'reviewed_by': r[11],
+                'reviewed_at': r[12].isoformat() if r[12] else None,
+            } for r in results]
+        }
+
+
+@router.get("/onboarding-documents")
+async def list_onboarding_documents(
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN', 'SUPPORT', 'READONLY']))
+):
+    """List available onboarding documents"""
+    docs = []
+    if os.path.exists(ONBOARDING_DIR):
+        for filename in os.listdir(ONBOARDING_DIR):
+            if filename.endswith(('.docx', '.pdf', '.doc')):
+                filepath = os.path.join(ONBOARDING_DIR, filename)
+                docs.append({
+                    'filename': filename,
+                    'size': format_size(os.path.getsize(filepath)),
+                    'path': filepath
+                })
+    return {'documents': docs}
+
+
+class SendEmailRequest(BaseModel):
+    request_id: int
+    subject: str
+    message: str
+    attachments: List[str] = []  # List of filenames from onboarding folder
+
+
+@router.post("/signup-requests/{request_id}/send-email")
+async def send_signup_response_email(
+    request_id: int,
+    data: SendEmailRequest,
+    request: Request,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """Send email response to a signup request with optional document attachments"""
+    with get_master_db() as db:
+        result = db.fetchone("""
+            SELECT contact_email, contact_name, department_name
+            FROM tenant_requests WHERE id = %s
+        """, (request_id,))
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Request not found")
+        
+        contact_email, contact_name, department_name = result
+    
+    # Validate attachments exist
+    attachment_paths = []
+    for filename in data.attachments:
+        if '..' in filename or '/' in filename:
+            raise HTTPException(status_code=400, detail=f"Invalid filename: {filename}")
+        filepath = os.path.join(ONBOARDING_DIR, filename)
+        if not os.path.exists(filepath):
+            raise HTTPException(status_code=404, detail=f"Document not found: {filename}")
+        attachment_paths.append(filepath)
+    
+    # Send email
+    try:
+        from email_service import send_onboarding_email
+        success = send_onboarding_email(
+            to_email=contact_email,
+            to_name=contact_name,
+            subject=data.subject,
+            message=data.message,
+            attachments=attachment_paths
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to send email")
+        
+        # Log audit
+        with get_master_db() as db:
+            log_audit(
+                db, admin['id'], admin['email'], 'SEND_ONBOARDING_EMAIL',
+                'SIGNUP_REQUEST', request_id, department_name,
+                {'to': contact_email, 'subject': data.subject, 'attachments': data.attachments},
+                get_client_ip(request)
+            )
+        
+        return {'status': 'ok', 'message': f'Email sent to {contact_email}'}
+        
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Email service not configured")
+    except Exception as e:
+        logger.error(f"Failed to send onboarding email: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/signup-requests/{request_id}/update-status")
+async def update_signup_request_status(
+    request_id: int,
+    new_status: str,
+    request: Request,
+    admin: dict = Depends(require_role(['SUPER_ADMIN', 'ADMIN']))
+):
+    """Update status of a signup request (PENDING, CONTACTED, APPROVED, REJECTED)"""
+    valid_statuses = ['PENDING', 'CONTACTED', 'APPROVED', 'REJECTED']
+    if new_status.upper() not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+    
+    with get_master_db() as db:
+        result = db.fetchone("SELECT department_name FROM tenant_requests WHERE id = %s", (request_id,))
+        if not result:
+            raise HTTPException(status_code=404, detail="Request not found")
+        
+        department_name = result[0]
+        
+        db.execute("""
+            UPDATE tenant_requests 
+            SET status = %s, reviewed_by = %s, reviewed_at = NOW()
+            WHERE id = %s
+        """, (new_status.upper(), admin['email'], request_id))
+        db.commit()
+        
+        log_audit(
+            db, admin['id'], admin['email'], 'UPDATE_SIGNUP_STATUS',
+            'SIGNUP_REQUEST', request_id, department_name,
+            {'new_status': new_status},
+            get_client_ip(request)
+        )
+    
+    return {'status': 'ok'}
+
+
+# =============================================================================
 # TENANT USERS MANAGEMENT
 # =============================================================================
 

@@ -427,6 +427,98 @@
     font-size: 0.85rem;
 }
 
+/* Modal */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+}
+
+.modal-overlay.active {
+    display: flex;
+}
+
+.modal {
+    background: var(--bg-primary);
+    border-radius: 12px;
+    padding: 2rem;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+    margin-bottom: 1.5rem;
+}
+
+.modal-header h2 {
+    margin: 0 0 0.5rem 0;
+}
+
+.modal-header p {
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+/* Attachment Items */
+.attachments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.attachment-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.attachment-item:hover {
+    background: var(--bg-tertiary);
+}
+
+.attachment-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+}
+
+/* Status badges for requests */
+.status-badge.pending {
+    background: rgba(221, 107, 32, 0.1);
+    color: var(--accent-orange);
+}
+
+.status-badge.contacted {
+    background: rgba(30, 58, 95, 0.1);
+    color: var(--brand-blue);
+}
+
+.status-badge.approved {
+    background: rgba(56, 161, 105, 0.1);
+    color: var(--accent-green);
+}
+
+.status-badge.rejected {
+    background: rgba(196, 30, 58, 0.1);
+    color: var(--brand-red);
+}
+
 /* Responsive */
 @media (max-width: 900px) {
     .admin-content {

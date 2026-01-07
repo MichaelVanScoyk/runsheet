@@ -31,17 +31,12 @@ body {
 /* ===== NAVIGATION ===== */
 .nav {
     background: var(--bg-white);
-    border-bottom: 1px solid var(--border);
-    padding: 0.75rem 0;
-    position: sticky;
-    top: 0;
-    z-index: 100;
+    padding: 1rem 2rem;
 }
 
 .nav-inner {
-    max-width: 1100px;
+    max-width: 1200px;
     margin: 0 auto;
-    padding: 0 2rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
