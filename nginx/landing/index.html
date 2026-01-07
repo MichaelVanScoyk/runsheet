@@ -10,9 +10,9 @@
 </head>
 <body>
     <!-- Navigation -->
-    <nav>
-        <div class="nav-content">
-            <a href="/" class="logo">
+    <nav class="nav">
+        <div class="nav-inner">
+            <a href="/" class="nav-logo">
                 <img src="assets/cadreportlogo.png" alt="CADReport">
             </a>
             <ul class="nav-links">
@@ -48,46 +48,46 @@
         </div>
     </div>
 
-    <!-- Hero Section -->
+    <!-- Hero -->
     <section class="hero">
-        <div class="hero-content">
-            <div class="hero-badge">
-                <span>📡</span>
-                <span>Direct CAD Integration for PA Fire Departments</span>
-            </div>
+        <div class="hero-inner">
             <h1>Stop Typing CAD Data.<br><span>Start Running Calls.</span></h1>
-            <p>
+            <p class="hero-subtitle">
                 Your dispatch data flows directly into run sheets and monthly reports. 
-                No more double entry. No more end-of-month spreadsheet headaches.
+                No more double entry. No more end-of-month spreadsheets.
             </p>
-            <div class="hero-stats">
-                <div class="hero-stat">
-                    <div class="hero-stat-value">75%</div>
-                    <div class="hero-stat-label">Fields Auto-Populated</div>
-                </div>
-                <div class="hero-stat">
-                    <div class="hero-stat-value">0</div>
-                    <div class="hero-stat-label">Manual CAD Entry</div>
-                </div>
-                <div class="hero-stat">
-                    <div class="hero-stat-value">1-Click</div>
-                    <div class="hero-stat-label">Monthly Reports</div>
-                </div>
-            </div>
             <div class="hero-buttons">
-                <a href="#" onclick="openLoginModal()" class="btn btn-primary">Log In to Your Department</a>
+                <a href="#" onclick="openLoginModal()" class="btn btn-primary">Log In</a>
                 <a href="#contact" class="btn btn-outline">Request Access</a>
             </div>
         </div>
     </section>
 
-    <!-- Problem Section -->
-    <section class="section section-alt">
-        <div class="section-content">
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+        <div class="stats-inner">
+            <div class="stat">
+                <div class="stat-value">75%</div>
+                <div class="stat-label">Fields Auto-Populated</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">0</div>
+                <div class="stat-label">Manual CAD Entry</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">1-Click</div>
+                <div class="stat-label">Monthly Reports</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Problems Section -->
+    <section class="section section-gray">
+        <div class="section-inner">
             <div class="section-header">
                 <h2>Sound Familiar?</h2>
             </div>
-            <div class="problem-grid">
+            <div class="problems-grid">
                 <div class="problem-card">
                     <h3>📋 Double Data Entry</h3>
                     <p>CAD shows dispatch time at 14:32:15. You type "1432" into another system. Every call. Every time.</p>
@@ -98,11 +98,11 @@
                 </div>
                 <div class="problem-card">
                     <h3>💸 Free Tier Limits</h3>
-                    <p>Other systems charge for CAD integration. You're stuck with manual entry or paying up.</p>
+                    <p>Other systems charge for CAD integration. You're stuck with manual entry or paying premium prices.</p>
                 </div>
                 <div class="problem-card">
-                    <h3>🏛️ Reporting Requirements</h3>
-                    <p>Federal reporting is getting more complex. Your current system may not keep up.</p>
+                    <h3>🏛️ Changing Requirements</h3>
+                    <p>Federal reporting requirements are evolving. Your current system may not keep up.</p>
                 </div>
             </div>
         </div>
@@ -110,62 +110,63 @@
 
     <!-- Features Section -->
     <section class="section" id="features">
-        <div class="section-header">
-            <h2>Built for Fire Departments</h2>
-            <p>Your CAD data should work for you, not the other way around.</p>
-        </div>
-        <div class="features-grid">
-            <div class="feature-card">
-                <div class="feature-icon">📡</div>
-                <h3>Direct CAD Integration</h3>
-                <p>Connect directly to Chester County CAD. All times captured automatically.</p>
-                <ul class="feature-list">
-                    <li>Incident address and municipality</li>
-                    <li>All unit times (dispatch → clear)</li>
-                    <li>Event type and comments</li>
-                </ul>
+        <div class="section-inner">
+            <div class="section-header">
+                <h2>What CADReport Does</h2>
             </div>
-            <div class="feature-card">
-                <div class="feature-icon">📋</div>
-                <h3>Digital Run Sheets</h3>
-                <p>Modern interface for completing incident documentation. CAD data pre-filled.</p>
-                <ul class="feature-list">
-                    <li>Auto-assigned internal numbers</li>
-                    <li>Personnel assignment by apparatus</li>
-                    <li>Mutual aid tracking</li>
-                </ul>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">📊</div>
-                <h3>Monthly Chiefs Reports</h3>
-                <p>The report your chief gives at meetings — generated automatically. PDF ready.</p>
-                <ul class="feature-list">
-                    <li>Calls, men, hours, manhours</li>
-                    <li>By municipality breakdown</li>
-                    <li>Mutual aid given/received</li>
-                </ul>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">👥</div>
-                <h3>Personnel Management</h3>
-                <p>Track your roster, certifications, and response statistics.</p>
-                <ul class="feature-list">
-                    <li>Member profiles and ranks</li>
-                    <li>Response history</li>
-                    <li>Activity reports</li>
-                </ul>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">📡</div>
+                    <h3>Direct CAD Integration</h3>
+                    <p>Connect directly to Chester County CAD. All times captured automatically.</p>
+                    <ul class="feature-list">
+                        <li>Incident address and municipality</li>
+                        <li>All unit times (dispatch → clear)</li>
+                        <li>Event type and comments</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📋</div>
+                    <h3>Digital Run Sheets</h3>
+                    <p>Modern interface for completing incident documentation. CAD data pre-filled.</p>
+                    <ul class="feature-list">
+                        <li>Auto-assigned internal numbers</li>
+                        <li>Personnel assignment by apparatus</li>
+                        <li>Mutual aid tracking</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>Monthly Chiefs Reports</h3>
+                    <p>The report your chief gives at meetings — generated automatically. PDF ready.</p>
+                    <ul class="feature-list">
+                        <li>Calls, men, hours, manhours</li>
+                        <li>By municipality breakdown</li>
+                        <li>Mutual aid given/received</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">👥</div>
+                    <h3>Personnel Management</h3>
+                    <p>Track your roster, response statistics, and member activity.</p>
+                    <ul class="feature-list">
+                        <li>Member profiles and ranks</li>
+                        <li>Response history</li>
+                        <li>Activity reports</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </section>
 
     <!-- Contact Section -->
-    <section class="section section-alt" id="contact">
-        <div class="section-content">
+    <section class="section section-gray" id="contact">
+        <div class="section-inner">
             <div class="section-header">
                 <h2>Request Access</h2>
-                <p>Want CADReport for your department? Let us know.</p>
+                <p>Interested in CADReport for your department?</p>
             </div>
-            <div class="contact-form-wrapper">
+            <div class="contact-wrapper">
                 <form id="signupForm" onsubmit="handleSignup(event)">
                     <div class="form-group">
                         <label for="deptName">Department Name</label>
@@ -200,20 +201,17 @@
     </section>
 
     <!-- Footer -->
-    <footer>
-        <div class="footer-content">
-            <div class="footer-brand">
-                <img src="assets/cadreportlogo.png" alt="CADReport">
-                <span class="footer-tagline">Built by firefighters, for firefighters.</span>
+    <footer class="footer">
+        <div class="footer-inner">
+            <div class="footer-left">
+                <img src="assets/cadreportlogo.png" alt="CADReport" class="footer-logo">
             </div>
-            <div class="footer-contact">
-                <p>Michael VanScoyk</p>
-                <p>1020 N Manor Road, Honey Brook, PA 19344</p>
-                <p><a href="mailto:admin@cadreport.com">admin@cadreport.com</a></p>
+            <div class="footer-right">
+                <a href="mailto:admin@cadreport.com">admin@cadreport.com</a>
             </div>
         </div>
         <div class="footer-bottom">
-            © 2025 CADReport. All rights reserved.
+            © 2025 CADReport
         </div>
     </footer>
 

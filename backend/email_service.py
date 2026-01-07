@@ -737,6 +737,81 @@ CADReport - Fire Department Incident Management
     return _send_email(to_email, subject, html_body, text_body, from_name)
 
 
+def send_lead_notification(
+    department_name: str,
+    requested_slug: str,
+    contact_name: str,
+    contact_email: str,
+    contact_phone: Optional[str] = None,
+    county: Optional[str] = None,
+    state: str = "PA"
+) -> bool:
+    """
+    Send notification email to admin when a new signup request is submitted.
+    """
+    admin_email = "admin@cadreport.com"
+    from_name = "CADReport System"
+    subject = f"New Signup Request: {department_name}"
+    
+    phone_line = f"<tr><td style='padding: 8px; border-bottom: 1px solid #e2e8f0;'><strong>Phone:</strong></td><td style='padding: 8px; border-bottom: 1px solid #e2e8f0;'>{contact_phone}</td></tr>" if contact_phone else ""
+    phone_text = f"Phone: {contact_phone}\n" if contact_phone else ""
+    
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ border-bottom: 3px solid #1e3a5f; padding-bottom: 15px; margin-bottom: 20px; }}
+            .badge {{ display: inline-block; padding: 6px 12px; background-color: #fef3c7; color: #92400e; border-radius: 4px; font-size: 14px; font-weight: bold; margin-bottom: 15px; }}
+            table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+            .button {{ display: inline-block; padding: 12px 24px; background-color: #1e3a5f; color: white !important; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
+            .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h2 style="margin: 0; color: #1e3a5f;">New Signup Request</h2>
+            </div>
+            <span class="badge">🔔 Action Required</span>
+            <p>A new department has requested access to CADReport:</p>
+            <table>
+                <tr><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>Department:</strong></td><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{department_name}</td></tr>
+                <tr><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>Requested URL:</strong></td><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{requested_slug}.cadreport.com</td></tr>
+                <tr><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>Contact:</strong></td><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{contact_name}</td></tr>
+                <tr><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>Email:</strong></td><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><a href="mailto:{contact_email}">{contact_email}</a></td></tr>
+                {phone_line}
+                <tr><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>Location:</strong></td><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{county or 'N/A'} County, {state}</td></tr>
+            </table>
+            <p><a href="https://cadreport.com/admin.html" class="button">Review in Admin Dashboard</a></p>
+            <div class="footer"><p>CADReport System Notification</p></div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    text_body = f"""
+New Signup Request
+
+A new department has requested access to CADReport:
+
+Department: {department_name}
+Requested URL: {requested_slug}.cadreport.com
+Contact: {contact_name}
+Email: {contact_email}
+{phone_text}Location: {county or 'N/A'} County, {state}
+
+Review in Admin Dashboard: https://cadreport.com/admin.html
+
+--
+CADReport System Notification
+    """
+    
+    return _send_email(admin_email, subject, html_body, text_body, from_name)
+
+
 def send_test_email(to_email: str, tenant_slug: str = "test", tenant_name: str = "Test Tenant") -> bool:
     """Send a test email to verify configuration"""
     from_name = f"{tenant_name} via CADReport"

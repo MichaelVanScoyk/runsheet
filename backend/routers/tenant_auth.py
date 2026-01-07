@@ -251,6 +251,22 @@ async def submit_signup_request(
     
     logger.info(f"New tenant request: {slug} - {data.department_name}")
     
+    # Send notification email to admin
+    try:
+        from email_service import send_lead_notification
+        send_lead_notification(
+            department_name=data.department_name,
+            requested_slug=slug,
+            contact_name=data.contact_name,
+            contact_email=data.contact_email,
+            contact_phone=data.contact_phone,
+            county=data.county,
+            state=data.state
+        )
+    except Exception as e:
+        logger.error(f"Failed to send lead notification email: {e}")
+        # Don't fail the request if email fails
+    
     return {
         "status": "ok",
         "message": "Request submitted. You will be contacted once approved.",
