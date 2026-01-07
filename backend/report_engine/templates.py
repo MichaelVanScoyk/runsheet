@@ -25,7 +25,7 @@ def generate_css(branding: dict) -> str:
     border_style = branding.get("border_style", "solid")
     
     return f'''
-        @page {{ size: letter; margin: 0.3in; }}
+        @page {{ size: letter; margin: 0.3in 0.3in 0.3in 0.75in; }}
         
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         
@@ -332,7 +332,7 @@ def generate_css(branding: dict) -> str:
         
         .role-cell {{
             font-weight: bold;
-            background: {secondary};
+            background: #f0f0f0;
             width: 40px;
         }}
         
@@ -446,7 +446,7 @@ def generate_css(branding: dict) -> str:
             font-size: inherit;
             font-weight: inherit;
             color: {text_color};
-            background: {secondary};
+            background: #f0f0f0;
             padding: 2px 4px;
             margin-bottom: 2px;
         }}

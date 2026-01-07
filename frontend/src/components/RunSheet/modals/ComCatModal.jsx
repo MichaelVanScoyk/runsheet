@@ -36,9 +36,9 @@ const CATEGORY_STYLES = {
   },
   OTHER: { 
     label: 'Other', 
-    color: 'bg-gray-500', 
-    textColor: 'text-theme-muted',
-    borderColor: 'border-gray-500'
+    color: 'bg-gray-300', 
+    textColor: 'text-gray-900',
+    borderColor: 'border-gray-400'
   },
 };
 
@@ -344,8 +344,8 @@ export default function ComCatModal() {
                         value={currentCategory}
                         onChange={(e) => handleCategoryChange(actualIndex, e.target.value)}
                         className={`
-                          form-select text-sm py-1 px-2 rounded border-0
-                          ${style.color} text-white
+                          form-select text-sm py-1 px-2 rounded
+                          bg-white text-gray-900 border border-gray-300 shadow-sm
                           ${hasChange ? 'ring-2 ring-amber-400' : ''}
                           ${!canEdit ? 'opacity-60 cursor-not-allowed' : ''}
                         `}
