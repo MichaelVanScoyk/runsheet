@@ -25,9 +25,10 @@ def _get_engine(db_name: str):
     if db_name not in _engines:
         _engines[db_name] = create_engine(
             f"postgresql:///{db_name}",
-            pool_size=5,
-            max_overflow=10,
+            pool_size=20,
+            max_overflow=30,
             pool_timeout=30,
+            pool_recycle=1800,  # Recycle connections after 30 min
             pool_pre_ping=True,
         )
     return _engines[db_name]
