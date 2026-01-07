@@ -124,7 +124,7 @@ export default function ActionBar() {
   
   const handlePrint = () => {
     if (incident?.id) {
-      window.open(`/print/${incident.id}`, '_blank');
+      window.open(`/api/reports/pdf/incident/${incident.id}`, '_blank');
     }
   };
   
