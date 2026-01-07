@@ -33,11 +33,11 @@
             <form onsubmit="handleLogin(event)">
                 <div class="form-group">
                     <label for="slug">Department Code or Admin Email</label>
-                    <input type="text" id="slug" placeholder="glenmoorefc or admin@email.com" required autocomplete="username">
+                    <input type="text" id="slug" placeholder="glenmoorefc or admin@email.com" required autocomplete="off">
                 </div>
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <input type="password" id="password" placeholder="Password" required autocomplete="current-password">
+                    <input type="password" id="password" placeholder="Password" required autocomplete="off">
                 </div>
                 <div class="form-error" id="loginError"></div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;" id="loginBtn">Log In</button>
@@ -169,28 +169,28 @@
             <div class="contact-wrapper">
                 <form id="signupForm" onsubmit="handleSignup(event)">
                     <div class="form-group">
-                        <label for="deptName">Department Name</label>
-                        <input type="text" id="deptName" placeholder="e.g., Glen Moore Fire Company" required>
+                    <label for="deptName">Department Name</label>
+                    <input type="text" id="deptName" placeholder="e.g., Glen Moore Fire Company" required autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label for="deptSlug">Desired URL Code</label>
-                        <input type="text" id="deptSlug" placeholder="e.g., glenmoorefc (letters/numbers only)" required pattern="[a-zA-Z0-9]+">
+                    <label for="deptSlug">Desired URL Code</label>
+                    <input type="text" id="deptSlug" placeholder="e.g., glenmoorefc (letters/numbers only)" required pattern="[a-zA-Z0-9]+" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label for="contactName">Your Name</label>
-                        <input type="text" id="contactName" placeholder="Contact name" required>
+                    <label for="contactName">Your Name</label>
+                    <input type="text" id="contactName" placeholder="Contact name" required autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label for="contactEmail">Email</label>
-                        <input type="email" id="contactEmail" placeholder="your@email.com" required>
+                    <label for="contactEmail">Email</label>
+                    <input type="email" id="contactEmail" placeholder="your@email.com" required autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label for="contactPhone">Phone (optional)</label>
-                        <input type="tel" id="contactPhone" placeholder="(555) 123-4567">
+                    <label for="contactPhone">Phone (optional)</label>
+                    <input type="tel" id="contactPhone" placeholder="(555) 123-4567" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label for="county">County</label>
-                        <input type="text" id="county" placeholder="e.g., Chester" value="Chester">
+                    <label for="county">County</label>
+                    <input type="text" id="county" placeholder="e.g., Chester" value="Chester" autocomplete="off">
                     </div>
                     <div class="form-error" id="signupError"></div>
                     <div class="form-success" id="signupSuccess"></div>
