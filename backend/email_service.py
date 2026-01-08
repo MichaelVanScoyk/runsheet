@@ -175,18 +175,23 @@ def send_account_verification(
     user_name: str = "User"
 ) -> bool:
     """
-    Send account verification email for new users
+    Send account activation email for self-registering users.
+    
+    This is sent when a user finds their name and enters their email.
+    Unlike admin invitations, completing this activation does NOT auto-approve.
+    They can edit 1 run sheet until an admin approves them.
     
     Args:
         to_email: User's email address
-        verification_token: Email verification token
+        verification_token: Activation token (uses invite_token field)
         tenant_slug: Tenant subdomain
         tenant_name: Tenant display name
         user_name: User's name for personalization
     """
-    verify_link = _build_tenant_url(tenant_slug, f"/verify-email?token={verification_token}")
+    # Uses same accept-invite page - it handles both flows
+    activate_link = _build_tenant_url(tenant_slug, f"/accept-invite?token={verification_token}")
     from_name = f"{tenant_name} via CADReport"
-    subject = "Verify Your Email Address"
+    subject = f"Activate Your {tenant_name} Account"
     
     html_body = f"""
     <!DOCTYPE html>
@@ -207,6 +212,7 @@ def send_account_verification(
             }}
             .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; }}
             .link-text {{ word-break: break-all; color: #666; font-size: 12px; }}
+            .note {{ background: #fef3c7; padding: 12px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #f59e0b; }}
         </style>
     </head>
     <body>
@@ -215,10 +221,14 @@ def send_account_verification(
                 <h2 style="margin: 0; color: #dc2626;">{tenant_name}</h2>
             </div>
             <p>Hi {user_name},</p>
-            <p>Welcome to {tenant_name}! Please verify your email address to complete your account setup:</p>
-            <p><a href="{verify_link}" class="button">Verify Email Address</a></p>
+            <p>Welcome to {tenant_name}! Click the button below to activate your account and set your password:</p>
+            <p><a href="{activate_link}" class="button">Activate Account</a></p>
+            <div class="note">
+                <p style="margin: 0; font-size: 14px;"><strong>What happens next?</strong></p>
+                <p style="margin: 8px 0 0 0; font-size: 13px;">After activation, you'll be able to complete one incident report. An officer or admin will then approve your account for full access.</p>
+            </div>
             <p>This link will expire in 24 hours.</p>
-            <p class="link-text">Or copy this link: {verify_link}</p>
+            <p class="link-text">Or copy this link: {activate_link}</p>
             <div class="footer">
                 <p>CADReport - Fire Department Incident Management</p>
             </div>
@@ -232,11 +242,12 @@ def send_account_verification(
 
 Hi {user_name},
 
-Welcome to {tenant_name}! Please verify your email address to complete your account setup.
+Welcome to {tenant_name}! Click the link below to activate your account and set your password:
 
-Click the link below to verify:
+{activate_link}
 
-{verify_link}
+What happens next?
+After activation, you'll be able to complete one incident report. An officer or admin will then approve your account for full access.
 
 This link will expire in 24 hours.
 

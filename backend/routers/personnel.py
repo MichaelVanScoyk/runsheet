@@ -405,9 +405,16 @@ async def login(
 @router.post("/auth/register")
 async def register(
     data: RegisterRequest,
+    request: Request,
     db: Session = Depends(get_db)
 ):
-    """Start registration - send verification code to email"""
+    """
+    Start self-registration - sends activation link to email.
+    
+    This is the self-service flow (user finds their name, enters email).
+    Unlike admin invitations, this does NOT auto-approve.
+    After clicking the link, user can edit 1 run sheet until approved by admin.
+    """
     person = db.query(Personnel).filter(Personnel.id == data.personnel_id).first()
     
     if not person:
@@ -416,25 +423,42 @@ async def register(
     if person.password_hash:
         raise HTTPException(status_code=400, detail="Already registered")
     
-    # Generate 6-digit code
-    code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
+    # Generate activation token (reuses invite_token field)
+    token = generate_secure_token()
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=INVITE_TOKEN_EXPIRY_HOURS)
     
-    # Store code (expires in 15 minutes)
-    email_verification_codes[data.personnel_id] = {
-        "code": code,
-        "email": data.email,
-        "expires": datetime.now(timezone.utc).timestamp() + 900  # 15 min
-    }
+    # Store token and email, mark as self-activation
+    person.email = data.email
+    person.invite_token = token
+    person.invite_token_expires_at = expires_at
+    person.is_self_activation = True  # Key difference from admin invites
+    person.updated_at = datetime.now(timezone.utc)
+    db.commit()
     
-    # TODO: Actually send email
-    # For now, return the code for testing (remove in production!)
-    print(f"VERIFICATION CODE for {person.display_name}: {code}")
+    # Send activation email
+    try:
+        from email_service import send_account_verification
+        
+        context = get_email_context(request, db)
+        success = send_account_verification(
+            to_email=data.email,
+            verification_token=token,
+            tenant_slug=context['tenant_slug'],
+            tenant_name=context['tenant_name'],
+            user_name=person.first_name
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to send email")
+        
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Email service not available")
+    
+    logger.info(f"Self-activation email sent to {data.email} for {person.display_name}")
     
     return {
         "status": "ok",
-        "message": f"Verification code sent to {data.email}",
-        # TEMPORARY - remove in production:
-        "debug_code": code
+        "message": f"Activation link sent to {data.email}"
     }
 
 
@@ -1340,15 +1364,16 @@ async def validate_invite_token(
     db: Session = Depends(get_db)
 ):
     """
-    Validate an invitation token (frontend calls this to show the accept form).
+    Validate an invitation or self-activation token.
+    Frontend calls this to show the accept form.
     """
     person = db.query(Personnel).filter(Personnel.invite_token == token).first()
     
     if not person:
-        raise HTTPException(status_code=404, detail="Invalid or expired invitation link")
+        raise HTTPException(status_code=404, detail="Invalid or expired activation link")
     
     if person.invite_token_expires_at and person.invite_token_expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="Invitation has expired - please request a new one")
+        raise HTTPException(status_code=400, detail="Activation link has expired - please request a new one")
     
     return {
         "valid": True,
@@ -1356,7 +1381,8 @@ async def validate_invite_token(
         "display_name": person.display_name,
         "email": person.email,
         "first_name": person.first_name,
-        "last_name": person.last_name
+        "last_name": person.last_name,
+        "is_self_activation": person.is_self_activation or False
     }
 
 
@@ -1367,7 +1393,10 @@ async def accept_invite(
     db: Session = Depends(get_db)
 ):
     """
-    Accept invitation - sets password, auto-approves, sets tenant cookie, sends welcome email.
+    Accept invitation or self-activation - sets password and activates account.
+    
+    If is_self_activation=True: Does NOT auto-approve, notifies admins
+    If is_self_activation=False: Auto-approves (admin-sent invite)
     """
     person = db.query(Personnel).filter(Personnel.invite_token == data.token).first()
     
@@ -1380,17 +1409,28 @@ async def accept_invite(
     if len(data.password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
     
-    # Set password, mark email verified, and AUTO-APPROVE
+    # Check if this is self-activation vs admin invite
+    is_self_activation = person.is_self_activation or False
+    
+    # Set password and mark email verified
     now = datetime.now(timezone.utc)
     person.password_hash = hash_password(data.password)
     person.email_verified_at = now
-    person.approved_at = now
-    person.approved_by = None  # Approved via invitation (no specific approver)
     person.role = person.role or 'MEMBER'  # Default to MEMBER if not set
     person.invite_token = None
     person.invite_token_expires_at = None
+    person.is_self_activation = False  # Clear the flag
     person.last_login_at = now
     person.updated_at = now
+    
+    # Only auto-approve if this was an admin invitation (not self-activation)
+    if not is_self_activation:
+        person.approved_at = now
+        person.approved_by = None  # Approved via invitation (no specific approver)
+        logger.info(f"Invitation accepted by {person.display_name} - auto-approved")
+    else:
+        # Self-activation: NOT approved, can edit 1 form
+        logger.info(f"Self-activation completed by {person.display_name} - pending approval")
     
     # Set default notification preferences
     if not person.notification_preferences:
@@ -1398,7 +1438,9 @@ async def accept_invite(
     
     db.commit()
     
-    logger.info(f"Invitation accepted by {person.display_name} - auto-approved")
+    # If self-activation, notify admins
+    if is_self_activation:
+        notify_admins_of_self_activation(request, db, person)
     
     # Get tenant info and create tenant session for auto-login
     tenant = getattr(request.state, 'tenant', None)

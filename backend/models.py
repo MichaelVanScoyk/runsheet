@@ -54,9 +54,12 @@ class Personnel(Base):
     reset_token = Column(String(100))
     reset_token_expires_at = Column(TIMESTAMP(timezone=True))
     
-    # Invitation tokens (expires in 24 hours, auto-approves on accept)
+    # Invitation tokens (expires in 24 hours)
+    # If is_self_activation=False: admin-sent invite, auto-approves on accept
+    # If is_self_activation=True: user self-registered, does NOT auto-approve
     invite_token = Column(String(100))
     invite_token_expires_at = Column(TIMESTAMP(timezone=True))
+    is_self_activation = Column(Boolean, default=False)
     
     # Notification preferences: {"admin_notifications": bool, "incident_notifications": bool}
     notification_preferences = Column(JSONB, default={})

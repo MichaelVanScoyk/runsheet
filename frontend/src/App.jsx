@@ -253,13 +253,11 @@ function AppContent({ tenant, onTenantLogout }) {
     setAuthError('');
     
     try {
-      const res = await personnelRegister(parseInt(selectedPersonnelId), registerEmail);
-      if (res.data.debug_code) {
-        alert(`Verification code (dev mode): ${res.data.debug_code}`);
-      }
-      setRegisterStep('code');
+      await personnelRegister(parseInt(selectedPersonnelId), registerEmail);
+      // Success - show message that email was sent
+      setRegisterStep('email_sent');
     } catch (err) {
-      setAuthError(err.response?.data?.detail || 'Failed to send verification');
+      setAuthError(err.response?.data?.detail || 'Failed to send activation email');
     } finally {
       setRegisterLoading(false);
     }
@@ -457,7 +455,7 @@ function AppContent({ tenant, onTenantLogout }) {
                               disabled={registerLoading}
                               style={{ flex: 1, padding: '6px', fontSize: '0.85rem', cursor: 'pointer' }}
                             >
-                              {registerLoading ? '...' : 'Send Code'}
+                              {registerLoading ? '...' : 'Send Link'}
                             </button>
                             <button 
                               onClick={handleCancelRegister}
@@ -468,56 +466,38 @@ function AppContent({ tenant, onTenantLogout }) {
                           </div>
                         </div>
                       )}
-                      {registerStep === 'code' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                          <input
-                            type="text"
-                            value={registerCode}
-                            onChange={(e) => setRegisterCode(e.target.value)}
-                            placeholder="6-digit code"
-                            style={{ padding: '6px', fontSize: '0.85rem' }}
-                          />
-                          <div style={{ display: 'flex', gap: '5px' }}>
-                            <button 
-                              onClick={handleRegisterVerifyCode}
-                              disabled={registerLoading}
-                              style={{ flex: 1, padding: '6px', fontSize: '0.85rem', cursor: 'pointer' }}
-                            >
-                              {registerLoading ? '...' : 'Verify'}
-                            </button>
-                            <button 
-                              onClick={handleCancelRegister}
-                              style={{ padding: '6px', fontSize: '0.85rem', cursor: 'pointer' }}
-                            >
-                              ✕
-                            </button>
+                      {registerStep === 'email_sent' && (
+                        <div style={{ 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          gap: '8px',
+                          background: '#f0fdf4',
+                          border: '1px solid #86efac',
+                          borderRadius: '6px',
+                          padding: '10px',
+                          fontSize: '0.8rem'
+                        }}>
+                          <div style={{ color: '#166534', fontWeight: '500' }}>✓ Check your email!</div>
+                          <div style={{ color: '#15803d', lineHeight: '1.4' }}>
+                            We sent an activation link to <strong>{registerEmail}</strong>
                           </div>
-                        </div>
-                      )}
-                      {registerStep === 'password' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                          <input
-                            type="password"
-                            value={registerPassword}
-                            onChange={(e) => setRegisterPassword(e.target.value)}
-                            placeholder="Set password (6+ chars)"
-                            style={{ padding: '6px', fontSize: '0.85rem' }}
-                          />
-                          <div style={{ display: 'flex', gap: '5px' }}>
-                            <button 
-                              onClick={handleRegisterSetPassword}
-                              disabled={registerLoading}
-                              style={{ flex: 1, padding: '6px', fontSize: '0.85rem', cursor: 'pointer' }}
-                            >
-                              {registerLoading ? '...' : 'Complete'}
-                            </button>
-                            <button 
-                              onClick={handleCancelRegister}
-                              style={{ padding: '6px', fontSize: '0.85rem', cursor: 'pointer' }}
-                            >
-                              ✕
-                            </button>
+                          <div style={{ color: '#166534', fontSize: '0.75rem' }}>
+                            Click the link in the email to set your password and activate your account.
                           </div>
+                          <button 
+                            onClick={handleCancelRegister}
+                            style={{ 
+                              padding: '6px', 
+                              fontSize: '0.8rem', 
+                              cursor: 'pointer',
+                              background: 'transparent',
+                              border: '1px solid #86efac',
+                              borderRadius: '4px',
+                              color: '#166534'
+                            }}
+                          >
+                            Done
+                          </button>
                         </div>
                       )}
                     </div>

@@ -19,7 +19,7 @@ function AcceptInvitePage() {
   // Validate token on mount
   useEffect(() => {
     if (!token) {
-      setError('No invitation token provided');
+      setError('No activation token provided');
       setLoading(false);
       return;
     }
@@ -30,7 +30,7 @@ function AcceptInvitePage() {
         setLoading(false);
       })
       .catch(err => {
-        setError(err.response?.data?.detail || 'Invalid or expired invitation link');
+        setError(err.response?.data?.detail || 'Invalid or expired activation link');
         setLoading(false);
       });
   }, [token]);
@@ -71,13 +71,16 @@ function AcceptInvitePage() {
     }
   };
 
+  // Check if this is a self-activation (not auto-approved) or admin invite (auto-approved)
+  const isSelfActivation = inviteData?.is_self_activation;
+
   // --- RENDER LOGIC (after all hooks) ---
 
   if (loading) {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <p style={styles.loading}>Validating invitation...</p>
+          <p style={styles.loading}>Validating activation link...</p>
         </div>
       </div>
     );
@@ -87,23 +90,40 @@ function AcceptInvitePage() {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <h2 style={styles.title}>✓ Account Created!</h2>
+          <h2 style={styles.title}>✓ Account Activated!</h2>
           <p style={styles.message}>
-            Welcome, {inviteData?.first_name}! Your account has been created and approved.
+            Welcome, {inviteData?.first_name}! Your account has been created.
           </p>
           
-          <div style={styles.infoBox}>
-            <p style={styles.infoTitle}>📱 About Your Access</p>
-            <p style={styles.infoText}>
-              You're now logged into this browser. To maintain access, <strong>keep using this same browser on this device</strong>.
-            </p>
-            <p style={styles.infoText}>
-              If you need to access from a different device or browser, you'll need the department access code from your administrator.
-            </p>
-            <p style={styles.infoText}>
-              Your personal password is separate and keeps your account secure.
-            </p>
-          </div>
+          {isSelfActivation ? (
+            // Self-activation: NOT auto-approved
+            <div style={styles.infoBoxWarning}>
+              <p style={styles.infoTitle}>⏳ Pending Approval</p>
+              <p style={styles.infoText}>
+                Your account is active but <strong>pending approval</strong> from an officer or admin.
+              </p>
+              <p style={styles.infoText}>
+                You can complete <strong>one incident report</strong> right now. After that, you'll need approval for full access.
+              </p>
+              <p style={styles.infoText}>
+                An admin has been notified of your activation.
+              </p>
+            </div>
+          ) : (
+            // Admin invite: auto-approved
+            <div style={styles.infoBox}>
+              <p style={styles.infoTitle}>📱 About Your Access</p>
+              <p style={styles.infoText}>
+                You're now logged into this browser. To maintain access, <strong>keep using this same browser on this device</strong>.
+              </p>
+              <p style={styles.infoText}>
+                If you need to access from a different device or browser, you'll need the department access code from your administrator.
+              </p>
+              <p style={styles.infoText}>
+                Your personal password is separate and keeps your account secure.
+              </p>
+            </div>
+          )}
           
           <p style={styles.message}>
             Redirecting you to the app...
@@ -124,11 +144,11 @@ function AcceptInvitePage() {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <h2 style={styles.titleError}>Invitation Error</h2>
+          <h2 style={styles.titleError}>Activation Error</h2>
           <p style={styles.error}>{error}</p>
           <p style={styles.message}>
-            This invitation link may have expired or already been used.
-            Please contact an administrator to request a new invitation.
+            This activation link may have expired or already been used.
+            Please try again or contact an administrator.
           </p>
           <button 
             onClick={() => navigate('/')}
@@ -144,13 +164,24 @@ function AcceptInvitePage() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <h2 style={styles.title}>Accept Invitation</h2>
+        <h2 style={styles.title}>
+          {isSelfActivation ? 'Activate Your Account' : 'Accept Invitation'}
+        </h2>
         <p style={styles.welcome}>
           Welcome, <strong>{inviteData?.first_name} {inviteData?.last_name}</strong>!
         </p>
         <p style={styles.message}>
           Create a password to complete your account setup.
         </p>
+
+        {isSelfActivation && (
+          <div style={styles.noteBox}>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: '#92400e' }}>
+              <strong>Note:</strong> After activation, you'll be able to complete one incident report. 
+              An admin will then approve your account for full access.
+            </p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div style={styles.formGroup}>
@@ -194,7 +225,7 @@ function AcceptInvitePage() {
             disabled={submitting}
             style={styles.button}
           >
-            {submitting ? 'Creating Account...' : 'Create Account'}
+            {submitting ? 'Creating Account...' : (isSelfActivation ? 'Activate Account' : 'Create Account')}
           </button>
         </form>
       </div>
@@ -308,6 +339,20 @@ const styles = {
     borderRadius: '8px',
     padding: '1rem',
     marginBottom: '1.5rem',
+  },
+  infoBoxWarning: {
+    background: '#1a1a2e',
+    border: '1px solid #f59e0b',
+    borderRadius: '8px',
+    padding: '1rem',
+    marginBottom: '1.5rem',
+  },
+  noteBox: {
+    background: '#fef3c7',
+    border: '1px solid #f59e0b',
+    borderRadius: '6px',
+    padding: '0.75rem',
+    marginBottom: '1rem',
   },
   infoTitle: {
     color: '#fff',
