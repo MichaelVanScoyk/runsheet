@@ -2,6 +2,13 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { validateInviteToken, acceptInvite } from '../api';
 
+// Default branding if fetch fails
+const DEFAULT_BRANDING = {
+  stationName: 'Fire Department',
+  logoUrl: null,
+  primaryColor: '#dc2626',
+};
+
 function AcceptInvitePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -10,11 +17,28 @@ function AcceptInvitePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [inviteData, setInviteData] = useState(null);
+  const [branding, setBranding] = useState(DEFAULT_BRANDING);
   
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+
+  // Fetch branding on mount (public endpoint - no auth required)
+  useEffect(() => {
+    fetch('/api/branding/theme')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) {
+          setBranding({
+            stationName: data.station_name || DEFAULT_BRANDING.stationName,
+            logoUrl: data.logo_url || null,
+            primaryColor: data.primary_color || DEFAULT_BRANDING.primaryColor,
+          });
+        }
+      })
+      .catch(err => console.error('Failed to load branding:', err));
+  }, []);
 
   // Validate token on mount
   useEffect(() => {
@@ -74,14 +98,53 @@ function AcceptInvitePage() {
   // Check if this is a self-activation (not auto-approved) or admin invite (auto-approved)
   const isSelfActivation = inviteData?.is_self_activation;
 
+  // Dynamic styles based on branding
+  const dynamicStyles = {
+    button: {
+      ...styles.button,
+      background: branding.primaryColor,
+    },
+    buttonHover: {
+      background: branding.primaryColor,
+      filter: 'brightness(0.9)',
+    },
+  };
+
   // --- RENDER LOGIC (after all hooks) ---
+
+  // Header component with logo and station name
+  const PageHeader = () => (
+    <div style={styles.header}>
+      {branding.logoUrl && (
+        <img 
+          src={branding.logoUrl} 
+          alt="Department Logo" 
+          style={styles.logo}
+        />
+      )}
+      <h1 style={styles.stationName}>{branding.stationName}</h1>
+    </div>
+  );
+
+  // Footer component
+  const PageFooter = () => (
+    <div style={styles.footer}>
+      Powered by <strong>CADReport</strong>
+    </div>
+  );
 
   if (loading) {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <p style={styles.loading}>Validating activation link...</p>
+          <PageHeader />
+          <div style={styles.loadingSpinner}>
+            <div style={styles.spinner}></div>
+            <p style={styles.loadingText}>Validating activation link...</p>
+          </div>
+          <PageFooter />
         </div>
+        <style>{spinnerKeyframes}</style>
       </div>
     );
   }
@@ -90,15 +153,24 @@ function AcceptInvitePage() {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <h2 style={styles.title}>✓ Account Activated!</h2>
-          <p style={styles.message}>
-            Welcome, {inviteData?.first_name}! Your account has been created.
+          <PageHeader />
+          
+          <div style={{...styles.successBanner, borderColor: branding.primaryColor, background: `${branding.primaryColor}10`}}>
+            <span style={styles.successIcon}>✓</span>
+            <h2 style={{...styles.successTitle, color: branding.primaryColor}}>Account Activated!</h2>
+          </div>
+          
+          <p style={styles.welcomeText}>
+            Welcome, <strong>{inviteData?.first_name}</strong>! Your account has been created.
           </p>
           
           {isSelfActivation ? (
             // Self-activation: NOT auto-approved
             <div style={styles.infoBoxWarning}>
-              <p style={styles.infoTitle}>⏳ Pending Approval</p>
+              <div style={styles.infoHeader}>
+                <span style={styles.infoIcon}>⏳</span>
+                <span style={styles.infoTitle}>Pending Approval</span>
+              </div>
               <p style={styles.infoText}>
                 Your account is active but <strong>pending approval</strong> from an officer or admin.
               </p>
@@ -112,7 +184,10 @@ function AcceptInvitePage() {
           ) : (
             // Admin invite: auto-approved
             <div style={styles.infoBox}>
-              <p style={styles.infoTitle}>📱 About Your Access</p>
+              <div style={styles.infoHeader}>
+                <span style={styles.infoIcon}>📱</span>
+                <span style={styles.infoTitle}>About Your Access</span>
+              </div>
               <p style={styles.infoText}>
                 You're now logged into this browser. To maintain access, <strong>keep using this same browser on this device</strong>.
               </p>
@@ -125,17 +200,21 @@ function AcceptInvitePage() {
             </div>
           )}
           
-          <p style={styles.message}>
-            Redirecting you to the app...
-          </p>
-          <p style={styles.loading}>⏳</p>
+          <div style={styles.redirectBox}>
+            <div style={styles.spinner}></div>
+            <span style={styles.redirectText}>Redirecting you to the app...</span>
+          </div>
+          
           <button 
             onClick={() => window.location.href = '/'}
             style={styles.buttonSecondary}
           >
             Click here if not redirected
           </button>
+          
+          <PageFooter />
         </div>
+        <style>{spinnerKeyframes}</style>
       </div>
     );
   }
@@ -144,18 +223,27 @@ function AcceptInvitePage() {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <h2 style={styles.titleError}>Activation Error</h2>
-          <p style={styles.error}>{error}</p>
-          <p style={styles.message}>
+          <PageHeader />
+          
+          <div style={styles.errorBanner}>
+            <span style={styles.errorIcon}>⚠️</span>
+            <h2 style={styles.errorTitle}>Activation Error</h2>
+          </div>
+          
+          <p style={styles.errorMessage}>{error}</p>
+          <p style={styles.messageText}>
             This activation link may have expired or already been used.
             Please try again or contact an administrator.
           </p>
+          
           <button 
             onClick={() => navigate('/')}
             style={styles.buttonSecondary}
           >
             Go to Home
           </button>
+          
+          <PageFooter />
         </div>
       </div>
     );
@@ -164,13 +252,15 @@ function AcceptInvitePage() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
+        <PageHeader />
+        
         <h2 style={styles.title}>
           {isSelfActivation ? 'Activate Your Account' : 'Accept Invitation'}
         </h2>
         <p style={styles.welcome}>
           Welcome, <strong>{inviteData?.first_name} {inviteData?.last_name}</strong>!
         </p>
-        <p style={styles.message}>
+        <p style={styles.messageText}>
           Create a password to complete your account setup.
         </p>
 
@@ -223,15 +313,26 @@ function AcceptInvitePage() {
           <button 
             type="submit" 
             disabled={submitting}
-            style={styles.button}
+            style={dynamicStyles.button}
           >
             {submitting ? 'Creating Account...' : (isSelfActivation ? 'Activate Account' : 'Create Account')}
           </button>
         </form>
+        
+        <PageFooter />
       </div>
+      <style>{spinnerKeyframes}</style>
     </div>
   );
 }
+
+// Spinner animation keyframes
+const spinnerKeyframes = `
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
 
 const styles = {
   container: {
@@ -239,90 +340,218 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: '#1a1a2e',
+    background: '#f3f4f6',
     padding: '1rem',
   },
   card: {
-    background: '#2a2a3e',
-    borderRadius: '8px',
+    background: '#ffffff',
+    borderRadius: '12px',
     padding: '2rem',
-    maxWidth: '400px',
+    maxWidth: '420px',
     width: '100%',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+    border: '1px solid #e5e7eb',
+  },
+  header: {
+    textAlign: 'center',
+    marginBottom: '1.5rem',
+    paddingBottom: '1rem',
+    borderBottom: '1px solid #e5e7eb',
+  },
+  logo: {
+    maxWidth: '120px',
+    maxHeight: '120px',
+    width: 'auto',
+    height: 'auto',
+    objectFit: 'contain',
+    marginBottom: '0.75rem',
+  },
+  stationName: {
+    margin: 0,
+    fontSize: '1.1rem',
+    fontWeight: '600',
+    color: '#374151',
   },
   title: {
-    color: '#fff',
+    color: '#1f2937',
     marginTop: 0,
-    marginBottom: '1rem',
+    marginBottom: '0.5rem',
     textAlign: 'center',
-  },
-  titleError: {
-    color: '#dc2626',
-    marginTop: 0,
-    marginBottom: '1rem',
-    textAlign: 'center',
+    fontSize: '1.25rem',
   },
   welcome: {
-    color: '#fff',
+    color: '#374151',
     textAlign: 'center',
     marginBottom: '0.5rem',
   },
-  message: {
-    color: '#888',
+  messageText: {
+    color: '#6b7280',
     textAlign: 'center',
     marginBottom: '1.5rem',
+    fontSize: '0.95rem',
   },
-  loading: {
-    color: '#888',
+  loadingSpinner: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: '2rem 0',
+  },
+  spinner: {
+    width: 32,
+    height: 32,
+    border: '3px solid #e5e7eb',
+    borderTopColor: '#dc2626',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+  },
+  loadingText: {
+    marginTop: '1rem',
+    color: '#6b7280',
+  },
+  successBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.75rem',
+    padding: '1rem',
+    borderRadius: '8px',
+    border: '1px solid',
+    marginBottom: '1.5rem',
+  },
+  successIcon: {
+    fontSize: '1.5rem',
+  },
+  successTitle: {
+    margin: 0,
+    fontSize: '1.25rem',
+    fontWeight: '600',
+  },
+  welcomeText: {
     textAlign: 'center',
+    color: '#374151',
+    marginBottom: '1.5rem',
+  },
+  infoBox: {
+    background: '#f9fafb',
+    border: '1px solid #e5e7eb',
+    borderRadius: '8px',
+    padding: '1rem',
+    marginBottom: '1.5rem',
+  },
+  infoBoxWarning: {
+    background: '#fffbeb',
+    border: '1px solid #f59e0b',
+    borderRadius: '8px',
+    padding: '1rem',
+    marginBottom: '1.5rem',
+  },
+  infoHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    marginBottom: '0.75rem',
+  },
+  infoIcon: {
+    fontSize: '1.25rem',
+  },
+  infoTitle: {
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  infoText: {
+    margin: '0 0 0.5rem 0',
+    fontSize: '0.9rem',
+    color: '#4b5563',
+    lineHeight: '1.5',
+  },
+  redirectBox: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.75rem',
+    padding: '1rem',
+    marginBottom: '1rem',
+  },
+  redirectText: {
+    color: '#6b7280',
+    fontSize: '0.9rem',
+  },
+  errorBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.75rem',
+    padding: '1rem',
+    borderRadius: '8px',
+    backgroundColor: '#fef2f2',
+    border: '1px solid #fecaca',
+    marginBottom: '1.5rem',
+  },
+  errorIcon: {
+    fontSize: '1.5rem',
+  },
+  errorTitle: {
+    margin: 0,
+    fontSize: '1.25rem',
+    fontWeight: '600',
+    color: '#dc2626',
+  },
+  errorMessage: {
+    color: '#dc2626',
+    fontSize: '0.95rem',
+    marginBottom: '1rem',
+    textAlign: 'center',
+    fontWeight: '500',
   },
   formGroup: {
     marginBottom: '1rem',
   },
   label: {
     display: 'block',
-    color: '#ccc',
+    color: '#374151',
     marginBottom: '0.25rem',
     fontSize: '0.9rem',
+    fontWeight: '500',
   },
   input: {
     width: '100%',
     padding: '0.75rem',
-    borderRadius: '4px',
-    border: '1px solid #444',
-    background: '#1a1a2e',
-    color: '#fff',
+    borderRadius: '6px',
+    border: '1px solid #d1d5db',
+    background: '#ffffff',
+    color: '#1f2937',
     fontSize: '1rem',
     boxSizing: 'border-box',
   },
   inputDisabled: {
     width: '100%',
     padding: '0.75rem',
-    borderRadius: '4px',
-    border: '1px solid #333',
-    background: '#333',
-    color: '#888',
+    borderRadius: '6px',
+    border: '1px solid #e5e7eb',
+    background: '#f9fafb',
+    color: '#6b7280',
     fontSize: '1rem',
     boxSizing: 'border-box',
   },
   button: {
     width: '100%',
     padding: '0.75rem',
-    borderRadius: '4px',
+    borderRadius: '6px',
     border: 'none',
     background: '#dc2626',
     color: '#fff',
     fontSize: '1rem',
+    fontWeight: '600',
     cursor: 'pointer',
     marginTop: '0.5rem',
   },
   buttonSecondary: {
     width: '100%',
     padding: '0.75rem',
-    borderRadius: '4px',
-    border: '1px solid #666',
-    background: 'transparent',
-    color: '#ccc',
+    borderRadius: '6px',
+    border: '1px solid #d1d5db',
+    background: '#ffffff',
+    color: '#374151',
     fontSize: '1rem',
     cursor: 'pointer',
     marginTop: '0.5rem',
@@ -333,20 +562,6 @@ const styles = {
     marginBottom: '1rem',
     textAlign: 'center',
   },
-  infoBox: {
-    background: '#1a1a2e',
-    border: '1px solid #444',
-    borderRadius: '8px',
-    padding: '1rem',
-    marginBottom: '1.5rem',
-  },
-  infoBoxWarning: {
-    background: '#1a1a2e',
-    border: '1px solid #f59e0b',
-    borderRadius: '8px',
-    padding: '1rem',
-    marginBottom: '1.5rem',
-  },
   noteBox: {
     background: '#fef3c7',
     border: '1px solid #f59e0b',
@@ -354,18 +569,13 @@ const styles = {
     padding: '0.75rem',
     marginBottom: '1rem',
   },
-  infoTitle: {
-    color: '#fff',
-    fontWeight: 'bold',
-    marginTop: 0,
-    marginBottom: '0.75rem',
-  },
-  infoText: {
-    color: '#aaa',
+  footer: {
+    textAlign: 'center',
+    marginTop: '1.5rem',
+    paddingTop: '1rem',
+    borderTop: '1px solid #e5e7eb',
+    color: '#9ca3af',
     fontSize: '0.85rem',
-    marginTop: 0,
-    marginBottom: '0.5rem',
-    lineHeight: '1.5',
   },
 };
 
