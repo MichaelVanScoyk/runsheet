@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getPersonnel, getRanks, createPersonnel, updatePersonnel, deletePersonnel, sendInvite, resendInvite, sendPasswordReset, getUserSession } from '../api';
+import { getPersonnel, getRanks, createPersonnel, updatePersonnel, deletePersonnel, sendInvite, resendInvite, sendPasswordReset, approveMember, getUserSession } from '../api';
 
 const API_BASE = '';
 
@@ -23,9 +23,9 @@ function PersonnelPage({ embedded = false }) {
   const [clearExisting, setClearExisting] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Invite/Reset state
+  // Invite/Reset/Approve state
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authAction, setAuthAction] = useState(null); // 'invite', 'resend', 'reset'
+  const [authAction, setAuthAction] = useState(null); // 'invite', 'resend', 'reset', 'approve'
   const [authTarget, setAuthTarget] = useState(null); // personnel being acted on
   const [inviteEmail, setInviteEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
@@ -190,7 +190,7 @@ function PersonnelPage({ embedded = false }) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Invite/Reset handlers
+  // Invite/Reset/Approve handlers
   const currentUser = getUserSession();
   const isAdmin = currentUser?.role === 'ADMIN';
   const isOfficerOrAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'OFFICER';
@@ -225,6 +225,16 @@ function PersonnelPage({ embedded = false }) {
     setShowAuthModal(true);
   };
 
+  const handleStartApprove = (person) => {
+    setAuthAction('approve');
+    setAuthTarget(person);
+    setInviteEmail('');
+    setAdminPassword('');
+    setAuthError('');
+    setAuthSuccess('');
+    setShowAuthModal(true);
+  };
+
   const handleAuthSubmit = async () => {
     if (!currentUser || !adminPassword) {
       setAuthError('Please enter your password');
@@ -250,6 +260,9 @@ function PersonnelPage({ embedded = false }) {
       } else if (authAction === 'reset') {
         await sendPasswordReset(authTarget.id, currentUser.personnel_id, adminPassword);
         setAuthSuccess(`Password reset email sent to ${authTarget.email}`);
+      } else if (authAction === 'approve') {
+        await approveMember(authTarget.id, currentUser.personnel_id, adminPassword);
+        setAuthSuccess(`${authTarget.first_name} ${authTarget.last_name} has been approved`);
       }
       // Reload data to reflect changes
       loadData();
@@ -357,6 +370,17 @@ function PersonnelPage({ embedded = false }) {
                       >
                         Edit
                       </button>
+                      {/* Approve button - for pending self-activated users (Admin/Officer) */}
+                      {p.active && p.is_registered && !p.is_approved && isOfficerOrAdmin && (
+                        <button 
+                          className="btn btn-sm"
+                          style={{ background: '#16a34a', color: '#fff' }}
+                          onClick={() => handleStartApprove(p)}
+                          title="Approve this member for full access"
+                        >
+                          ✓ Approve
+                        </button>
+                      )}
                       {/* Invite button - for users without accounts (Admin only) */}
                       {p.active && !p.is_registered && isAdmin && (
                         p.has_pending_invite ? (
@@ -570,7 +594,7 @@ function PersonnelPage({ embedded = false }) {
         </div>
       )}
 
-      {/* Auth Action Modal (Invite/Reset) */}
+      {/* Auth Action Modal (Invite/Reset/Approve) */}
       {showAuthModal && authTarget && (
         <div className="modal-overlay" onClick={handleAuthModalClose}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
@@ -578,6 +602,7 @@ function PersonnelPage({ embedded = false }) {
               {authAction === 'invite' && '📧 Send Invitation'}
               {authAction === 'resend' && '📧 Resend Invitation'}
               {authAction === 'reset' && '🔑 Reset Password'}
+              {authAction === 'approve' && '✓ Approve Member'}
             </h3>
             
             <p style={{ color: '#ccc', marginBottom: '1rem' }}>
@@ -589,6 +614,9 @@ function PersonnelPage({ embedded = false }) {
               )}
               {authAction === 'reset' && (
                 <>Send a password reset email to <strong>{authTarget.first_name} {authTarget.last_name}</strong> at {authTarget.email}.</>
+              )}
+              {authAction === 'approve' && (
+                <>Approve <strong>{authTarget.first_name} {authTarget.last_name}</strong> for full access. They will be able to complete unlimited run sheets.</>
               )}
             </p>
 
@@ -641,11 +669,13 @@ function PersonnelPage({ embedded = false }) {
                   className="btn btn-primary" 
                   onClick={handleAuthSubmit}
                   disabled={authLoading}
+                  style={authAction === 'approve' ? { background: '#16a34a' } : {}}
                 >
-                  {authLoading ? 'Sending...' : (
+                  {authLoading ? 'Processing...' : (
                     authAction === 'invite' ? 'Send Invitation' :
                     authAction === 'resend' ? 'Resend Invitation' :
-                    'Send Reset Email'
+                    authAction === 'reset' ? 'Send Reset Email' :
+                    authAction === 'approve' ? 'Approve Member' : 'Submit'
                   )}
                 </button>
               )}
