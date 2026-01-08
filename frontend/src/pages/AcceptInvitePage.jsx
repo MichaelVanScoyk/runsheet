@@ -40,7 +40,7 @@ function AcceptInvitePage() {
     if (success) {
       const timer = setTimeout(() => {
         window.location.href = '/';  // Full page reload to pick up new cookie
-      }, 2000);
+      }, 10000);  // 10 seconds to read the info
       return () => clearTimeout(timer);
     }
   }, [success]);

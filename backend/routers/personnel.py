@@ -58,6 +58,7 @@ class PersonnelUpdate(BaseModel):
     active: Optional[bool] = None
     email: Optional[str] = None
     role: Optional[str] = None
+    notification_preferences: Optional[dict] = None
 
 
 @router.get("")
@@ -1015,7 +1016,7 @@ def get_admins_with_notifications(db: Session) -> List[str]:
     for admin in admins:
         # Check notification preferences
         prefs = admin.notification_preferences or {}
-        if prefs.get('admin_notifications', True):  # Default to True if not set
+        if prefs.get('admin_notifications', False):  # Default to False - must opt-in
             emails.append(admin.email)
     
     return emails

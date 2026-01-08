@@ -13,6 +13,9 @@ function PersonnelPage({ embedded = false }) {
     first_name: '',
     last_name: '',
     rank_id: '',
+    email: '',
+    role: '',
+    notification_preferences: { admin_notifications: false },
   });
   
   // Import state
@@ -54,7 +57,7 @@ function PersonnelPage({ embedded = false }) {
 
   const handleAdd = () => {
     setEditing(null);
-    setFormData({ first_name: '', last_name: '', rank_id: '', email: '', role: '' });
+    setFormData({ first_name: '', last_name: '', rank_id: '', email: '', role: '', notification_preferences: { admin_notifications: false } });
     setShowModal(true);
   };
 
@@ -66,6 +69,7 @@ function PersonnelPage({ embedded = false }) {
       rank_id: person.rank_id || '',
       email: person.email || '',
       role: person.role || '',
+      notification_preferences: person.notification_preferences || { admin_notifications: false },
     });
     setShowModal(true);
   };
@@ -343,6 +347,9 @@ function PersonnelPage({ embedded = false }) {
                     {p.role ? (
                       <span className={`badge ${p.role === 'ADMIN' ? 'badge-admin' : p.role === 'OFFICER' ? 'badge-officer' : 'badge-member'}`}>
                         {p.role}
+                        {p.role === 'ADMIN' && p.notification_preferences?.admin_notifications && (
+                          <span title="Admin notifications enabled" style={{ marginLeft: '4px' }}>🔔</span>
+                        )}
                       </span>
                     ) : '-'}
                   </td>
@@ -495,6 +502,29 @@ function PersonnelPage({ embedded = false }) {
                   Role determines access level when they register
                 </small>
               </div>
+
+              {/* Notification Preferences - only show for ADMINs when editing */}
+              {editing && formData.role === 'ADMIN' && (
+                <div className="form-group" style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#2a2a2a', borderRadius: '6px' }}>
+                  <label style={{ marginBottom: '0.5rem', display: 'block', fontWeight: 'bold' }}>
+                    📧 Email Notifications
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={formData.notification_preferences?.admin_notifications || false}
+                      onChange={(e) => handleChange('notification_preferences', {
+                        ...formData.notification_preferences,
+                        admin_notifications: e.target.checked
+                      })}
+                    />
+                    <span>Receive admin notifications</span>
+                  </label>
+                  <small style={{ color: '#888', marginLeft: '1.5rem', display: 'block', marginTop: '0.25rem' }}>
+                    New member registrations, approval requests, etc.
+                  </small>
+                </div>
+              )}
 
               <div className="modal-actions">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
