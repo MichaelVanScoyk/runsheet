@@ -446,7 +446,9 @@ async def register(
             verification_token=token,
             tenant_slug=context['tenant_slug'],
             tenant_name=context['tenant_name'],
-            user_name=person.first_name
+            user_name=person.first_name,
+            primary_color=context.get('primary_color'),
+            logo_url=context.get('logo_url')
         )
         
         if not success:
@@ -970,25 +972,30 @@ def generate_secure_token() -> str:
 def get_email_context(request: Request, db: Session) -> dict:
     """
     Get tenant context for email sending.
-    Returns tenant_slug, tenant_name (from master), station_name (from settings),
-    and branding info (primary_color).
+    Returns tenant_slug, tenant_name, primary_color, and logo_url.
     """
     tenant_slug = getattr(request.state, 'tenant_slug', 'unknown')
     tenant = getattr(request.state, 'tenant', None)
     tenant_name = tenant.name if tenant else 'CADReport'
     
     # Use branding_config helper to get all branding
+    primary_color = '#1e5631'  # Default
+    logo_url = None
+    station_name = None
+    
     try:
         from report_engine.branding_config import get_branding
         branding = get_branding(db)
         
         station_name = branding.get('station_name')
-        primary_color = branding.get('primary_color')
+        primary_color = branding.get('primary_color') or '#1e5631'
+        
+        # Build logo URL if tenant has a logo
+        if branding.get('has_logo'):
+            logo_url = f"https://{tenant_slug}.cadreport.com/api/branding/logo"
         
     except Exception as e:
         logger.warning(f"Failed to load branding: {e}")
-        station_name = None
-        primary_color = None
     
     # Use station name if available, otherwise tenant name
     display_name = station_name or tenant_name
@@ -998,6 +1005,7 @@ def get_email_context(request: Request, db: Session) -> dict:
         'tenant_name': display_name,
         'station_name': station_name,
         'primary_color': primary_color,
+        'logo_url': logo_url,
     }
 
 
@@ -1049,8 +1057,8 @@ def notify_admins_of_self_activation(request: Request, db: Session, person: Pers
             notification_type='self_activation',
             subject_line=f"New Member Self-Activation: {person.first_name} {person.last_name}",
             message_body=message,
-            action_url='/admin/personnel',
-            action_text='Review Personnel'
+            primary_color=context.get('primary_color'),
+            logo_url=context.get('logo_url')
         )
         logger.info(f"Sent self-activation notification for {person.display_name} to {len(admin_emails)} admin(s)")
     except Exception as e:
@@ -1144,7 +1152,9 @@ async def send_password_reset(
             reset_token=token,
             tenant_slug=context['tenant_slug'],
             tenant_name=context['tenant_name'],
-            user_name=person.first_name
+            user_name=person.first_name,
+            primary_color=context.get('primary_color'),
+            logo_url=context.get('logo_url')
         )
         
         if not success:
@@ -1278,7 +1288,8 @@ async def send_invite(
             tenant_name=context['tenant_name'],
             user_name=person.first_name,
             inviter_name=requester.display_name,
-            primary_color=context.get('primary_color')
+            primary_color=context.get('primary_color'),
+            logo_url=context.get('logo_url')
         )
         
         if not success:
@@ -1342,7 +1353,8 @@ async def resend_invite(
             tenant_name=context['tenant_name'],
             user_name=person.first_name,
             inviter_name=requester.display_name,
-            primary_color=context.get('primary_color')
+            primary_color=context.get('primary_color'),
+            logo_url=context.get('logo_url')
         )
         
         if not success:
@@ -1485,7 +1497,8 @@ async def accept_invite(
             tenant_name=context['tenant_name'],
             user_name=person.first_name,
             user_display_name=f"{person.first_name} {person.last_name}",
-            primary_color=context.get('primary_color')
+            primary_color=context.get('primary_color'),
+            logo_url=context.get('logo_url')
         )
         
     except ImportError:
@@ -1680,7 +1693,9 @@ async def request_email_change(
             verification_token=token,
             tenant_slug=context['tenant_slug'],
             tenant_name=context['tenant_name'],
-            user_name=person.first_name
+            user_name=person.first_name,
+            primary_color=context.get('primary_color'),
+            logo_url=context.get('logo_url')
         )
         
         if not success:
