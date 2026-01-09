@@ -266,10 +266,14 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
     loadData();
   }, []);
 
+  // Track if this is a new incident (for auto-suggest logic)
+  const isNewIncident = !incident;
+  const isNewIncidentRef = useRef(isNewIncident);
+  
   // For NEW incidents only: re-fetch suggested incident number when category or date changes
   useEffect(() => {
-    // Only for new incidents (no existing incident)
-    if (incident) return;
+    // Only for new incidents (no existing incident prop)
+    if (!isNewIncidentRef.current) return;
     // Don't run during initial load
     if (loading) return;
     
@@ -292,7 +296,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
     };
     
     fetchSuggestedNumber();
-  }, [incident, loading, formData.call_category, formData.incident_date]);
+  }, [loading, formData.call_category, formData.incident_date]);
 
   // Pass through ISO timestamps as-is - they're true UTC now
   // Frontend formatters will convert to local for display

@@ -446,19 +446,20 @@ def get_next_incident_number(db: Session, year: int, category: str) -> str:
     """
     Get next incident number for year and category based on actual incidents.
     Format: F250001 (Fire) or E250001 (EMS)
-    Uses MAX(existing) + 1 instead of a separate sequence table.
+    Uses MAX(existing) + 1 based on actual incident number patterns.
     """
     prefix = 'F' if category == 'FIRE' else 'E'
     year_short = year % 100  # 2025 -> 25
+    number_pattern = f"{prefix}{year_short}%"  # e.g., "F25%"
     
-    # Find the highest sequence number currently in use
+    # Find the highest sequence number by matching the actual incident number pattern
+    # This is more reliable than year_prefix since manual edits might not update year_prefix
     result = db.execute(text("""
         SELECT MAX(CAST(SUBSTRING(internal_incident_number FROM 4) AS INTEGER))
         FROM incidents
-        WHERE year_prefix = :year
-          AND call_category = :category
+        WHERE internal_incident_number LIKE :pattern
           AND deleted_at IS NULL
-    """), {"year": year, "category": category}).scalar()
+    """), {"pattern": number_pattern}).scalar()
     
     next_num = (result or 0) + 1
     return f"{prefix}{year_short}{next_num:04d}"
