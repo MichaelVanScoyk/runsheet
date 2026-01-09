@@ -1233,6 +1233,15 @@ async def update_incident(
     for field in IMMUTABLE_FIELDS:
         update_data.pop(field, None)
     
+    # Handle internal_incident_number change - update year_prefix to match
+    if 'internal_incident_number' in update_data:
+        new_number = update_data['internal_incident_number']
+        if new_number and new_number != incident.internal_incident_number:
+            parsed_cat, parsed_year, _ = parse_incident_number(new_number)
+            if parsed_year and parsed_year != incident.year_prefix:
+                logger.info(f"Incident number changed: {incident.internal_incident_number} → {new_number}, updating year_prefix {incident.year_prefix} → {parsed_year}")
+                incident.year_prefix = parsed_year
+    
     # Handle category change (special case - assigns new number)
     category_changed = False
     old_number = None
