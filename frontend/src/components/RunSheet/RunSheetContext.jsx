@@ -266,6 +266,34 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
     loadData();
   }, []);
 
+  // For NEW incidents only: re-fetch suggested incident number when category or date changes
+  useEffect(() => {
+    // Only for new incidents (no existing incident)
+    if (incident) return;
+    // Don't run during initial load
+    if (loading) return;
+    
+    const fetchSuggestedNumber = async () => {
+      try {
+        // Parse year from incident_date
+        const year = formData.incident_date 
+          ? new Date(formData.incident_date).getFullYear() 
+          : new Date().getFullYear();
+        const category = formData.call_category || 'FIRE';
+        
+        const res = await suggestIncidentNumber(year, category);
+        setFormData(prev => ({
+          ...prev,
+          internal_incident_number: res.data.suggested_number,
+        }));
+      } catch (err) {
+        console.error('Failed to fetch suggested incident number:', err);
+      }
+    };
+    
+    fetchSuggestedNumber();
+  }, [incident, loading, formData.call_category, formData.incident_date]);
+
   // Pass through ISO timestamps as-is - they're true UTC now
   // Frontend formatters will convert to local for display
   const toLocalDatetime = (isoString) => {
@@ -675,6 +703,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
           municipality_code: cleanData.municipality_code,
           internal_incident_number: cleanData.internal_incident_number,
           incident_date: cleanData.incident_date,
+          call_category: cleanData.call_category || 'FIRE',
         });
         incidentId = res.data.id;
         await updateIncident(incidentId, cleanData, editedBy);

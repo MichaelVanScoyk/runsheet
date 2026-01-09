@@ -39,8 +39,11 @@ export const completeIncident = (id) => api.post(`/incidents/${id}/complete`);
 export const getIncidentAuditLog = (id, limit = 50) => 
   api.get(`/incidents/${id}/audit-log`, { params: { limit } });
 
-export const suggestIncidentNumber = (category = 'FIRE') => 
-  api.get('/incidents/suggest-number', { params: { category } });
+export const suggestIncidentNumber = (year = null, category = 'FIRE') => {
+  const params = { category };
+  if (year) params.year = year;
+  return api.get('/incidents/suggest-number', { params });
+};
 
 export const getIncidentYears = () => api.get('/incidents/years');
 
