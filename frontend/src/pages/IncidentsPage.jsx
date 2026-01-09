@@ -396,8 +396,19 @@ function IncidentsPage() {
   const emsCounts = incidents.filter(i => i.call_category === 'EMS').length;
   const activeCount = qualifyingIncidents.filter(i => i.status === 'OPEN').length;
 
+  // Navigate to a different incident (for quick nav in RunSheetForm)
+  const handleNavigateToIncident = async (incidentId) => {
+    try {
+      const res = await getIncident(incidentId);
+      setEditingIncident(res.data);
+    } catch (err) {
+      console.error('Failed to navigate to incident:', err);
+      alert('Failed to load incident');
+    }
+  };
+
   if (showForm) {
-    return <RunSheetForm incident={editingIncident} onSave={handleFormSave} onClose={handleFormClose} />;
+    return <RunSheetForm incident={editingIncident} onSave={handleFormSave} onClose={handleFormClose} onNavigate={handleNavigateToIncident} />;
   }
 
   return (

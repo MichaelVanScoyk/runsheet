@@ -187,7 +187,7 @@ const initialFormData = {
   neris_submitted_at: null,
 };
 
-export function RunSheetProvider({ incident, onSave, onClose, children }) {
+export function RunSheetProvider({ incident, onSave, onClose, onNavigate, children }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -734,6 +734,7 @@ export function RunSheetProvider({ incident, onSave, onClose, children }) {
     incident,
     onSave,
     onClose,
+    onNavigate,
     
     // Loading state
     loading,

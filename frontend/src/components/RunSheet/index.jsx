@@ -78,9 +78,9 @@ function RunSheetContent() {
   );
 }
 
-export default function RunSheetForm({ incident, onSave, onClose }) {
+export default function RunSheetForm({ incident, onSave, onClose, onNavigate }) {
   return (
-    <RunSheetProvider incident={incident} onSave={onSave} onClose={onClose}>
+    <RunSheetProvider incident={incident} onSave={onSave} onClose={onClose} onNavigate={onNavigate}>
       <RunSheetContent />
     </RunSheetProvider>
   );

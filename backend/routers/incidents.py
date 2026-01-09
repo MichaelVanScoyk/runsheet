@@ -1643,3 +1643,78 @@ async def get_incident_audit_log(
             for e in entries
         ]
     }
+
+
+# =============================================================================
+# ADJACENT INCIDENTS (for navigation)
+# =============================================================================
+
+@router.get("/{incident_id}/adjacent")
+async def get_adjacent_incidents(
+    incident_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get IDs of adjacent incidents in the same category.
+    Ordered by incident_date DESC, internal_incident_number DESC (newest first).
+    
+    Returns:
+        newer_id: ID of next newer incident (or null if at newest)
+        older_id: ID of next older incident (or null if at oldest)
+    """
+    incident = db.query(Incident).filter(
+        Incident.id == incident_id,
+        Incident.deleted_at.is_(None)
+    ).first()
+    
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    
+    category = incident.call_category
+    inc_date = incident.incident_date
+    inc_number = incident.internal_incident_number
+    
+    # Find newer incident (higher date or same date with higher number)
+    newer = db.execute(text("""
+        SELECT id FROM incidents
+        WHERE call_category = :category
+          AND deleted_at IS NULL
+          AND id != :current_id
+          AND (
+            incident_date > :inc_date
+            OR (incident_date = :inc_date AND internal_incident_number > :inc_number)
+          )
+        ORDER BY incident_date ASC, internal_incident_number ASC
+        LIMIT 1
+    """), {
+        "category": category,
+        "current_id": incident_id,
+        "inc_date": inc_date,
+        "inc_number": inc_number
+    }).fetchone()
+    
+    # Find older incident (lower date or same date with lower number)
+    older = db.execute(text("""
+        SELECT id FROM incidents
+        WHERE call_category = :category
+          AND deleted_at IS NULL
+          AND id != :current_id
+          AND (
+            incident_date < :inc_date
+            OR (incident_date = :inc_date AND internal_incident_number < :inc_number)
+          )
+        ORDER BY incident_date DESC, internal_incident_number DESC
+        LIMIT 1
+    """), {
+        "category": category,
+        "current_id": incident_id,
+        "inc_date": inc_date,
+        "inc_number": inc_number
+    }).fetchone()
+    
+    return {
+        "current_id": incident_id,
+        "category": category,
+        "newer_id": newer[0] if newer else None,
+        "older_id": older[0] if older else None
+    }

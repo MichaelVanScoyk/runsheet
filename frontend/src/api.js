@@ -44,6 +44,8 @@ export const suggestIncidentNumber = (category = 'FIRE') =>
 
 export const getIncidentYears = () => api.get('/incidents/years');
 
+export const getAdjacentIncidents = (id) => api.get(`/incidents/${id}/adjacent`);
+
 // ============================================================================
 // PERSONNEL
 // ============================================================================
