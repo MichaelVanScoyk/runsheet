@@ -28,7 +28,7 @@ export default function ActionBar() {
   const hasEventComments = formData.cad_event_comments?.comments?.length > 0;
   const isFireIncident = formData.call_category === 'FIRE';
   
-  // Fetch adjacent incident IDs for navigation
+  // Fetch adjacent incident IDs for navigation (once per incident)
   useEffect(() => {
     if (incident?.id && userSession) {
       getAdjacentIncidents(incident.id)
@@ -42,7 +42,7 @@ export default function ActionBar() {
           console.error('Failed to fetch adjacent incidents:', err);
         });
     }
-  }, [incident?.id, userSession]);
+  }, [incident?.id]);
   
   // Fetch model trained timestamp for "trained" status (FIRE only)
   const fetchModelStats = useCallback(() => {

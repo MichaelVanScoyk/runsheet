@@ -408,7 +408,7 @@ function IncidentsPage() {
   };
 
   if (showForm) {
-    return <RunSheetForm incident={editingIncident} onSave={handleFormSave} onClose={handleFormClose} onNavigate={handleNavigateToIncident} />;
+    return <RunSheetForm key={editingIncident?.id} incident={editingIncident} onSave={handleFormSave} onClose={handleFormClose} onNavigate={handleNavigateToIncident} />;
   }
 
   return (
