@@ -34,14 +34,27 @@ export default function IncidentInfo() {
         <div className="flex flex-col gap-0.5">
           <label className="text-gray-400 text-xs flex items-center gap-1">
             Internal #
-            {isLocked && <span className="text-[10px]" title="Cannot change after creation">🔒</span>}
+            {isLocked && (
+              isAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => toggleUnlock('internal_incident_number')}
+                  className="text-[10px] hover:text-yellow-400 transition-colors"
+                  title={unlockedFields.internal_incident_number ? "Lock field" : "Admin: Click to unlock"}
+                >
+                  {unlockedFields.internal_incident_number ? '🔓' : '🔒'}
+                </button>
+              ) : (
+                <span className="text-[10px]" title="Cannot change after creation">🔒</span>
+              )
+            )}
           </label>
           <input 
             type="text" 
             value={formData.internal_incident_number} 
             onChange={(e) => handleChange('internal_incident_number', e.target.value)} 
-            disabled={isLocked}
-            className={isLocked ? 'opacity-60' : ''}
+            disabled={isFieldLocked('internal_incident_number')}
+            className={isFieldLocked('internal_incident_number') ? 'opacity-60' : ''}
             placeholder="F250001"
           />
         </div>
