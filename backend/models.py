@@ -749,6 +749,55 @@ class Setting(Base):
 
 
 # =============================================================================
+# REVIEW TASKS
+# =============================================================================
+
+class ReviewTask(Base):
+    """
+    Shared notification/task queue for items requiring officer/admin attention.
+    
+    Task types:
+    - personnel_reconciliation: Personnel assigned to unit not in CAD CLEAR
+    - comcat_review: CAD comments need officer categorization review
+    - neris_validation: Incident missing required NERIS fields (future)
+    - out_of_sequence: Incident number doesn't match date order (future)
+    """
+    __tablename__ = "review_tasks"
+    
+    id = Column(Integer, primary_key=True)
+    
+    # What needs review
+    task_type = Column(String(50), nullable=False)
+    entity_type = Column(String(50), nullable=False)  # 'incident', 'personnel', etc.
+    entity_id = Column(Integer, nullable=False)
+    
+    # Human-readable details
+    title = Column(String(200), nullable=False)
+    description = Column(Text)
+    metadata = Column(JSONB, default={})
+    
+    # Status tracking
+    status = Column(String(20), nullable=False, default='pending')  # pending, resolved, dismissed
+    priority = Column(String(20), nullable=False, default='normal')  # low, normal, high
+    
+    # Required action for resolution
+    required_action = Column(JSONB)
+    
+    # Resolution tracking
+    resolved_by = Column(Integer, ForeignKey("personnel.id"))
+    resolved_at = Column(TIMESTAMP(timezone=True))
+    resolution_notes = Column(Text)
+    
+    # Audit
+    created_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
+    created_by = Column(Integer, ForeignKey("personnel.id"))
+    
+    # Relationships
+    resolver = relationship("Personnel", foreign_keys=[resolved_by])
+    creator = relationship("Personnel", foreign_keys=[created_by])
+
+
+# =============================================================================
 # AUDIT LOG
 # =============================================================================
 

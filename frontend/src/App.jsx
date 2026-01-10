@@ -48,6 +48,7 @@ import {
   USER_SESSION_KEY,
 } from './api';
 import PrintView from './components/PrintView';
+import ReviewTasksBadge from './components/ReviewTasksBadge';
 import './App.css';
 
 // Standalone Print Page - no app shell
@@ -542,6 +543,12 @@ function AppContent({ tenant, onTenantLogout }) {
             </NavLink>
           </li>
         </ul>
+
+        {/* Review Tasks Badge - Officers and Admins only */}
+        <ReviewTasksBadge 
+          userSession={userSession} 
+          primaryColor={branding.primaryColor}
+        />
       </nav>
       <main className="content">
         <Routes>
