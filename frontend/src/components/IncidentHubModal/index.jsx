@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getApparatus, getPersonnel, updateIncident, getIncident } from '../../api';
 import IncidentTabs from './IncidentTabs';
 import IncidentDisplay from './IncidentDisplay';
@@ -8,6 +8,10 @@ import QuickEntrySection from './QuickEntrySection';
 /**
  * Incident Hub Modal - Kiosk-style incident data entry.
  * Matches the branding style of the Monthly Report template.
+ * 
+ * Early Entry Mode: When enabled, shows unit assignments and narrative fields
+ * even before CAD CLEAR arrives. This allows personnel to start documentation
+ * during long incidents without waiting for closeout.
  */
 export default function IncidentHubModal({
   incidents,
@@ -22,6 +26,10 @@ export default function IncidentHubModal({
   const [apparatus, setApparatus] = useState([]);
   const [personnel, setPersonnel] = useState([]);
   const [loadingRef, setLoadingRef] = useState(true);
+  
+  // Early entry mode - allows editing before CAD CLEAR
+  const [earlyEntryEnabled, setEarlyEntryEnabled] = useState(false);
+  const [earlyEntryLoading, setEarlyEntryLoading] = useState(true);
   
   const [branding, setBranding] = useState({
     logo: null,
@@ -38,9 +46,142 @@ export default function IncidentHubModal({
     narrative: '',
   });
   
+  // Manual save state (for Save button)
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Auto-save state
+  const [autoSaveStatus, setAutoSaveStatus] = useState(null); // null, 'saving', 'saved', 'error'
+  const autoSaveTimeoutRef = useRef(null);
+  const pendingChangesRef = useRef({ assignments: null, formData: null });
+
+  // ==========================================================================
+  // AUTO-SAVE LOGIC
+  // Optimistic save: updates local state immediately, saves in background
+  // Does NOT refresh form from API response to avoid interrupting user input
+  // ==========================================================================
+  
+  const performAutoSave = useCallback(async () => {
+    if (!selectedIncident) return;
+    
+    const { assignments: pendingAssignments, formData: pendingFormData } = pendingChangesRef.current;
+    if (!pendingAssignments && !pendingFormData) return;
+    
+    setAutoSaveStatus('saving');
+    
+    try {
+      // Save assignments if changed
+      if (pendingAssignments) {
+        const assignmentPayload = {};
+        Object.entries(pendingAssignments).forEach(([unitKey, personIds]) => {
+          const unit = apparatus.find(a => a.unit_designator === unitKey);
+          if (unit && (unit.unit_category === 'STATION' || unit.unit_category === 'DIRECT')) {
+            assignmentPayload[unitKey] = personIds;
+          } else {
+            const slots = [null, null, null, null, null, null];
+            personIds.forEach((id, idx) => {
+              if (idx < 6) slots[idx] = id;
+            });
+            assignmentPayload[unitKey] = slots;
+          }
+        });
+
+        await fetch(`/api/incidents/${selectedIncident.id}/assignments`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assignments: assignmentPayload }),
+        });
+      }
+      
+      // Save form data if changed (narrative fields)
+      if (pendingFormData) {
+        const updatePayload = {};
+        if (pendingFormData.situation_found !== undefined) updatePayload.situation_found = pendingFormData.situation_found;
+        if (pendingFormData.services_provided !== undefined) updatePayload.services_provided = pendingFormData.services_provided;
+        if (pendingFormData.narrative !== undefined) updatePayload.narrative = pendingFormData.narrative;
+
+        if (Object.keys(updatePayload).length > 0) {
+          await updateIncident(selectedIncident.id, updatePayload);
+        }
+      }
+      
+      // Clear pending changes
+      pendingChangesRef.current = { assignments: null, formData: null };
+      
+      setAutoSaveStatus('saved');
+      setTimeout(() => setAutoSaveStatus(null), 2000);
+      
+      // Silently refetch incident list (for badge counts, etc.) but DON'T update form state
+      if (refetch) {
+        refetch().catch(() => {}); // Ignore errors
+      }
+      
+    } catch (err) {
+      console.error('Auto-save failed:', err);
+      setAutoSaveStatus('error');
+      setTimeout(() => setAutoSaveStatus(null), 3000);
+    }
+  }, [selectedIncident, apparatus, refetch]);
+
+  const scheduleAutoSave = useCallback(() => {
+    // Clear existing timeout
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+    
+    // Schedule new save after 2 seconds of inactivity
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      performAutoSave();
+    }, 2000);
+  }, [performAutoSave]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // ==========================================================================
+  // LOAD EARLY ENTRY SETTING
+  // ==========================================================================
+  
+  useEffect(() => {
+    async function loadEarlyEntrySetting() {
+      try {
+        const res = await fetch('/api/settings/incident_modal/enable_early_entry');
+        if (res.ok) {
+          const data = await res.json();
+          setEarlyEntryEnabled(data.value === true || data.value === 'true');
+        }
+      } catch (err) {
+        console.error('Failed to load early entry setting:', err);
+      } finally {
+        setEarlyEntryLoading(false);
+      }
+    }
+    loadEarlyEntrySetting();
+  }, []);
+
+  const toggleEarlyEntry = async () => {
+    const newValue = !earlyEntryEnabled;
+    setEarlyEntryEnabled(newValue);
+    
+    try {
+      await fetch('/api/settings/incident_modal/enable_early_entry', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: newValue.toString() }),
+      });
+    } catch (err) {
+      console.error('Failed to save early entry setting:', err);
+      // Revert on error
+      setEarlyEntryEnabled(!newValue);
+    }
+  };
 
   // Load branding
   useEffect(() => {
@@ -171,19 +312,33 @@ export default function IncidentHubModal({
     return assigned;
   }, [assignments]);
 
+  // Assignment change with auto-save
   const handleAssignmentChange = useCallback((unitDesignator, newList) => {
-    setAssignments(prev => ({
-      ...prev,
-      [unitDesignator]: newList,
-    }));
-  }, []);
+    setAssignments(prev => {
+      const updated = {
+        ...prev,
+        [unitDesignator]: newList,
+      };
+      // Mark assignments as pending for auto-save
+      pendingChangesRef.current.assignments = updated;
+      return updated;
+    });
+    scheduleAutoSave();
+  }, [scheduleAutoSave]);
 
+  // Form change with auto-save
   const handleFormChange = useCallback((field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value,
-    }));
-  }, []);
+    setFormData(prev => {
+      const updated = {
+        ...prev,
+        [field]: value,
+      };
+      // Mark form data as pending for auto-save
+      pendingChangesRef.current.formData = updated;
+      return updated;
+    });
+    scheduleAutoSave();
+  }, [scheduleAutoSave]);
 
   const stationUnit = useMemo(() => 
     apparatus.find(a => a.unit_category === 'STATION'),
@@ -195,6 +350,7 @@ export default function IncidentHubModal({
     [apparatus]
   );
 
+  // Dispatched apparatus (from CAD data)
   const dispatchedApparatus = useMemo(() => {
     if (!selectedIncident?.cad_units) return [];
     
@@ -209,8 +365,23 @@ export default function IncidentHubModal({
     );
   }, [selectedIncident, apparatus]);
 
+  // All apparatus with slots (for early entry mode)
+  const allApparatusWithSlots = useMemo(() => {
+    const getSlotCount = (unit) => (unit.has_driver ? 1 : 0) + (unit.has_officer ? 1 : 0) + (unit.ff_slots || 0);
+    return apparatus.filter(a => 
+      (a.unit_category === 'APPARATUS' || !a.unit_category) && 
+      getSlotCount(a) > 0
+    );
+  }, [apparatus]);
+
+  // Manual save handler (Save button)
   const handleSave = async () => {
     if (!selectedIncident) return;
+
+    // Clear any pending auto-save
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
 
     setSaving(true);
     setSaveSuccess(false);
@@ -237,7 +408,8 @@ export default function IncidentHubModal({
         body: JSON.stringify({ assignments: assignmentPayload }),
       });
 
-      if (selectedIncident.status === 'CLOSED') {
+      // Save narrative fields (allowed in early entry mode OR when closed)
+      if (isClosed || earlyEntryEnabled) {
         const updatePayload = {};
         if (formData.situation_found) updatePayload.situation_found = formData.situation_found;
         if (formData.services_provided) updatePayload.services_provided = formData.services_provided;
@@ -247,6 +419,9 @@ export default function IncidentHubModal({
           await updateIncident(selectedIncident.id, updatePayload);
         }
       }
+
+      // Clear pending changes
+      pendingChangesRef.current = { assignments: null, formData: null };
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -284,6 +459,13 @@ export default function IncidentHubModal({
 
   const isActive = selectedIncident?.status === 'OPEN';
   const isClosed = selectedIncident?.status === 'CLOSED';
+  
+  // Show QuickEntrySection if: closed OR (open AND early entry enabled)
+  const showQuickEntry = isClosed || (isActive && earlyEntryEnabled);
+  
+  // Use all apparatus when early entry is enabled and incident is OPEN
+  // Use dispatched apparatus when closed (real CAD data available)
+  const apparatusForQuickEntry = (isActive && earlyEntryEnabled) ? allApparatusWithSlots : dispatchedApparatus;
 
   if (loadingRef) {
     return (
@@ -322,15 +504,50 @@ export default function IncidentHubModal({
             </div>
           </div>
           
-          {incidents.length > 1 && (
-            <div style={{ ...styles.badge, backgroundColor: branding.primaryColor }}>
-              {incidents.length} Incidents
-            </div>
-          )}
+          <div style={styles.headerRight}>
+            {/* Auto-save status indicator */}
+            {autoSaveStatus && (
+              <div style={{
+                fontSize: '11px',
+                color: autoSaveStatus === 'error' ? '#dc2626' : '#666',
+                marginRight: '12px',
+              }}>
+                {autoSaveStatus === 'saving' && '⏳ Saving...'}
+                {autoSaveStatus === 'saved' && '✓ Saved'}
+                {autoSaveStatus === 'error' && '⚠ Save failed'}
+              </div>
+            )}
+            
+            {incidents.length > 1 && (
+              <div style={{ ...styles.badge, backgroundColor: branding.primaryColor }}>
+                {incidents.length} Incidents
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Accent line under header - like the report */}
         <div style={{ height: '3px', backgroundColor: branding.primaryColor }} />
+
+        {/* Early Entry Toggle - only show when incident is OPEN */}
+        {isActive && !earlyEntryLoading && (
+          <div style={styles.earlyEntryBar}>
+            <label style={styles.earlyEntryToggle}>
+              <input
+                type="checkbox"
+                checked={earlyEntryEnabled}
+                onChange={toggleEarlyEntry}
+                style={{ marginRight: '8px' }}
+              />
+              <span style={styles.earlyEntryLabel}>
+                Enable Narrative and Unit Assignments
+              </span>
+              <span style={styles.earlyEntrySubtext}>
+                (Don't wait for closeout)
+              </span>
+            </label>
+          </div>
+        )}
 
         {/* Tabs */}
         <IncidentTabs
@@ -358,7 +575,7 @@ export default function IncidentHubModal({
             primaryColor={branding.primaryColor}
           />
 
-          {isClosed && (
+          {showQuickEntry && (
             <QuickEntrySection
               incident={selectedIncident}
               assignments={assignments}
@@ -367,8 +584,9 @@ export default function IncidentHubModal({
               onFormChange={handleFormChange}
               allPersonnel={personnel}
               getAssignedIds={getAssignedIds}
-              dispatchedApparatus={dispatchedApparatus}
+              dispatchedApparatus={apparatusForQuickEntry}
               primaryColor={branding.primaryColor}
+              showNarrative={true}
             />
           )}
 
@@ -455,6 +673,11 @@ const styles = {
     alignItems: 'center',
     gap: '16px',
   },
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
   logo: {
     width: '50px',
     height: '50px',
@@ -476,6 +699,26 @@ const styles = {
     fontSize: '12px',
     fontWeight: '600',
     color: '#fff',
+  },
+  earlyEntryBar: {
+    padding: '8px 20px',
+    backgroundColor: '#fef3c7',
+    borderBottom: '1px solid #fcd34d',
+  },
+  earlyEntryToggle: {
+    display: 'flex',
+    alignItems: 'center',
+    cursor: 'pointer',
+    fontSize: '13px',
+  },
+  earlyEntryLabel: {
+    fontWeight: '600',
+    color: '#92400e',
+  },
+  earlyEntrySubtext: {
+    marginLeft: '6px',
+    color: '#a16207',
+    fontStyle: 'italic',
   },
   content: {
     flex: 1,
