@@ -1566,6 +1566,30 @@ async def update_incident(
         }
     )
     
+    # ==========================================================================
+    # Auto-resolve incomplete_narrative tasks if narrative is now filled
+    # ==========================================================================
+    if incident.narrative and incident.narrative.strip():
+        try:
+            from models import ReviewTask
+            pending_tasks = db.query(ReviewTask).filter(
+                ReviewTask.entity_type == 'incident',
+                ReviewTask.entity_id == incident_id,
+                ReviewTask.task_type == 'incomplete_narrative',
+                ReviewTask.status == 'pending'
+            ).all()
+            
+            if pending_tasks:
+                now = datetime.now(timezone.utc)
+                for task in pending_tasks:
+                    task.status = 'resolved'
+                    task.resolved_at = now
+                    task.resolution_notes = 'Auto-resolved: narrative completed'
+                db.commit()
+                logger.info(f"Auto-resolved {len(pending_tasks)} incomplete_narrative task(s) for incident {incident_id}")
+        except Exception as e:
+            logger.error(f"Failed to auto-resolve incomplete_narrative tasks: {e}")
+    
     return {"status": "ok", "id": incident_id, "neris_id": incident.neris_id}
 
 
@@ -1626,6 +1650,29 @@ async def close_incident(
     except Exception as e:
         logger.error(f"Personnel reconciliation failed for incident {incident_id}: {e}")
         # Don't fail the close operation if reconciliation fails
+    
+    # ==========================================================================
+    # Check for incomplete narrative - create review task if empty
+    # ==========================================================================
+    try:
+        if not incident.narrative or not incident.narrative.strip():
+            from routers.review_tasks import create_review_task_for_incident
+            
+            create_review_task_for_incident(
+                db=db,
+                incident_id=incident.id,
+                task_type='incomplete_narrative',
+                title='Narrative not completed',
+                description=f"Incident {incident.internal_incident_number} was closed without a narrative.",
+                metadata={
+                    'incident_number': incident.internal_incident_number,
+                    'address': incident.address,
+                },
+                priority='normal',
+            )
+            logger.info(f"Created incomplete_narrative review task for incident {incident.internal_incident_number}")
+    except Exception as e:
+        logger.error(f"Failed to create incomplete_narrative task for incident {incident_id}: {e}")
     
     # Audit log - use edited_by (logged-in user) or fall back to completed_by
     audit_user_id = edited_by or incident.completed_by

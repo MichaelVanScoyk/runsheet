@@ -168,6 +168,7 @@ router = APIRouter()
 
 VALID_TASK_TYPES = [
     'personnel_reconciliation',  # Personnel on unit not in CAD CLEAR
+    'incomplete_narrative',      # Narrative field empty on close
     'comcat_review',             # CAD comments need categorization
     'neris_validation',          # Missing required NERIS fields
     'out_of_sequence',           # Incident number doesn't match date order
