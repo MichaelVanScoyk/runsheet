@@ -13,55 +13,12 @@
  * Only Officers and Admins can see this component. The component checks
  * userSession.role and returns null for Members.
  * 
- * BADGE BEHAVIOR:
- * ---------------
- * - Red background when pendingCount > 0
- * - Gray background when pendingCount === 0
- * - Count refreshes every 30 seconds via /api/review-tasks/count
- * 
- * DROPDOWN BEHAVIOR:
- * ------------------
- * - Opens on badge click
- * - Shows incidents with pending tasks, grouped
- * - Each incident shows: number (clickable), address, list of task titles
- * - Clicking incident number navigates to /?incident={id}
- * - Closes when clicking outside
- * 
- * EXTENDING THIS COMPONENT:
- * -------------------------
- * If you add a new task_type that needs special handling:
- * 
- * 1. The task will appear automatically (uses title from backend)
- * 
- * 2. For custom icons per task_type, modify the taskItems mapping:
- *    
- *    const taskIcons = {
- *      'personnel_reconciliation': '👥',
- *      'comcat_review': '💬',
- *      'neris_validation': '📋',
- *    };
- * 
- * 3. For custom resolution UI, you'll need to:
- *    - Create a resolution modal component
- *    - Check task.required_action.action_type
- *    - Render appropriate UI
- *    - Call /api/review-tasks/{id}/resolve when done
- * 
- * API ENDPOINTS USED:
- * -------------------
- * GET /api/review-tasks/count   - Pending count for badge
- * GET /api/review-tasks/grouped - Tasks grouped by incident for dropdown
- * 
- * NAVIGATION:
- * -----------
- * When user clicks an incident, we navigate to /?incident={id}
- * The IncidentsPage should handle this query param to open that incident.
- * (This navigation pattern may need adjustment based on your routing setup)
- * 
  * STYLING:
  * --------
- * Uses inline styles for portability. Accepts primaryColor prop from branding.
- * Badge and dropdown follow the sidebar color scheme.
+ * Uses CSS variables from App.css to match sidebar theme:
+ * - --bg-card, --bg-hover, --border-color
+ * - --primary-color, --secondary-color
+ * - --text-primary, --text-muted
  * 
  * =============================================================================
  */
@@ -77,16 +34,10 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
   const [loading, setLoading] = useState(false);
   const dropdownRef = useRef(null);
 
-  // ==========================================================================
-  // VISIBILITY CHECK
   // Only Officers and Admins can see review tasks
-  // ==========================================================================
   const canView = userSession?.role === 'OFFICER' || userSession?.role === 'ADMIN';
 
-  // ==========================================================================
-  // FETCH PENDING COUNT
-  // Runs on mount and every 30 seconds
-  // ==========================================================================
+  // Fetch pending count on mount and every 30 seconds
   useEffect(() => {
     if (!canView) return;
 
@@ -103,13 +54,11 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
     };
 
     fetchCount();
-    const interval = setInterval(fetchCount, 30000); // Refresh every 30s
+    const interval = setInterval(fetchCount, 30000);
     return () => clearInterval(interval);
   }, [canView]);
 
-  // ==========================================================================
-  // FETCH GROUPED TASKS WHEN DROPDOWN OPENS
-  // ==========================================================================
+  // Fetch grouped tasks when dropdown opens
   useEffect(() => {
     if (!showDropdown || !canView) return;
 
@@ -131,9 +80,7 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
     fetchGrouped();
   }, [showDropdown, canView]);
 
-  // ==========================================================================
-  // CLOSE DROPDOWN ON OUTSIDE CLICK
-  // ==========================================================================
+  // Close dropdown on outside click
   useEffect(() => {
     if (!showDropdown) return;
 
@@ -147,21 +94,13 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showDropdown]);
 
-  // ==========================================================================
-  // HANDLE INCIDENT CLICK
-  // Navigate to incidents page with incident param
-  // The IncidentsPage should handle opening this incident
-  // ==========================================================================
+  // Handle incident click - navigate to incidents page
   const handleIncidentClick = (incidentId) => {
     setShowDropdown(false);
-    // Navigate to incidents page with the incident selected
-    // TODO: IncidentsPage needs to handle ?incident= query param
     navigate(`/?incident=${incidentId}`);
   };
 
-  // ==========================================================================
-  // TASK TYPE ICONS (extend as needed)
-  // ==========================================================================
+  // Task type icons
   const getTaskIcon = (taskType) => {
     const icons = {
       'personnel_reconciliation': '👥',
@@ -172,72 +111,58 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
     return icons[taskType] || '⚠️';
   };
 
-  // Don't render for non-officers
   if (!canView) return null;
 
+  const hasPending = pendingCount > 0;
+
   return (
-    <div style={styles.container} ref={dropdownRef}>
-      {/* Badge button */}
+    <div className="review-tasks-container" ref={dropdownRef}>
       <button
-        style={{
-          ...styles.badge,
-          backgroundColor: pendingCount > 0 ? '#dc2626' : '#6b7280',
-        }}
+        className={`review-tasks-badge ${hasPending ? 'has-pending' : ''}`}
         onClick={() => setShowDropdown(!showDropdown)}
         title={`${pendingCount} pending review task${pendingCount !== 1 ? 's' : ''}`}
       >
-        <span style={styles.icon}>⚠️</span>
-        <span style={styles.label}>Review</span>
-        {pendingCount > 0 && (
-          <span style={styles.count}>{pendingCount}</span>
+        <span className="review-icon">📋</span>
+        <span className="review-label">Review Tasks</span>
+        {hasPending && (
+          <span className="review-count">{pendingCount}</span>
         )}
       </button>
 
-      {/* Dropdown panel */}
       {showDropdown && (
-        <div style={styles.dropdown}>
-          {/* Header */}
-          <div style={{ ...styles.dropdownHeader, borderBottomColor: primaryColor }}>
-            <span style={styles.dropdownTitle}>Pending Review</span>
-            <span style={styles.dropdownCount}>
+        <div className="review-dropdown">
+          <div className="review-dropdown-header">
+            <span className="review-dropdown-title">Pending Review</span>
+            <span className="review-dropdown-count">
               {pendingCount} task{pendingCount !== 1 ? 's' : ''}
             </span>
           </div>
 
-          {/* Content */}
           {loading ? (
-            <div style={styles.loading}>Loading...</div>
+            <div className="review-loading">Loading...</div>
           ) : groupedTasks.length === 0 ? (
-            <div style={styles.empty}>No pending tasks</div>
+            <div className="review-empty">No pending tasks</div>
           ) : (
-            <div style={styles.taskList}>
+            <div className="review-task-list">
               {groupedTasks.map((incident) => (
-                <div key={incident.incident_id} style={styles.incidentGroup}>
-                  {/* Clickable incident header */}
+                <div key={incident.incident_id} className="review-incident-group">
                   <button
-                    style={styles.incidentLink}
+                    className="review-incident-link"
                     onClick={() => handleIncidentClick(incident.incident_id)}
                   >
-                    <span style={{ ...styles.incidentNumber, color: primaryColor }}>
+                    <span className="review-incident-number">
                       {incident.incident_number}
                     </span>
-                    <span style={styles.incidentAddress}>
+                    <span className="review-incident-address">
                       {incident.incident_address || 'No address'}
                     </span>
                   </button>
                   
-                  {/* Task list for this incident */}
-                  <ul style={styles.taskItems}>
+                  <ul className="review-task-items">
                     {incident.tasks.map((task) => (
-                      <li key={task.id} style={styles.taskItem}>
-                        <span style={{
-                          ...styles.taskPriority,
-                          backgroundColor: task.priority === 'high' ? '#fef2f2' : '#f9fafb',
-                          color: task.priority === 'high' ? '#991b1b' : '#374151',
-                        }}>
-                          <span style={styles.taskIcon}>{getTaskIcon(task.task_type)}</span>
-                          {task.title}
-                        </span>
+                      <li key={task.id} className={`review-task-item priority-${task.priority}`}>
+                        <span className="review-task-icon">{getTaskIcon(task.task_type)}</span>
+                        {task.title}
                       </li>
                     ))}
                   </ul>
@@ -247,138 +172,178 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
           )}
         </div>
       )}
+
+      <style>{`
+        .review-tasks-container {
+          position: relative;
+          margin-top: 0.5rem;
+        }
+
+        .review-tasks-badge {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          width: 100%;
+          padding: 0.65rem 0.75rem;
+          background: var(--bg-card);
+          border: 1px solid var(--border-color);
+          border-left: 3px solid var(--border-color);
+          border-radius: 6px;
+          cursor: pointer;
+          color: var(--text-muted);
+          font-size: 0.9rem;
+          font-weight: 500;
+          transition: all 0.15s;
+        }
+
+        .review-tasks-badge:hover {
+          background: var(--bg-hover);
+          color: var(--primary-color);
+          border-left-color: var(--secondary-color);
+        }
+
+        .review-tasks-badge.has-pending {
+          border-left-color: var(--secondary-color);
+          color: var(--text-primary);
+        }
+
+        .review-icon {
+          font-size: 1rem;
+        }
+
+        .review-label {
+          flex: 1;
+          text-align: left;
+        }
+
+        .review-count {
+          background: var(--primary-color);
+          color: #fff;
+          padding: 0.15rem 0.5rem;
+          border-radius: 10px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          min-width: 20px;
+          text-align: center;
+        }
+
+        .review-dropdown {
+          position: absolute;
+          top: 100%;
+          left: 0;
+          right: 0;
+          margin-top: 4px;
+          background: var(--bg-card);
+          border: 1px solid var(--border-color);
+          border-top: 3px solid var(--secondary-color);
+          border-radius: 6px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          z-index: 1000;
+          max-height: 400px;
+          overflow-y: auto;
+        }
+
+        .review-dropdown-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 0.75rem;
+          border-bottom: 2px solid var(--primary-color);
+          background: var(--bg-hover);
+        }
+
+        .review-dropdown-title {
+          font-weight: 600;
+          color: var(--primary-color);
+          font-size: 0.9rem;
+        }
+
+        .review-dropdown-count {
+          font-size: 0.75rem;
+          color: var(--text-muted);
+        }
+
+        .review-loading,
+        .review-empty {
+          padding: 1.5rem;
+          text-align: center;
+          color: var(--text-muted);
+          font-size: 0.85rem;
+        }
+
+        .review-task-list {
+          padding: 0.5rem 0;
+        }
+
+        .review-incident-group {
+          padding: 0.5rem 0.75rem;
+          border-bottom: 1px solid var(--border-color);
+        }
+
+        .review-incident-group:last-child {
+          border-bottom: none;
+        }
+
+        .review-incident-link {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          width: 100%;
+          padding: 0.25rem 0;
+          border: none;
+          background: none;
+          cursor: pointer;
+          text-align: left;
+          border-radius: 4px;
+          transition: background 0.15s;
+        }
+
+        .review-incident-link:hover {
+          background: var(--bg-hover);
+        }
+
+        .review-incident-number {
+          font-weight: 600;
+          font-size: 0.9rem;
+          color: var(--primary-color);
+        }
+
+        .review-incident-address {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .review-task-items {
+          margin: 0.5rem 0 0 0;
+          padding: 0 0 0 0.75rem;
+          list-style: none;
+        }
+
+        .review-task-item {
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
+          padding: 0.25rem 0.5rem;
+          margin-bottom: 0.25rem;
+          background: var(--bg-hover);
+          border-radius: 4px;
+          font-size: 0.75rem;
+          color: var(--text-primary);
+        }
+
+        .review-task-item.priority-high {
+          background: #fef2f2;
+          color: #991b1b;
+          border-left: 2px solid #dc2626;
+        }
+
+        .review-task-icon {
+          font-size: 0.8rem;
+        }
+      `}</style>
     </div>
   );
 }
-
-// =============================================================================
-// STYLES
-// Using inline styles for portability
-// =============================================================================
-
-const styles = {
-  container: {
-    position: 'relative',
-    marginTop: '10px',
-    marginBottom: '10px',
-  },
-  badge: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    width: '100%',
-    padding: '8px 12px',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    color: '#fff',
-    fontSize: '0.85rem',
-    fontWeight: '500',
-  },
-  icon: {
-    fontSize: '1rem',
-  },
-  label: {
-    flex: 1,
-    textAlign: 'left',
-  },
-  count: {
-    backgroundColor: '#fff',
-    color: '#dc2626',
-    padding: '2px 6px',
-    borderRadius: '10px',
-    fontSize: '0.75rem',
-    fontWeight: '600',
-    minWidth: '20px',
-    textAlign: 'center',
-  },
-  dropdown: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    marginTop: '4px',
-    backgroundColor: '#fff',
-    border: '1px solid #e5e7eb',
-    borderRadius: '8px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-    zIndex: 1000,
-    maxHeight: '400px',
-    overflowY: 'auto',
-  },
-  dropdownHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '10px 12px',
-    borderBottom: '2px solid',
-    backgroundColor: '#f9fafb',
-  },
-  dropdownTitle: {
-    fontWeight: '600',
-    color: '#111827',
-    fontSize: '0.9rem',
-  },
-  dropdownCount: {
-    fontSize: '0.75rem',
-    color: '#6b7280',
-  },
-  loading: {
-    padding: '20px',
-    textAlign: 'center',
-    color: '#6b7280',
-    fontSize: '0.85rem',
-  },
-  empty: {
-    padding: '20px',
-    textAlign: 'center',
-    color: '#9ca3af',
-    fontSize: '0.85rem',
-  },
-  taskList: {
-    padding: '8px 0',
-  },
-  incidentGroup: {
-    padding: '8px 12px',
-    borderBottom: '1px solid #f3f4f6',
-  },
-  incidentLink: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '2px',
-    width: '100%',
-    padding: '4px 0',
-    border: 'none',
-    background: 'none',
-    cursor: 'pointer',
-    textAlign: 'left',
-  },
-  incidentNumber: {
-    fontWeight: '600',
-    fontSize: '0.9rem',
-  },
-  incidentAddress: {
-    fontSize: '0.8rem',
-    color: '#6b7280',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  },
-  taskItems: {
-    margin: '6px 0 0 0',
-    padding: '0 0 0 12px',
-    listStyle: 'none',
-  },
-  taskItem: {
-    marginBottom: '4px',
-  },
-  taskIcon: {
-    marginRight: '4px',
-  },
-  taskPriority: {
-    display: 'inline-block',
-    padding: '2px 8px',
-    borderRadius: '4px',
-    fontSize: '0.75rem',
-  },
-};
