@@ -22,10 +22,15 @@ export default function PersonnelGrid() {
   
   if (realTrucks.length === 0) return null;
   
-  // Calculate slot count per truck from apparatus config
+  // ==========================================================================
+  // SLOT COUNT FILTER - Also exists in:
+  //   - frontend/src/components/IncidentHubModal/QuickEntrySection.jsx
+  //   - backend/report_engine/renderers.py (_render_apparatus_grid)
+  // TODO: If touching this logic again, consolidate into shared helper function
+  // ==========================================================================
   const getSlotCount = (truck) => (truck.has_driver ? 1 : 0) + (truck.has_officer ? 1 : 0) + (truck.ff_slots || 0);
   
-  // Filter out units with 0 slots (e.g., chief vehicles)
+  // Filter out units with 0 slots (e.g., chief vehicles like CHF48, FP48)
   const trucksWithSlots = realTrucks.filter(t => getSlotCount(t) > 0);
   
   if (trucksWithSlots.length === 0) return null;

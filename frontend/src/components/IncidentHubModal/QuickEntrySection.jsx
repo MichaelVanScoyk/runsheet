@@ -12,7 +12,17 @@ function QuickEntrySection({
   primaryColor = '#1a5f2a',
   showNarrative = true,
 }) {
-  const apparatusUnits = dispatchedApparatus.filter(a => a.unit_category === 'APPARATUS' || !a.unit_category);
+  // ==========================================================================
+  // SLOT COUNT FILTER - Also exists in:
+  //   - frontend/src/components/RunSheet/sections/PersonnelGrid.jsx
+  //   - backend/report_engine/renderers.py (_render_apparatus_grid)
+  // TODO: If touching this logic again, consolidate into shared helper function
+  // ==========================================================================
+  const getSlotCount = (unit) => (unit.has_driver ? 1 : 0) + (unit.has_officer ? 1 : 0) + (unit.ff_slots || 0);
+  
+  const apparatusUnits = dispatchedApparatus
+    .filter(a => a.unit_category === 'APPARATUS' || !a.unit_category)
+    .filter(a => getSlotCount(a) > 0);  // Exclude 0-slot units (CHF48, FP48, etc.)
 
   const getPersonName = (id) => {
     const p = allPersonnel.find(x => x.id === id);

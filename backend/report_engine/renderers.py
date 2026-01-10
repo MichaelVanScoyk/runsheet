@@ -252,14 +252,33 @@ def r_personnel_station(ctx: RenderContext, block: dict) -> str:
     return _render_personnel_grid(ctx, 'STATION', block)
 
 
+# =============================================================================
+# SLOT COUNT FILTER - Also exists in:
+#   - frontend/src/components/RunSheet/sections/PersonnelGrid.jsx
+#   - frontend/src/components/IncidentHubModal/QuickEntrySection.jsx
+# TODO: If touching this logic again, consolidate into shared helper function
+# =============================================================================
+def _get_slot_count(unit: dict) -> int:
+    """Calculate total personnel slots for a unit (driver + officer + ff_slots)."""
+    return (1 if unit.get('has_driver', False) else 0) + \
+           (1 if unit.get('has_officer', False) else 0) + \
+           (unit.get('ff_slots') or 0)
+
+
 def _get_units_for_category(ctx: RenderContext, category: str, show_when_empty: bool) -> List[dict]:
     """Get units for a category - either assigned only, or all if showWhenEmpty."""
     if show_when_empty:
         # Return ALL units in this category (for placeholder display)
-        return [a for a in ctx.apparatus_list if a.get('unit_category') == category]
+        units = [a for a in ctx.apparatus_list if a.get('unit_category') == category]
     else:
         # Return only units with assignments
-        return ctx.get_assigned_units(category)
+        units = ctx.get_assigned_units(category)
+    
+    # For APPARATUS category, filter out 0-slot units (e.g., CHF48, FP48)
+    if category == 'APPARATUS':
+        units = [u for u in units if _get_slot_count(u) > 0]
+    
+    return units
 
 
 def _render_personnel_grid(ctx: RenderContext, category: str, block: dict) -> str:
