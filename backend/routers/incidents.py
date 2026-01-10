@@ -169,6 +169,184 @@ def log_incident_audit(
 # PYDANTIC SCHEMAS - NERIS Compatible
 # =============================================================================
 
+# =============================================================================
+# PERSONNEL RECONCILIATION HELPER (Phase 2: CAD CLEAR Reconciliation)
+# =============================================================================
+
+def reconcile_personnel_on_close(db: Session, incident: Incident) -> dict:
+    """
+    Reconcile personnel assignments when CAD CLEAR arrives.
+    
+    Compares assigned units vs CAD CLEAR units. If personnel are assigned to
+    units NOT in the CAD CLEAR data, they are automatically moved to STATION.
+    A review task is created for officer attention.
+    
+    This runs during incident close (when CAD CLEAR is received).
+    
+    Returns:
+        dict with 'moved_count', 'moved_personnel', 'orphan_units', 'task_created'
+    """
+    result = {
+        'moved_count': 0,
+        'moved_personnel': [],
+        'orphan_units': [],
+        'task_created': False,
+    }
+    
+    # Get CAD units from the incident (populated by CAD CLEAR)
+    cad_units = incident.cad_units or []
+    if not cad_units:
+        # No CAD units = no reconciliation needed (manual incident or no CLEAR data)
+        return result
+    
+    # Build set of unit IDs that were actually on CAD CLEAR
+    cad_unit_ids = set()
+    for cu in cad_units:
+        unit_id = cu.get('unit_id')
+        if unit_id:
+            cad_unit_ids.add(unit_id)
+    
+    if not cad_unit_ids:
+        return result
+    
+    # Find STATION apparatus (where we'll move orphan personnel)
+    station_apparatus = db.query(Apparatus).filter(
+        Apparatus.unit_category == 'STATION',
+        Apparatus.active == True
+    ).first()
+    
+    if not station_apparatus:
+        logger.warning(f"No STATION apparatus found for reconciliation on incident {incident.id}")
+        return result
+    
+    # Get all current personnel assignments for this incident
+    assignments = db.query(IncidentPersonnel).filter(
+        IncidentPersonnel.incident_id == incident.id
+    ).all()
+    
+    if not assignments:
+        return result
+    
+    # Group assignments by unit, identify orphans
+    orphan_personnel = []  # Personnel on units not in CAD CLEAR
+    
+    for assignment in assignments:
+        # Get the unit and apparatus for this assignment
+        unit = db.query(IncidentUnit).filter(IncidentUnit.id == assignment.incident_unit_id).first()
+        if not unit:
+            continue
+        
+        apparatus = db.query(Apparatus).filter(Apparatus.id == unit.apparatus_id).first()
+        if not apparatus:
+            continue
+        
+        # Skip STATION and DIRECT - these don't get reconciled against CAD
+        if apparatus.unit_category in ('STATION', 'DIRECT'):
+            continue
+        
+        # Check if this unit is in the CAD CLEAR data
+        if apparatus.unit_designator not in cad_unit_ids:
+            orphan_personnel.append({
+                'assignment': assignment,
+                'unit': unit,
+                'apparatus': apparatus,
+                'personnel_id': assignment.personnel_id,
+                'personnel_name': f"{assignment.personnel_last_name}, {assignment.personnel_first_name}",
+            })
+            
+            if apparatus.unit_designator not in result['orphan_units']:
+                result['orphan_units'].append(apparatus.unit_designator)
+    
+    if not orphan_personnel:
+        return result
+    
+    # Find or create STATION incident_unit for this incident
+    station_unit = db.query(IncidentUnit).filter(
+        IncidentUnit.incident_id == incident.id,
+        IncidentUnit.apparatus_id == station_apparatus.id
+    ).first()
+    
+    if not station_unit:
+        station_unit = IncidentUnit(
+            incident_id=incident.id,
+            apparatus_id=station_apparatus.id,
+            crew_count=0,
+        )
+        db.add(station_unit)
+        db.flush()
+    
+    # Get current max slot_index in STATION for this incident
+    max_slot = db.execute(text("""
+        SELECT COALESCE(MAX(slot_index), -1) FROM incident_personnel
+        WHERE incident_unit_id = :unit_id
+    """), {"unit_id": station_unit.id}).scalar()
+    next_slot = (max_slot or -1) + 1
+    
+    # Move each orphan personnel to STATION
+    for orphan in orphan_personnel:
+        assignment = orphan['assignment']
+        
+        # Update assignment to point to STATION
+        assignment.incident_unit_id = station_unit.id
+        assignment.slot_index = next_slot
+        assignment.assignment_source = 'RECONCILED'  # Mark as auto-moved
+        
+        next_slot += 1
+        result['moved_count'] += 1
+        result['moved_personnel'].append({
+            'personnel_id': orphan['personnel_id'],
+            'personnel_name': orphan['personnel_name'],
+            'from_unit': orphan['apparatus'].unit_designator,
+        })
+    
+    # Update STATION unit crew count
+    station_unit.crew_count = db.query(IncidentPersonnel).filter(
+        IncidentPersonnel.incident_unit_id == station_unit.id
+    ).count()
+    
+    # Create review task if we moved anyone
+    if result['moved_count'] > 0:
+        try:
+            from routers.review_tasks import create_review_task_for_incident
+            
+            personnel_names = [p['personnel_name'] for p in result['moved_personnel']]
+            personnel_ids = [p['personnel_id'] for p in result['moved_personnel']]
+            
+            title = f"{result['moved_count']} personnel moved to STATION"
+            description = (
+                f"Personnel were assigned to unit(s) {', '.join(result['orphan_units'])} "
+                f"which were not in the CAD CLEAR data. They have been automatically "
+                f"moved to STATION for review.\n\n"
+                f"Personnel moved: {', '.join(personnel_names)}"
+            )
+            
+            create_review_task_for_incident(
+                db=db,
+                incident_id=incident.id,
+                task_type='personnel_reconciliation',
+                title=title,
+                description=description,
+                metadata={
+                    'orphan_units': result['orphan_units'],
+                    'personnel_ids': personnel_ids,
+                    'personnel_names': personnel_names,
+                    'moved_to': 'STATION',
+                },
+                priority='normal',
+            )
+            result['task_created'] = True
+            
+            logger.info(
+                f"Incident {incident.internal_incident_number}: "
+                f"Moved {result['moved_count']} personnel from {result['orphan_units']} to STATION"
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to create review task for reconciliation: {e}")
+    
+    return result
+
+
 class NerisLocationUse(BaseModel):
     """NERIS mod_location_use structure"""
     use_type: str                           # "RESIDENTIAL"
@@ -1420,6 +1598,35 @@ async def close_incident(
     if not incident.cad_clear_received_at:
         incident.cad_clear_received_at = datetime.now(timezone.utc)
     
+    # ==========================================================================
+    # PHASE 2: CAD CLEAR Personnel Reconciliation
+    # Compare assigned units vs CAD CLEAR units, move orphans to STATION
+    # ==========================================================================
+    reconciliation_result = None
+    try:
+        reconciliation_result = reconcile_personnel_on_close(db, incident)
+        
+        if reconciliation_result and reconciliation_result.get('moved_count', 0) > 0:
+            # Add reconciliation info to audit log
+            moved_names = [p['personnel_name'] for p in reconciliation_result['moved_personnel']]
+            orphan_units = reconciliation_result['orphan_units']
+            
+            log_incident_audit(
+                db=db,
+                action="RECONCILE",
+                incident=incident,
+                completed_by_id=None,  # System action
+                summary=f"Auto-moved {reconciliation_result['moved_count']} personnel from {', '.join(orphan_units)} to STATION",
+                fields_changed={
+                    "personnel_moved": moved_names,
+                    "orphan_units": orphan_units,
+                    "review_task_created": reconciliation_result.get('task_created', False)
+                }
+            )
+    except Exception as e:
+        logger.error(f"Personnel reconciliation failed for incident {incident_id}: {e}")
+        # Don't fail the close operation if reconciliation fails
+    
     # Audit log - use edited_by (logged-in user) or fall back to completed_by
     audit_user_id = edited_by or incident.completed_by
     log_incident_audit(
@@ -1451,7 +1658,16 @@ async def close_incident(
         }
     )
     
-    return {"status": "ok", "id": incident_id}
+    # Include reconciliation info in response if any personnel were moved
+    response = {"status": "ok", "id": incident_id}
+    if reconciliation_result and reconciliation_result.get('moved_count', 0) > 0:
+        response["reconciliation"] = {
+            "moved_count": reconciliation_result['moved_count'],
+            "orphan_units": reconciliation_result['orphan_units'],
+            "task_created": reconciliation_result.get('task_created', False)
+        }
+    
+    return response
 
 
 # =============================================================================
