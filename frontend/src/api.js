@@ -287,7 +287,7 @@ export const getAuditLog = (limit = 100, entityType = null) => {
 };
 
 // ============================================================================
-// USER SESSION AUTH (15 min timeout, cross-tab via localStorage)
+// USER SESSION AUTH (cross-tab via localStorage)
 // ============================================================================
 // 
 // CROSS-TAB SUPPORT (Updated January 2025):
@@ -296,23 +296,23 @@ export const getAuditLog = (limit = 100, entityType = null) => {
 // - Logout/timeout in one tab = logged out across all tabs
 // - Other tabs detect changes via storage event listener (see App.jsx)
 //
-// Previous implementation used sessionStorage (per-tab isolation).
+// SESSION TIMEOUT:
+// - Timeout is handled by useInactivityTimeout hook (react-idle-timer)
+// - 10 min inactivity = redirect to incidents page
+// - 15 min inactivity = clear session (logout)
+// - This file only stores/retrieves session data, no timeout logic here
+//
+// Previous implementation had duplicate timeout logic here that conflicted
+// with the idle timer, causing premature logouts.
 
 const SESSION_KEY = 'userSession';
-const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes in ms
 
 export const getUserSession = () => {
   const data = localStorage.getItem(SESSION_KEY);
   if (!data) return null;
   
   try {
-    const session = JSON.parse(data);
-    // Check if expired
-    if (Date.now() - session.lastActivity > SESSION_TIMEOUT) {
-      clearUserSession();
-      return null;
-    }
-    return session;
+    return JSON.parse(data);
   } catch {
     return null;
   }
@@ -321,34 +321,13 @@ export const getUserSession = () => {
 export const setUserSession = (authResult) => {
   const session = {
     ...authResult,
-    lastActivity: Date.now(),
     loginTime: Date.now(),
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 };
 
-export const updateSessionActivity = () => {
-  const session = getUserSession();
-  if (session) {
-    session.lastActivity = Date.now();
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  }
-};
-
 export const clearUserSession = () => {
   localStorage.removeItem(SESSION_KEY);
-};
-
-export const isSessionExpired = () => {
-  const data = localStorage.getItem(SESSION_KEY);
-  if (!data) return true;
-  
-  try {
-    const session = JSON.parse(data);
-    return Date.now() - session.lastActivity > SESSION_TIMEOUT;
-  } catch {
-    return true;
-  }
 };
 
 // Key exported for storage event listeners in other components

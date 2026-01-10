@@ -1,7 +1,10 @@
 /**
  * useInactivityTimeout Hook
  * 
- * Handles automatic session timeout after 15 minutes of user inactivity.
+ * Handles automatic inactivity timeouts with two tiers:
+ * - 10 minutes: Redirect to incidents page ("/")
+ * - 15 minutes: Log out user session (personnel login)
+ * 
  * Uses react-idle-timer library for robust idle detection.
  * 
  * CROSS-TAB SUPPORT (Updated January 2025):
@@ -11,9 +14,9 @@
  * - Uses BroadcastChannel API with localStorage fallback
  * 
  * Behavior:
- * - If user is logged in (personnel session) and goes idle: logs them out silently
- * - If user is on any page other than "/" (IncidentsPage) and goes idle: redirects to "/"
- * - If user is already on "/" and not logged in: no action (they're already home)
+ * - 10 min idle: Redirect to "/" (incidents page) from any other page
+ * - 15 min idle: Clear personnel session (logout)
+ * - If already on "/" and not logged in at 15 min: no action
  * 
  * NOTE: This does NOT affect tenant session (department-level login via cookie).
  * Tenant session only expires on explicit logout.
@@ -21,13 +24,14 @@
  * @module hooks/useInactivityTimeout
  */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useIdleTimer } from 'react-idle-timer';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { clearUserSession, getUserSession, USER_SESSION_KEY } from '../api';
 
-// 15 minutes in milliseconds
-const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+// Timeout values in milliseconds
+const REDIRECT_TIMEOUT_MS = 10 * 60 * 1000;  // 10 minutes - redirect to incidents page
+const LOGOUT_TIMEOUT_MS = 15 * 60 * 1000;    // 15 minutes - log out user session
 
 /**
  * Custom hook that manages inactivity timeout for the application.
@@ -39,31 +43,61 @@ const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 export function useInactivityTimeout({ onUserLogout } = {}) {
   const navigate = useNavigate();
   const location = useLocation();
+  const logoutTimerRef = useRef(null);
 
   /**
-   * Called when user has been idle for INACTIVITY_TIMEOUT_MS
-   * Silently logs out user session and redirects to incidents page
+   * Clear the logout timer
    */
-  const handleIdle = useCallback(() => {
-    const session = getUserSession();
-    const isOnIncidentsPage = location.pathname === '/';
+  const clearLogoutTimer = useCallback(() => {
+    if (logoutTimerRef.current) {
+      clearTimeout(logoutTimerRef.current);
+      logoutTimerRef.current = null;
+    }
+  }, []);
 
-    // If user is logged in (personnel session), clear it
+  /**
+   * Handle user logout (called at 15 min)
+   */
+  const handleLogout = useCallback(() => {
+    const session = getUserSession();
     if (session) {
       clearUserSession();
-      // Notify parent component to sync state
       if (onUserLogout) {
         onUserLogout();
       }
-      console.log('[InactivityTimeout] User session cleared due to inactivity');
+      console.log('[InactivityTimeout] User session cleared due to 15 min inactivity');
     }
+  }, [onUserLogout]);
+
+  /**
+   * Called when user has been idle for 10 minutes (REDIRECT_TIMEOUT_MS)
+   * Redirects to incidents page and starts the logout timer for 5 more minutes
+   */
+  const handleRedirectIdle = useCallback(() => {
+    const isOnIncidentsPage = location.pathname === '/';
 
     // Redirect to incidents page if not already there
     if (!isOnIncidentsPage) {
-      console.log('[InactivityTimeout] Redirecting to incidents page due to inactivity');
+      console.log('[InactivityTimeout] Redirecting to incidents page due to 10 min inactivity');
       navigate('/');
     }
-  }, [location.pathname, navigate, onUserLogout]);
+
+    // Start the logout timer for the remaining 5 minutes (15 - 10 = 5)
+    clearLogoutTimer();
+    logoutTimerRef.current = setTimeout(() => {
+      handleLogout();
+    }, LOGOUT_TIMEOUT_MS - REDIRECT_TIMEOUT_MS);
+    
+    console.log('[InactivityTimeout] Logout timer started (5 min remaining)');
+  }, [location.pathname, navigate, clearLogoutTimer, handleLogout]);
+
+  /**
+   * Called when user becomes active again
+   * Clears the logout timer if it was running
+   */
+  const handleActive = useCallback(() => {
+    clearLogoutTimer();
+  }, [clearLogoutTimer]);
 
   /**
    * Listen for storage events from other tabs
@@ -91,10 +125,17 @@ export function useInactivityTimeout({ onUserLogout } = {}) {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, [location.pathname, navigate, onUserLogout]);
 
+  // Cleanup logout timer on unmount
+  useEffect(() => {
+    return () => clearLogoutTimer();
+  }, [clearLogoutTimer]);
+
   // Initialize the idle timer with cross-tab support
+  // This fires at 10 minutes for the redirect
   const { reset, getRemainingTime, isIdle } = useIdleTimer({
-    timeout: INACTIVITY_TIMEOUT_MS,
-    onIdle: handleIdle,
+    timeout: REDIRECT_TIMEOUT_MS,
+    onIdle: handleRedirectIdle,
+    onActive: handleActive,
     debounce: 500, // Debounce activity detection by 500ms for performance
     events: [
       'mousemove',
@@ -122,9 +163,15 @@ export function useInactivityTimeout({ onUserLogout } = {}) {
     syncTimers: 500,
   });
 
+  // Custom reset that also clears the logout timer
+  const resetAll = useCallback(() => {
+    clearLogoutTimer();
+    reset();
+  }, [clearLogoutTimer, reset]);
+
   return {
     // Expose reset in case we need to manually reset the timer
-    resetInactivityTimer: reset,
+    resetInactivityTimer: resetAll,
     // Expose these for debugging if needed
     getRemainingTime,
     isIdle,
