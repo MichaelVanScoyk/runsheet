@@ -118,9 +118,11 @@ DEFAULT_PRINT_LAYOUT = {
         # Row 5: NERIS Actions
         {"id": "neris_actions", "name": "NERIS Actions Taken", "enabled": False, "page": 2, "row": 5, "order": 1, "width": "full"},
         
-        # Row 6: Event Comments (CAD dispatch comments log)
-        # Options: categorize=True (grouped by type) or categorize=False (chronological)
-        {"id": "event_comments", "name": "Event Comments", "enabled": True, "page": 2, "row": 6, "order": 1, "width": "full", "categorize": True},
+        # Row 6: Event Comments - Chronological (raw CAD log, unaltered)
+        {"id": "event_comments_chronological", "name": "Event Comments", "enabled": True, "page": 2, "row": 6, "order": 1, "width": "full"},
+        
+        # Row 7: Event Comments - Categorized (grouped by ML-predicted category)
+        {"id": "event_comments_categorized", "name": "Event Comments (Categorized)", "enabled": False, "page": 2, "row": 7, "order": 1, "width": "full"},
         
         # Spacers - blank rows for layout control
         {"id": "spacer_1", "name": "Spacer 1", "enabled": False, "page": 2, "row": 90, "order": 1, "width": "full"},

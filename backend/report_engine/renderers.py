@@ -584,25 +584,8 @@ def r_neris_actions(ctx: RenderContext, block: dict) -> str:
     return f'<div class="field"><span class="label">NERIS Actions:</span> {esc(", ".join(v))}</div>'
 
 
-def r_event_comments(ctx: RenderContext, block: dict) -> str:
-    """
-    Render CAD Event Comments for PDF report.
-    
-    Reads from cad_event_comments JSONB field which contains:
-    {
-        "comments": [...],
-        "detected_timestamps": [...],
-        "unit_crew_counts": [...],
-        "parsed_at": "...",
-        "parser_version": "1.0"
-    }
-    
-    Supports two display modes:
-    - categorized: Groups comments by type (CALLER, TACTICAL, OPERATIONS, UNIT)
-    - chronological: Simple time-ordered list
-    
-    Automatically filters system noise (tracking devices, preempts, etc.)
-    """
+def _get_event_comments(ctx: RenderContext) -> List[dict]:
+    """Extract and filter event comments from incident data."""
     cad_event_data = ctx.get('cad_event_comments') or {}
     
     # Handle both old list format and new dict format
@@ -616,21 +599,50 @@ def r_event_comments(ctx: RenderContext, block: dict) -> str:
         comments = []
     
     if not comments:
-        return ''
+        return []
     
     # Filter out noise comments for display
-    display_comments = [c for c in comments if not c.get('is_noise', False)]
+    return [c for c in comments if not c.get('is_noise', False)]
+
+
+def r_event_comments_chronological(ctx: RenderContext, block: dict) -> str:
+    """
+    Render CAD Event Comments in chronological order (unaltered).
+    
+    Shows all comments in time order with:
+    - Time
+    - Operator (who entered it)
+    - Text (original, unmodified)
+    
+    This is the raw CAD log view without ML categorization.
+    """
+    display_comments = _get_event_comments(ctx)
     
     if not display_comments:
         return ''
     
-    # Check display mode from block settings
-    categorize = block.get('categorize', True)
+    return _render_chronological_comments(display_comments)
+
+
+def r_event_comments_categorized(ctx: RenderContext, block: dict) -> str:
+    """
+    Render CAD Event Comments grouped by ML-predicted category.
     
-    if categorize:
-        return _render_categorized_comments(display_comments)
-    else:
-        return _render_chronological_comments(display_comments)
+    Groups comments into:
+    - CALLER: Caller information
+    - TACTICAL: Command & tactical operations
+    - OPERATIONS: Resource coordination
+    - UNIT: Unit status updates
+    - OTHER: Uncategorized
+    
+    Uses ComCat ML model for categorization.
+    """
+    display_comments = _get_event_comments(ctx)
+    
+    if not display_comments:
+        return ''
+    
+    return _render_categorized_comments(display_comments)
 
 
 def r_spacer(ctx: RenderContext, block: dict) -> str:
@@ -745,7 +757,8 @@ FIELD_RENDERERS: Dict[str, Callable[[RenderContext, dict], str]] = {
     'neris_aid_departments': r_neris_aid_departments,
     'neris_incident_types': r_neris_incident_types,
     'neris_actions': r_neris_actions,
-    'event_comments': r_event_comments,
+    'event_comments_chronological': r_event_comments_chronological,
+    'event_comments_categorized': r_event_comments_categorized,
     'spacer_1': r_spacer,
     'spacer_2': r_spacer,
     'spacer_3': r_spacer,
