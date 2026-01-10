@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useRunSheet } from '../RunSheetContext';
 
 export default function IncidentInfo() {
@@ -8,20 +7,12 @@ export default function IncidentInfo() {
     handleChange, 
     municipalities,
     userSession,
+    unlockedFields,
+    toggleUnlock,
   } = useRunSheet();
   
   const isLocked = !!incident;
   const isAdmin = userSession?.role === 'ADMIN';
-  
-  // Track which locked fields have been unlocked by admin
-  const [unlockedFields, setUnlockedFields] = useState({});
-  
-  const toggleUnlock = (field) => {
-    setUnlockedFields(prev => ({
-      ...prev,
-      [field]: !prev[field]
-    }));
-  };
   
   const isFieldLocked = (field) => {
     return isLocked && !unlockedFields[field];

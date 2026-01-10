@@ -208,6 +208,16 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [showComCatModal, setShowComCatModal] = useState(false);
   
+  // Admin unlock state (shared between IncidentInfo and ActionBar)
+  const [unlockedFields, setUnlockedFields] = useState({});
+  
+  const toggleUnlock = (field) => {
+    setUnlockedFields(prev => ({
+      ...prev,
+      [field]: !prev[field]
+    }));
+  };
+  
   // Audit log
   const [auditLog, setAuditLog] = useState([]);
   const [showFullAuditLog, setShowFullAuditLog] = useState(false);
@@ -831,6 +841,10 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
     setShowActionsModal,
     showComCatModal,
     setShowComCatModal,
+    
+    // Admin unlock state
+    unlockedFields,
+    toggleUnlock,
     
     // Audit log
     auditLog,

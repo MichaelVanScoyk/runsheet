@@ -1455,6 +1455,71 @@ async def close_incident(
 
 
 # =============================================================================
+# DELETE INCIDENT (hard delete)
+# =============================================================================
+
+@router.delete("/{incident_id}")
+async def delete_incident(
+    incident_id: int,
+    edited_by: Optional[int] = Query(None, description="Personnel ID of admin deleting"),
+    db: Session = Depends(get_db)
+):
+    """
+    Permanently delete an incident.
+    This is a hard delete - the incident and all related data will be removed.
+    Only for admin use to remove incidents created in error.
+    """
+    incident = db.query(Incident).filter(
+        Incident.id == incident_id,
+        Incident.deleted_at.is_(None)
+    ).first()
+    
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    
+    # Capture info for audit log before deletion
+    incident_number = incident.internal_incident_number
+    cad_number = incident.cad_event_number
+    address = incident.address
+    
+    # Get personnel name for audit
+    personnel_name = None
+    if edited_by:
+        person = db.query(Personnel).filter(Personnel.id == edited_by).first()
+        if person:
+            personnel_name = f"{person.last_name}, {person.first_name}"
+    
+    # Delete related records first (cascade should handle this, but be explicit)
+    db.query(IncidentPersonnel).filter(IncidentPersonnel.incident_id == incident_id).delete()
+    db.query(IncidentUnit).filter(IncidentUnit.incident_id == incident_id).delete()
+    
+    # Delete the incident
+    db.delete(incident)
+    
+    # Log to audit trail (the incident is gone, so log independently)
+    log_entry = AuditLog(
+        personnel_id=edited_by,
+        personnel_name=personnel_name,
+        action="DELETE",
+        entity_type="incident",
+        entity_id=incident_id,
+        entity_display=f"Incident {incident_number}",
+        summary=f"Permanently deleted incident {incident_number} (CAD: {cad_number}, Address: {address})",
+    )
+    db.add(log_entry)
+    
+    db.commit()
+    
+    logger.warning(f"ADMIN: Permanently deleted incident {incident_number} (ID: {incident_id}) by personnel {edited_by}")
+    
+    return {
+        "status": "ok",
+        "deleted_id": incident_id,
+        "deleted_number": incident_number
+    }
+
+
+# =============================================================================
 # PERSONNEL ASSIGNMENTS
 # =============================================================================
 

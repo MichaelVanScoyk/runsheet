@@ -49,6 +49,8 @@ export const getIncidentYears = () => api.get('/incidents/years');
 
 export const getAdjacentIncidents = (id) => api.get(`/incidents/${id}/adjacent`);
 
+export const deleteIncident = (id) => api.delete(`/incidents/${id}`);
+
 // ============================================================================
 // PERSONNEL
 // ============================================================================
@@ -278,7 +280,11 @@ export const isAdminAuthenticated = () => {
 export const changeAdminPassword = (currentPassword, newPassword) => 
   api.post('/admin/change-password', { current_password: currentPassword, new_password: newPassword });
 
-export const getAuditLog = (params) => api.get('/admin/audit-log', { params });
+export const getAuditLog = (limit = 100, entityType = null) => {
+  const params = { limit };
+  if (entityType && entityType !== 'all') params.entity_type = entityType;
+  return api.get('/admin/audit-log', { params });
+};
 
 // ============================================================================
 // USER SESSION AUTH (15 min timeout, cross-tab via localStorage)

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRunSheet } from '../RunSheetContext';
-import { getAdjacentIncidents } from '../../../api';
+import { getAdjacentIncidents, deleteIncident } from '../../../api';
 
 export default function ActionBar() {
   const { 
@@ -17,16 +17,21 @@ export default function ActionBar() {
     handleSave,
     setShowCadModal,
     setShowComCatModal,
-    handleRestorePreview
+    handleRestorePreview,
+    unlockedFields,
   } = useRunSheet();
   
   const [modelTrainedAt, setModelTrainedAt] = useState(null);
   const [adjacentIds, setAdjacentIds] = useState({ newer_id: null, older_id: null });
   const [navLoading, setNavLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   
   const hasCADData = incident && (formData.cad_raw_dispatch || formData.cad_raw_clear);
   const hasEventComments = formData.cad_event_comments?.comments?.length > 0;
   const isFireIncident = formData.call_category === 'FIRE';
+  const isAdmin = userSession?.role === 'ADMIN';
+  const canDelete = isAdmin && incident?.id && unlockedFields['cad_event_number'];
   
   // Fetch adjacent incident IDs for navigation (once per incident)
   useEffect(() => {
@@ -158,6 +163,21 @@ export default function ActionBar() {
     }
   };
   
+  const handleDelete = async () => {
+    if (!incident?.id || !canDelete) return;
+    setDeleting(true);
+    try {
+      await deleteIncident(incident.id);
+      setShowDeleteConfirm(false);
+      if (onClose) onClose();
+    } catch (err) {
+      console.error('Failed to delete incident:', err);
+      alert('Failed to delete incident: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setDeleting(false);
+    }
+  };
+  
   return (
     <div className="bg-dark-hover rounded px-3 py-2 mb-2 flex items-center justify-between gap-3 flex-wrap">
       {/* Left side - Back link and navigation */}
@@ -281,7 +301,50 @@ export default function ActionBar() {
         >
           {saving ? 'Saving...' : 'Save'}
         </button>
+        
+        {/* Delete button - only visible when CAD # is unlocked (admin only) */}
+        {canDelete && (
+          <button 
+            className="btn btn-danger" 
+            onClick={() => setShowDeleteConfirm(true)} 
+            disabled={saving || deleting}
+            title="Permanently delete this incident"
+          >
+            Delete
+          </button>
+        )}
       </div>
+      
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Incident?</h3>
+            <p className="text-gray-700 mb-4">
+              Are you sure you want to permanently delete incident <strong>{formData.internal_incident_number}</strong>?
+            </p>
+            <p className="text-red-600 text-sm mb-4 font-medium">
+              ⚠️ This action is unrecoverable. The incident and all associated data will be permanently removed.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-danger" 
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
