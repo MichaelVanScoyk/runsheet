@@ -715,3 +715,250 @@ def create_review_task_for_incident(
     logger.info(f"Review task created: {task_type} for incident:{incident_id} (task_id={task.id})")
     
     return task
+
+
+# =============================================================================
+# CENTRALIZED REVIEW TASK CHECKER
+# =============================================================================
+
+def check_incident_review_tasks(db: Session, incident: Incident) -> dict:
+    """
+    Centralized review task checker for incidents.
+    
+    ==========================================================================
+    HOW THIS WORKS
+    ==========================================================================
+    
+    This function checks ALL review task conditions for an incident and
+    creates or resolves tasks as needed. It should be called:
+    
+    1. After incident UPDATE (PUT /api/incidents/{id})
+    2. After incident CLOSE (POST /api/incidents/{id}/close)
+    3. Any time incident data changes that might affect task status
+    
+    The function is IDEMPOTENT - safe to call multiple times. It will:
+    - Create tasks only if the condition is met AND no pending task exists
+    - Resolve tasks only if the condition is no longer met
+    
+    ==========================================================================
+    ADDING NEW TASK TYPES
+    ==========================================================================
+    
+    To add a new reviewable condition:
+    
+    1. Add the task_type string to VALID_TASK_TYPES list at top of file
+    
+    2. Add a check section below following this pattern:
+    
+        # ===== YOUR_TASK_TYPE =====
+        # Condition: describe when task should exist
+        # Resolution: describe when task should be auto-resolved
+        
+        task_type = 'your_task_type'
+        condition_met = <boolean expression>
+        
+        if condition_met:
+            # Task should exist
+            existing = db.query(ReviewTask).filter(
+                ReviewTask.entity_type == 'incident',
+                ReviewTask.entity_id == incident.id,
+                ReviewTask.task_type == task_type,
+                ReviewTask.status == 'pending'
+            ).first()
+            
+            if not existing:
+                create_review_task_for_incident(
+                    db=db,
+                    incident_id=incident.id,
+                    task_type=task_type,
+                    title='Your title',
+                    description='Your description',
+                    metadata={'key': 'value'},
+                    priority='normal',
+                )
+                result['created'].append(task_type)
+        else:
+            # Condition no longer met - resolve any pending tasks
+            resolved_count = _auto_resolve_tasks(
+                db, incident.id, task_type, 
+                'Auto-resolved: condition no longer met'
+            )
+            if resolved_count > 0:
+                result['resolved'].append({'type': task_type, 'count': resolved_count})
+    
+    3. Update the docstring in VALID_TASK_TYPES section
+    
+    4. If the task needs special UI handling, update ReviewTasksBadge.jsx
+    
+    ==========================================================================
+    IMPORTANT NOTES
+    ==========================================================================
+    
+    - This function does NOT call db.commit() - caller must commit!
+    - personnel_reconciliation is NOT checked here - it only runs on CLOSE
+      and involves complex CAD unit comparison (see reconcile_personnel_on_close)
+    - Tasks created here use 'system' as creator (created_by=None)
+    
+    ==========================================================================
+    
+    Parameters:
+    -----------
+    db : Session
+        SQLAlchemy database session
+    incident : Incident
+        The incident object to check (must be refreshed/current)
+    
+    Returns:
+    --------
+    dict
+        Summary of actions taken:
+        {
+            'created': ['task_type1', 'task_type2'],
+            'resolved': [{'type': 'task_type1', 'count': 1}],
+            'checked': ['task_type1', 'task_type2', ...]
+        }
+    
+    Example:
+    --------
+    from routers.review_tasks import check_incident_review_tasks
+    
+    # After updating incident
+    incident.narrative = "Fire was contained to kitchen..."
+    db.flush()
+    
+    result = check_incident_review_tasks(db, incident)
+    # result = {'created': [], 'resolved': [{'type': 'incomplete_narrative', 'count': 1}], 'checked': [...]}
+    
+    db.commit()
+    """
+    result = {
+        'created': [],
+        'resolved': [],
+        'checked': [],
+    }
+    
+    now = datetime.now(timezone.utc)
+    
+    # Helper to auto-resolve tasks of a specific type
+    def _auto_resolve_tasks(incident_id: int, task_type: str, notes: str) -> int:
+        """Resolve all pending tasks of given type for incident. Returns count."""
+        tasks = db.query(ReviewTask).filter(
+            ReviewTask.entity_type == 'incident',
+            ReviewTask.entity_id == incident_id,
+            ReviewTask.task_type == task_type,
+            ReviewTask.status == 'pending'
+        ).all()
+        
+        for task in tasks:
+            task.status = 'resolved'
+            task.resolved_at = now
+            task.resolution_notes = notes
+        
+        return len(tasks)
+    
+    # =========================================================================
+    # INCOMPLETE_NARRATIVE
+    # =========================================================================
+    # Condition: Incident is CLOSED and narrative is empty
+    # Resolution: Narrative is filled in
+    #
+    # Note: Task is created during close_incident(), but we check here too
+    # in case the incident was manually set to CLOSED status.
+    
+    task_type = 'incomplete_narrative'
+    result['checked'].append(task_type)
+    
+    narrative_empty = not incident.narrative or not incident.narrative.strip()
+    is_closed = incident.status == 'CLOSED'
+    
+    if is_closed and narrative_empty:
+        # Task should exist - create if missing
+        existing = db.query(ReviewTask).filter(
+            ReviewTask.entity_type == 'incident',
+            ReviewTask.entity_id == incident.id,
+            ReviewTask.task_type == task_type,
+            ReviewTask.status == 'pending'
+        ).first()
+        
+        if not existing:
+            create_review_task_for_incident(
+                db=db,
+                incident_id=incident.id,
+                task_type=task_type,
+                title='Narrative not completed',
+                description=f"Incident {incident.internal_incident_number} was closed without a narrative.",
+                metadata={
+                    'incident_number': incident.internal_incident_number,
+                    'address': incident.address,
+                },
+                priority='normal',
+            )
+            result['created'].append(task_type)
+            logger.info(f"Created {task_type} task for incident {incident.id}")
+    else:
+        # Condition not met (either not closed, or narrative filled)
+        # Auto-resolve any pending tasks
+        resolved_count = _auto_resolve_tasks(
+            incident.id, task_type, 
+            'Auto-resolved: narrative completed'
+        )
+        if resolved_count > 0:
+            result['resolved'].append({'type': task_type, 'count': resolved_count})
+            logger.info(f"Auto-resolved {resolved_count} {task_type} task(s) for incident {incident.id}")
+    
+    # =========================================================================
+    # NERIS_VALIDATION (future implementation)
+    # =========================================================================
+    # Condition: Incident is CLOSED and missing required NERIS fields
+    # Resolution: All required NERIS fields are populated
+    #
+    # TODO: Implement when NERIS validation is built out
+    # Required fields to check:
+    #   - neris_incident_type_codes
+    #   - neris_location_use
+    #   - neris_action_codes (or neris_noaction_code)
+    #   - time_dispatched
+    #   - etc.
+    #
+    # task_type = 'neris_validation'
+    # result['checked'].append(task_type)
+    # ... implementation ...
+    
+    # =========================================================================
+    # OUT_OF_SEQUENCE (future implementation)
+    # =========================================================================
+    # Condition: Incident number doesn't match date order within category
+    # Resolution: Admin runs fix-sequence or acknowledges the issue
+    #
+    # Note: This is already flagged by out_of_sequence column on incident.
+    # Consider whether we need a review task or just the column flag.
+    #
+    # task_type = 'out_of_sequence'
+    # result['checked'].append(task_type)
+    # ... implementation ...
+    
+    # =========================================================================
+    # COMCAT_REVIEW (future implementation)
+    # =========================================================================
+    # Condition: Incident has CAD comments that haven't been officer-reviewed
+    # Resolution: Officer clicks "Mark Reviewed" in ComCat modal
+    #
+    # Note: Currently tracked via cad_event_comments.officer_reviewed_at field.
+    # Consider whether we need a review task in addition to comcat_status.
+    #
+    # task_type = 'comcat_review'
+    # result['checked'].append(task_type)
+    # ... implementation ...
+    
+    # =========================================================================
+    # PERSONNEL_RECONCILIATION
+    # =========================================================================
+    # NOT checked here - this only happens during close_incident() when
+    # CAD CLEAR data is received. The reconcile_personnel_on_close() function
+    # in incidents.py handles this specifically because it requires comparing
+    # personnel assignments against the CAD unit list.
+    #
+    # Auto-resolution could be added here if we track when an officer
+    # manually reassigns the STATION personnel back to proper units.
+    
+    return result
