@@ -85,9 +85,12 @@ DEFAULT_PRINT_LAYOUT = {
         # Row 14: Station Personnel (STATION category - at station, not on scene)
         {"id": "personnel_station", "name": "Station Personnel", "enabled": True, "page": 1, "row": 14, "order": 1, "width": "full"},
         
-        # Row 15: Officers
-        {"id": "officer_in_charge", "name": "Officer in Charge", "enabled": True, "page": 1, "row": 15, "order": 1, "width": "1/2"},
-        {"id": "completed_by", "name": "Completed By", "enabled": True, "page": 1, "row": 15, "order": 2, "width": "1/2"},
+        # Row 15: Total Responders (combined count across all categories)
+        {"id": "total_responders", "name": "Total Responders", "enabled": True, "page": 1, "row": 15, "order": 1, "width": "auto"},
+        
+        # Row 16: Officers
+        {"id": "officer_in_charge", "name": "Officer in Charge", "enabled": True, "page": 1, "row": 16, "order": 1, "width": "1/2"},
+        {"id": "completed_by", "name": "Completed By", "enabled": True, "page": 1, "row": 16, "order": 2, "width": "1/2"},
         
         # Row 99: Footer (special - always last)
         {"id": "footer", "name": "Footer", "enabled": True, "page": 1, "row": 99, "order": 1, "width": "full", "locked": True},

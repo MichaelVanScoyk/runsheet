@@ -303,12 +303,12 @@ def _render_personnel_grid(ctx: RenderContext, category: str, block: dict) -> st
     is_apparatus = category == 'APPARATUS'
     
     if is_apparatus:
-        return _render_apparatus_grid(ctx, units, section_title, show_when_empty)
+        return _render_apparatus_grid(ctx, units, section_title, show_when_empty, block)
     else:
-        return _render_simple_grid(ctx, units, section_title, show_when_empty)
+        return _render_simple_grid(ctx, units, section_title, show_when_empty, block)
 
 
-def _render_apparatus_grid(ctx: RenderContext, units: List[dict], title: str, show_when_empty: bool) -> str:
+def _render_apparatus_grid(ctx: RenderContext, units: List[dict], title: str, show_when_empty: bool, block: dict) -> str:
     """Render apparatus personnel with Role column (Driver, Officer, FF slots)."""
     
     # Determine max slots needed across all units
@@ -359,19 +359,22 @@ def _render_apparatus_grid(ctx: RenderContext, units: List[dict], title: str, sh
     
     # Column headers use unit NAME (not unit_designator)
     unit_headers = ''.join([f'<th>{esc(a.get("name", a["unit_designator"]))}</th>' for a in units])
-    total = sum(len([s for s in ctx.personnel_assignments.get(a['unit_designator'], []) if s]) for a in units)
+    
+    # Section title - use block's name if hideLabel is False, otherwise no title
+    hide_label = block.get('hideLabel', False)
+    section_title = block.get('name', title) if not hide_label else None
+    title_html = f'<div class="personnel-section-title">{esc(section_title)}</div>' if section_title else ''
     
     return f'''<div class="personnel-section">
-        <div class="personnel-section-title">{esc(title)}</div>
+        {title_html}
         <table class="personnel-table">
             <thead><tr><th class="role-header">Role</th>{unit_headers}</tr></thead>
             <tbody>{rows_html}</tbody>
         </table>
-        <div class="total-row">Total: {total}</div>
     </div>'''
 
 
-def _render_simple_grid(ctx: RenderContext, units: List[dict], title: str, show_when_empty: bool) -> str:
+def _render_simple_grid(ctx: RenderContext, units: List[dict], title: str, show_when_empty: bool, block: dict) -> str:
     """Render DIRECT/STATION personnel - no Role column, unlimited rows."""
     
     # Gather all personnel per unit (unlimited)
@@ -409,15 +412,18 @@ def _render_simple_grid(ctx: RenderContext, units: List[dict], title: str, show_
     
     # Column headers use unit NAME
     unit_headers = ''.join([f'<th>{esc(a.get("name", a["unit_designator"]))}</th>' for a in units])
-    total = sum(len(unit_personnel.get(a['unit_designator'], [])) for a in units)
+    
+    # Section title - use block's name if hideLabel is False, otherwise no title
+    hide_label = block.get('hideLabel', False)
+    section_title = block.get('name', title) if not hide_label else None
+    title_html = f'<div class="personnel-section-title">{esc(section_title)}</div>' if section_title else ''
     
     return f'''<div class="personnel-section">
-        <div class="personnel-section-title">{esc(title)}</div>
+        {title_html}
         <table class="personnel-table">
             <thead><tr>{unit_headers}</tr></thead>
             <tbody>{rows_html}</tbody>
         </table>
-        <div class="total-row">Total: {total}</div>
     </div>'''
 
 
@@ -429,6 +435,24 @@ def r_officer_in_charge(ctx: RenderContext, block: dict) -> str:
 def r_completed_by(ctx: RenderContext, block: dict) -> str:
     cb = ctx.get_personnel_name(ctx.get('completed_by'))
     return f'<div class="officer-cell"><span class="label">Report Completed By:</span> {esc(cb)}</div>'
+
+
+def r_total_responders(ctx: RenderContext, block: dict) -> str:
+    """Render total responders count across all personnel categories."""
+    total = 0
+    for unit_id, slots in ctx.personnel_assignments.items():
+        total += len([s for s in slots if s])
+    
+    if total == 0:
+        return ''
+    
+    hide_label = block.get('hideLabel', False)
+    label = block.get('name', 'Total Responders')
+    
+    if hide_label:
+        return f'<div class="field"><span class="total-value">{total}</span></div>'
+    else:
+        return f'<div class="field"><span class="label">{esc(label)}:</span> <span class="total-value">{total}</span></div>'
 
 
 def r_footer(ctx: RenderContext, block: dict) -> str:
@@ -708,6 +732,7 @@ FIELD_RENDERERS: Dict[str, Callable[[RenderContext, dict], str]] = {
     'personnel_apparatus': r_personnel_apparatus,
     'personnel_direct': r_personnel_direct,
     'personnel_station': r_personnel_station,
+    'total_responders': r_total_responders,
     'officer_in_charge': r_officer_in_charge,
     'completed_by': r_completed_by,
     'footer': r_footer,
