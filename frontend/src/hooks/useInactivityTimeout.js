@@ -26,7 +26,6 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useIdleTimer } from 'react-idle-timer';
-import { useNavigate, useLocation } from 'react-router-dom';
 import { clearUserSession, getUserSession, USER_SESSION_KEY } from '../api';
 
 // Timeout values in milliseconds
@@ -41,8 +40,6 @@ const LOGOUT_TIMEOUT_MS = 15 * 60 * 1000;    // 15 minutes - log out user sessio
  * @returns {Object} - Object containing reset function for manual timer reset if needed
  */
 export function useInactivityTimeout({ onUserLogout } = {}) {
-  const navigate = useNavigate();
-  const location = useLocation();
   const logoutTimerRef = useRef(null);
 
   /**
@@ -57,6 +54,7 @@ export function useInactivityTimeout({ onUserLogout } = {}) {
 
   /**
    * Handle user logout (called at 15 min)
+   * Clears session AND returns to incidents list
    */
   const handleLogout = useCallback(() => {
     const session = getUserSession();
@@ -67,20 +65,19 @@ export function useInactivityTimeout({ onUserLogout } = {}) {
       }
       console.log('[InactivityTimeout] User session cleared due to 15 min inactivity');
     }
+    // Return to incidents list (closes any open form/modal)
+    console.log('[InactivityTimeout] Returning to incidents list after logout');
+    window.dispatchEvent(new CustomEvent('nav-incidents-click'));
   }, [onUserLogout]);
 
   /**
    * Called when user has been idle for 10 minutes (REDIRECT_TIMEOUT_MS)
-   * Redirects to incidents page and starts the logout timer for 5 more minutes
+   * Returns to incidents list and starts the logout timer for 5 more minutes
    */
   const handleRedirectIdle = useCallback(() => {
-    const isOnIncidentsPage = location.pathname === '/';
-
-    // Redirect to incidents page if not already there
-    if (!isOnIncidentsPage) {
-      console.log('[InactivityTimeout] Redirecting to incidents page due to 10 min inactivity');
-      navigate('/');
-    }
+    // Return to incidents list (closes any open form/modal)
+    console.log('[InactivityTimeout] Returning to incidents list due to 10 min inactivity');
+    window.dispatchEvent(new CustomEvent('nav-incidents-click'));
 
     // Start the logout timer for the remaining 5 minutes (15 - 10 = 5)
     clearLogoutTimer();
@@ -89,7 +86,7 @@ export function useInactivityTimeout({ onUserLogout } = {}) {
     }, LOGOUT_TIMEOUT_MS - REDIRECT_TIMEOUT_MS);
     
     console.log('[InactivityTimeout] Logout timer started (5 min remaining)');
-  }, [location.pathname, navigate, clearLogoutTimer, handleLogout]);
+  }, [clearLogoutTimer, handleLogout]);
 
   /**
    * Called when user becomes active again
@@ -114,16 +111,14 @@ export function useInactivityTimeout({ onUserLogout } = {}) {
         if (onUserLogout) {
           onUserLogout();
         }
-        // Redirect to incidents page if not already there
-        if (location.pathname !== '/') {
-          navigate('/');
-        }
+        // Return to incidents list
+        window.dispatchEvent(new CustomEvent('nav-incidents-click'));
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [location.pathname, navigate, onUserLogout]);
+  }, [onUserLogout]);
 
   // Cleanup logout timer on unmount
   useEffect(() => {
