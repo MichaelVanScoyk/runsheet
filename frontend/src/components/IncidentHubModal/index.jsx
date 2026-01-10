@@ -350,19 +350,41 @@ export default function IncidentHubModal({
     [apparatus]
   );
 
-  // Dispatched apparatus (from CAD data)
+  // Dispatched apparatus (from CAD data OR units with assignments)
   const dispatchedApparatus = useMemo(() => {
-    if (!selectedIncident?.cad_units) return [];
+    const result = new Set();
     
-    const dispatchedIds = selectedIncident.cad_units
-      .filter(u => !u.is_mutual_aid)
-      .map(u => u.unit_id);
+    // Add units from CAD data
+    if (selectedIncident?.cad_units) {
+      const dispatchedIds = selectedIncident.cad_units
+        .filter(u => !u.is_mutual_aid)
+        .map(u => u.unit_id);
+      
+      apparatus.forEach(a => {
+        if (dispatchedIds.includes(a.unit_designator) ||
+            dispatchedIds.includes(a.cad_unit_id) ||
+            (a.cad_unit_aliases || []).some(alias => dispatchedIds.includes(alias))) {
+          result.add(a);
+        }
+      });
+    }
     
-    return apparatus.filter(a => 
-      dispatchedIds.includes(a.unit_designator) ||
-      dispatchedIds.includes(a.cad_unit_id) ||
-      (a.cad_unit_aliases || []).some(alias => dispatchedIds.includes(alias))
-    );
+    // Also add units that have personnel assignments (for manual incidents)
+    if (selectedIncident?.personnel_assignments) {
+      Object.entries(selectedIncident.personnel_assignments).forEach(([unitKey, slots]) => {
+        // Check if any personnel assigned
+        const hasAssignments = slots.some(id => id !== null);
+        if (hasAssignments) {
+          const unit = apparatus.find(a => a.unit_designator === unitKey);
+          // Only add APPARATUS units (not STATION/DIRECT)
+          if (unit && unit.unit_category !== 'STATION' && unit.unit_category !== 'DIRECT') {
+            result.add(unit);
+          }
+        }
+      });
+    }
+    
+    return Array.from(result);
   }, [selectedIncident, apparatus]);
 
   // All apparatus with slots (for early entry mode)
