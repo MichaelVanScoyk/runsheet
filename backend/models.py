@@ -774,7 +774,11 @@ class ReviewTask(Base):
     # Human-readable details
     title = Column(String(200), nullable=False)
     description = Column(Text)
-    metadata = Column(JSONB, default={})
+    
+    # Structured data for programmatic use (renamed from 'metadata' which is reserved)
+    # Store any data needed for resolution or display
+    # Example: {"unit": "ENG485", "personnel_ids": [1, 2, 3], "moved_to": "STATION"}
+    task_metadata = Column(JSONB, default={})
     
     # Status tracking
     status = Column(String(20), nullable=False, default='pending')  # pending, resolved, dismissed

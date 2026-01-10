@@ -97,10 +97,10 @@ CREATE TABLE IF NOT EXISTS review_tasks (
     -- Example: "3 personnel were assigned to ENG485 which was not in the CAD CLEAR data"
     description TEXT,
     
-    -- Structured metadata for programmatic use
+    -- Structured data for programmatic use (named task_metadata because 'metadata' is reserved in SQLAlchemy)
     -- Store any data needed for resolution or display
     -- Example: {"unit": "ENG485", "personnel_ids": [1, 2, 3], "moved_to": "STATION"}
-    metadata JSONB DEFAULT '{}',
+    task_metadata JSONB DEFAULT '{}',
     
     -- =======================================================================
     -- STATUS TRACKING
