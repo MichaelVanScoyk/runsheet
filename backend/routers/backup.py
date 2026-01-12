@@ -261,8 +261,9 @@ def full_reparse_incident(incident_id: int, db: Session, edited_by: Optional[int
     arrive_times = [u['time_arrived'] for u in metric_units if u.get('time_arrived')]
     time_first_on_scene = min(arrive_times) if arrive_times else None
     
-    # Find latest cleared from ALL units (not just metric units)
-    cleared_times = [u['time_cleared'] for u in new_cad_units if u.get('time_cleared')]
+    # Find latest cleared from OUR units only (not mutual aid)
+    our_units = [u for u in new_cad_units if not u.get('is_mutual_aid', True)]
+    cleared_times = [u['time_cleared'] for u in our_units if u.get('time_cleared')]
     time_last_cleared = max(cleared_times) if cleared_times else None
     
     # ==========================================================================
@@ -697,10 +698,15 @@ async def diagnose_incident_times(
                             "excluded_units": response_times['excluded_units'],
                         })
             
-            # Check time_last_cleared (calculated from MAX of unit AQ times)
+            # Check time_last_cleared (calculated from MAX of OUR unit AQ times)
             cleared_times_from_units = []
             for ut in unit_times:
-                if ut.get('time_at_quarters'):
+                unit_id = ut.get('unit_id')
+                if not unit_id:
+                    continue
+                unit_info = get_full_unit_info(db, unit_id)
+                # Only include our units (not mutual aid)
+                if unit_info['is_ours'] and ut.get('time_at_quarters'):
                     cleared_dt = build_datetime_with_midnight_crossing(
                         incident_date, ut['time_at_quarters'], dispatch_time_str
                     )
@@ -988,10 +994,15 @@ async def preview_restore_from_cad(
         if arrive_times:
             new_values['time_first_on_scene'] = min(arrive_times)
         
-        # Calculate last_cleared from ALL units
+        # Calculate last_cleared from OUR units only (not mutual aid)
         cleared_times = []
         for ut in unit_times:
-            if ut.get('time_at_quarters'):
+            unit_id = ut.get('unit_id')
+            if not unit_id:
+                continue
+            unit_info = get_full_unit_info(db, unit_id)
+            # Only include our units (not mutual aid)
+            if unit_info['is_ours'] and ut.get('time_at_quarters'):
                 dt = build_datetime_with_midnight_crossing(incident_date, ut['time_at_quarters'], dispatch_time_str)
                 if dt:
                     cleared_times.append(dt)
