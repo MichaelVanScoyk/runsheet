@@ -1,5 +1,5 @@
 import { useRunSheet } from '../RunSheetContext';
-import { PersonnelTypeahead } from '../shared';
+import { PersonnelSelect } from '../shared';
 
 // CRITICAL: Personnel assignment logic must not change
 export default function PersonnelGrid() {
@@ -10,6 +10,7 @@ export default function PersonnelGrid() {
     handleAssignment, 
     clearSlot, 
     getAvailablePersonnel,
+    getAssignedIds,
     personnel
   } = useRunSheet();
   
@@ -50,6 +51,19 @@ export default function PersonnelGrid() {
   const actuallyResponded = (truck) => hasCadData && formData.cad_units.some(u => 
     u.unit_id === truck.unit_designator && !u.is_mutual_aid && (u.time_enroute || u.time_arrived)
   );
+  
+  // Build exclude set for a specific slot (all assigned except current slot's value)
+  const getExcludeIds = (unitDesignator, slot) => {
+    const allAssigned = getAssignedIds();
+    const currentValue = assignments[unitDesignator]?.[slot];
+    if (currentValue) {
+      // Don't exclude the current selection
+      const filtered = new Set(allAssigned);
+      filtered.delete(currentValue);
+      return filtered;
+    }
+    return allAssigned;
+  };
   
   return (
     <div className="pt-3 border-t border-theme">
@@ -99,10 +113,10 @@ export default function PersonnelGrid() {
                       key={t.id} 
                       className={`bg-white border border-theme p-1 ${shouldDim ? 'opacity-40 hover:opacity-80' : ''}`}
                     >
-                      <PersonnelTypeahead
+                      <PersonnelSelect
                         value={val}
-                        availablePersonnel={getAvailablePersonnel(t.unit_designator, slot)}
-                        allPersonnel={personnel}
+                        personnel={personnel}
+                        excludeIds={getExcludeIds(t.unit_designator, slot)}
                         onSelect={(personId) => handleAssignment(t.unit_designator, slot, personId)}
                         onClear={() => clearSlot(t.unit_designator, slot)}
                       />
