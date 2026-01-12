@@ -471,7 +471,9 @@ class ADILogImporter:
             if arrive_times:
                 update_data['time_first_on_scene'] = min(arrive_times)
             
-            cleared_times = [u['time_cleared'] for u in cad_units if u.get('time_cleared')]
+            # Only use OUR units for time_last_cleared (not mutual aid)
+            our_units = [u for u in cad_units if not u.get('is_mutual_aid', True)]
+            cleared_times = [u['time_cleared'] for u in our_units if u.get('time_cleared')]
             if cleared_times:
                 update_data['time_last_cleared'] = max(cleared_times)
         
@@ -669,7 +671,9 @@ class ADILogImporter:
             if arrive_times:
                 update_data['time_first_on_scene'] = min(arrive_times)
             
-            cleared_times = [u['time_cleared'] for u in cad_units if u.get('time_cleared')]
+            # Only use OUR units for time_last_cleared (not mutual aid)
+            our_units = [u for u in cad_units if not u.get('is_mutual_aid', True)]
+            cleared_times = [u['time_cleared'] for u in our_units if u.get('time_cleared')]
             if cleared_times:
                 update_data['time_last_cleared'] = max(cleared_times)
         
