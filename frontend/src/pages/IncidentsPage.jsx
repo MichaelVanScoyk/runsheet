@@ -369,6 +369,7 @@ function IncidentsPage() {
     let style = {};
     if (category === 'EMS') style = { borderLeft: '3px solid #3498db', borderRight: '3px solid #3498db' };
     else if (category === 'FIRE') style = { borderLeft: '3px solid #e74c3c', borderRight: '3px solid #e74c3c' };
+    else if (category === 'DETAIL') style = { borderLeft: '3px solid #8b5cf6', borderRight: '3px solid #8b5cf6' };
     if (isQualifying) {
       style.backgroundColor = incident.status === 'OPEN' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(234, 179, 8, 0.1)';
     }
@@ -378,6 +379,7 @@ function IncidentsPage() {
   const getCategoryBadge = (category) => {
     if (category === 'EMS') return <span className="badge" style={{ backgroundColor: '#3498db', color: '#fff', marginLeft: '0.5rem' }}>EMS</span>;
     if (category === 'FIRE') return <span className="badge" style={{ backgroundColor: '#e74c3c', color: '#fff', marginLeft: '0.5rem' }}>FIRE</span>;
+    if (category === 'DETAIL') return <span className="badge" style={{ backgroundColor: '#8b5cf6', color: '#fff', marginLeft: '0.5rem' }}>DETAIL</span>;
     return null;
   };
 
@@ -394,6 +396,7 @@ function IncidentsPage() {
 
   const fireCounts = incidents.filter(i => i.call_category === 'FIRE').length;
   const emsCounts = incidents.filter(i => i.call_category === 'EMS').length;
+  const detailCounts = incidents.filter(i => i.call_category === 'DETAIL').length;
   const activeCount = qualifyingIncidents.filter(i => i.status === 'OPEN').length;
 
   // Navigate to a different incident (for quick nav in RunSheetForm)
@@ -478,10 +481,11 @@ function IncidentsPage() {
           <button className={`btn btn-sm ${categoryFilter === 'ALL' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('ALL')} style={{ minWidth: '60px' }}>All</button>
           <button className={`btn btn-sm ${categoryFilter === 'FIRE' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('FIRE')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined, borderColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined }}>Fire</button>
           <button className={`btn btn-sm ${categoryFilter === 'EMS' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('EMS')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'EMS' ? '#3498db' : undefined, borderColor: categoryFilter === 'EMS' ? '#3498db' : undefined }}>EMS</button>
+          <button className={`btn btn-sm ${categoryFilter === 'DETAIL' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('DETAIL')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'DETAIL' ? '#8b5cf6' : undefined, borderColor: categoryFilter === 'DETAIL' ? '#8b5cf6' : undefined }} title="Training exercises and special assignments">Detail</button>
         </div>
         
         <span style={{ color: '#888', fontSize: '0.85rem' }}>
-          {incidents.length} incidents{categoryFilter === 'ALL' && ` (${fireCounts} Fire, ${emsCounts} EMS)`}
+          {incidents.length} incidents{categoryFilter === 'ALL' && ` (${fireCounts} Fire, ${emsCounts} EMS${detailCounts > 0 ? `, ${detailCounts} Detail` : ''})`}
         </span>
       </div>
 

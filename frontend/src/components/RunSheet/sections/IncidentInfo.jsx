@@ -1,10 +1,19 @@
 import { useRunSheet } from '../RunSheetContext';
 
+// Category color mappings
+const CATEGORY_STYLES = {
+  FIRE: 'border-status-error bg-status-error/10',
+  EMS: 'border-status-completed bg-status-completed/10',
+  DETAIL: 'border-purple-500 bg-purple-500/10',
+};
+
 export default function IncidentInfo() {
   const { 
     incident, 
     formData, 
     handleChange, 
+    handleCategoryChange,
+    categoryChanging,
     municipalities,
     userSession,
     unlockedFields,
@@ -16,6 +25,11 @@ export default function IncidentInfo() {
   
   const isFieldLocked = (field) => {
     return isLocked && !unlockedFields[field];
+  };
+
+  // Get category style
+  const getCategoryStyle = () => {
+    return CATEGORY_STYLES[formData.call_category] || CATEGORY_STYLES.FIRE;
   };
   
   return (
@@ -50,14 +64,22 @@ export default function IncidentInfo() {
           />
         </div>
         <div className="flex flex-col gap-0.5">
-          <label className="text-gray-400 text-xs">Category</label>
+          <label className="text-gray-400 text-xs flex items-center gap-1">
+            Category
+            {categoryChanging && (
+              <span className="text-[10px] text-yellow-400 animate-pulse">Saving...</span>
+            )}
+          </label>
           <select
             value={formData.call_category}
-            onChange={(e) => handleChange('call_category', e.target.value)}
-            className={formData.call_category === 'EMS' ? 'border-status-completed bg-status-completed/10' : 'border-status-error bg-status-error/10'}
+            onChange={(e) => handleCategoryChange(e.target.value)}
+            disabled={categoryChanging}
+            className={`${getCategoryStyle()} ${categoryChanging ? 'opacity-60' : ''}`}
+            title={formData.call_category === 'DETAIL' ? 'Detail: Training/special assignment (excluded from stats)' : ''}
           >
             <option value="FIRE">🔥 Fire</option>
             <option value="EMS">🚑 EMS</option>
+            <option value="DETAIL">📋 Detail</option>
           </select>
         </div>
         <div className="flex flex-col gap-0.5">
@@ -88,6 +110,14 @@ export default function IncidentInfo() {
           />
         </div>
       </div>
+
+      {/* Detail notice when category is DETAIL */}
+      {formData.call_category === 'DETAIL' && (
+        <div className="text-xs text-purple-400 bg-purple-500/10 border border-purple-500/30 rounded px-2 py-1">
+          📋 Detail incidents are excluded from response metrics, monthly reports, and NERIS export.
+          Personnel hours are still tracked for credit.
+        </div>
+      )}
       
       {/* Incident Date */}
       <div className="flex flex-col gap-0.5">

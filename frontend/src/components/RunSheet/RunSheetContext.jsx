@@ -208,6 +208,9 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [showComCatModal, setShowComCatModal] = useState(false);
   
+  // Category change state (for instant-save on category switch)
+  const [categoryChanging, setCategoryChanging] = useState(false);
+  
   // Admin unlock state (shared between IncidentInfo and ActionBar)
   const [unlockedFields, setUnlockedFields] = useState({});
   
@@ -506,6 +509,67 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  /**
+   * Handle category change with instant save.
+   * When category changes (FIRE ↔ EMS ↔ DETAIL), immediately save to backend
+   * which assigns a new incident number from the target category's sequence.
+   * The form then updates to show the new number.
+   */
+  const handleCategoryChange = async (newCategory) => {
+    // For new incidents (not yet saved), just update the local state
+    // The suggested number effect will handle fetching the right number
+    if (!incident?.id) {
+      setFormData(prev => ({ ...prev, call_category: newCategory }));
+      return;
+    }
+    
+    // Don't do anything if category didn't actually change
+    if (newCategory === formData.call_category) return;
+    
+    // Validate category
+    if (!['FIRE', 'EMS', 'DETAIL'].includes(newCategory)) return;
+    
+    setCategoryChanging(true);
+    try {
+      const editedBy = userSession?.personnel_id || null;
+      
+      // Send only the category change to the backend
+      // Backend will assign new number and return it
+      await updateIncident(incident.id, { call_category: newCategory }, editedBy);
+      
+      // Fetch the updated incident to get the new number
+      const response = await fetch(`/api/incidents/${incident.id}`);
+      const updatedIncident = await response.json();
+      
+      // Update form with new category and new incident number
+      setFormData(prev => ({
+        ...prev,
+        call_category: updatedIncident.call_category,
+        internal_incident_number: updatedIncident.internal_incident_number,
+      }));
+      
+      // Refresh audit log to show the category change
+      try {
+        const auditRes = await getIncidentAuditLog(incident.id);
+        setAuditLog(auditRes.data.entries || []);
+      } catch (err) {
+        console.error('Failed to refresh audit log:', err);
+      }
+      
+      // Brief success indication
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+      
+    } catch (err) {
+      console.error('Failed to change category:', err);
+      alert('Failed to change category: ' + (err.message || 'Unknown error'));
+      // Revert the dropdown to the original value
+      setFormData(prev => ({ ...prev, call_category: formData.call_category }));
+    } finally {
+      setCategoryChanging(false);
+    }
   };
 
   const handleAssignment = (unitDesignator, slotIndex, personnelId) => {
@@ -842,6 +906,9 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
     showComCatModal,
     setShowComCatModal,
     
+    // Category change state
+    categoryChanging,
+    
     // Admin unlock state
     unlockedFields,
     toggleUnlock,
@@ -863,6 +930,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
     
     // Handlers
     handleChange,
+    handleCategoryChange,
     handleAssignment,
     clearSlot,
     getAssignedIds,

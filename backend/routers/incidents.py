@@ -620,15 +620,35 @@ def maybe_generate_neris_id(db: Session, incident: Incident) -> Optional[str]:
 # INCIDENT NUMBER HELPERS
 # =============================================================================
 
+# Valid call categories and their prefixes
+CATEGORY_PREFIXES = {
+    'FIRE': 'F',
+    'EMS': 'E',
+    'DETAIL': 'D',
+}
+
+PREFIX_CATEGORIES = {v: k for k, v in CATEGORY_PREFIXES.items()}  # Reverse lookup
+
+
+def get_category_prefix(category: str) -> str:
+    """Get the incident number prefix for a category."""
+    return CATEGORY_PREFIXES.get(category, 'F')
+
+
+def get_prefix_category(prefix: str) -> str:
+    """Get the category for an incident number prefix."""
+    return PREFIX_CATEGORIES.get(prefix.upper(), 'FIRE')
+
+
 def get_next_incident_number(db: Session, year: int, category: str) -> str:
     """
     Get next incident number for year and category based on actual incidents.
-    Format: F250001 (Fire) or E250001 (EMS)
+    Format: F250001 (Fire), E250001 (EMS), D250001 (Detail)
     Uses MAX(existing) + 1 based on actual incident number patterns.
     """
-    prefix = 'F' if category == 'FIRE' else 'E'
+    prefix = get_category_prefix(category)
     year_short = year % 100  # 2025 -> 25
-    number_pattern = f"{prefix}{year_short}%"  # e.g., "F25%"
+    number_pattern = f"{prefix}{year_short}%"  # e.g., "F25%", "D25%"
     
     # Find the highest sequence number by matching the actual incident number pattern
     # This is more reliable than year_prefix since manual edits might not update year_prefix
@@ -657,15 +677,20 @@ def parse_incident_number(number: str) -> tuple:
     Parse incident number into components.
     F250001 -> ('FIRE', 2025, 1)
     E250015 -> ('EMS', 2025, 15)
+    D250003 -> ('DETAIL', 2025, 3)
     """
     if not number or len(number) < 3:
         return (None, None, None)
     
-    prefix = number[0]
-    category = 'FIRE' if prefix == 'F' else 'EMS'
-    year_short = int(number[1:3])
-    year = 2000 + year_short
-    seq_num = int(number[3:])
+    prefix = number[0].upper()
+    category = get_prefix_category(prefix)
+    
+    try:
+        year_short = int(number[1:3])
+        year = 2000 + year_short
+        seq_num = int(number[3:])
+    except ValueError:
+        return (None, None, None)
     
     return (category, year, seq_num)
 
@@ -700,7 +725,8 @@ async def suggest_incident_number(
     if year is None:
         year = datetime.now().year
     
-    if category not in ('FIRE', 'EMS'):
+    # Validate category - DETAIL is valid but CAD never creates it
+    if category not in CATEGORY_PREFIXES:
         category = 'FIRE'
     
     suggested = get_next_incident_number(db, year, category)
@@ -715,7 +741,7 @@ async def suggest_incident_number(
 async def list_incidents(
     year: Optional[int] = None,
     status: Optional[str] = None,
-    category: Optional[str] = None,  # FIRE, EMS, or None for all
+    category: Optional[str] = None,  # FIRE, EMS, DETAIL, or None for all
     limit: int = Query(100, le=1000),
     offset: int = 0,
     db: Session = Depends(get_db)
@@ -730,8 +756,8 @@ async def list_incidents(
     if status:
         query = query.filter(Incident.status == status)
     
-    # Only filter by category if explicitly FIRE or EMS (not empty string, null, etc)
-    if category and category.upper() in ('FIRE', 'EMS'):
+    # Filter by category if explicitly FIRE, EMS, or DETAIL
+    if category and category.upper() in CATEGORY_PREFIXES:
         query = query.filter(Incident.call_category == category.upper())
         # When filtered to one category, order by incident number
         query = query.order_by(Incident.internal_incident_number.desc())
@@ -1259,6 +1285,7 @@ async def create_incident(
             raise HTTPException(status_code=400, detail="Incident already exists")
     
     # Determine category (default to FIRE)
+    # Note: DETAIL is not valid for creation - incidents become DETAIL via category change only
     call_category = data.call_category or 'FIRE'
     if call_category not in ('FIRE', 'EMS'):
         call_category = 'FIRE'
@@ -1296,7 +1323,7 @@ async def create_incident(
     
     # Check sequence (compare within same category)
     out_of_sequence = False
-    prefix = 'F' if call_category == 'FIRE' else 'E'
+    prefix = get_category_prefix(call_category)
     year_short = year_prefix % 100
     
     # Get sequence number from incident_number string
@@ -1425,20 +1452,22 @@ async def update_incident(
     category_changed = False
     old_number = None
     new_number = None
+    old_category = None
     if 'call_category' in update_data:
         new_category = update_data['call_category']
-        if new_category and new_category != incident.call_category and new_category in ('FIRE', 'EMS'):
+        if new_category and new_category != incident.call_category and new_category in CATEGORY_PREFIXES:
             category_changed = True
             old_category = incident.call_category
             old_number = incident.internal_incident_number
             
-            # Assign new number from target category
+            # Assign new number from target category's sequence
             new_number = claim_incident_number(db, incident.year_prefix, new_category)
             incident.internal_incident_number = new_number
             incident.call_category = new_category
             
-            # Update CadTypeMapping to learn this override
-            if incident.cad_event_type:
+            # Update CadTypeMapping to learn this override (only for FIRE/EMS, not DETAIL)
+            # DETAIL is a manual administrative action, not a CAD type mapping
+            if incident.cad_event_type and new_category in ('FIRE', 'EMS'):
                 # Parse event type and subtype
                 cad_parts = incident.cad_event_type.split(' / ')
                 event_type = cad_parts[0].strip() if cad_parts else incident.cad_event_type
