@@ -205,26 +205,6 @@ class NerisCode(Base):
 
 
 # =============================================================================
-# CAD TYPE MAPPING (Learning System)
-# =============================================================================
-
-class CadTypeMapping(Base):
-    """
-    Maps CAD event types to call categories (FIRE/EMS).
-    Learns from user overrides.
-    """
-    __tablename__ = "cad_type_mappings"
-    
-    id = Column(Integer, primary_key=True)
-    cad_event_type = Column(String(100), nullable=False)      # MEDICAL, FIRE, ACCIDENT
-    cad_event_subtype = Column(String(100))                   # BLS, STRUCTURE, etc (nullable)
-    call_category = Column(String(10), nullable=False)        # FIRE or EMS
-    auto_created = Column(Boolean, default=True)              # True if system-generated
-    created_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
-    updated_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
-
-
-# =============================================================================
 # INCIDENT - MAIN TABLE
 # =============================================================================
 

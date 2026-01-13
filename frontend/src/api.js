@@ -227,15 +227,6 @@ export const getNerisCategory = (category) => api.get(`/neris-codes/categories/$
 export const getAllNerisDropdowns = () => api.get('/lookups/neris/all-dropdowns');
 
 // ============================================================================
-// CAD TYPE MAPPINGS
-// ============================================================================
-
-export const getCadTypeMappings = () => api.get('/lookups/cad-type-mappings');
-
-export const updateCadTypeMapping = (id, category) => 
-  api.put(`/lookups/cad-type-mappings/${id}`, null, { params: { call_category: category } });
-
-// ============================================================================
 // SETTINGS
 // ============================================================================
 

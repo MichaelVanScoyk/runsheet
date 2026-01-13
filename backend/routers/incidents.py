@@ -17,8 +17,7 @@ import logging
 from database import get_db, _extract_slug, _is_internal_ip
 from models import (
     Incident, IncidentUnit, IncidentPersonnel, 
-    Municipality, Apparatus, Personnel, Rank, AuditLog,
-    CadTypeMapping
+    Municipality, Apparatus, Personnel, Rank, AuditLog
 )
 from settings_helper import format_utc_iso, iso_or_none
 
@@ -1464,33 +1463,6 @@ async def update_incident(
             new_number = claim_incident_number(db, incident.year_prefix, new_category)
             incident.internal_incident_number = new_number
             incident.call_category = new_category
-            
-            # Update CadTypeMapping to learn this override (only for FIRE/EMS, not DETAIL)
-            # DETAIL is a manual administrative action, not a CAD type mapping
-            if incident.cad_event_type and new_category in ('FIRE', 'EMS'):
-                # Parse event type and subtype
-                cad_parts = incident.cad_event_type.split(' / ')
-                event_type = cad_parts[0].strip() if cad_parts else incident.cad_event_type
-                event_subtype = cad_parts[1].strip() if len(cad_parts) > 1 else None
-                
-                # Look for existing mapping
-                mapping = db.query(CadTypeMapping).filter(
-                    CadTypeMapping.cad_event_type == event_type,
-                    CadTypeMapping.cad_event_subtype == event_subtype
-                ).first()
-                
-                if mapping:
-                    mapping.call_category = new_category
-                    mapping.auto_created = False  # User override
-                    mapping.updated_at = datetime.now(timezone.utc)
-                else:
-                    mapping = CadTypeMapping(
-                        cad_event_type=event_type,
-                        cad_event_subtype=event_subtype,
-                        call_category=new_category,
-                        auto_created=False
-                    )
-                    db.add(mapping)
             
             logger.info(f"Category changed: {old_category} → {new_category}, number {old_number} → {new_number}")
             

@@ -888,25 +888,10 @@ class CADListener:
         self.stats['incidents_closed'] += 1
     
     def _determine_category(self, event_type: str, event_subtype: str = None) -> str:
-        """Determine call category from event type via API lookup."""
-        try:
-            params = {'event_type': event_type}
-            if event_subtype:
-                params['event_subtype'] = event_subtype
-            
-            resp = requests.get(
-                f"{self.api_url}/api/lookups/cad-type-mappings/lookup",
-                params=params,
-                headers=self._api_headers,
-                timeout=5
-            )
-            
-            if resp.status_code == 200:
-                return resp.json().get('call_category', 'FIRE')
-        except Exception as e:
-            logger.warning(f"Could not lookup category mapping: {e}")
-        
-        # Default logic
+        """
+        Determine call category from event type.
+        Simple rule: MEDICAL -> EMS, everything else -> FIRE
+        """
         if (event_type or '').upper().startswith('MEDICAL'):
             return 'EMS'
         return 'FIRE'
