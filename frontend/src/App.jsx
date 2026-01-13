@@ -16,7 +16,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter as Router, Routes, Route, NavLink, useNavigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, useNavigate, useParams } from 'react-router-dom';
 import { BrandingProvider, useBranding } from './contexts/BrandingContext';
 import { setStationTimezone } from './utils/timeUtils';
 import { useInactivityTimeout } from './hooks/useInactivityTimeout';
@@ -614,12 +614,12 @@ function App() {
   // Standalone auth pages bypass tenant login requirement
   if (isStandaloneAuthPage) {
     return (
-      <Router>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Routes>
-      </Router>
+      </BrowserRouter>
     );
   }
 
@@ -652,7 +652,7 @@ function App() {
   // Show app with tenant context - wrapped in BrandingProvider
   return (
     <BrandingProvider>
-      <Router>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           {/* Standalone auth pages - no app shell needed */}
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
@@ -662,7 +662,7 @@ function App() {
           {/* All other routes use the app shell */}
           <Route path="/*" element={<AppContent tenant={tenantSession} onTenantLogout={handleTenantLogout} />} />
         </Routes>
-      </Router>
+      </BrowserRouter>
     </BrandingProvider>
   );
 }
