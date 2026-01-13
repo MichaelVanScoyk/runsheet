@@ -287,11 +287,15 @@ function IncidentsPage() {
     // Skip if we've already processed this incident ID
     if (urlIncidentProcessedRef.current === urlIncidentId) return;
     
-    // Skip if form/modal already showing (user is working on something)
-    if (showForm || showHubModal) return;
-    
     const incidentIdNum = parseInt(urlIncidentId, 10);
     if (isNaN(incidentIdNum)) return;
+    
+    // Skip if currently editing/viewing the SAME incident
+    if (editingIncident?.id === incidentIdNum) {
+      urlIncidentProcessedRef.current = urlIncidentId;
+      setSearchParams({}, { replace: true });
+      return;
+    }
     
     // Mark as processed to prevent re-triggering
     urlIncidentProcessedRef.current = urlIncidentId;
@@ -305,14 +309,28 @@ function IncidentsPage() {
         // Clear the URL parameter now that we're opening the incident
         setSearchParams({}, { replace: true });
         
+        // Close any existing modal first
+        if (showHubModal) {
+          modalIncidents.forEach(inc => acknowledgeIncident(inc.id, inc.updated_at || inc.created_at));
+          setShowHubModal(false);
+          setModalIncidents([]);
+          setSelectedModalIncidentId(null);
+        }
+        
         // Open in appropriate view (modal for qualifying, form for others)
         if (incidentQualifiesForModal(fullIncident)) {
           setModalIncidents([fullIncident]);
           setSelectedModalIncidentId(fullIncident.id);
           setShowHubModal(true);
+          // Close form if open
+          if (showForm) {
+            setShowForm(false);
+            setEditingIncident(null);
+          }
         } else {
           setEditingIncident(fullIncident);
           setShowForm(true);
+          // Modal already closed above if it was open
         }
       } catch (err) {
         console.error('Failed to load incident from URL:', err);
@@ -322,7 +340,7 @@ function IncidentsPage() {
     };
     
     openIncidentFromUrl();
-  }, [urlIncidentId, showForm, showHubModal, setSearchParams]);
+  }, [urlIncidentId, showForm, showHubModal, editingIncident?.id, modalIncidents, setSearchParams]);
 
   const handleNewIncident = () => { setEditingIncident(null); setShowForm(true); };
 
