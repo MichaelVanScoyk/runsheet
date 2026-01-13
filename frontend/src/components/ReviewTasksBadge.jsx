@@ -37,26 +37,46 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
   // Only Officers and Admins can see review tasks
   const canView = userSession?.role === 'OFFICER' || userSession?.role === 'ADMIN';
 
+  // Fetch count function - extracted so it can be called on-demand
+  const fetchCount = async () => {
+    try {
+      const res = await fetch('/api/review-tasks/count');
+      if (res.ok) {
+        const data = await res.json();
+        setPendingCount(data.pending_count || 0);
+      }
+    } catch (err) {
+      console.error('Failed to fetch review task count:', err);
+    }
+  };
+
   // Fetch pending count on mount and every 30 seconds
   useEffect(() => {
     if (!canView) return;
-
-    const fetchCount = async () => {
-      try {
-        const res = await fetch('/api/review-tasks/count');
-        if (res.ok) {
-          const data = await res.json();
-          setPendingCount(data.pending_count || 0);
-        }
-      } catch (err) {
-        console.error('Failed to fetch review task count:', err);
-      }
-    };
 
     fetchCount();
     const interval = setInterval(fetchCount, 30000);
     return () => clearInterval(interval);
   }, [canView]);
+
+  // Listen for incident save/close events to refresh immediately
+  useEffect(() => {
+    if (!canView) return;
+
+    const handleRefresh = () => {
+      fetchCount();
+      // Also refresh the dropdown if it's open
+      if (showDropdown) {
+        fetch('/api/review-tasks/grouped?limit=10')
+          .then(res => res.ok ? res.json() : null)
+          .then(data => data && setGroupedTasks(data.incidents || []))
+          .catch(err => console.error('Failed to refresh grouped tasks:', err));
+      }
+    };
+
+    window.addEventListener('review-tasks-refresh', handleRefresh);
+    return () => window.removeEventListener('review-tasks-refresh', handleRefresh);
+  }, [canView, showDropdown]);
 
   // Fetch grouped tasks when dropdown opens
   useEffect(() => {

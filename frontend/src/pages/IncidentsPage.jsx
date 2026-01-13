@@ -385,8 +385,18 @@ function IncidentsPage() {
     window.open(`/api/reports/pdf/incident/${incidentId}`, '_blank');
   };
 
-  const handleFormClose = () => { setShowForm(false); setEditingIncident(null); loadData(); };
-  const handleFormSave = () => { loadData(); };
+  const handleFormClose = () => { 
+    setShowForm(false); 
+    setEditingIncident(null); 
+    loadData(); 
+    // Trigger review tasks refresh
+    window.dispatchEvent(new CustomEvent('review-tasks-refresh'));
+  };
+  const handleFormSave = () => { 
+    loadData(); 
+    // Trigger review tasks refresh (narrative may have been completed)
+    window.dispatchEvent(new CustomEvent('review-tasks-refresh'));
+  };
 
   // Modal close - acknowledge all shown
   const handleModalClose = () => {
@@ -395,6 +405,8 @@ function IncidentsPage() {
     setModalIncidents([]);
     setSelectedModalIncidentId(null);
     loadData();
+    // Trigger review tasks refresh
+    window.dispatchEvent(new CustomEvent('review-tasks-refresh'));
   };
 
   // Handle X button on individual tab
