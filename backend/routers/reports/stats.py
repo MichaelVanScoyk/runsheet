@@ -1,5 +1,8 @@
 """
 Reports Stats Router - Summary statistics and trends
+
+Filters by incident number prefix (F=Fire, E=EMS) rather than call_category.
+Detail incidents (D-prefix) are always excluded from metrics.
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -13,10 +16,22 @@ from database import get_db
 router = APIRouter()
 
 
+def _build_prefix_filter(category: str = None, alias: str = "i") -> str:
+    """
+    Build SQL filter based on incident number prefix (F=Fire, E=EMS).
+    Detail incidents (D-prefix) are always excluded from metrics.
+    """
+    if category and category.upper() == 'FIRE':
+        return f"AND {alias}.internal_incident_number LIKE 'F%'"
+    elif category and category.upper() == 'EMS':
+        return f"AND {alias}.internal_incident_number LIKE 'E%'"
+    else:
+        # Default: include Fire and EMS, exclude Detail
+        return f"AND ({alias}.internal_incident_number LIKE 'F%' OR {alias}.internal_incident_number LIKE 'E%')"
+
+
 def calculate_manhours(db: Session, start_date: date, end_date: date, category: str = None) -> dict:
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND i.call_category = '{category.upper()}'"
+    prefix_filter = _build_prefix_filter(category)
     
     result = db.execute(text(f"""
         WITH incident_durations AS (
@@ -30,7 +45,7 @@ def calculate_manhours(db: Session, start_date: date, end_date: date, category: 
             WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
               AND i.deleted_at IS NULL
               AND i.time_dispatched IS NOT NULL
-              {cat_filter}
+              {prefix_filter}
         )
         SELECT 
             COALESCE(SUM(duration_hours * personnel_count), 0) AS total_manhours,
@@ -51,9 +66,13 @@ def calculate_manhours(db: Session, start_date: date, end_date: date, category: 
 
 
 def get_response_times(db: Session, start_date: date, end_date: date, category: str = None) -> dict:
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND call_category = '{category.upper()}'"
+    # No alias needed for single table query
+    if category and category.upper() == 'FIRE':
+        prefix_filter = "AND internal_incident_number LIKE 'F%'"
+    elif category and category.upper() == 'EMS':
+        prefix_filter = "AND internal_incident_number LIKE 'E%'"
+    else:
+        prefix_filter = "AND (internal_incident_number LIKE 'F%' OR internal_incident_number LIKE 'E%')"
     
     result = db.execute(text(f"""
         SELECT 
@@ -64,7 +83,7 @@ def get_response_times(db: Session, start_date: date, end_date: date, category: 
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
           AND deleted_at IS NULL
           AND time_dispatched IS NOT NULL
-          {cat_filter}
+          {prefix_filter}
     """), {"start_date": start_date, "end_date": end_date})
     
     row = result.fetchone()
@@ -82,9 +101,7 @@ async def get_summary_report(
     category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND call_category = '{category.upper()}'"
+    prefix_filter = _build_prefix_filter(category)
     
     basic_stats = db.execute(text(f"""
         SELECT 
@@ -92,12 +109,12 @@ async def get_summary_report(
             COUNT(CASE WHEN status = 'OPEN' THEN 1 END) AS open_count,
             COUNT(CASE WHEN status = 'CLOSED' THEN 1 END) AS closed_count,
             COUNT(CASE WHEN status = 'SUBMITTED' THEN 1 END) AS submitted_count,
-            COUNT(CASE WHEN call_category = 'FIRE' THEN 1 END) AS fire_count,
-            COUNT(CASE WHEN call_category = 'EMS' THEN 1 END) AS ems_count
-        FROM incidents
+            COUNT(CASE WHEN internal_incident_number LIKE 'F%' THEN 1 END) AS fire_count,
+            COUNT(CASE WHEN internal_incident_number LIKE 'E%' THEN 1 END) AS ems_count
+        FROM incidents i
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
           AND deleted_at IS NULL
-          {cat_filter}
+          {prefix_filter}
     """), {"start_date": start_date, "end_date": end_date}).fetchone()
     
     manhours = calculate_manhours(db, start_date, end_date, category)
@@ -124,15 +141,13 @@ async def get_daily_trends(
     category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND call_category = '{category.upper()}'"
+    prefix_filter = _build_prefix_filter(category)
     
     result = db.execute(text(f"""
         SELECT COALESCE(incident_date, created_at::date) AS day, COUNT(*) AS count
-        FROM incidents
+        FROM incidents i
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
-          AND deleted_at IS NULL {cat_filter}
+          AND deleted_at IS NULL {prefix_filter}
         GROUP BY day ORDER BY day
     """), {"start_date": start_date, "end_date": end_date})
     
@@ -150,15 +165,13 @@ async def get_type_breakdown(
     category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND call_category = '{category.upper()}'"
+    prefix_filter = _build_prefix_filter(category)
     
     result = db.execute(text(f"""
         SELECT COALESCE(cad_event_type, 'Unknown') AS incident_type, COUNT(*) AS count
-        FROM incidents
+        FROM incidents i
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
-          AND deleted_at IS NULL {cat_filter}
+          AND deleted_at IS NULL {prefix_filter}
         GROUP BY cad_event_type ORDER BY count DESC
     """), {"start_date": start_date, "end_date": end_date})
     
@@ -176,16 +189,14 @@ async def get_municipality_breakdown(
     category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND i.call_category = '{category.upper()}'"
+    prefix_filter = _build_prefix_filter(category)
     
     result = db.execute(text(f"""
         SELECT COALESCE(m.display_name, i.municipality_code, 'Unknown') AS municipality, COUNT(*) AS count
         FROM incidents i
         LEFT JOIN municipalities m ON i.municipality_code = m.code
         WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
-          AND i.deleted_at IS NULL {cat_filter}
+          AND i.deleted_at IS NULL {prefix_filter}
         GROUP BY COALESCE(m.display_name, i.municipality_code, 'Unknown') ORDER BY count DESC
     """), {"start_date": start_date, "end_date": end_date})
     
@@ -205,31 +216,40 @@ async def get_personnel_report(
     db: Session = Depends(get_db)
 ):
     """Get personnel response statistics - top responders"""
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND i.call_category = '{category.upper()}'"
+    # Filter by incident number prefix (F=Fire, E=EMS), excludes Detail (D)
+    if category and category.upper() == 'FIRE':
+        prefix_filter = "AND internal_incident_number LIKE 'F%'"
+    elif category and category.upper() == 'EMS':
+        prefix_filter = "AND internal_incident_number LIKE 'E%'"
+    else:
+        prefix_filter = "AND (internal_incident_number LIKE 'F%' OR internal_incident_number LIKE 'E%')"
     
     result = db.execute(text(f"""
-        WITH personnel_stats AS (
+        WITH filtered_incidents AS (
+            -- Pre-filter incidents by date range and category
+            SELECT id, time_dispatched, time_last_cleared, time_first_on_scene
+            FROM incidents
+            WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
+              AND deleted_at IS NULL
+              AND time_dispatched IS NOT NULL
+              {prefix_filter}
+        ),
+        personnel_stats AS (
             SELECT 
                 p.id,
                 p.first_name,
                 p.last_name,
                 r.rank_name AS rank_name,
-                COUNT(DISTINCT ip.incident_id) AS incident_count,
+                COUNT(DISTINCT fi.id) AS incident_count,
                 SUM(
                     EXTRACT(EPOCH FROM (
-                        COALESCE(i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched
+                        COALESCE(fi.time_last_cleared, fi.time_first_on_scene) - fi.time_dispatched
                     )) / 3600.0
                 ) AS total_hours
             FROM personnel p
             LEFT JOIN ranks r ON p.rank_id = r.id
             LEFT JOIN incident_personnel ip ON ip.personnel_id = p.id
-            LEFT JOIN incidents i ON ip.incident_id = i.id 
-                AND COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
-                AND i.deleted_at IS NULL
-                AND i.time_dispatched IS NOT NULL
-                {cat_filter}
+            LEFT JOIN filtered_incidents fi ON ip.incident_id = fi.id
             WHERE p.active = true
             GROUP BY p.id, p.first_name, p.last_name, r.rank_name
         )
@@ -269,22 +289,31 @@ async def get_apparatus_report(
     db: Session = Depends(get_db)
 ):
     """Get incident breakdown by apparatus"""
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND i.call_category = '{category.upper()}'"
+    # Filter by incident number prefix (F=Fire, E=EMS), excludes Detail (D)
+    if category and category.upper() == 'FIRE':
+        prefix_filter = "AND i.internal_incident_number LIKE 'F%'"
+    elif category and category.upper() == 'EMS':
+        prefix_filter = "AND i.internal_incident_number LIKE 'E%'"
+    else:
+        prefix_filter = "AND (i.internal_incident_number LIKE 'F%' OR i.internal_incident_number LIKE 'E%')"
     
     result = db.execute(text(f"""
+        WITH filtered_incidents AS (
+            -- Pre-filter incidents by date range and category
+            SELECT id
+            FROM incidents
+            WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
+              AND deleted_at IS NULL
+              {prefix_filter}
+        )
         SELECT 
             a.unit_designator,
             a.name AS apparatus_name,
-            COUNT(DISTINCT iu.incident_id) AS incident_count,
+            COUNT(DISTINCT fi.id) AS incident_count,
             COUNT(iu.id) AS total_responses
         FROM apparatus a
         LEFT JOIN incident_units iu ON iu.apparatus_id = a.id
-        LEFT JOIN incidents i ON iu.incident_id = i.id 
-            AND COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
-            AND i.deleted_at IS NULL
-            {cat_filter}
+        LEFT JOIN filtered_incidents fi ON iu.incident_id = fi.id
         WHERE a.unit_category = 'APPARATUS' AND a.active = true
         GROUP BY a.id, a.unit_designator, a.name
         ORDER BY incident_count DESC
@@ -310,7 +339,7 @@ async def get_monthly_trend(
     year: int = Query(...),
     db: Session = Depends(get_db)
 ):
-    """Get monthly incident trends for a year"""
+    """Get monthly incident trends for a year (excludes Detail incidents)"""
     result = db.execute(text("""
         SELECT 
             EXTRACT(MONTH FROM COALESCE(i.incident_date, i.created_at::date))::int AS month,
@@ -321,6 +350,7 @@ async def get_monthly_trend(
         FROM incidents i
         WHERE EXTRACT(YEAR FROM COALESCE(i.incident_date, i.created_at::date)) = :year
           AND i.deleted_at IS NULL
+          AND (i.internal_incident_number LIKE 'F%' OR i.internal_incident_number LIKE 'E%')
         GROUP BY EXTRACT(MONTH FROM COALESCE(i.incident_date, i.created_at::date))
         ORDER BY month
     """), {"year": year})
@@ -353,15 +383,19 @@ async def get_hourly_distribution(
     category: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND call_category = '{category.upper()}'"
+    # No alias needed for single table query
+    if category and category.upper() == 'FIRE':
+        prefix_filter = "AND internal_incident_number LIKE 'F%'"
+    elif category and category.upper() == 'EMS':
+        prefix_filter = "AND internal_incident_number LIKE 'E%'"
+    else:
+        prefix_filter = "AND (internal_incident_number LIKE 'F%' OR internal_incident_number LIKE 'E%')"
     
     result = db.execute(text(f"""
         SELECT EXTRACT(HOUR FROM time_dispatched) AS hour, COUNT(*) AS count
         FROM incidents
         WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
-          AND deleted_at IS NULL AND time_dispatched IS NOT NULL {cat_filter}
+          AND deleted_at IS NULL AND time_dispatched IS NOT NULL {prefix_filter}
         GROUP BY EXTRACT(HOUR FROM time_dispatched) ORDER BY hour
     """), {"start_date": start_date, "end_date": end_date})
     
