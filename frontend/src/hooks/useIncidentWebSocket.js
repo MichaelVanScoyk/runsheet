@@ -56,6 +56,7 @@ export function useIncidentWebSocket({
     if (!enabled) return;
 
     let isMounted = true;
+    let connectionDelayTimeout = null;
 
     const cleanup = () => {
       if (pingInterval.current) {
@@ -69,6 +70,10 @@ export function useIncidentWebSocket({
       if (reconnectTimeout.current) {
         clearTimeout(reconnectTimeout.current);
         reconnectTimeout.current = null;
+      }
+      if (connectionDelayTimeout) {
+        clearTimeout(connectionDelayTimeout);
+        connectionDelayTimeout = null;
       }
     };
 
@@ -196,8 +201,14 @@ export function useIncidentWebSocket({
       };
     };
 
-    // Initial connection
-    connect();
+    // Initial connection with delay to handle React StrictMode double-mount
+    // This prevents "WebSocket closed before established" errors in development
+    connectionDelayTimeout = setTimeout(() => {
+      connectionDelayTimeout = null;
+      if (isMounted && enabledRef.current) {
+        connect();
+      }
+    }, 50);
 
     // Cleanup on unmount
     return () => {
