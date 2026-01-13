@@ -1,5 +1,9 @@
 """
 Monthly Chiefs Report Router
+
+Filters by incident number prefix (F=Fire, E=EMS) rather than call_category.
+This is more accurate since the prefix reflects the final classification.
+Detail incidents (D-prefix) are always excluded from metrics.
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -16,10 +20,24 @@ from report_engine.branding_config import get_branding, get_logo_data_url
 router = APIRouter()
 
 
+def _build_prefix_filter(category: str = None, alias: str = "i") -> str:
+    """
+    Build SQL filter based on incident number prefix (F=Fire, E=EMS).
+    This is more accurate than call_category since the prefix reflects
+    the final classification after any category changes.
+    Detail incidents (D-prefix) are always excluded from metrics.
+    """
+    if category and category.upper() == 'FIRE':
+        return f"AND {alias}.internal_incident_number LIKE 'F%'"
+    elif category and category.upper() == 'EMS':
+        return f"AND {alias}.internal_incident_number LIKE 'E%'"
+    else:
+        # Default: include Fire and EMS, exclude Detail
+        return f"AND ({alias}.internal_incident_number LIKE 'F%' OR {alias}.internal_incident_number LIKE 'E%')"
+
+
 def _calculate_manhours(db: Session, start_date: date, end_date: date, category: str = None) -> dict:
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND i.call_category = '{category.upper()}'"
+    prefix_filter = _build_prefix_filter(category)
     
     result = db.execute(text(f"""
         WITH incident_durations AS (
@@ -28,7 +46,7 @@ def _calculate_manhours(db: Session, start_date: date, end_date: date, category:
                 (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count
             FROM incidents i
             WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
-              AND i.deleted_at IS NULL AND i.time_dispatched IS NOT NULL {cat_filter}
+              AND i.deleted_at IS NULL AND i.time_dispatched IS NOT NULL {prefix_filter}
         )
         SELECT COALESCE(SUM(duration_hours * personnel_count), 0), COALESCE(SUM(personnel_count), 0), COUNT(*), COALESCE(AVG(duration_hours), 0)
         FROM incident_durations WHERE duration_hours > 0 AND duration_hours < 24
@@ -39,16 +57,20 @@ def _calculate_manhours(db: Session, start_date: date, end_date: date, category:
 
 
 def _get_response_times(db: Session, start_date: date, end_date: date, category: str = None) -> dict:
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND call_category = '{category.upper()}'"
+    # Note: no alias needed here since single table query
+    if category and category.upper() == 'FIRE':
+        prefix_filter = "AND internal_incident_number LIKE 'F%'"
+    elif category and category.upper() == 'EMS':
+        prefix_filter = "AND internal_incident_number LIKE 'E%'"
+    else:
+        prefix_filter = "AND (internal_incident_number LIKE 'F%' OR internal_incident_number LIKE 'E%')"
     
     result = db.execute(text(f"""
         SELECT AVG(EXTRACT(EPOCH FROM (time_first_enroute - time_dispatched)) / 60),
                AVG(EXTRACT(EPOCH FROM (time_first_on_scene - time_dispatched)) / 60),
                AVG(EXTRACT(EPOCH FROM (time_last_cleared - time_first_on_scene)) / 60)
         FROM incidents WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date
-          AND deleted_at IS NULL AND time_dispatched IS NOT NULL {cat_filter}
+          AND deleted_at IS NULL AND time_dispatched IS NOT NULL {prefix_filter}
     """), {"start_date": start_date, "end_date": end_date})
     
     row = result.fetchone()
@@ -61,9 +83,7 @@ def _get_response_times(db: Session, start_date: date, end_date: date, category:
 
 @router.get("/monthly")
 async def get_monthly_chiefs_report(year: int = Query(...), month: int = Query(...), category: Optional[str] = None, db: Session = Depends(get_db)):
-    cat_filter = ""
-    if category and category.upper() in ('FIRE', 'EMS'):
-        cat_filter = f"AND i.call_category = '{category.upper()}'"
+    prefix_filter = _build_prefix_filter(category)
     
     start_date = date(year, month, 1)
     end_date = date(year + 1, 1, 1) - timedelta(days=1) if month == 12 else date(year, month + 1, 1) - timedelta(days=1)
@@ -77,7 +97,7 @@ async def get_monthly_chiefs_report(year: int = Query(...), month: int = Query(.
                 (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count
             FROM incidents i
             WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
-              AND i.deleted_at IS NULL AND i.time_dispatched IS NOT NULL {cat_filter}
+              AND i.deleted_at IS NULL AND i.time_dispatched IS NOT NULL {prefix_filter}
         )
         SELECT COUNT(*), COALESCE(SUM(personnel_count), 0),
             COALESCE(SUM(CASE WHEN duration_hours > 0 AND duration_hours < 24 THEN duration_hours ELSE 0 END), 0),
@@ -88,7 +108,7 @@ async def get_monthly_chiefs_report(year: int = Query(...), month: int = Query(.
     summary_row = summary_result.fetchone()
     
     prev_result = db.execute(text(f"""
-        SELECT COUNT(*) FROM incidents i WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date AND deleted_at IS NULL {cat_filter}
+        SELECT COUNT(*) FROM incidents i WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date AND deleted_at IS NULL {prefix_filter}
     """), {"start_date": prev_start, "end_date": prev_end})
     prev_count = prev_result.fetchone()[0]
     
@@ -103,7 +123,7 @@ async def get_monthly_chiefs_report(year: int = Query(...), month: int = Query(.
             SELECT COALESCE(SUM(property_value_at_risk), 0), COALESCE(SUM(fire_damages_estimate), 0),
                    COALESCE(SUM(ff_injuries_count), 0), COALESCE(SUM(civilian_injuries_count), 0)
             FROM incidents i WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
-              AND i.deleted_at IS NULL AND (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN') {cat_filter}
+              AND i.deleted_at IS NULL AND (i.neris_aid_direction IS NULL OR i.neris_aid_direction != 'GIVEN') {prefix_filter}
         """), {"start_date": start_date, "end_date": end_date})
         damage_row = damage_result.fetchone()
         damage_stats = {"property_at_risk": int(damage_row[0] or 0), "fire_damages": int(damage_row[1] or 0), "ff_injuries": int(damage_row[2] or 0), "civilian_injuries": int(damage_row[3] or 0)}
@@ -116,7 +136,7 @@ async def get_monthly_chiefs_report(year: int = Query(...), month: int = Query(.
                 EXTRACT(EPOCH FROM (COALESCE(i.time_last_cleared, i.time_first_on_scene) - i.time_dispatched)) / 3600.0 AS duration_hours,
                 (SELECT COUNT(*) FROM incident_personnel ip WHERE ip.incident_id = i.id) AS personnel_count
             FROM incidents i LEFT JOIN municipalities m ON i.municipality_code = m.code
-            WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date AND i.deleted_at IS NULL {cat_filter}
+            WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date AND i.deleted_at IS NULL {prefix_filter}
         )
         SELECT municipality, COUNT(*), COALESCE(SUM(CASE WHEN duration_hours > 0 AND duration_hours < 24 THEN duration_hours * personnel_count ELSE 0 END), 0)
         FROM incident_data GROUP BY municipality ORDER BY COUNT(*) DESC
@@ -126,7 +146,7 @@ async def get_monthly_chiefs_report(year: int = Query(...), month: int = Query(.
     
     type_result = db.execute(text(f"""
         SELECT COALESCE(cad_event_type, 'Unknown'), COALESCE(cad_event_subtype, 'Unspecified'), COUNT(*)
-        FROM incidents i WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date AND deleted_at IS NULL {cat_filter}
+        FROM incidents i WHERE COALESCE(incident_date, created_at::date) BETWEEN :start_date AND :end_date AND deleted_at IS NULL {prefix_filter}
         GROUP BY cad_event_type, cad_event_subtype ORDER BY cad_event_type, COUNT(*) DESC
     """), {"start_date": start_date, "end_date": end_date})
     
@@ -144,7 +164,7 @@ async def get_monthly_chiefs_report(year: int = Query(...), month: int = Query(.
     unit_result = db.execute(text(f"""
         SELECT COALESCE(a.unit_designator, iu.cad_unit_id, 'Unknown'), COALESCE(a.name, iu.cad_unit_id), COUNT(DISTINCT iu.incident_id)
         FROM incident_units iu LEFT JOIN apparatus a ON iu.apparatus_id = a.id JOIN incidents i ON iu.incident_id = i.id
-        WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date AND i.deleted_at IS NULL {cat_filter}
+        WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date AND i.deleted_at IS NULL {prefix_filter}
         GROUP BY COALESCE(a.unit_designator, iu.cad_unit_id, 'Unknown'), COALESCE(a.name, iu.cad_unit_id) ORDER BY COUNT(DISTINCT iu.incident_id) DESC
     """), {"start_date": start_date, "end_date": end_date})
     
@@ -155,7 +175,7 @@ async def get_monthly_chiefs_report(year: int = Query(...), month: int = Query(.
         ma_result = db.execute(text(f"""
             SELECT unnest(neris_aid_departments), COUNT(*) FROM incidents i
             WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
-              AND i.deleted_at IS NULL AND i.neris_aid_direction = 'GIVEN' AND i.neris_aid_departments IS NOT NULL {cat_filter}
+              AND i.deleted_at IS NULL AND i.neris_aid_direction = 'GIVEN' AND i.neris_aid_departments IS NOT NULL {prefix_filter}
             GROUP BY unnest(neris_aid_departments) ORDER BY COUNT(*) DESC
         """), {"start_date": start_date, "end_date": end_date})
         mutual_aid = [{"station": row[0], "count": row[1]} for row in ma_result]
