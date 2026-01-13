@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { getIncidents, getIncident, getIncidentYears } from '../api';
 import { useBranding } from '../contexts/BrandingContext';
 import RunSheetForm from '../components/RunSheetForm';
@@ -56,6 +57,11 @@ function IncidentsPage() {
   
   // Track if WebSocket connected to control fallback polling
   const wsConnectedRef = useRef(false);
+  
+  // URL parameter handling for direct incident links (e.g., /?incident=123)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlIncidentId = searchParams.get('incident');
+  const urlIncidentProcessedRef = useRef(null); // Track which incident ID we've processed
 
   // WebSocket handlers for real-time updates
   const handleIncidentCreated = useCallback((incident) => {
@@ -269,6 +275,54 @@ function IncidentsPage() {
     
     return () => clearInterval(interval);
   }, [wsConnected, loadData, loadQualifyingIncidents, showForm, showHubModal]);
+
+  // URL parameter handling - open incident from direct link (e.g., /?incident=123)
+  // This enables Review Tasks links and shareable incident URLs
+  useEffect(() => {
+    if (!urlIncidentId) {
+      urlIncidentProcessedRef.current = null;
+      return;
+    }
+    
+    // Skip if we've already processed this incident ID
+    if (urlIncidentProcessedRef.current === urlIncidentId) return;
+    
+    // Skip if form/modal already showing (user is working on something)
+    if (showForm || showHubModal) return;
+    
+    const incidentIdNum = parseInt(urlIncidentId, 10);
+    if (isNaN(incidentIdNum)) return;
+    
+    // Mark as processed to prevent re-triggering
+    urlIncidentProcessedRef.current = urlIncidentId;
+    
+    // Fetch and open the incident
+    const openIncidentFromUrl = async () => {
+      try {
+        const res = await getIncident(incidentIdNum);
+        const fullIncident = res.data;
+        
+        // Clear the URL parameter now that we're opening the incident
+        setSearchParams({}, { replace: true });
+        
+        // Open in appropriate view (modal for qualifying, form for others)
+        if (incidentQualifiesForModal(fullIncident)) {
+          setModalIncidents([fullIncident]);
+          setSelectedModalIncidentId(fullIncident.id);
+          setShowHubModal(true);
+        } else {
+          setEditingIncident(fullIncident);
+          setShowForm(true);
+        }
+      } catch (err) {
+        console.error('Failed to load incident from URL:', err);
+        // Clear invalid parameter
+        setSearchParams({}, { replace: true });
+      }
+    };
+    
+    openIncidentFromUrl();
+  }, [urlIncidentId, showForm, showHubModal, setSearchParams]);
 
   const handleNewIncident = () => { setEditingIncident(null); setShowForm(true); };
 
