@@ -663,10 +663,14 @@ class CADListener:
         if report.get('caller_phone'):
             update_data['caller_phone'] = report['caller_phone']
         
-        if report.get('first_dispatch'):
-            update_data['time_dispatched'] = self._parse_cad_time(
-                report['first_dispatch'], incident_date, dispatch_time_str
-            )
+        # NOTE: We do NOT use first_dispatch header for time_dispatched.
+        # first_dispatch is the time the FIRST unit on the incident was dispatched,
+        # which could be a different station dispatched hours before us.
+        # Instead, we calculate time_dispatched from OUR units' earliest dispatch time below.
+        
+        # Use first_dispatch only as reference for midnight crossing detection
+        if not dispatch_time_str and report.get('first_dispatch'):
+            dispatch_time_str = report['first_dispatch']
         
         # Merge unit times
         existing_units = {}
@@ -724,6 +728,11 @@ class CADListener:
             metric_units = [u for u in cad_units 
                            if u.get('counts_for_response_times') == True 
                            and not u.get('is_mutual_aid', True)]
+            
+            # time_dispatched = earliest dispatch time from OUR units that count
+            dispatch_times = [u['time_dispatched'] for u in metric_units if u.get('time_dispatched')]
+            if dispatch_times:
+                update_data['time_dispatched'] = min(dispatch_times)
             
             enroute_times = [u['time_enroute'] for u in metric_units if u.get('time_enroute')]
             if enroute_times:
@@ -827,6 +836,10 @@ class CADListener:
         self.stats['incidents_created'] += 1
         self.stats['incidents_created_from_clear'] += 1
         
+        # Use first_dispatch only as reference for midnight crossing detection
+        # (NOT for time_dispatched - that comes from our units)
+        dispatch_time_str = report.get('first_dispatch')
+        
         # Build unit data
         cad_units = []
         for ut in report.get('unit_times', []):
@@ -845,11 +858,11 @@ class CADListener:
                 'apparatus_id': unit_info['apparatus_id'],
                 'unit_category': unit_info['category'],
                 'counts_for_response_times': unit_info['counts_for_response_times'],
-                'time_dispatched': self._parse_cad_time(ut.get('time_dispatched'), incident_date, None),
-                'time_enroute': self._parse_cad_time(ut.get('time_enroute'), incident_date, None),
-                'time_arrived': self._parse_cad_time(ut.get('time_arrived'), incident_date, None),
-                'time_available': self._parse_cad_time(ut.get('time_available'), incident_date, None),
-                'time_cleared': self._parse_cad_time(ut.get('time_at_quarters'), incident_date, None),
+                'time_dispatched': self._parse_cad_time(ut.get('time_dispatched'), incident_date, dispatch_time_str),
+                'time_enroute': self._parse_cad_time(ut.get('time_enroute'), incident_date, dispatch_time_str),
+                'time_arrived': self._parse_cad_time(ut.get('time_arrived'), incident_date, dispatch_time_str),
+                'time_available': self._parse_cad_time(ut.get('time_available'), incident_date, dispatch_time_str),
+                'time_cleared': self._parse_cad_time(ut.get('time_at_quarters'), incident_date, dispatch_time_str),
             })
         
         update_data = {
@@ -860,13 +873,15 @@ class CADListener:
             'cad_units': cad_units,
         }
         
-        if report.get('first_dispatch'):
-            update_data['time_dispatched'] = self._parse_cad_time(report['first_dispatch'], incident_date, None)
-        
         if cad_units:
             metric_units = [u for u in cad_units 
                            if u.get('counts_for_response_times') == True 
                            and not u.get('is_mutual_aid', True)]
+            
+            # time_dispatched = earliest dispatch time from OUR units that count
+            dispatch_times = [u['time_dispatched'] for u in metric_units if u.get('time_dispatched')]
+            if dispatch_times:
+                update_data['time_dispatched'] = min(dispatch_times)
             
             enroute_times = [u['time_enroute'] for u in metric_units if u.get('time_enroute')]
             if enroute_times:

@@ -308,12 +308,14 @@ def full_reparse_incident(incident_id: int, db: Session, edited_by: Optional[int
         update_fields['caller_phone'] = report_dict['caller_phone']
         restored_fields.append('caller_phone')
     
-    # Time fields - ALWAYS set these, even to NULL, to clear old bad data
-    if dispatch_time_str:
-        dt = build_datetime_with_midnight_crossing(incident_date, dispatch_time_str, dispatch_time_str)
-        if dt:
-            update_fields['time_dispatched'] = dt
-            restored_fields.append('time_dispatched')
+    # NOTE: We do NOT use first_dispatch/dispatch_time header for time_dispatched.
+    # That's the time the FIRST unit on the ENTIRE incident was dispatched,
+    # which could be a different station dispatched hours before us.
+    # Instead, calculate time_dispatched from OUR units' earliest dispatch time.
+    dispatch_times_from_units = [u['time_dispatched'] for u in metric_units if u.get('time_dispatched')]
+    if dispatch_times_from_units:
+        update_fields['time_dispatched'] = min(dispatch_times_from_units)
+        restored_fields.append('time_dispatched')
     
     # ALWAYS set response time fields - NULL if no metric units have data
     # This clears old bad data from mutual aid times
@@ -943,11 +945,10 @@ async def preview_restore_from_cad(
         'time_last_cleared': None,
     }
     
-    # Calculate time_dispatched
-    if dispatch_time_str and incident_date:
-        dt = build_datetime_with_midnight_crossing(incident_date, dispatch_time_str, dispatch_time_str)
-        if dt:
-            new_values['time_dispatched'] = dt
+    # NOTE: We do NOT use first_dispatch/dispatch_time header for time_dispatched.
+    # That's the time the FIRST unit on the ENTIRE incident was dispatched,
+    # which could be a different station dispatched hours before us.
+    # We calculate time_dispatched from OUR units' earliest dispatch time below.
     
     # Calculate response times from units that count
     included_units = []
@@ -968,11 +969,22 @@ async def preview_restore_from_cad(
                 included_units.append(canonical_id)
                 metric_units.append({
                     'unit_id': canonical_id,
+                    'time_dispatched': ut.get('time_dispatched'),
                     'time_enroute': ut.get('time_enroute'),
                     'time_arrived': ut.get('time_arrived'),
                 })
             else:
                 excluded_units.append(canonical_id)
+        
+        # Calculate time_dispatched from metric units (earliest dispatch of OUR units)
+        dispatch_times_from_units = []
+        for mu in metric_units:
+            if mu.get('time_dispatched'):
+                dt = build_datetime_with_midnight_crossing(incident_date, mu['time_dispatched'], dispatch_time_str)
+                if dt:
+                    dispatch_times_from_units.append(dt)
+        if dispatch_times_from_units:
+            new_values['time_dispatched'] = min(dispatch_times_from_units)
         
         # Calculate first_enroute from metric units
         enroute_times = []
