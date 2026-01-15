@@ -194,8 +194,11 @@ def get_turnout_vs_crew_size(
     db: Session = Depends(get_db)
 ):
     """
-    Turnout time correlated with crew size, broken down by time period.
-    Shows: when we leave faster, do we have fewer people?
+    First-out unit turnout time vs crew size on that unit.
+    Shows: when we leave faster, do we have fewer people on the first unit?
+    
+    Uses cad_units JSONB to find the first unit enroute, then counts
+    personnel assigned to that specific unit.
     
     Time periods:
     - Daytime: 6am - 4pm
@@ -207,47 +210,91 @@ def get_turnout_vs_crew_size(
         prefix = 'F' if category.upper() == 'FIRE' else 'E'
         prefix_filter = f"AND i.internal_incident_number LIKE '{prefix}%'"
     
-    # Get turnout time buckets with average crew size by time period
+    # Get first-out unit turnout time and crew count
+    # Uses cad_units JSONB to find the first unit with time_enroute
     result = db.execute(text(f"""
-        WITH unit_data AS (
+        WITH first_unit AS (
             SELECT 
                 i.id as incident_id,
-                iu.id as unit_id,
-                -- Turnout time in minutes, bucketed
-                CASE 
-                    WHEN EXTRACT(EPOCH FROM (iu.time_enroute_to_scene - iu.time_dispatch)) / 60 < 1 THEN 1
-                    WHEN EXTRACT(EPOCH FROM (iu.time_enroute_to_scene - iu.time_dispatch)) / 60 < 2 THEN 2
-                    WHEN EXTRACT(EPOCH FROM (iu.time_enroute_to_scene - iu.time_dispatch)) / 60 < 3 THEN 3
-                    WHEN EXTRACT(EPOCH FROM (iu.time_enroute_to_scene - iu.time_dispatch)) / 60 < 4 THEN 4
-                    WHEN EXTRACT(EPOCH FROM (iu.time_enroute_to_scene - iu.time_dispatch)) / 60 < 5 THEN 5
-                    ELSE 6
-                END as turnout_bucket,
-                -- Time period
-                CASE 
-                    WHEN EXTRACT(hour FROM i.time_dispatched) >= 6 AND EXTRACT(hour FROM i.time_dispatched) < 16 THEN 'daytime'
-                    WHEN EXTRACT(hour FROM i.time_dispatched) >= 16 THEN 'evening'
-                    ELSE 'overnight'
-                END as time_period,
-                iu.crew_count
+                i.time_dispatched,
+                -- Extract first unit to go enroute from cad_units JSONB
+                -- Sort by time_enroute and take the first one
+                (SELECT unit_elem->>'unit_id' 
+                 FROM jsonb_array_elements(i.cad_units) AS unit_elem 
+                 WHERE unit_elem->>'time_enroute' IS NOT NULL 
+                   AND (unit_elem->>'is_mutual_aid')::boolean IS NOT TRUE
+                 ORDER BY unit_elem->>'time_enroute' 
+                 LIMIT 1
+                ) as first_unit_id,
+                (SELECT unit_elem->>'time_enroute' 
+                 FROM jsonb_array_elements(i.cad_units) AS unit_elem 
+                 WHERE unit_elem->>'time_enroute' IS NOT NULL 
+                   AND (unit_elem->>'is_mutual_aid')::boolean IS NOT TRUE
+                 ORDER BY unit_elem->>'time_enroute' 
+                 LIMIT 1
+                ) as first_enroute_time
             FROM incidents i
-            JOIN incident_units iu ON i.id = iu.incident_id
-            JOIN apparatus a ON iu.apparatus_id = a.id
             WHERE i.incident_date >= :start_date
                 AND i.incident_date < :end_date
                 AND i.deleted_at IS NULL
-                AND iu.time_dispatch IS NOT NULL
-                AND iu.time_enroute_to_scene IS NOT NULL
-                AND iu.crew_count IS NOT NULL
-                AND iu.crew_count > 0
-                AND a.unit_category = 'APPARATUS'
+                AND i.time_dispatched IS NOT NULL
+                AND i.cad_units IS NOT NULL
+                AND jsonb_array_length(i.cad_units) > 0
                 {prefix_filter}
+        ),
+        unit_with_crew AS (
+            SELECT 
+                fu.incident_id,
+                fu.time_dispatched,
+                fu.first_unit_id,
+                fu.first_enroute_time::timestamp as first_enroute,
+                -- Turnout time in minutes
+                EXTRACT(EPOCH FROM (fu.first_enroute_time::timestamp - fu.time_dispatched)) / 60 as turnout_mins,
+                -- Time period based on dispatch hour
+                CASE 
+                    WHEN EXTRACT(hour FROM fu.time_dispatched) >= 6 AND EXTRACT(hour FROM fu.time_dispatched) < 16 THEN 'daytime'
+                    WHEN EXTRACT(hour FROM fu.time_dispatched) >= 16 THEN 'evening'
+                    ELSE 'overnight'
+                END as time_period,
+                -- Count personnel on the first-out unit
+                (SELECT COUNT(*) 
+                 FROM incident_personnel ip
+                 JOIN incident_units iu ON ip.incident_unit_id = iu.id
+                 JOIN apparatus a ON iu.apparatus_id = a.id
+                 WHERE ip.incident_id = fu.incident_id
+                   AND a.unit_designator = fu.first_unit_id
+                ) as crew_count
+            FROM first_unit fu
+            WHERE fu.first_unit_id IS NOT NULL
+              AND fu.first_enroute_time IS NOT NULL
+        ),
+        bucketed AS (
+            SELECT 
+                incident_id,
+                time_period,
+                crew_count,
+                turnout_mins,
+                CASE 
+                    WHEN turnout_mins < 1 THEN 1
+                    WHEN turnout_mins < 2 THEN 2
+                    WHEN turnout_mins < 3 THEN 3
+                    WHEN turnout_mins < 4 THEN 4
+                    WHEN turnout_mins < 5 THEN 5
+                    WHEN turnout_mins < 6 THEN 6
+                    WHEN turnout_mins < 7 THEN 7
+                    WHEN turnout_mins < 8 THEN 8
+                    ELSE 9
+                END as turnout_bucket
+            FROM unit_with_crew
+            WHERE turnout_mins > 0 AND turnout_mins < 30  -- Filter out bad data
+              AND crew_count > 0
         )
         SELECT 
             turnout_bucket,
             time_period,
-            COUNT(*) as response_count,
+            COUNT(*) as incident_count,
             ROUND(AVG(crew_count)::numeric, 1) as avg_crew
-        FROM unit_data
+        FROM bucketed
         GROUP BY turnout_bucket, time_period
         ORDER BY turnout_bucket, time_period
     """), {
@@ -256,7 +303,10 @@ def get_turnout_vs_crew_size(
     }).fetchall()
     
     # Organize by turnout bucket
-    buckets = {1: "< 1 min", 2: "1-2 min", 3: "2-3 min", 4: "3-4 min", 5: "4-5 min", 6: "5+ min"}
+    buckets = {
+        1: "< 1 min", 2: "1-2 min", 3: "2-3 min", 4: "3-4 min", 
+        5: "4-5 min", 6: "5-6 min", 7: "6-7 min", 8: "7-8 min", 9: "8+ min"
+    }
     periods = ['daytime', 'evening', 'overnight']
     
     # Build structured response
@@ -266,7 +316,7 @@ def get_turnout_vs_crew_size(
         for period in periods:
             match = next((r for r in result if r.turnout_bucket == bucket_num and r.time_period == period), None)
             row[f"{period}_avg_crew"] = float(match.avg_crew) if match else None
-            row[f"{period}_count"] = match.response_count if match else 0
+            row[f"{period}_count"] = match.incident_count if match else 0
         data.append(row)
     
     # Calculate overall averages by period
@@ -274,8 +324,8 @@ def get_turnout_vs_crew_size(
     for period in periods:
         period_rows = [r for r in result if r.time_period == period]
         if period_rows:
-            total_count = sum(r.response_count for r in period_rows)
-            weighted_crew = sum(r.avg_crew * r.response_count for r in period_rows)
+            total_count = sum(r.incident_count for r in period_rows)
+            weighted_crew = sum(float(r.avg_crew) * r.incident_count for r in period_rows)
             period_summary[period] = {
                 "avg_crew": round(weighted_crew / total_count, 1) if total_count else None,
                 "total_responses": total_count
@@ -290,7 +340,8 @@ def get_turnout_vs_crew_size(
             "overnight": "12am - 6am"
         },
         "data": data,
-        "period_summary": period_summary
+        "period_summary": period_summary,
+        "note": "First-out unit only (excludes mutual aid)"
     }
 
 

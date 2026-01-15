@@ -504,7 +504,7 @@ const TurnoutVsCrewSection = ({ data }) => {
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
-        Shows average crew size at different turnout times. Longer turnout = waiting for more personnel?
+        First-out unit: How many crew when we leave at different turnout times? Longer wait = more crew?
       </p>
       
       {/* Chart */}
