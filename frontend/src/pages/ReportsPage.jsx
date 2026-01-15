@@ -15,7 +15,7 @@ function ReportsPage() {
   const [query, setQuery] = useState('');
   const [queryLoading, setQueryLoading] = useState(false);
   const [queryResult, setQueryResult] = useState(null);
-  const [activeReport, setActiveReport] = useState('chiefs');
+  const [activeReport, setActiveReport] = useState('monthly');
   const [categoryFilter, setCategoryFilter] = useState('FIRE');
   const [reportMonth, setReportMonth] = useState(() => new Date().getMonth() + 1);
   const [reportYear, setReportYear] = useState(() => new Date().getFullYear());
@@ -26,10 +26,13 @@ function ReportsPage() {
     return d.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [chiefsReport, setChiefsReport] = useState(null);
+  
+  // Report data states
+  const [monthlyReport, setMonthlyReport] = useState(null);
   const [summaryData, setSummaryData] = useState(null);
   const [personnelData, setPersonnelData] = useState(null);
   const [unitData, setUnitData] = useState(null);
+  const [incidentsData, setIncidentsData] = useState(null);
   const [trendData, setTrendData] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -50,22 +53,32 @@ function ReportsPage() {
     loadYears();
   }, []);
 
-  // Load data
-  useEffect(() => { loadChiefsReport(); }, [reportMonth, reportYear, categoryFilter]);
+  // Load monthly report when month/year/category changes
+  useEffect(() => {
+    if (activeReport === 'monthly') {
+      loadMonthlyReport();
+    }
+  }, [reportMonth, reportYear, categoryFilter, activeReport]);
 
+  // Load other reports when tab or date range changes
   useEffect(() => {
     if (activeReport === 'overview') loadOverviewData();
     else if (activeReport === 'personnel') loadPersonnelData();
-    else if (activeReport === 'unit') loadUnitData();
+    else if (activeReport === 'units') loadUnitsData();
+    else if (activeReport === 'incidents') loadIncidentsData();
   }, [activeReport, startDate, endDate, categoryFilter]);
 
-  const loadChiefsReport = async () => {
+  // ==========================================================================
+  // DATA LOADERS
+  // ==========================================================================
+
+  const loadMonthlyReport = async () => {
     setLoading(true);
     try {
       const params = `year=${reportYear}&month=${reportMonth}&category=${categoryFilter}`;
       const res = await fetch(`${API_BASE}/api/reports/monthly?${params}`);
-      setChiefsReport(await res.json());
-    } catch (err) { console.error('Failed to load chiefs report:', err); }
+      setMonthlyReport(await res.json());
+    } catch (err) { console.error('Failed to load monthly report:', err); }
     finally { setLoading(false); }
   };
 
@@ -86,24 +99,60 @@ function ReportsPage() {
   const loadPersonnelData = async () => {
     setLoading(true);
     try {
+      // Use new admin endpoint with category filter
       const params = `start_date=${startDate}&end_date=${endDate}&category=${categoryFilter}&limit=50`;
-      const res = await fetch(`${API_BASE}/api/reports/personnel?${params}`);
+      const res = await fetch(`${API_BASE}/api/reports/admin/personnel?${params}`);
       setPersonnelData(await res.json());
     } catch (err) { console.error('Failed to load personnel data:', err); }
     finally { setLoading(false); }
   };
 
-  const loadUnitData = async () => {
+  const loadUnitsData = async () => {
     setLoading(true);
     try {
-      const params = `start_date=${startDate}&end_date=${endDate}&category=${categoryFilter}`;
-      const res = await fetch(`${API_BASE}/api/reports/by-apparatus?${params}`);
+      // Use new admin endpoint - no category filter, shows Fire/EMS columns
+      const params = `start_date=${startDate}&end_date=${endDate}`;
+      const res = await fetch(`${API_BASE}/api/reports/admin/units?${params}`);
       setUnitData(await res.json());
-    } catch (err) { console.error('Failed to load unit data:', err); }
+    } catch (err) { console.error('Failed to load units data:', err); }
     finally { setLoading(false); }
   };
 
-  // Query handlers
+  const loadIncidentsData = async () => {
+    setLoading(true);
+    try {
+      // Use new admin endpoint - no category filter, types self-identify
+      const params = `start_date=${startDate}&end_date=${endDate}`;
+      const res = await fetch(`${API_BASE}/api/reports/admin/incidents?${params}`);
+      setIncidentsData(await res.json());
+    } catch (err) { console.error('Failed to load incidents data:', err); }
+    finally { setLoading(false); }
+  };
+
+  // ==========================================================================
+  // PDF OPENERS
+  // ==========================================================================
+
+  const openMonthlyPdf = () => {
+    window.open(`${API_BASE}/api/reports/pdf/monthly-weasy?year=${reportYear}&month=${reportMonth}&category=${categoryFilter}`, '_blank');
+  };
+
+  const openPersonnelPdf = () => {
+    window.open(`${API_BASE}/api/reports/admin/personnel/pdf?start_date=${startDate}&end_date=${endDate}&category=${categoryFilter}`, '_blank');
+  };
+
+  const openUnitsPdf = () => {
+    window.open(`${API_BASE}/api/reports/admin/units/pdf?start_date=${startDate}&end_date=${endDate}`, '_blank');
+  };
+
+  const openIncidentsPdf = () => {
+    window.open(`${API_BASE}/api/reports/admin/incidents/pdf?start_date=${startDate}&end_date=${endDate}`, '_blank');
+  };
+
+  // ==========================================================================
+  // QUERY HANDLERS
+  // ==========================================================================
+
   const handleQuerySubmit = async (e) => {
     e?.preventDefault();
     if (!query.trim()) return;
@@ -157,19 +206,23 @@ function ReportsPage() {
       const cat = queryCategory || categoryFilter;
       const res = await fetch(`${API_BASE}/api/reports/monthly?year=${year}&month=${month}&category=${cat}`);
       const data = await res.json();
-      return { type: 'chiefs', title: `Chiefs Report - ${data.month_name} ${data.year} (${cat})`, data, query: naturalQuery, pdfParams: { year, month, category: cat } };
+      return { type: 'monthly', title: `Monthly Report - ${data.month_name} ${data.year} (${cat})`, data, query: naturalQuery, pdfUrl: `${API_BASE}/api/reports/pdf/monthly-weasy?year=${year}&month=${month}&category=${cat}` };
     }
     
     if (q.includes('personnel') || q.includes('responder') || q.includes('firefighter')) {
       const cat = queryCategory || categoryFilter;
-      const res = await fetch(`${API_BASE}/api/reports/personnel?start_date=${queryStart}&end_date=${queryEnd}&category=${cat}&limit=50`);
-      return { type: 'personnel', title: `Personnel Report (${queryStart} to ${queryEnd})`, data: await res.json(), query: naturalQuery };
+      const res = await fetch(`${API_BASE}/api/reports/admin/personnel?start_date=${queryStart}&end_date=${queryEnd}&category=${cat}&limit=50`);
+      return { type: 'personnel', title: `Personnel Report (${queryStart} to ${queryEnd})`, data: await res.json(), query: naturalQuery, pdfUrl: `${API_BASE}/api/reports/admin/personnel/pdf?start_date=${queryStart}&end_date=${queryEnd}&category=${cat}` };
     }
     
     if (q.includes('unit') || q.includes('apparatus') || q.includes('engine') || q.includes('truck')) {
-      const cat = queryCategory || categoryFilter;
-      const res = await fetch(`${API_BASE}/api/reports/by-apparatus?start_date=${queryStart}&end_date=${queryEnd}&category=${cat}`);
-      return { type: 'unit', title: `Unit Response Report (${queryStart} to ${queryEnd})`, data: await res.json(), query: naturalQuery };
+      const res = await fetch(`${API_BASE}/api/reports/admin/units?start_date=${queryStart}&end_date=${queryEnd}`);
+      return { type: 'units', title: `Unit Report (${queryStart} to ${queryEnd})`, data: await res.json(), query: naturalQuery, pdfUrl: `${API_BASE}/api/reports/admin/units/pdf?start_date=${queryStart}&end_date=${queryEnd}` };
+    }
+    
+    if (q.includes('incident') || q.includes('type') || q.includes('call type')) {
+      const res = await fetch(`${API_BASE}/api/reports/admin/incidents?start_date=${queryStart}&end_date=${queryEnd}`);
+      return { type: 'incidents', title: `Incident Types Report (${queryStart} to ${queryEnd})`, data: await res.json(), query: naturalQuery, pdfUrl: `${API_BASE}/api/reports/admin/incidents/pdf?start_date=${queryStart}&end_date=${queryEnd}` };
     }
     
     const cat = queryCategory || categoryFilter;
@@ -178,7 +231,6 @@ function ReportsPage() {
   };
 
   const quickQuery = (queryText) => { setQuery(queryText); setTimeout(() => handleQuerySubmit(), 100); };
-  const openPrintableReport = (year, month, category) => window.open(`${API_BASE}/api/reports/pdf/monthly-weasy?year=${year}&month=${month}&category=${category}`, '_blank');
 
   // ==========================================================================
   // STYLES - Using branding colors
@@ -187,10 +239,10 @@ function ReportsPage() {
     green: branding.primaryColor || '#016a2b',
     greenLight: branding.primaryLight || '#e8f5e9',
     secondary: branding.secondaryColor || '#eeee01',
-    pageBg: '#dcdcdc',      // Page background - gray
-    cardBg: '#ffffff',       // Card background - white
-    statBg: '#e8e8e8',       // Stat box background - visible gray
-    border: '#c0c0c0',       // Borders - darker for visibility
+    pageBg: '#dcdcdc',
+    cardBg: '#ffffff',
+    statBg: '#e8e8e8',
+    border: '#c0c0c0',
     grayDark: '#666',
     text: '#333',
     white: '#fff',
@@ -203,7 +255,6 @@ function ReportsPage() {
   const s = {
     page: { background: colors.pageBg, minHeight: '100vh', padding: '0' },
     
-    // Header matching PDF header style
     header: { 
       display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.5rem',
       borderBottom: `3px solid ${colors.green}`, background: colors.cardBg, marginBottom: '1rem',
@@ -218,14 +269,12 @@ function ReportsPage() {
     headerTitle: { fontSize: '1.5rem', fontWeight: '700', color: colors.text, margin: 0 },
     headerSub: { fontSize: '0.9rem', color: colors.green, margin: '0.25rem 0 0 0' },
     
-    // Controls bar
     controlsBar: { 
       display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem',
       padding: '0.75rem 1rem', background: colors.cardBg, borderRadius: '4px',
       border: `1px solid ${colors.border}`, marginBottom: '1rem'
     },
     
-    // Query bar
     queryBar: { 
       padding: '1rem', background: colors.cardBg, borderRadius: '4px',
       border: `1px solid ${colors.border}`, marginBottom: '1rem'
@@ -239,17 +288,14 @@ function ReportsPage() {
       fontSize: '0.85rem', background: colors.white, color: colors.text, cursor: 'pointer'
     },
     
-    // Buttons
     btn: { 
       padding: '0.5rem 1rem', border: 'none', borderRadius: '4px', cursor: 'pointer',
       fontWeight: '500', fontSize: '0.85rem', transition: 'all 0.15s'
     },
     btnGreen: { background: colors.green, color: colors.white },
-    btnGreenHover: { boxShadow: `0 0 0 2px ${colors.secondary}` },
     btnGray: { background: colors.white, color: colors.text, border: `1px solid ${colors.border}` },
     btnSmall: { padding: '0.35rem 0.6rem', fontSize: '0.8rem' },
     
-    // Cards - matching PDF boxes
     card: { 
       background: colors.cardBg, borderRadius: '4px', border: `1px solid ${colors.border}`,
       marginBottom: '1rem', overflow: 'hidden', borderTop: `3px solid ${colors.secondary}`
@@ -257,11 +303,10 @@ function ReportsPage() {
     cardHeader: { 
       background: colors.statBg, padding: '0.6rem 1rem', fontSize: '0.8rem',
       fontWeight: '600', color: colors.green, textTransform: 'uppercase', letterSpacing: '0.5px',
-      borderBottom: `1px solid ${colors.border}`
+      borderBottom: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
     },
     cardBody: { padding: '1rem', background: colors.cardBg },
     
-    // Stat boxes - matching PDF stat cards with VISIBLE gray background
     statGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.75rem' },
     statBox: { 
       background: colors.statBg, borderRadius: '4px', padding: '1rem', textAlign: 'center',
@@ -271,61 +316,80 @@ function ReportsPage() {
     statLabel: { fontSize: '0.7rem', color: colors.grayDark, textTransform: 'uppercase', marginTop: '0.25rem', letterSpacing: '0.3px' },
     statSub: { fontSize: '0.75rem', color: colors.green },
     
-    // Tables - matching PDF tables
     table: { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' },
     th: { 
       textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: '600', color: colors.white,
       background: colors.green, fontSize: '0.8rem'
     },
-    thFirst: {
-      borderLeft: `3px solid ${colors.secondary}`
-    },
     td: { padding: '0.5rem 0.75rem', borderBottom: `1px solid ${colors.border}`, color: colors.text },
     tdRight: { textAlign: 'right', fontFamily: 'monospace' },
     tdGreen: { color: colors.green, fontWeight: '600' },
     
-    // Two column layout
     twoCol: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' },
     
-    // Badge (for counts)
     badge: { 
       display: 'inline-block', padding: '0.2rem 0.5rem', borderRadius: '4px',
       fontSize: '0.8rem', fontWeight: '600', background: colors.green, color: colors.white
     },
+
+    clickableRow: { cursor: 'pointer', transition: 'background 0.15s' },
   };
+
+  // ==========================================================================
+  // HELPER: Get subtitle based on active report
+  // ==========================================================================
+  const getHeaderSubtitle = () => {
+    if (activeReport === 'monthly') {
+      return `Monthly Activity Report — ${new Date(2000, reportMonth - 1).toLocaleString('default', { month: 'long' })} ${reportYear}`;
+    }
+    return `Activity Reports — ${startDate} to ${endDate}`;
+  };
+
+  // ==========================================================================
+  // HELPER: Check if category toggle applies to this tab
+  // ==========================================================================
+  const showCategoryToggle = ['monthly', 'overview', 'personnel'].includes(activeReport);
 
   // ==========================================================================
   // RENDER
   // ==========================================================================
   return (
     <div style={s.page}>
-      {/* Header - PDF style with logo */}
+      {/* Header */}
       <div style={s.header}>
         <div style={s.headerAccent} />
         {branding.logoUrl && <img src={branding.logoUrl} alt="Logo" style={s.headerLogo} />}
         <div style={s.headerText}>
           <h1 style={s.headerTitle}>{branding.stationName || 'GLEN MOORE FIRE COMPANY'}</h1>
-          <p style={s.headerSub}>Monthly Activity Report — {activeReport === 'chiefs' ? `${new Date(2000, reportMonth - 1).toLocaleString('default', { month: 'long' })} ${reportYear}` : 'Reports'}</p>
+          <p style={s.headerSub}>{getHeaderSubtitle()}</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button
-            onClick={() => setCategoryFilter('FIRE')}
-            style={{ ...s.btn, ...(categoryFilter === 'FIRE' ? { background: colors.red, color: colors.white } : { background: colors.redLight, color: colors.red, border: `1px solid ${colors.red}` }) }}
-          >🔥 Fire</button>
-          <button
-            onClick={() => setCategoryFilter('EMS')}
-            style={{ ...s.btn, ...(categoryFilter === 'EMS' ? { background: colors.blue, color: colors.white } : { background: colors.blueLight, color: colors.blue, border: `1px solid ${colors.blue}` }) }}
-          >🚑 EMS</button>
-        </div>
+        {showCategoryToggle && (
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={() => setCategoryFilter('FIRE')}
+              style={{ ...s.btn, ...(categoryFilter === 'FIRE' ? { background: colors.red, color: colors.white } : { background: colors.redLight, color: colors.red, border: `1px solid ${colors.red}` }) }}
+            >🔥 Fire</button>
+            <button
+              onClick={() => setCategoryFilter('EMS')}
+              style={{ ...s.btn, ...(categoryFilter === 'EMS' ? { background: colors.blue, color: colors.white } : { background: colors.blueLight, color: colors.blue, border: `1px solid ${colors.blue}` }) }}
+            >🚑 EMS</button>
+          </div>
+        )}
       </div>
 
       {/* Report Type Tabs + Controls */}
       <div style={s.controlsBar}>
         <div style={{ display: 'flex', gap: '0.25rem' }}>
-          {['chiefs', 'overview', 'personnel', 'unit'].map(tab => (
-            <button key={tab} onClick={() => setActiveReport(tab)}
-              style={{ ...s.btn, ...s.btnSmall, ...(activeReport === tab ? s.btnGreen : s.btnGray) }}>
-              {tab === 'chiefs' ? '📋 Monthly' : tab === 'overview' ? '📊 Overview' : tab === 'personnel' ? '👥 Personnel' : '🚒 Units'}
+          {[
+            { id: 'monthly', label: '📋 Monthly' },
+            { id: 'overview', label: '📊 Overview' },
+            { id: 'personnel', label: '👥 Personnel' },
+            { id: 'units', label: '🚒 Units' },
+            { id: 'incidents', label: '🔥 Incidents' },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveReport(tab.id)}
+              style={{ ...s.btn, ...s.btnSmall, ...(activeReport === tab.id ? s.btnGreen : s.btnGray) }}>
+              {tab.label}
             </button>
           ))}
           {queryResult && (
@@ -336,7 +400,8 @@ function ReportsPage() {
           )}
         </div>
         
-        {activeReport === 'chiefs' && (
+        {/* Monthly controls */}
+        {activeReport === 'monthly' && (
           <>
             <select value={reportMonth} onChange={(e) => setReportMonth(parseInt(e.target.value))} style={s.select}>
               {[...Array(12)].map((_, i) => <option key={i+1} value={i+1}>{new Date(2000, i).toLocaleString('default', { month: 'long' })}</option>)}
@@ -344,16 +409,28 @@ function ReportsPage() {
             <select value={reportYear} onChange={(e) => setReportYear(parseInt(e.target.value))} style={s.select}>
               {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
-            <button onClick={() => openPrintableReport(reportYear, reportMonth, categoryFilter)} style={{ ...s.btn, ...s.btnGreen }}>🖨️ Print PDF</button>
+            <button onClick={openMonthlyPdf} style={{ ...s.btn, ...s.btnGreen }}>🖨️ Print PDF</button>
           </>
         )}
         
-        {(activeReport === 'overview' || activeReport === 'personnel' || activeReport === 'unit') && (
+        {/* Date range controls for other tabs */}
+        {['overview', 'personnel', 'units', 'incidents'].includes(activeReport) && (
           <>
             <span style={{ color: colors.grayDark, fontSize: '0.85rem' }}>From:</span>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ ...s.input, width: 'auto' }} />
             <span style={{ color: colors.grayDark, fontSize: '0.85rem' }}>To:</span>
             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={{ ...s.input, width: 'auto' }} />
+            
+            {/* PDF buttons for personnel, units, incidents */}
+            {activeReport === 'personnel' && (
+              <button onClick={openPersonnelPdf} style={{ ...s.btn, ...s.btnGreen }}>🖨️ Print PDF</button>
+            )}
+            {activeReport === 'units' && (
+              <button onClick={openUnitsPdf} style={{ ...s.btn, ...s.btnGreen }}>🖨️ Print PDF</button>
+            )}
+            {activeReport === 'incidents' && (
+              <button onClick={openIncidentsPdf} style={{ ...s.btn, ...s.btnGreen }}>🖨️ Print PDF</button>
+            )}
           </>
         )}
       </div>
@@ -370,8 +447,14 @@ function ReportsPage() {
         </form>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.5rem' }}>
           <span style={{ color: colors.grayDark, fontSize: '0.75rem' }}>Quick:</span>
-          {['This Month Chiefs', 'YTD Fire', 'Top Responders', 'Unit Stats'].map(q => (
-            <button key={q} onClick={() => quickQuery(q.includes('Chiefs') ? 'Show me the chiefs report for this month' : q.includes('YTD') ? 'Fire calls year to date' : q.includes('Responders') ? 'Top personnel responders this year' : 'Unit response counts this year')}
+          {['This Month Chiefs', 'YTD Fire', 'Top Responders', 'Unit Stats', 'Incident Types'].map(q => (
+            <button key={q} onClick={() => quickQuery(
+              q.includes('Chiefs') ? 'Show me the chiefs report for this month' : 
+              q.includes('YTD') ? 'Fire calls year to date' : 
+              q.includes('Responders') ? 'Top personnel responders this year' : 
+              q.includes('Unit') ? 'Unit response counts this year' :
+              'Incident type breakdown this year'
+            )}
               style={{ ...s.btn, ...s.btnSmall, ...s.btnGray }}>{q}</button>
           ))}
         </div>
@@ -382,11 +465,12 @@ function ReportsPage() {
         <div style={{ textAlign: 'center', padding: '3rem', color: colors.grayDark }}>Loading...</div>
       ) : (
         <>
-          {activeReport === 'chiefs' && chiefsReport && <ChiefsReportView report={chiefsReport} category={categoryFilter} s={s} colors={colors} />}
+          {activeReport === 'monthly' && monthlyReport && <MonthlyReportView report={monthlyReport} category={categoryFilter} s={s} colors={colors} />}
           {activeReport === 'overview' && summaryData && <OverviewReport summary={summaryData} trend={trendData} year={reportYear} onYearChange={setReportYear} availableYears={availableYears} s={s} colors={colors} />}
-          {activeReport === 'personnel' && personnelData && <PersonnelReport data={personnelData} s={s} colors={colors} />}
-          {activeReport === 'unit' && unitData && <UnitReport data={unitData} s={s} colors={colors} />}
-          {activeReport === 'custom' && queryResult && <CustomQueryResult result={queryResult} onOpenPrint={openPrintableReport} s={s} colors={colors} />}
+          {activeReport === 'personnel' && personnelData && <PersonnelReport data={personnelData} s={s} colors={colors} startDate={startDate} endDate={endDate} />}
+          {activeReport === 'units' && unitData && <UnitsReport data={unitData} s={s} colors={colors} startDate={startDate} endDate={endDate} />}
+          {activeReport === 'incidents' && incidentsData && <IncidentsReport data={incidentsData} s={s} colors={colors} startDate={startDate} endDate={endDate} />}
+          {activeReport === 'custom' && queryResult && <CustomQueryResult result={queryResult} s={s} colors={colors} />}
         </>
       )}
     </div>
@@ -394,9 +478,9 @@ function ReportsPage() {
 }
 
 // =============================================================================
-// CHIEFS REPORT VIEW - Matching PDF layout exactly
+// MONTHLY REPORT VIEW
 // =============================================================================
-function ChiefsReportView({ report, category, s, colors }) {
+function MonthlyReportView({ report, category, s, colors }) {
   if (!report) return null;
   const cs = report.call_summary || {};
   const rt = report.response_times || {};
@@ -620,62 +704,295 @@ function OverviewReport({ summary, trend, year, onYearChange, availableYears, s,
 }
 
 // =============================================================================
-// PERSONNEL REPORT
+// PERSONNEL REPORT - Using new admin endpoint
 // =============================================================================
-function PersonnelReport({ data, s, colors }) {
+function PersonnelReport({ data, s, colors, startDate, endDate }) {
   if (!data) return null;
+  
+  const summary = data.summary || {};
+  const personnel = data.personnel || [];
+
   return (
-    <div style={s.card}>
-      <div style={s.cardHeader}>Top Responders</div>
-      <div style={{ padding: 0 }}>
-        <table style={s.table}>
-          <thead>
-            <tr><th style={s.th}>#</th><th style={s.th}>Name</th><th style={s.th}>Rank</th><th style={{ ...s.th, textAlign: 'right' }}>Calls</th><th style={{ ...s.th, textAlign: 'right' }}>Hours</th></tr>
-          </thead>
-          <tbody>
-            {(data.personnel || []).map((p, i) => (
-              <tr key={p.id} style={{ background: i < 3 ? colors.greenLight : 'transparent' }}>
-                <td style={s.td}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
-                <td style={{ ...s.td, fontWeight: '500' }}>{p.name}</td>
-                <td style={{ ...s.td, color: colors.grayDark }}>{p.rank || '-'}</td>
-                <td style={{ ...s.td, ...s.tdRight, ...s.tdGreen }}>{p.incident_count}</td>
-                <td style={{ ...s.td, ...s.tdRight }}>{p.total_hours?.toFixed(1)}</td>
+    <div>
+      {/* Summary Stats */}
+      <div style={s.card}>
+        <div style={s.cardHeader}>Summary</div>
+        <div style={s.cardBody}>
+          <div style={s.statGrid}>
+            <div style={s.statBox}>
+              <div style={{ ...s.statValue, color: colors.green }}>{summary.unique_responders || 0}</div>
+              <div style={s.statLabel}>Active Responders</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{summary.total_responses || 0}</div>
+              <div style={s.statLabel}>Total Responses</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{summary.total_incidents || 0}</div>
+              <div style={s.statLabel}>Incidents</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{(summary.total_hours || 0).toFixed(1)}</div>
+              <div style={s.statLabel}>Total Hours</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Personnel Rankings */}
+      <div style={s.card}>
+        <div style={s.cardHeader}>Personnel Rankings</div>
+        <div style={{ padding: 0 }}>
+          <table style={s.table}>
+            <thead>
+              <tr>
+                <th style={s.th}>#</th>
+                <th style={s.th}>Name</th>
+                <th style={s.th}>Rank</th>
+                <th style={{ ...s.th, textAlign: 'right' }}>Calls</th>
+                <th style={{ ...s.th, textAlign: 'right' }}>Hours</th>
               </tr>
-            ))}
-            {(!data.personnel?.length) && <tr><td colSpan="5" style={{ ...s.td, textAlign: 'center', color: colors.grayDark }}>No data</td></tr>}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {personnel.map((p, i) => (
+                <tr 
+                  key={p.id} 
+                  style={{ 
+                    background: i < 3 ? colors.greenLight : 'transparent',
+                    cursor: 'pointer',
+                  }}
+                  title={`Click to view ${p.name}'s detail report (coming soon)`}
+                >
+                  <td style={s.td}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
+                  <td style={{ ...s.td, fontWeight: '500' }}>{p.name}</td>
+                  <td style={{ ...s.td, color: colors.grayDark }}>{p.rank_abbrev || p.rank || '-'}</td>
+                  <td style={{ ...s.td, ...s.tdRight, ...s.tdGreen }}>{p.incident_count}</td>
+                  <td style={{ ...s.td, ...s.tdRight }}>{(p.total_hours || 0).toFixed(1)}</td>
+                </tr>
+              ))}
+              {(!personnel.length) && (
+                <tr><td colSpan="5" style={{ ...s.td, textAlign: 'center', color: colors.grayDark }}>No data</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 }
 
 // =============================================================================
-// UNIT REPORT
+// UNITS REPORT - Using new admin endpoint with Fire/EMS breakdown
 // =============================================================================
-function UnitReport({ data, s, colors }) {
+function UnitsReport({ data, s, colors, startDate, endDate }) {
   if (!data) return null;
+  
+  const summary = data.summary || {};
+  const units = data.units || [];
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-      {(data.apparatus || []).map((u, i) => (
-        <div key={i} style={s.card}>
-          <div style={s.cardHeader}>{u.unit_designator}</div>
-          <div style={s.cardBody}>
-            <div style={{ fontSize: '0.8rem', color: colors.grayDark, marginBottom: '0.75rem' }}>{u.name}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: '700', color: colors.green }}>{u.incident_count}</div>
-                <div style={{ fontSize: '0.65rem', color: colors.grayDark, textTransform: 'uppercase' }}>Incidents</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: '700', color: colors.text }}>{u.total_responses}</div>
-                <div style={{ fontSize: '0.65rem', color: colors.grayDark, textTransform: 'uppercase' }}>Responses</div>
-              </div>
+    <div>
+      {/* Summary Stats */}
+      <div style={s.card}>
+        <div style={s.cardHeader}>Summary</div>
+        <div style={s.cardBody}>
+          <div style={s.statGrid}>
+            <div style={s.statBox}>
+              <div style={{ ...s.statValue, color: colors.green }}>{summary.active_units || 0}</div>
+              <div style={s.statLabel}>Active Units</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{summary.total_incidents || 0}</div>
+              <div style={s.statLabel}>Total Incidents</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{summary.fire_incidents || 0}</div>
+              <div style={s.statLabel}>Fire</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{summary.ems_incidents || 0}</div>
+              <div style={s.statLabel}>EMS</div>
             </div>
           </div>
         </div>
-      ))}
-      {(!data.apparatus?.length) && <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: colors.grayDark, padding: '2rem' }}>No unit data</div>}
+      </div>
+
+      {/* Units Table with Fire/EMS columns */}
+      <div style={s.card}>
+        <div style={s.cardHeader}>Unit Activity</div>
+        <div style={{ padding: 0 }}>
+          <table style={s.table}>
+            <thead>
+              <tr>
+                <th style={s.th}>Unit</th>
+                <th style={s.th}>Name</th>
+                <th style={{ ...s.th, textAlign: 'right' }}>Total</th>
+                <th style={{ ...s.th, textAlign: 'right' }}>Fire</th>
+                <th style={{ ...s.th, textAlign: 'right' }}>EMS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {units.filter(u => u.total_incidents > 0).map((u, i) => (
+                <tr 
+                  key={u.id || i}
+                  style={{ cursor: 'pointer' }}
+                  title={`Click to view ${u.name}'s detail report (coming soon)`}
+                >
+                  <td style={{ ...s.td, fontWeight: '600' }}>{u.unit_designator}</td>
+                  <td style={s.td}>{u.name}</td>
+                  <td style={{ ...s.td, ...s.tdRight, ...s.tdGreen }}>{u.total_incidents}</td>
+                  <td style={{ ...s.td, ...s.tdRight, color: colors.red }}>{u.fire_incidents}</td>
+                  <td style={{ ...s.td, ...s.tdRight, color: colors.blue }}>{u.ems_incidents}</td>
+                </tr>
+              ))}
+              {(!units.filter(u => u.total_incidents > 0).length) && (
+                <tr><td colSpan="5" style={{ ...s.td, textAlign: 'center', color: colors.grayDark }}>No data</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// INCIDENTS REPORT - Type/Subtype breakdown
+// =============================================================================
+function IncidentsReport({ data, s, colors, startDate, endDate }) {
+  if (!data) return null;
+  
+  const summary = data.summary || {};
+  const incidentTypes = data.incident_types || [];
+  const municipalities = data.municipalities || [];
+  
+  // Track expanded groups
+  const [expandedGroups, setExpandedGroups] = useState({});
+  
+  const toggleGroup = (typeName) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [typeName]: !prev[typeName]
+    }));
+  };
+
+  return (
+    <div>
+      {/* Summary Stats */}
+      <div style={s.card}>
+        <div style={s.cardHeader}>Summary</div>
+        <div style={s.cardBody}>
+          <div style={s.statGrid}>
+            <div style={s.statBox}>
+              <div style={{ ...s.statValue, color: colors.green }}>{summary.total_incidents || 0}</div>
+              <div style={s.statLabel}>Total Incidents</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{summary.fire_incidents || 0}</div>
+              <div style={s.statLabel}>Fire</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{summary.ems_incidents || 0}</div>
+              <div style={s.statLabel}>EMS</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{summary.unique_types || 0}</div>
+              <div style={s.statLabel}>Incident Types</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={s.twoCol}>
+        {/* Incident Types with expandable subtypes */}
+        <div style={s.card}>
+          <div style={s.cardHeader}>Incident Type Breakdown</div>
+          <div style={{ padding: '0.5rem' }}>
+            {incidentTypes.map((type, i) => (
+              <div key={i} style={{ marginBottom: '0.5rem' }}>
+                {/* Type header - clickable */}
+                <div 
+                  onClick={() => toggleGroup(type.name)}
+                  style={{
+                    background: colors.green,
+                    color: colors.white,
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                  }}
+                >
+                  <span>
+                    {expandedGroups[type.name] ? '▼' : '▶'} {type.name}
+                  </span>
+                  <span style={{
+                    background: 'rgba(255,255,255,0.25)',
+                    padding: '0.15rem 0.5rem',
+                    borderRadius: '10px',
+                    fontSize: '0.75rem',
+                  }}>
+                    {type.count}
+                  </span>
+                </div>
+                
+                {/* Subtypes - collapsible */}
+                {expandedGroups[type.name] && type.items && type.items.length > 0 && (
+                  <div style={{ paddingLeft: '1rem', borderLeft: `2px solid ${colors.green}`, marginLeft: '0.5rem', marginTop: '0.25rem' }}>
+                    {type.items.map((item, j) => (
+                      <div 
+                        key={j}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          padding: '0.25rem 0.5rem',
+                          fontSize: '0.8rem',
+                          borderBottom: j < type.items.length - 1 ? `1px dotted ${colors.border}` : 'none',
+                        }}
+                      >
+                        <span>{item.name}</span>
+                        <span style={{ fontWeight: '600', color: colors.grayDark }}>{item.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {(!incidentTypes.length) && (
+              <div style={{ textAlign: 'center', color: colors.grayDark, padding: '1rem' }}>No data</div>
+            )}
+          </div>
+        </div>
+
+        {/* Top Municipalities */}
+        <div style={s.card}>
+          <div style={s.cardHeader}>Top Municipalities</div>
+          <div style={{ padding: 0 }}>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Municipality</th>
+                  <th style={{ ...s.th, textAlign: 'right' }}>Incidents</th>
+                </tr>
+              </thead>
+              <tbody>
+                {municipalities.map((m, i) => (
+                  <tr key={i}>
+                    <td style={s.td}>{m.name}</td>
+                    <td style={{ ...s.td, ...s.tdRight, ...s.tdGreen }}>{m.count}</td>
+                  </tr>
+                ))}
+                {(!municipalities.length) && (
+                  <tr><td colSpan="2" style={{ ...s.td, textAlign: 'center', color: colors.grayDark }}>No data</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -683,29 +1000,59 @@ function UnitReport({ data, s, colors }) {
 // =============================================================================
 // CUSTOM QUERY RESULT
 // =============================================================================
-function CustomQueryResult({ result, onOpenPrint, s, colors }) {
+function CustomQueryResult({ result, s, colors }) {
   if (!result) return null;
-  if (result.error) return <div style={{ ...s.card, background: colors.redLight }}><div style={{ ...s.cardHeader, color: colors.red }}>Error</div><div style={s.cardBody}>{result.error}</div></div>;
+  if (result.error) return (
+    <div style={{ ...s.card, background: colors.redLight }}>
+      <div style={{ ...s.cardHeader, color: colors.red }}>Error</div>
+      <div style={s.cardBody}>{result.error}</div>
+    </div>
+  );
+
+  const openPdf = () => {
+    if (result.pdfUrl) {
+      window.open(result.pdfUrl, '_blank');
+    }
+  };
 
   return (
     <div>
       <div style={{ ...s.card, background: colors.greenLight, border: `1px solid ${colors.green}` }}>
         <div style={{ padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div><span style={{ color: colors.green, fontWeight: '500' }}>✨ {result.title}</span><br/><span style={{ fontSize: '0.8rem', color: colors.grayDark }}>Query: "{result.query}"</span></div>
-          {result.type === 'chiefs' && result.pdfParams && <button onClick={() => onOpenPrint(result.pdfParams.year, result.pdfParams.month, result.pdfParams.category)} style={{ ...s.btn, ...s.btnGreen }}>🖨️ Print</button>}
+          <div>
+            <span style={{ color: colors.green, fontWeight: '500' }}>✨ {result.title}</span>
+            <br/>
+            <span style={{ fontSize: '0.8rem', color: colors.grayDark }}>Query: "{result.query}"</span>
+          </div>
+          {result.pdfUrl && (
+            <button onClick={openPdf} style={{ ...s.btn, ...s.btnGreen }}>🖨️ Print PDF</button>
+          )}
         </div>
       </div>
-      {result.type === 'chiefs' && result.data && <ChiefsReportView report={result.data} category={result.data.category_filter || 'FIRE'} s={s} colors={colors} />}
-      {result.type === 'personnel' && result.data && <PersonnelReport data={result.data} s={s} colors={colors} />}
-      {result.type === 'unit' && result.data && <UnitReport data={result.data} s={s} colors={colors} />}
+      
+      {result.type === 'monthly' && result.data && (
+        <MonthlyReportView report={result.data} category={result.data.category_filter || 'FIRE'} s={s} colors={colors} />
+      )}
+      {result.type === 'personnel' && result.data && (
+        <PersonnelReport data={result.data} s={s} colors={colors} />
+      )}
+      {result.type === 'units' && result.data && (
+        <UnitsReport data={result.data} s={s} colors={colors} />
+      )}
+      {result.type === 'incidents' && result.data && (
+        <IncidentsReport data={result.data} s={s} colors={colors} />
+      )}
       {result.type === 'summary' && result.data && (
-        <div style={s.card}><div style={s.cardHeader}>Summary</div><div style={s.cardBody}>
-          <div style={s.statGrid}>
-            <div style={s.statBox}><div style={{ ...s.statValue, color: colors.green }}>{result.data.total_incidents}</div><div style={s.statLabel}>Incidents</div></div>
-            <div style={s.statBox}><div style={s.statValue}>{result.data.total_personnel_responses}</div><div style={s.statLabel}>Responses</div></div>
-            <div style={s.statBox}><div style={s.statValue}>{result.data.total_manhours?.toFixed(1)}</div><div style={s.statLabel}>Manhours</div></div>
+        <div style={s.card}>
+          <div style={s.cardHeader}>Summary</div>
+          <div style={s.cardBody}>
+            <div style={s.statGrid}>
+              <div style={s.statBox}><div style={{ ...s.statValue, color: colors.green }}>{result.data.total_incidents}</div><div style={s.statLabel}>Incidents</div></div>
+              <div style={s.statBox}><div style={s.statValue}>{result.data.total_personnel_responses}</div><div style={s.statLabel}>Responses</div></div>
+              <div style={s.statBox}><div style={s.statValue}>{result.data.total_manhours?.toFixed(1)}</div><div style={s.statLabel}>Manhours</div></div>
+            </div>
           </div>
-        </div></div>
+        </div>
       )}
     </div>
   );
