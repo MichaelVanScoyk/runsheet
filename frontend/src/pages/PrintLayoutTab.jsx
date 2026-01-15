@@ -201,6 +201,14 @@ export default function PrintLayoutTab() {
             <span className="text-xs bg-green-100 text-green-700 px-1 rounded border border-green-300">always</span>
           )}
           
+          {block.showOurUnitsOnly && (
+            <span className="text-xs bg-blue-100 text-blue-700 px-1 rounded border border-blue-300">ours</span>
+          )}
+          
+          {block.showAvailableTime && (
+            <span className="text-xs bg-teal-100 text-teal-700 px-1 rounded border border-teal-300">+avail</span>
+          )}
+          
           {block.textColor && (
             <span className={`text-xs px-1 rounded border ${
               block.textColor === 'muted' ? 'bg-gray-200 text-gray-600 border-gray-400' :
@@ -410,6 +418,38 @@ export default function PrintLayoutTab() {
                     }`}
                   >
                     {block.showWhenEmpty ? 'Show table even if empty' : 'Hide when no assignments'}
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {/* Row 3: Special options for cad_unit_details block */}
+            {block.id === 'cad_unit_details' && (
+              <div className="grid grid-cols-4 gap-2 mt-2">
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-600 block mb-1">Units to Show</label>
+                  <button
+                    onClick={() => updateBlock(block.id, { showOurUnitsOnly: !block.showOurUnitsOnly })}
+                    className={`w-full px-2 py-1 rounded text-sm ${
+                      block.showOurUnitsOnly 
+                        ? 'bg-blue-500 text-white border border-blue-600' 
+                        : 'bg-white border border-gray-300 text-gray-500'
+                    }`}
+                  >
+                    {block.showOurUnitsOnly ? 'Station units only' : 'All units (incl. mutual aid)'}
+                  </button>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-600 block mb-1">Available Time Column</label>
+                  <button
+                    onClick={() => updateBlock(block.id, { showAvailableTime: !block.showAvailableTime })}
+                    className={`w-full px-2 py-1 rounded text-sm ${
+                      block.showAvailableTime 
+                        ? 'bg-green-500 text-white border border-green-600' 
+                        : 'bg-white border border-gray-300 text-gray-500'
+                    }`}
+                  >
+                    {block.showAvailableTime ? 'Show Available column' : 'Hide Available column'}
                   </button>
                 </div>
               </div>

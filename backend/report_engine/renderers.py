@@ -490,26 +490,90 @@ def r_footer(ctx: RenderContext, block: dict) -> str:
 
 
 def r_cad_unit_details(ctx: RenderContext, block: dict) -> str:
+    """
+    Render CAD Unit Details table with times.
+    
+    Block options:
+    - showOurUnitsOnly: If true, filter to only show station's units (not mutual aid)
+    - showAvailableTime: If true, include the Available time column
+    
+    Uses apparatus names from apparatus_list when available, falls back to CAD unit ID.
+    """
     cad_units = ctx.get('cad_units') or []
     if not cad_units:
         return ''
     
-    rows = ''.join([
-        f'''<tr>
-            <td>{esc(u.get("unit_id",""))}</td>
-            <td>{esc(u.get("dispatched",""))}</td>
-            <td>{esc(u.get("enroute",""))}</td>
-            <td>{esc(u.get("arrived",""))}</td>
-            <td>{esc(u.get("cleared",""))}</td>
-        </tr>'''
-        for u in cad_units
-    ])
+    # Build lookup for apparatus names: unit_designator -> name
+    apparatus_names = {}
+    for a in ctx.apparatus_list:
+        apparatus_names[a.get('unit_designator', '')] = a.get('name', '')
+    
+    # Filter units if showOurUnitsOnly is enabled
+    show_our_only = block.get('showOurUnitsOnly', False)
+    if show_our_only:
+        cad_units = [u for u in cad_units if not u.get('is_mutual_aid', True)]
+    
+    if not cad_units:
+        return ''
+    
+    # Check if we should show Available time column
+    show_available = block.get('showAvailableTime', False)
+    
+    # Helper to format time - handles both ISO strings and raw time strings
+    def fmt_unit_time(time_val):
+        if not time_val:
+            return ''
+        # If it's an ISO datetime string, use the context formatter
+        if isinstance(time_val, str) and 'T' in time_val:
+            try:
+                from datetime import datetime as dt_class
+                # Parse ISO format
+                if time_val.endswith('Z'):
+                    time_val = time_val[:-1] + '+00:00'
+                dt = dt_class.fromisoformat(time_val)
+                return ctx.fmt_time(dt)
+            except:
+                pass
+        # Otherwise return as-is (already formatted or raw time)
+        return esc(str(time_val))
+    
+    # Build rows
+    rows = []
+    for u in cad_units:
+        unit_id = u.get('unit_id', '')
+        # Use apparatus name if available, otherwise CAD unit ID
+        display_name = apparatus_names.get(unit_id, '') or unit_id
+        
+        row_cells = [
+            f'<td>{esc(display_name)}</td>',
+            f'<td>{fmt_unit_time(u.get("time_dispatched"))}</td>',
+            f'<td>{fmt_unit_time(u.get("time_enroute"))}</td>',
+            f'<td>{fmt_unit_time(u.get("time_arrived"))}</td>',
+        ]
+        
+        if show_available:
+            row_cells.append(f'<td>{fmt_unit_time(u.get("time_available"))}</td>')
+        
+        row_cells.append(f'<td>{fmt_unit_time(u.get("time_cleared"))}</td>')
+        
+        rows.append(f'<tr>{"".join(row_cells)}</tr>')
+    
+    # Build header
+    header_cells = ['<th>Unit</th>', '<th>Dispatched</th>', '<th>Enroute</th>', '<th>Arrived</th>']
+    if show_available:
+        header_cells.append('<th>Available</th>')
+    header_cells.append('<th>Cleared</th>')
+    
+    # Determine label
+    hide_label = block.get('hideLabel', False)
+    label = block.get('name', 'CAD Unit Details') if not hide_label else None
+    label_html = f'<span class="label">{esc(label)}:</span>' if label else ''
     
     return f'''<div class="field">
-        <span class="label">CAD Unit Details:</span>
+        {label_html}
         <table class="cad-table">
-            <thead><tr><th>Unit</th><th>Dispatched</th><th>Enroute</th><th>Arrived</th><th>Cleared</th></tr></thead>
-            <tbody>{rows}</tbody>
+            <thead><tr>{"".join(header_cells)}</tr></thead>
+            <tbody>{"".join(rows)}</tbody>
         </table>
     </div>'''
 
