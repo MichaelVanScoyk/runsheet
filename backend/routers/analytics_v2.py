@@ -52,14 +52,20 @@ def get_response_times_by_call_type(
     db: Session = Depends(get_db)
 ):
     """
-    Response time breakdown by CAD event type.
+    Response time breakdown by call type.
+    For FIRE: uses cad_event_type (ALARM, FIRE, ACCIDENT, etc.)
+    For EMS: uses cad_event_subtype (RESPIRATORY DIFFICULTY, SEIZURES, etc.)
+    
     Returns turnout, travel, total response, and on-scene duration.
     """
     prefix = 'F' if category.upper() == 'FIRE' else 'E'
     
-    result = db.execute(text("""
+    # For EMS, use subtype since type is always "MEDICAL"
+    type_field = "cad_event_type" if category.upper() == 'FIRE' else "cad_event_subtype"
+    
+    result = db.execute(text(f"""
         SELECT 
-            COALESCE(i.cad_event_type, 'Unknown') as call_type,
+            COALESCE(i.{type_field}, 'Unknown') as call_type,
             COUNT(DISTINCT i.id) as incident_count,
             -- Turnout: dispatch to first enroute (incident level)
             ROUND(AVG(
@@ -83,7 +89,7 @@ def get_response_times_by_call_type(
             AND i.deleted_at IS NULL
             AND i.internal_incident_number LIKE :prefix || '%'
             AND i.time_dispatched IS NOT NULL
-        GROUP BY i.cad_event_type
+        GROUP BY i.{type_field}
         HAVING COUNT(*) >= 3
         ORDER BY COUNT(*) DESC
         LIMIT 15
@@ -95,6 +101,7 @@ def get_response_times_by_call_type(
     
     return {
         "category": category.upper(),
+        "type_field": "subtype" if category.upper() == 'EMS' else "type",
         "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
         "data": [
             {
