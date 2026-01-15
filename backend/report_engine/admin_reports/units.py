@@ -285,10 +285,11 @@ class UnitsDetailReport(AdminReport):
                 r.abbreviation AS rank,
                 COUNT(*) AS times_assigned
             FROM incident_personnel ip
+            JOIN incident_units iu ON ip.incident_unit_id = iu.id
             JOIN incidents i ON ip.incident_id = i.id
             JOIN personnel p ON ip.personnel_id = p.id
             LEFT JOIN ranks r ON p.rank_id = r.id
-            WHERE ip.apparatus_id = :uid
+            WHERE iu.apparatus_id = :uid
               AND COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
               AND i.deleted_at IS NULL
               AND (i.internal_incident_number LIKE 'F%' OR i.internal_incident_number LIKE 'E%')

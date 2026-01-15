@@ -328,8 +328,9 @@ class PersonnelDetailReport(AdminReport):
                 a.unit_designator,
                 COUNT(*) AS times_assigned
             FROM incident_personnel ip
+            JOIN incident_units iu ON ip.incident_unit_id = iu.id
             JOIN incidents i ON ip.incident_id = i.id
-            JOIN apparatus a ON ip.apparatus_id = a.id
+            JOIN apparatus a ON iu.apparatus_id = a.id
             WHERE ip.personnel_id = :pid
               AND COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
               AND i.deleted_at IS NULL
