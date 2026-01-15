@@ -258,9 +258,23 @@ const AnalyticsPage = () => {
       {summary && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            <StatCard label="Total Incidents" value={summary.total_incidents} />
-            <StatCard label="Fire" value={summary.fire_count} color="red" />
-            <StatCard label="EMS" value={summary.ems_count} color="blue" />
+            <StatCard 
+              label="Dispatched" 
+              value={summary.total_dispatched} 
+              subValue={`${summary.station_responded} responded`}
+            />
+            <StatCard 
+              label="Fire" 
+              value={summary.fire_responded} 
+              subValue={`of ${summary.fire_dispatched} dispatched`}
+              color="red" 
+            />
+            <StatCard 
+              label="EMS" 
+              value={summary.ems_responded} 
+              subValue={`of ${summary.ems_dispatched} dispatched`}
+              color="blue" 
+            />
             <StatCard label="Avg Turnout" value={summary.avg_turnout_mins ? `${summary.avg_turnout_mins} min` : '-'} />
             <StatCard label="Avg Response" value={summary.avg_response_mins ? `${summary.avg_response_mins} min` : '-'} />
             <StatCard label="Avg On Scene" value={summary.avg_on_scene_mins ? `${summary.avg_on_scene_mins} min` : '-'} />
@@ -343,7 +357,7 @@ const AnalyticsPage = () => {
 // STAT CARD
 // =============================================================================
 
-const StatCard = ({ label, value, color }) => {
+const StatCard = ({ label, value, subValue, color }) => {
   const colorClasses = {
     red: 'text-red-600',
     blue: 'text-blue-600',
@@ -356,6 +370,7 @@ const StatCard = ({ label, value, color }) => {
       <p className={`text-xl font-bold ${color ? colorClasses[color] : 'text-gray-900'}`}>
         {value}
       </p>
+      {subValue && <p className="text-xs text-gray-400">{subValue}</p>}
     </div>
   );
 };
@@ -420,8 +435,17 @@ const ResponseByTypeSection = ({ data, trends }) => {
     return <p className="text-gray-500 text-center py-4">No data available</p>;
   }
 
+  const counts = data.incident_counts;
+
   return (
     <div className="space-y-4">
+      {/* Incident Counts Context */}
+      {counts && (
+        <p className="text-sm text-gray-600">
+          {counts.total_dispatched} incidents dispatched, Station 48 responded to {counts.station_responded}
+        </p>
+      )}
+      
       {/* Trends Summary */}
       {trends && (
         <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">

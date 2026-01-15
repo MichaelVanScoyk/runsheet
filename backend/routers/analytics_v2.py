@@ -1,6 +1,9 @@
 """
 Analytics V2 - Response Time Deep Dive & Staffing Patterns
 Replaces the original analytics dashboard with focused metrics.
+
+IMPORTANT: Most metrics filter to incidents where Station 48 units actually
+responded (went enroute), not just all dispatched incidents.
 """
 
 from datetime import date, timedelta
@@ -15,29 +18,42 @@ router = APIRouter(prefix="/api/analytics/v2", tags=["analytics-v2"])
 
 
 # =============================================================================
-# HELPER: Time period classification
+# HELPER: Station 48 responded filter
 # =============================================================================
 
-def get_time_period_case():
-    """SQL CASE for time period buckets"""
-    return """
-        CASE 
-            WHEN EXTRACT(hour FROM i.time_dispatched) >= 6 AND EXTRACT(hour FROM i.time_dispatched) < 16 THEN 'daytime'
-            WHEN EXTRACT(hour FROM i.time_dispatched) >= 16 OR EXTRACT(hour FROM i.time_dispatched) < 0 THEN 'evening'
-            ELSE 'overnight'
-        END
-    """
+STATION_48_RESPONDED_FILTER = """
+    EXISTS (
+        SELECT 1 FROM jsonb_array_elements(i.cad_units) AS unit_elem
+        WHERE unit_elem->>'time_enroute' IS NOT NULL
+          AND (unit_elem->>'is_mutual_aid')::boolean IS NOT TRUE
+    )
+"""
 
 
-def get_time_period_case_v2():
-    """SQL CASE for time period buckets - corrected for 4pm-midnight"""
-    return """
-        CASE 
-            WHEN EXTRACT(hour FROM i.time_dispatched) >= 6 AND EXTRACT(hour FROM i.time_dispatched) < 16 THEN 'daytime'
-            WHEN EXTRACT(hour FROM i.time_dispatched) >= 16 THEN 'evening'
-            ELSE 'overnight'
-        END
-    """
+def get_incident_counts(db: Session, start_date: date, end_date: date, prefix: str):
+    """Get both total dispatched and Station 48 responded counts."""
+    result = db.execute(text("""
+        SELECT 
+            COUNT(*) as total_dispatched,
+            SUM(CASE WHEN EXISTS (
+                SELECT 1 FROM jsonb_array_elements(cad_units) AS unit_elem
+                WHERE unit_elem->>'time_enroute' IS NOT NULL
+                  AND (unit_elem->>'is_mutual_aid')::boolean IS NOT TRUE
+            ) THEN 1 ELSE 0 END) as station_responded
+        FROM incidents
+        WHERE incident_date >= :start_date
+            AND incident_date < :end_date
+            AND deleted_at IS NULL
+            AND internal_incident_number LIKE :prefix || '%'
+    """), {
+        'start_date': start_date,
+        'end_date': end_date,
+        'prefix': prefix
+    }).fetchone()
+    return {
+        "total_dispatched": result.total_dispatched or 0,
+        "station_responded": result.station_responded or 0
+    }
 
 
 # =============================================================================
@@ -56,9 +72,13 @@ def get_response_times_by_call_type(
     For FIRE: uses cad_event_type (ALARM, FIRE, ACCIDENT, etc.)
     For EMS: uses cad_event_subtype (RESPIRATORY DIFFICULTY, SEIZURES, etc.)
     
-    Returns turnout, travel, total response, and on-scene duration.
+    Only includes incidents where at least one Station 48 unit (non-mutual-aid)
+    actually went enroute.
     """
     prefix = 'F' if category.upper() == 'FIRE' else 'E'
+    
+    # Get incident counts for context
+    counts = get_incident_counts(db, start_date, end_date, prefix)
     
     # For EMS, use subtype since type is always "MEDICAL"
     type_field = "cad_event_type" if category.upper() == 'FIRE' else "cad_event_subtype"
@@ -67,19 +87,15 @@ def get_response_times_by_call_type(
         SELECT 
             COALESCE(i.{type_field}, 'Unknown') as call_type,
             COUNT(DISTINCT i.id) as incident_count,
-            -- Turnout: dispatch to first enroute (incident level)
             ROUND(AVG(
                 EXTRACT(EPOCH FROM (i.time_first_enroute - i.time_dispatched)) / 60
             )::numeric, 1) as avg_turnout_mins,
-            -- Travel: first enroute to first on scene
             ROUND(AVG(
                 EXTRACT(EPOCH FROM (i.time_first_on_scene - i.time_first_enroute)) / 60
             )::numeric, 1) as avg_travel_mins,
-            -- Total response: dispatch to first on scene
             ROUND(AVG(
                 EXTRACT(EPOCH FROM (i.time_first_on_scene - i.time_dispatched)) / 60
             )::numeric, 1) as avg_response_mins,
-            -- On scene duration: first on scene to last cleared
             ROUND(AVG(
                 EXTRACT(EPOCH FROM (i.time_last_cleared - i.time_first_on_scene)) / 60
             )::numeric, 1) as avg_on_scene_mins
@@ -89,6 +105,7 @@ def get_response_times_by_call_type(
             AND i.deleted_at IS NULL
             AND i.internal_incident_number LIKE :prefix || '%'
             AND i.time_dispatched IS NOT NULL
+            AND {STATION_48_RESPONDED_FILTER}
         GROUP BY i.{type_field}
         HAVING COUNT(*) >= 3
         ORDER BY COUNT(*) DESC
@@ -103,6 +120,7 @@ def get_response_times_by_call_type(
         "category": category.upper(),
         "type_field": "subtype" if category.upper() == 'EMS' else "type",
         "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
+        "incident_counts": counts,
         "data": [
             {
                 "call_type": r.call_type,
@@ -124,7 +142,7 @@ def get_response_time_trends(
 ):
     """
     Response time trends for 30/60/90 days.
-    Returns averages for each period with comparison.
+    Only includes incidents where Station 48 responded.
     """
     prefix = 'F' if category.upper() == 'FIRE' else 'E'
     today = date.today()
@@ -139,7 +157,10 @@ def get_response_time_trends(
     for period in periods:
         start = today - timedelta(days=period["days"])
         
-        row = db.execute(text("""
+        # Get counts
+        counts = get_incident_counts(db, start, today, prefix)
+        
+        row = db.execute(text(f"""
             SELECT 
                 COUNT(DISTINCT i.id) as incident_count,
                 ROUND(AVG(
@@ -157,6 +178,7 @@ def get_response_time_trends(
                 AND i.deleted_at IS NULL
                 AND i.internal_incident_number LIKE :prefix || '%'
                 AND i.time_dispatched IS NOT NULL
+                AND {STATION_48_RESPONDED_FILTER}
         """), {
             'start_date': start,
             'end_date': today,
@@ -166,7 +188,8 @@ def get_response_time_trends(
         results.append({
             "period": period["label"],
             "days": period["days"],
-            "incident_count": row.incident_count or 0,
+            "total_dispatched": counts["total_dispatched"],
+            "station_responded": counts["station_responded"],
             "avg_turnout_mins": float(row.avg_turnout_mins) if row.avg_turnout_mins else None,
             "avg_response_mins": float(row.avg_response_mins) if row.avg_response_mins else None,
             "avg_on_scene_mins": float(row.avg_on_scene_mins) if row.avg_on_scene_mins else None,
@@ -206,26 +229,30 @@ def get_turnout_vs_crew_size(
     
     Uses cad_units JSONB to find the first unit enroute, then counts
     personnel assigned to that specific unit.
-    
-    Time periods:
-    - Daytime: 6am - 4pm
-    - Evening: 4pm - 12am  
-    - Overnight: 12am - 6am
     """
     prefix_filter = ""
+    prefix = None
     if category and category.upper() in ('FIRE', 'EMS'):
         prefix = 'F' if category.upper() == 'FIRE' else 'E'
         prefix_filter = f"AND i.internal_incident_number LIKE '{prefix}%'"
     
+    # Get incident counts for context
+    if prefix:
+        counts = get_incident_counts(db, start_date, end_date, prefix)
+    else:
+        fire_counts = get_incident_counts(db, start_date, end_date, 'F')
+        ems_counts = get_incident_counts(db, start_date, end_date, 'E')
+        counts = {
+            "total_dispatched": fire_counts["total_dispatched"] + ems_counts["total_dispatched"],
+            "station_responded": fire_counts["station_responded"] + ems_counts["station_responded"]
+        }
+    
     # Get first-out unit turnout time and crew count
-    # Uses cad_units JSONB to find the first unit with time_enroute
     result = db.execute(text(f"""
         WITH first_unit AS (
             SELECT 
                 i.id as incident_id,
                 i.time_dispatched,
-                -- Extract first unit to go enroute from cad_units JSONB
-                -- Sort by time_enroute and take the first one
                 (SELECT unit_elem->>'unit_id' 
                  FROM jsonb_array_elements(i.cad_units) AS unit_elem 
                  WHERE unit_elem->>'time_enroute' IS NOT NULL 
@@ -255,15 +282,12 @@ def get_turnout_vs_crew_size(
                 fu.time_dispatched,
                 fu.first_unit_id,
                 fu.first_enroute_time::timestamp as first_enroute,
-                -- Turnout time in minutes
                 EXTRACT(EPOCH FROM (fu.first_enroute_time::timestamp - fu.time_dispatched)) / 60 as turnout_mins,
-                -- Time period based on dispatch hour
                 CASE 
                     WHEN EXTRACT(hour FROM fu.time_dispatched) >= 6 AND EXTRACT(hour FROM fu.time_dispatched) < 16 THEN 'daytime'
                     WHEN EXTRACT(hour FROM fu.time_dispatched) >= 16 THEN 'evening'
                     ELSE 'overnight'
                 END as time_period,
-                -- Count personnel on the first-out unit
                 (SELECT COUNT(*) 
                  FROM incident_personnel ip
                  JOIN incident_units iu ON ip.incident_unit_id = iu.id
@@ -293,7 +317,7 @@ def get_turnout_vs_crew_size(
                     ELSE 9
                 END as turnout_bucket
             FROM unit_with_crew
-            WHERE turnout_mins > 0 AND turnout_mins < 30  -- Filter out bad data
+            WHERE turnout_mins > 0 AND turnout_mins < 30
               AND crew_count > 0
         )
         SELECT 
@@ -309,14 +333,12 @@ def get_turnout_vs_crew_size(
         'end_date': end_date
     }).fetchall()
     
-    # Organize by turnout bucket
     buckets = {
         1: "< 1 min", 2: "1-2 min", 3: "2-3 min", 4: "3-4 min", 
         5: "4-5 min", 6: "5-6 min", 7: "6-7 min", 8: "7-8 min", 9: "8+ min"
     }
     periods = ['daytime', 'evening', 'overnight']
     
-    # Build structured response
     data = []
     for bucket_num, bucket_label in buckets.items():
         row = {"turnout_bucket": bucket_label}
@@ -326,7 +348,6 @@ def get_turnout_vs_crew_size(
             row[f"{period}_count"] = match.incident_count if match else 0
         data.append(row)
     
-    # Calculate overall averages by period
     period_summary = {}
     for period in periods:
         period_rows = [r for r in result if r.time_period == period]
@@ -341,14 +362,14 @@ def get_turnout_vs_crew_size(
     return {
         "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
         "category": category.upper() if category else "ALL",
+        "incident_counts": counts,
         "time_periods": {
             "daytime": "6am - 4pm",
             "evening": "4pm - 12am",
             "overnight": "12am - 6am"
         },
         "data": data,
-        "period_summary": period_summary,
-        "note": "First-out unit only (excludes mutual aid)"
+        "period_summary": period_summary
     }
 
 
@@ -363,7 +384,7 @@ def get_monthly_volume_pattern(
 ):
     """
     Monthly incident volume patterns - helps predict "is next month busier?"
-    Shows Fire vs EMS split.
+    Shows Fire vs EMS split. This shows ALL dispatched incidents (not filtered).
     """
     result = db.execute(text("""
         SELECT 
@@ -380,10 +401,9 @@ def get_monthly_volume_pattern(
         ORDER BY EXTRACT(month FROM incident_date)
     """.replace(':years', str(years_back))), {}).fetchall()
     
-    # Calculate averages per month
     data = []
     for r in result:
-        years_of_data = years_back  # Approximate
+        years_of_data = years_back
         data.append({
             "month": r.month_name,
             "month_num": int(r.month_num),
@@ -394,7 +414,6 @@ def get_monthly_volume_pattern(
             "ems_avg_per_month": round(r.ems_count / years_of_data, 1),
         })
     
-    # Identify busiest months
     if data:
         busiest_fire = max(data, key=lambda x: x["fire_total"])
         busiest_ems = max(data, key=lambda x: x["ems_total"])
@@ -407,7 +426,8 @@ def get_monthly_volume_pattern(
         "insights": {
             "busiest_fire_month": busiest_fire["month"] if busiest_fire else None,
             "busiest_ems_month": busiest_ems["month"] if busiest_ems else None,
-        }
+        },
+        "note": "Shows all dispatched incidents (not filtered to Station 48 responses)"
     }
 
 
@@ -420,11 +440,24 @@ def get_best_performance_times(
 ):
     """
     When do we perform best? Fastest turnout by day of week and hour.
+    Only includes incidents where Station 48 responded.
     """
     prefix_filter = ""
+    prefix = None
     if category and category.upper() in ('FIRE', 'EMS'):
         prefix = 'F' if category.upper() == 'FIRE' else 'E'
         prefix_filter = f"AND i.internal_incident_number LIKE '{prefix}%'"
+    
+    # Get counts
+    if prefix:
+        counts = get_incident_counts(db, start_date, end_date, prefix)
+    else:
+        fire_counts = get_incident_counts(db, start_date, end_date, 'F')
+        ems_counts = get_incident_counts(db, start_date, end_date, 'E')
+        counts = {
+            "total_dispatched": fire_counts["total_dispatched"] + ems_counts["total_dispatched"],
+            "station_responded": fire_counts["station_responded"] + ems_counts["station_responded"]
+        }
     
     # By day of week
     by_day = db.execute(text(f"""
@@ -452,6 +485,7 @@ def get_best_performance_times(
             AND i.deleted_at IS NULL
             AND i.time_dispatched IS NOT NULL
             AND i.time_first_enroute IS NOT NULL
+            AND {STATION_48_RESPONDED_FILTER}
             {prefix_filter}
         GROUP BY EXTRACT(dow FROM i.incident_date)
         ORDER BY EXTRACT(dow FROM i.incident_date)
@@ -474,12 +508,12 @@ def get_best_performance_times(
             AND i.deleted_at IS NULL
             AND i.time_dispatched IS NOT NULL
             AND i.time_first_enroute IS NOT NULL
+            AND {STATION_48_RESPONDED_FILTER}
             {prefix_filter}
         GROUP BY EXTRACT(hour FROM i.time_dispatched)
         ORDER BY EXTRACT(hour FROM i.time_dispatched)
     """), {'start_date': start_date, 'end_date': end_date}).fetchall()
     
-    # Find best performers
     day_data = [
         {
             "day": r.day_name,
@@ -502,7 +536,6 @@ def get_best_performance_times(
         for r in by_hour
     ]
     
-    # Best performers (fastest turnout with sufficient volume)
     valid_days = [d for d in day_data if d["avg_turnout_mins"] and d["incident_count"] >= 5]
     valid_hours = [h for h in hour_data if h["avg_turnout_mins"] and h["incident_count"] >= 3]
     
@@ -512,6 +545,7 @@ def get_best_performance_times(
     return {
         "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
         "category": category.upper() if category else "ALL",
+        "incident_counts": counts,
         "by_day": day_data,
         "by_hour": hour_data,
         "insights": {
@@ -531,10 +565,18 @@ def get_staffing_patterns(
 ):
     """
     Best staffed calls by day of week and hour.
-    Shows when we get the most personnel responding.
+    Only includes incidents where Station 48 responded.
     """
+    # Get counts
+    fire_counts = get_incident_counts(db, start_date, end_date, 'F')
+    ems_counts = get_incident_counts(db, start_date, end_date, 'E')
+    counts = {
+        "total_dispatched": fire_counts["total_dispatched"] + ems_counts["total_dispatched"],
+        "station_responded": fire_counts["station_responded"] + ems_counts["station_responded"]
+    }
+    
     # By day of week
-    by_day = db.execute(text("""
+    by_day = db.execute(text(f"""
         SELECT 
             EXTRACT(dow FROM i.incident_date) as day_num,
             CASE EXTRACT(dow FROM i.incident_date)
@@ -557,12 +599,13 @@ def get_staffing_patterns(
         WHERE i.incident_date >= :start_date
             AND i.incident_date < :end_date
             AND i.deleted_at IS NULL
+            AND {STATION_48_RESPONDED_FILTER}
         GROUP BY EXTRACT(dow FROM i.incident_date)
         ORDER BY EXTRACT(dow FROM i.incident_date)
     """), {'start_date': start_date, 'end_date': end_date}).fetchall()
     
     # By hour
-    by_hour = db.execute(text("""
+    by_hour = db.execute(text(f"""
         SELECT 
             EXTRACT(hour FROM i.time_dispatched) as hour,
             COUNT(DISTINCT i.id) as incident_count,
@@ -577,6 +620,7 @@ def get_staffing_patterns(
             AND i.incident_date < :end_date
             AND i.deleted_at IS NULL
             AND i.time_dispatched IS NOT NULL
+            AND {STATION_48_RESPONDED_FILTER}
         GROUP BY EXTRACT(hour FROM i.time_dispatched)
         ORDER BY EXTRACT(hour FROM i.time_dispatched)
     """), {'start_date': start_date, 'end_date': end_date}).fetchall()
@@ -601,13 +645,13 @@ def get_staffing_patterns(
         for r in by_hour
     ]
     
-    # Best staffed
     best_day = max(day_data, key=lambda x: x["avg_personnel"]) if day_data else None
     valid_hours = [h for h in hour_data if h["incident_count"] >= 3]
     best_hour = max(valid_hours, key=lambda x: x["avg_personnel"]) if valid_hours else None
     
     return {
         "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
+        "incident_counts": counts,
         "by_day": day_data,
         "by_hour": hour_data,
         "insights": {
@@ -629,20 +673,23 @@ def get_this_week_last_year(
 ):
     """
     Compare this week to the same week last year.
+    Only includes incidents where Station 48 responded.
     """
     today = date.today()
     
-    # This week (Mon-Sun containing today)
     days_since_monday = today.weekday()
     this_week_start = today - timedelta(days=days_since_monday)
     this_week_end = this_week_start + timedelta(days=7)
     
-    # Same week last year
     last_year_start = this_week_start - timedelta(days=365)
     last_year_end = this_week_end - timedelta(days=365)
     
     def get_week_stats(start: date, end: date):
-        result = db.execute(text("""
+        # Get counts
+        fire_counts = get_incident_counts(db, start, end, 'F')
+        ems_counts = get_incident_counts(db, start, end, 'E')
+        
+        result = db.execute(text(f"""
             SELECT 
                 COUNT(*) as total_incidents,
                 SUM(CASE WHEN internal_incident_number LIKE 'F%' THEN 1 ELSE 0 END) as fire_count,
@@ -653,29 +700,31 @@ def get_this_week_last_year(
                 ROUND(AVG(
                     EXTRACT(EPOCH FROM (time_first_on_scene - time_dispatched)) / 60
                 )::numeric, 1) as avg_response_mins
-            FROM incidents
-            WHERE incident_date >= :start_date
-                AND incident_date < :end_date
-                AND deleted_at IS NULL
-                AND (internal_incident_number LIKE 'F%' OR internal_incident_number LIKE 'E%')
+            FROM incidents i
+            WHERE i.incident_date >= :start_date
+                AND i.incident_date < :end_date
+                AND i.deleted_at IS NULL
+                AND (i.internal_incident_number LIKE 'F%' OR i.internal_incident_number LIKE 'E%')
+                AND {STATION_48_RESPONDED_FILTER}
         """), {'start_date': start, 'end_date': end}).fetchone()
         
-        # Get call types
-        types = db.execute(text("""
+        types = db.execute(text(f"""
             SELECT 
                 COALESCE(cad_event_type, 'Unknown') as call_type,
                 COUNT(*) as count
-            FROM incidents
-            WHERE incident_date >= :start_date
-                AND incident_date < :end_date
-                AND deleted_at IS NULL
+            FROM incidents i
+            WHERE i.incident_date >= :start_date
+                AND i.incident_date < :end_date
+                AND i.deleted_at IS NULL
+                AND {STATION_48_RESPONDED_FILTER}
             GROUP BY cad_event_type
             ORDER BY COUNT(*) DESC
             LIMIT 5
         """), {'start_date': start, 'end_date': end}).fetchall()
         
         return {
-            "total_incidents": result.total_incidents or 0,
+            "total_dispatched": fire_counts["total_dispatched"] + ems_counts["total_dispatched"],
+            "station_responded": result.total_incidents or 0,
             "fire_count": result.fire_count or 0,
             "ems_count": result.ems_count or 0,
             "avg_turnout_mins": float(result.avg_turnout_mins) if result.avg_turnout_mins else None,
@@ -686,11 +735,10 @@ def get_this_week_last_year(
     this_week = get_week_stats(this_week_start, this_week_end)
     last_year = get_week_stats(last_year_start, last_year_end)
     
-    # Calculate changes
     changes = {}
-    if this_week["total_incidents"] and last_year["total_incidents"]:
+    if this_week["station_responded"] and last_year["station_responded"]:
         changes["incidents_pct"] = round(
-            ((this_week["total_incidents"] - last_year["total_incidents"]) / last_year["total_incidents"]) * 100, 1
+            ((this_week["station_responded"] - last_year["station_responded"]) / last_year["station_responded"]) * 100, 1
         )
     if this_week["avg_turnout_mins"] and last_year["avg_turnout_mins"]:
         changes["turnout_diff"] = round(this_week["avg_turnout_mins"] - last_year["avg_turnout_mins"], 1)
@@ -726,11 +774,16 @@ def get_analytics_summary(
 ):
     """
     Quick summary stats for the analytics dashboard header.
+    Shows both dispatched and responded counts.
     """
     today = date.today()
     start_date = today - timedelta(days=days)
     
-    result = db.execute(text("""
+    # Get counts
+    fire_counts = get_incident_counts(db, start_date, today, 'F')
+    ems_counts = get_incident_counts(db, start_date, today, 'E')
+    
+    result = db.execute(text(f"""
         SELECT 
             COUNT(*) as total_incidents,
             SUM(CASE WHEN internal_incident_number LIKE 'F%' THEN 1 ELSE 0 END) as fire_count,
@@ -744,19 +797,23 @@ def get_analytics_summary(
             ROUND(AVG(
                 EXTRACT(EPOCH FROM (time_last_cleared - time_first_on_scene)) / 60
             )::numeric, 1) as avg_on_scene_mins
-        FROM incidents
-        WHERE incident_date >= :start_date
-            AND incident_date < :end_date
-            AND deleted_at IS NULL
-            AND (internal_incident_number LIKE 'F%' OR internal_incident_number LIKE 'E%')
+        FROM incidents i
+        WHERE i.incident_date >= :start_date
+            AND i.incident_date < :end_date
+            AND i.deleted_at IS NULL
+            AND (i.internal_incident_number LIKE 'F%' OR i.internal_incident_number LIKE 'E%')
+            AND {STATION_48_RESPONDED_FILTER}
     """), {'start_date': start_date, 'end_date': today}).fetchone()
     
     return {
         "period_days": days,
         "period": {"start": start_date.isoformat(), "end": today.isoformat()},
-        "total_incidents": result.total_incidents or 0,
-        "fire_count": result.fire_count or 0,
-        "ems_count": result.ems_count or 0,
+        "total_dispatched": fire_counts["total_dispatched"] + ems_counts["total_dispatched"],
+        "station_responded": result.total_incidents or 0,
+        "fire_dispatched": fire_counts["total_dispatched"],
+        "fire_responded": result.fire_count or 0,
+        "ems_dispatched": ems_counts["total_dispatched"],
+        "ems_responded": result.ems_count or 0,
         "avg_turnout_mins": float(result.avg_turnout_mins) if result.avg_turnout_mins else None,
         "avg_response_mins": float(result.avg_response_mins) if result.avg_response_mins else None,
         "avg_on_scene_mins": float(result.avg_on_scene_mins) if result.avg_on_scene_mins else None,
