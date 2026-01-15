@@ -385,12 +385,14 @@ def generate_css(branding: dict) -> str:
         
         .cad-table th,
         .cad-table td {{
-            border: 1px {border_style} #999;
+            border: 1px {border_style} {text_color};
             padding: 1px 3px;
         }}
         
         .cad-table th {{
-            background: #eee;
+            background: {primary};
+            color: #fff;
+            text-align: center;
         }}
         
         /* Stats boxes */
