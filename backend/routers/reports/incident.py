@@ -38,10 +38,18 @@ def _load_incident_context(db: Session, incident_id: int) -> tuple:
     municipality_lookup = {m[0]: m[1] for m in muni_rows}
     
     apparatus_rows = db.execute(text("""
-        SELECT id, unit_designator, name, ff_slots, unit_category 
+        SELECT id, unit_designator, name, ff_slots, unit_category, has_driver, has_officer 
         FROM apparatus WHERE active = true ORDER BY display_order, unit_designator
     """)).fetchall()
-    apparatus_list = [{'id': a[0], 'unit_designator': a[1], 'name': a[2], 'ff_slots': a[3] or 4, 'unit_category': a[4] or 'APPARATUS'} for a in apparatus_rows]
+    apparatus_list = [{
+        'id': a[0], 
+        'unit_designator': a[1], 
+        'name': a[2], 
+        'ff_slots': a[3] or 0,  # Don't default to 4 - respect actual config
+        'unit_category': a[4] or 'APPARATUS',
+        'has_driver': a[5] if a[5] is not None else False,
+        'has_officer': a[6] if a[6] is not None else False,
+    } for a in apparatus_rows]
     
     personnel_assignments = {}
     unit_rows = db.execute(text("""
