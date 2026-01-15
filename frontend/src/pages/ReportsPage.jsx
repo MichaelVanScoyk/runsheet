@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBranding } from '../contexts/BrandingContext';
 import { getIncidentYears } from '../api';
+import ReportDetailModal from '../components/ReportDetailModal';
 
 const API_BASE = '';
 
@@ -35,6 +36,22 @@ function ReportsPage() {
   const [incidentsData, setIncidentsData] = useState(null);
   const [trendData, setTrendData] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Detail modal state
+  const [detailModal, setDetailModal] = useState({
+    isOpen: false,
+    type: null,      // 'personnel' | 'units' | 'incidents'
+    itemId: null,    // ID or incident type string
+    itemName: null,  // Display name
+  });
+
+  const openDetailModal = (type, itemId, itemName) => {
+    setDetailModal({ isOpen: true, type, itemId, itemName });
+  };
+
+  const closeDetailModal = () => {
+    setDetailModal({ isOpen: false, type: null, itemId: null, itemName: null });
+  };
 
   const queryInputRef = useRef(null);
 
@@ -467,12 +484,24 @@ function ReportsPage() {
         <>
           {activeReport === 'monthly' && monthlyReport && <MonthlyReportView report={monthlyReport} category={categoryFilter} s={s} colors={colors} />}
           {activeReport === 'overview' && summaryData && <OverviewReport summary={summaryData} trend={trendData} year={reportYear} onYearChange={setReportYear} availableYears={availableYears} s={s} colors={colors} />}
-          {activeReport === 'personnel' && personnelData && <PersonnelReport data={personnelData} s={s} colors={colors} startDate={startDate} endDate={endDate} />}
-          {activeReport === 'units' && unitData && <UnitsReport data={unitData} s={s} colors={colors} startDate={startDate} endDate={endDate} />}
-          {activeReport === 'incidents' && incidentsData && <IncidentsReport data={incidentsData} s={s} colors={colors} startDate={startDate} endDate={endDate} />}
+          {activeReport === 'personnel' && personnelData && <PersonnelReport data={personnelData} s={s} colors={colors} startDate={startDate} endDate={endDate} onItemClick={(id, name) => openDetailModal('personnel', id, name)} />}
+          {activeReport === 'units' && unitData && <UnitsReport data={unitData} s={s} colors={colors} startDate={startDate} endDate={endDate} onItemClick={(id, name) => openDetailModal('units', id, name)} />}
+          {activeReport === 'incidents' && incidentsData && <IncidentsReport data={incidentsData} s={s} colors={colors} startDate={startDate} endDate={endDate} onItemClick={(typeName) => openDetailModal('incidents', typeName, typeName)} />}
           {activeReport === 'custom' && queryResult && <CustomQueryResult result={queryResult} s={s} colors={colors} />}
         </>
       )}
+
+      {/* Detail Modal */}
+      <ReportDetailModal
+        isOpen={detailModal.isOpen}
+        onClose={closeDetailModal}
+        type={detailModal.type}
+        itemId={detailModal.itemId}
+        itemName={detailModal.itemName}
+        startDate={startDate}
+        endDate={endDate}
+        colors={colors}
+      />
     </div>
   );
 }
@@ -706,7 +735,7 @@ function OverviewReport({ summary, trend, year, onYearChange, availableYears, s,
 // =============================================================================
 // PERSONNEL REPORT - Using new admin endpoint
 // =============================================================================
-function PersonnelReport({ data, s, colors, startDate, endDate }) {
+function PersonnelReport({ data, s, colors, startDate, endDate, onItemClick }) {
   if (!data) return null;
   
   const summary = data.summary || {};
@@ -757,11 +786,12 @@ function PersonnelReport({ data, s, colors, startDate, endDate }) {
               {personnel.map((p, i) => (
                 <tr 
                   key={p.id} 
+                  onClick={() => onItemClick && onItemClick(p.id, p.name)}
                   style={{ 
                     background: i < 3 ? colors.greenLight : 'transparent',
                     cursor: 'pointer',
                   }}
-                  title={`Click to view ${p.name}'s detail report (coming soon)`}
+                  title={`Click to view ${p.name}'s detail report`}
                 >
                   <td style={s.td}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
                   <td style={{ ...s.td, fontWeight: '500' }}>{p.name}</td>
@@ -784,7 +814,7 @@ function PersonnelReport({ data, s, colors, startDate, endDate }) {
 // =============================================================================
 // UNITS REPORT - Using new admin endpoint with Fire/EMS breakdown
 // =============================================================================
-function UnitsReport({ data, s, colors, startDate, endDate }) {
+function UnitsReport({ data, s, colors, startDate, endDate, onItemClick }) {
   if (!data) return null;
   
   const summary = data.summary || {};
@@ -835,8 +865,9 @@ function UnitsReport({ data, s, colors, startDate, endDate }) {
               {units.filter(u => u.total_incidents > 0).map((u, i) => (
                 <tr 
                   key={u.id || i}
+                  onClick={() => onItemClick && onItemClick(u.id, u.name)}
                   style={{ cursor: 'pointer' }}
-                  title={`Click to view ${u.name}'s detail report (coming soon)`}
+                  title={`Click to view ${u.name}'s detail report`}
                 >
                   <td style={{ ...s.td, fontWeight: '600' }}>{u.unit_designator}</td>
                   <td style={s.td}>{u.name}</td>
@@ -859,7 +890,7 @@ function UnitsReport({ data, s, colors, startDate, endDate }) {
 // =============================================================================
 // INCIDENTS REPORT - Type/Subtype breakdown
 // =============================================================================
-function IncidentsReport({ data, s, colors, startDate, endDate }) {
+function IncidentsReport({ data, s, colors, startDate, endDate, onItemClick }) {
   if (!data) return null;
   
   const summary = data.summary || {};
@@ -869,7 +900,8 @@ function IncidentsReport({ data, s, colors, startDate, endDate }) {
   // Track expanded groups
   const [expandedGroups, setExpandedGroups] = useState({});
   
-  const toggleGroup = (typeName) => {
+  const toggleGroup = (typeName, e) => {
+    e.stopPropagation(); // Don't trigger the detail modal
     setExpandedGroups(prev => ({
       ...prev,
       [typeName]: !prev[typeName]
@@ -912,7 +944,7 @@ function IncidentsReport({ data, s, colors, startDate, endDate }) {
               <div key={i} style={{ marginBottom: '0.5rem' }}>
                 {/* Type header - clickable */}
                 <div 
-                  onClick={() => toggleGroup(type.name)}
+                  onClick={() => onItemClick && onItemClick(type.name)}
                   style={{
                     background: colors.green,
                     color: colors.white,
@@ -925,8 +957,12 @@ function IncidentsReport({ data, s, colors, startDate, endDate }) {
                     fontSize: '0.85rem',
                     fontWeight: '600',
                   }}
+                  title={`Click to view ${type.name} detail report`}
                 >
-                  <span>
+                  <span
+                    onClick={(e) => toggleGroup(type.name, e)}
+                    style={{ cursor: 'pointer' }}
+                  >
                     {expandedGroups[type.name] ? '▼' : '▶'} {type.name}
                   </span>
                   <span style={{
