@@ -107,9 +107,7 @@ def get_response_times_by_call_type(
             AND i.time_dispatched IS NOT NULL
             AND {STATION_48_RESPONDED_FILTER}
         GROUP BY i.{type_field}
-        HAVING COUNT(*) >= 3
         ORDER BY COUNT(*) DESC
-        LIMIT 15
     """), {
         'start_date': start_date,
         'end_date': end_date,
@@ -536,8 +534,8 @@ def get_best_performance_times(
         for r in by_hour
     ]
     
-    valid_days = [d for d in day_data if d["avg_turnout_mins"] and d["incident_count"] >= 5]
-    valid_hours = [h for h in hour_data if h["avg_turnout_mins"] and h["incident_count"] >= 3]
+    valid_days = [d for d in day_data if d["avg_turnout_mins"]]
+    valid_hours = [h for h in hour_data if h["avg_turnout_mins"]]
     
     best_day = min(valid_days, key=lambda x: x["avg_turnout_mins"]) if valid_days else None
     best_hour = min(valid_hours, key=lambda x: x["avg_turnout_mins"]) if valid_hours else None
@@ -646,8 +644,7 @@ def get_staffing_patterns(
     ]
     
     best_day = max(day_data, key=lambda x: x["avg_personnel"]) if day_data else None
-    valid_hours = [h for h in hour_data if h["incident_count"] >= 3]
-    best_hour = max(valid_hours, key=lambda x: x["avg_personnel"]) if valid_hours else None
+    best_hour = max(hour_data, key=lambda x: x["avg_personnel"]) if hour_data else None
     
     return {
         "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
@@ -719,7 +716,6 @@ def get_this_week_last_year(
                 AND {STATION_48_RESPONDED_FILTER}
             GROUP BY cad_event_type
             ORDER BY COUNT(*) DESC
-            LIMIT 5
         """), {'start_date': start, 'end_date': end}).fetchall()
         
         return {

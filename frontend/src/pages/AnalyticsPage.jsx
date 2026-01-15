@@ -105,7 +105,7 @@ const AnalyticsPage = () => {
         }),
         api.get('/analytics/v2/response-times/trends', { params: { category } }),
         api.get('/analytics/v2/turnout-vs-crew', {
-          params: { start_date: dateRange.startDate, end_date: dateRange.endDate }
+          params: { start_date: dateRange.startDate, end_date: dateRange.endDate, category }
         }),
         api.get('/analytics/v2/patterns/monthly-volume', { params: { years_back: 3 } }),
         api.get('/analytics/v2/patterns/best-performance', {
@@ -296,7 +296,7 @@ const AnalyticsPage = () => {
 
         {/* Section 2: Turnout vs Crew Size */}
         <CollapsibleSection
-          title="Turnout Time vs Crew Size"
+          title={`Turnout Time vs Crew Size (${category})`}
           icon={Users}
           expanded={expandedSections.turnoutVsCrew}
           onToggle={() => toggleSection('turnoutVsCrew')}
@@ -505,6 +505,7 @@ const TurnoutVsCrewSection = ({ data }) => {
     return <p className="text-gray-500 text-center py-4">No data available</p>;
   }
 
+  const counts = data.incident_counts;
   const periods = ['daytime', 'evening', 'overnight'];
   const periodLabels = {
     daytime: 'Daytime (6a-4p)',
@@ -527,6 +528,13 @@ const TurnoutVsCrewSection = ({ data }) => {
 
   return (
     <div className="space-y-4">
+      {/* Incident Counts Context */}
+      {counts && (
+        <p className="text-sm text-gray-600">
+          {counts.total_dispatched} incidents dispatched, Station 48 responded to {counts.station_responded}
+        </p>
+      )}
+      
       <p className="text-sm text-gray-600">
         First-out unit: How many crew when we leave at different turnout times? Longer wait = more crew?
       </p>
