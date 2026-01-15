@@ -840,10 +840,27 @@ FIELD_RENDERERS: Dict[str, Callable[[RenderContext, dict], str]] = {
 
 
 def render_field(ctx: RenderContext, block: dict) -> str:
+    """Render a field, with optional placeholder when empty."""
     renderer = FIELD_RENDERERS.get(block.get('id'))
     if not renderer:
         return ''
-    return renderer(ctx, block)
+    
+    html = renderer(ctx, block)
+    
+    # If empty and showWhenEmpty is set, return a placeholder
+    if not html and block.get('showWhenEmpty', False):
+        # Get the label for the placeholder
+        label = block.get('name', block.get('id', ''))
+        hide_label = block.get('hideLabel', False)
+        
+        if hide_label:
+            # Just an empty space placeholder
+            return '<div class="field field-empty">&nbsp;</div>'
+        else:
+            # Show label with empty value
+            return f'<div class="field field-empty"><span class="label">{esc(label)}:</span> —</div>'
+    
+    return html
 
 
 # =============================================================================
