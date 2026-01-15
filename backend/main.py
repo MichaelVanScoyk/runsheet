@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 from routers import incidents, lookups, apparatus, personnel, settings, neris_codes, admin, backup, tenant_auth, master_admin
-from routers import branding, print_layout, comcat, websocket, analytics, review_tasks
+from routers import branding, print_layout, comcat, websocket, analytics, review_tasks, analytics_v2
 from routers.reports import router as reports_router
 from database import engine, Base
 from master_database import MasterSessionLocal
@@ -262,6 +262,7 @@ app.include_router(master_admin.router, prefix="/api/master", tags=["Master Admi
 app.include_router(comcat.router)  # ComCat has its own prefix: /api/comcat
 app.include_router(websocket.router, tags=["WebSocket"])  # WebSocket at /ws/incidents
 app.include_router(analytics.router)  # Analytics has its own prefix: /api/analytics
+app.include_router(analytics_v2.router)  # Analytics V2 has its own prefix: /api/analytics/v2
 app.include_router(review_tasks.router, prefix="/api/review-tasks", tags=["Review Tasks"])
 
 @app.get("/")
