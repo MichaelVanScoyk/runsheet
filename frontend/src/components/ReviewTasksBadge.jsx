@@ -127,8 +127,35 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
       'comcat_review': '💬',
       'neris_validation': '📋',
       'out_of_sequence': '🔢',
+      'incomplete_narrative': '📝',
     };
     return icons[taskType] || '⚠️';
+  };
+
+  // Dismiss a task
+  const handleDismiss = async (e, taskId) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`/api/review-tasks/${taskId}/dismiss`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resolved_by: userSession?.personnel_id || 1,
+          resolution_notes: 'Dismissed from sidebar'
+        })
+      });
+      if (res.ok) {
+        // Refresh the list and count
+        fetchCount();
+        const grouped = await fetch('/api/review-tasks/grouped?limit=10');
+        if (grouped.ok) {
+          const data = await grouped.json();
+          setGroupedTasks(data.incidents || []);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to dismiss task:', err);
+    }
   };
 
   if (!canView) return null;
@@ -182,7 +209,14 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
                     {incident.tasks.map((task) => (
                       <li key={task.id} className={`review-task-item priority-${task.priority}`}>
                         <span className="review-task-icon">{getTaskIcon(task.task_type)}</span>
-                        {task.title}
+                        <span className="review-task-title">{task.title}</span>
+                        <button
+                          className="review-task-dismiss"
+                          onClick={(e) => handleDismiss(e, task.id)}
+                          title="Dismiss this task"
+                        >
+                          ×
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -362,6 +396,26 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
 
         .review-task-icon {
           font-size: 0.8rem;
+        }
+
+        .review-task-title {
+          flex: 1;
+        }
+
+        .review-task-dismiss {
+          background: none;
+          border: none;
+          color: #999;
+          font-size: 1rem;
+          cursor: pointer;
+          padding: 0 0.25rem;
+          line-height: 1;
+          border-radius: 3px;
+        }
+
+        .review-task-dismiss:hover {
+          background: #fee;
+          color: #c00;
         }
       `}</style>
     </div>
