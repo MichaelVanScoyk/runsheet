@@ -489,10 +489,10 @@ def get_best_performance_times(
         ORDER BY EXTRACT(dow FROM i.incident_date)
     """), {'start_date': start_date, 'end_date': end_date}).fetchall()
     
-    # By hour
+    # By hour (using local timezone)
     by_hour = db.execute(text(f"""
         SELECT 
-            EXTRACT(hour FROM i.time_dispatched) as hour,
+            EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York') as hour,
             COUNT(*) as incident_count,
             ROUND(AVG(
                 EXTRACT(EPOCH FROM (i.time_first_enroute - i.time_dispatched)) / 60
@@ -508,8 +508,8 @@ def get_best_performance_times(
             AND i.time_first_enroute IS NOT NULL
             AND {STATION_48_RESPONDED_FILTER}
             {prefix_filter}
-        GROUP BY EXTRACT(hour FROM i.time_dispatched)
-        ORDER BY EXTRACT(hour FROM i.time_dispatched)
+        GROUP BY EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York')
+        ORDER BY EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York')
     """), {'start_date': start_date, 'end_date': end_date}).fetchall()
     
     day_data = [
@@ -602,10 +602,10 @@ def get_staffing_patterns(
         ORDER BY EXTRACT(dow FROM i.incident_date)
     """), {'start_date': start_date, 'end_date': end_date}).fetchall()
     
-    # By hour
+    # By hour (using local timezone)
     by_hour = db.execute(text(f"""
         SELECT 
-            EXTRACT(hour FROM i.time_dispatched) as hour,
+            EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York') as hour,
             COUNT(DISTINCT i.id) as incident_count,
             ROUND(AVG(personnel_count)::numeric, 1) as avg_personnel
         FROM incidents i
@@ -619,8 +619,8 @@ def get_staffing_patterns(
             AND i.deleted_at IS NULL
             AND i.time_dispatched IS NOT NULL
             AND {STATION_48_RESPONDED_FILTER}
-        GROUP BY EXTRACT(hour FROM i.time_dispatched)
-        ORDER BY EXTRACT(hour FROM i.time_dispatched)
+        GROUP BY EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York')
+        ORDER BY EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York')
     """), {'start_date': start_date, 'end_date': end_date}).fetchall()
     
     day_data = [

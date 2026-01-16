@@ -44,6 +44,8 @@ export default function IncidentHubModal({
     situation_found: '',
     services_provided: '',
     narrative: '',
+    officer_in_charge: '',
+    completed_by: '',
   });
   
   // Manual save state (for Save button)
@@ -94,12 +96,14 @@ export default function IncidentHubModal({
         });
       }
       
-      // Save form data if changed (narrative fields)
+      // Save form data if changed (narrative fields + officer fields)
       if (pendingFormData) {
         const updatePayload = {};
         if (pendingFormData.situation_found !== undefined) updatePayload.situation_found = pendingFormData.situation_found;
         if (pendingFormData.services_provided !== undefined) updatePayload.services_provided = pendingFormData.services_provided;
         if (pendingFormData.narrative !== undefined) updatePayload.narrative = pendingFormData.narrative;
+        if (pendingFormData.officer_in_charge !== undefined) updatePayload.officer_in_charge = pendingFormData.officer_in_charge || null;
+        if (pendingFormData.completed_by !== undefined) updatePayload.completed_by = pendingFormData.completed_by || null;
 
         if (Object.keys(updatePayload).length > 0) {
           await updateIncident(selectedIncident.id, updatePayload);
@@ -279,6 +283,8 @@ export default function IncidentHubModal({
           situation_found: inc.situation_found || '',
           services_provided: inc.services_provided || '',
           narrative: inc.narrative || '',
+          officer_in_charge: inc.officer_in_charge || '',
+          completed_by: inc.completed_by || '',
         });
 
         setError(null);
@@ -430,12 +436,15 @@ export default function IncidentHubModal({
         body: JSON.stringify({ assignments: assignmentPayload }),
       });
 
-      // Save narrative fields (allowed in early entry mode OR when closed)
+      // Save narrative fields + officer fields (allowed in early entry mode OR when closed)
       if (isClosed || earlyEntryEnabled) {
         const updatePayload = {};
         if (formData.situation_found) updatePayload.situation_found = formData.situation_found;
         if (formData.services_provided) updatePayload.services_provided = formData.services_provided;
         if (formData.narrative) updatePayload.narrative = formData.narrative;
+        // Officer fields - always include (even if empty to allow clearing)
+        updatePayload.officer_in_charge = formData.officer_in_charge || null;
+        updatePayload.completed_by = formData.completed_by || null;
 
         if (Object.keys(updatePayload).length > 0) {
           await updateIncident(selectedIncident.id, updatePayload);

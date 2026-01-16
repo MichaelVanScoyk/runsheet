@@ -106,6 +106,128 @@ function QuickEntrySection({
           </div>
         </div>
       )}
+
+      {/* Officer Fields - always show when QuickEntrySection is visible */}
+      {showNarrative && (
+        <div style={{ backgroundColor: '#fff', borderRadius: '4px', padding: '12px', border: '1px solid #ddd' }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', color: primaryColor }}>Report Information</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>Officer in Charge</label>
+              <OfficerSelect
+                value={formData.officer_in_charge || ''}
+                personnel={allPersonnel}
+                onSelect={(personId) => onFormChange('officer_in_charge', personId)}
+                onClear={() => onFormChange('officer_in_charge', '')}
+                placeholder="Select officer..."
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>Report Completed By</label>
+              <OfficerSelect
+                value={formData.completed_by || ''}
+                personnel={allPersonnel}
+                onSelect={(personId) => onFormChange('completed_by', personId)}
+                onClear={() => onFormChange('completed_by', '')}
+                placeholder="Select person..."
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * OfficerSelect - Single-person select for Officer in Charge / Completed By
+ * Shows full personnel list (no exclusions), allows one selection with clear button
+ */
+function OfficerSelect({ value, personnel, onSelect, onClear, placeholder = 'Select...' }) {
+  const [searchText, setSearchText] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState(null);
+
+  // Normalize value to number for comparison
+  const valueNum = value ? parseInt(value) : null;
+  const currentPerson = valueNum ? personnel.find(p => p.id === valueNum) : null;
+  const displayValue = showDropdown ? searchText : (currentPerson ? `${currentPerson.last_name}, ${currentPerson.first_name}` : '');
+
+  const filtered = personnel.filter(p => {
+    if (!searchText) return true;
+    const lower = searchText.toLowerCase();
+    return p.last_name.toLowerCase().includes(lower) || p.first_name.toLowerCase().includes(lower);
+  });
+
+  const handleSelect = (person) => {
+    onSelect(person.id);
+    setSearchText('');
+    setShowDropdown(false);
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      <div style={{ flex: 1, position: 'relative' }}>
+        <input
+          type="text"
+          value={displayValue}
+          placeholder={placeholder}
+          onChange={(e) => {
+            setSearchText(e.target.value);
+            if (!showDropdown) setShowDropdown(true);
+          }}
+          onFocus={(e) => {
+            const rect = e.target.getBoundingClientRect();
+            setDropdownPos({ top: rect.bottom + 2, left: rect.left, width: rect.width });
+            setShowDropdown(true);
+            setSearchText('');
+          }}
+          onBlur={() => setTimeout(() => {
+            setShowDropdown(false);
+            setSearchText('');
+          }, 200)}
+          style={{ width: '100%', padding: '6px 8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}
+        />
+        {showDropdown && dropdownPos && (
+          <div style={{
+            position: 'fixed',
+            top: dropdownPos.top,
+            left: dropdownPos.left,
+            width: dropdownPos.width,
+            backgroundColor: '#fff',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            maxHeight: '200px',
+            overflowY: 'auto',
+            zIndex: 9999,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          }}>
+            {filtered.slice(0, 50).map(p => (
+              <div
+                key={p.id}
+                onMouseDown={() => handleSelect(p)}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f0f0'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                style={{ padding: '6px 10px', cursor: 'pointer', fontSize: '12px', color: '#333', borderBottom: '1px solid #f0f0f0' }}
+              >
+                {p.last_name}, {p.first_name}
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <div style={{ padding: '8px 10px', color: '#999', fontSize: '12px' }}>No matches</div>
+            )}
+          </div>
+        )}
+      </div>
+      {value && !showDropdown && (
+        <button
+          onClick={onClear}
+          style={{ flexShrink: 0, backgroundColor: '#e74c3c', color: '#fff', border: 'none', borderRadius: '4px', width: '22px', height: '22px', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          type="button"
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }
