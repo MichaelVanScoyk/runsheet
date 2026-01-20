@@ -669,17 +669,24 @@ def get_this_week_last_year(
     db: Session = Depends(get_db)
 ):
     """
-    Compare this week to the same week last year.
+    Compare this week (Sunday-Saturday) to the same date range last year.
     Only includes incidents where Station 48 responded.
+    
+    Note: Last year uses the same DATE range (not same weekdays) for 
+    apples-to-apples comparison.
     """
     today = date.today()
     
-    days_since_monday = today.weekday()
-    this_week_start = today - timedelta(days=days_since_monday)
-    this_week_end = this_week_start + timedelta(days=7)
+    # Week runs Sunday (0) to Saturday (6)
+    # Python weekday(): Monday=0, Sunday=6
+    # We want Sunday as start of week
+    days_since_sunday = (today.weekday() + 1) % 7  # Sunday=0, Monday=1, etc.
+    this_week_start = today - timedelta(days=days_since_sunday)
+    this_week_end = this_week_start + timedelta(days=7)  # End is exclusive (next Sunday)
     
-    last_year_start = this_week_start - timedelta(days=365)
-    last_year_end = this_week_end - timedelta(days=365)
+    # Last year: same DATE range (not same weekdays)
+    last_year_start = this_week_start.replace(year=this_week_start.year - 1)
+    last_year_end = this_week_end.replace(year=this_week_end.year - 1)
     
     def get_week_stats(start: date, end: date):
         # Get counts

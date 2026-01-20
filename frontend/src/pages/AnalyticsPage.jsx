@@ -38,7 +38,10 @@ const getDateRange = (days) => {
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  // Parse as local time by adding T00:00:00 to avoid UTC interpretation
+  // "2026-01-19" alone is parsed as UTC midnight, which displays as Jan 18 in ET
+  const localDate = new Date(dateStr + 'T00:00:00');
+  return localDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
 // =============================================================================
