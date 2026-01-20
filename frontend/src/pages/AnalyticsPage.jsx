@@ -595,7 +595,10 @@ const PatternsSection = ({ monthlyVolume, bestPerformance, staffingPatterns }) =
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip />
-                <Legend />
+                <Legend payload={[
+                  { value: 'Fire (avg/mo)', type: 'square', color: '#dc2626' },
+                  { value: 'EMS (avg/mo)', type: 'square', color: '#2563eb' }
+                ]} />
                 <Bar dataKey="fire_avg_per_month" name="Fire (avg/mo)" fill="#dc2626" />
                 <Bar dataKey="ems_avg_per_month" name="EMS (avg/mo)" fill="#2563eb" />
               </BarChart>
