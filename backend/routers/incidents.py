@@ -1399,7 +1399,7 @@ async def create_incident(
     )
     
     # Emit AV alert for browser sound/TTS notifications
-    from routers.incidents.av_alerts import emit_av_alert
+    from routers.av_alerts import emit_av_alert
     background_tasks.add_task(
         emit_av_alert,
         request,
@@ -1699,7 +1699,7 @@ async def close_incident(
     )
     
     # Emit AV alert for browser sound notifications (close sound)
-    from routers.incidents.av_alerts import emit_av_alert
+    from routers.av_alerts import emit_av_alert
     # Extract unit IDs from cad_units for the alert
     units_due = [u.get('unit_id') for u in (incident.cad_units or []) if u.get('unit_id')]
     background_tasks.add_task(
