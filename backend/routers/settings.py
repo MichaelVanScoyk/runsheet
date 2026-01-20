@@ -537,3 +537,239 @@ def get_station_coords(db: Session) -> tuple:
     lat = get_setting_value(db, 'station', 'latitude', 40.0977)
     lon = get_setting_value(db, 'station', 'longitude', -75.7833)
     return (float(lat), float(lon))
+
+
+# =============================================================================
+# AV ALERTS SETTINGS
+# =============================================================================
+
+# Default AV alert settings
+DEFAULT_AV_ALERTS = {
+    'enabled': True,                          # Master enable for department
+    'dispatch_fire_sound': '/sounds/dispatch-fire.mp3',   # Default sound path
+    'dispatch_ems_sound': '/sounds/dispatch-ems.mp3',
+    'close_sound': '/sounds/close.mp3',
+    'tts_enabled': True,                      # Allow TTS department-wide
+}
+
+
+@router.get("/av-alerts")
+async def get_av_alerts_settings(db: Session = Depends(get_db)):
+    """
+    Get AV alerts settings.
+    Returns defaults merged with any custom values.
+    """
+    result = db.execute(
+        text("SELECT key, value, value_type FROM settings WHERE category = 'av_alerts'")
+    )
+    
+    settings = dict(DEFAULT_AV_ALERTS)
+    
+    for row in result:
+        key = row[0]
+        value = _parse_value(row[1], row[2])
+        if key in settings:
+            settings[key] = value
+    
+    return settings
+
+
+@router.put("/av-alerts")
+async def update_av_alerts_settings(
+    settings: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Update AV alerts settings.
+    Only updates keys that are in the allowed list.
+    """
+    allowed_keys = set(DEFAULT_AV_ALERTS.keys())
+    
+    for key, value in settings.items():
+        if key not in allowed_keys:
+            continue
+        
+        # Determine value type
+        if isinstance(value, bool):
+            value_str = str(value).lower()
+            value_type = 'boolean'
+        else:
+            value_str = str(value)
+            value_type = 'string'
+        
+        exists = db.execute(
+            text("SELECT 1 FROM settings WHERE category = 'av_alerts' AND key = :key"),
+            {"key": key}
+        ).fetchone()
+        
+        if exists:
+            db.execute(
+                text("UPDATE settings SET value = :value, value_type = :vtype, updated_at = NOW() WHERE category = 'av_alerts' AND key = :key"),
+                {"key": key, "value": value_str, "vtype": value_type}
+            )
+        else:
+            db.execute(
+                text("INSERT INTO settings (category, key, value, value_type) VALUES ('av_alerts', :key, :value, :vtype)"),
+                {"key": key, "value": value_str, "vtype": value_type}
+            )
+    
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/av-alerts/upload-sound")
+async def upload_av_alert_sound(
+    sound_type: str,  # 'dispatch_fire', 'dispatch_ems', 'close'
+    data: dict,       # {"data": "base64...", "filename": "alert.mp3"}
+    db: Session = Depends(get_db)
+):
+    """
+    Upload a custom sound file for AV alerts.
+    Stores as base64 in settings (simple approach for small audio files).
+    """
+    import base64
+    
+    valid_types = ['dispatch_fire', 'dispatch_ems', 'close']
+    if sound_type not in valid_types:
+        raise HTTPException(status_code=400, detail=f"Invalid sound type. Must be one of: {valid_types}")
+    
+    sound_data = data.get('data', '')
+    filename = data.get('filename', f'{sound_type}.mp3')
+    
+    if not sound_data:
+        raise HTTPException(status_code=400, detail="No audio data provided")
+    
+    # Strip data URL prefix if present
+    if sound_data.startswith('data:'):
+        try:
+            _, sound_data = sound_data.split(',', 1)
+        except:
+            pass
+    
+    # Validate it's valid base64
+    try:
+        decoded = base64.b64decode(sound_data)
+        # Basic check for audio file signatures
+        # MP3: starts with ID3 or 0xFF 0xFB
+        # WAV: starts with RIFF
+        # OGG: starts with OggS
+        valid_audio = (
+            decoded[:3] == b'ID3' or
+            decoded[:2] == b'\xff\xfb' or
+            decoded[:2] == b'\xff\xfa' or
+            decoded[:4] == b'RIFF' or
+            decoded[:4] == b'OggS' or
+            decoded[:4] == b'fLaC'  # FLAC
+        )
+        if not valid_audio:
+            raise HTTPException(status_code=400, detail="Invalid audio format. Supported: MP3, WAV, OGG, FLAC")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 data")
+    
+    # Store the sound data
+    sound_key = f'{sound_type}_sound_data'
+    _upsert_setting(db, 'av_alerts', sound_key, sound_data)
+    
+    # Store filename for reference
+    filename_key = f'{sound_type}_sound_filename'
+    _upsert_setting(db, 'av_alerts', filename_key, filename)
+    
+    # Update the sound path to indicate custom sound
+    path_key = f'{sound_type}_sound'
+    _upsert_setting(db, 'av_alerts', path_key, f'/api/settings/av-alerts/sound/{sound_type}')
+    
+    db.commit()
+    
+    return {
+        "status": "ok",
+        "message": f"Uploaded {filename} for {sound_type}",
+        "path": f'/api/settings/av-alerts/sound/{sound_type}'
+    }
+
+
+@router.get("/av-alerts/sound/{sound_type}")
+async def get_av_alert_sound(
+    sound_type: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get a custom sound file.
+    Returns the audio data as a downloadable file.
+    """
+    import base64
+    from fastapi.responses import Response
+    
+    valid_types = ['dispatch_fire', 'dispatch_ems', 'close']
+    if sound_type not in valid_types:
+        raise HTTPException(status_code=400, detail="Invalid sound type")
+    
+    # Get stored sound data
+    sound_key = f'{sound_type}_sound_data'
+    result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'av_alerts' AND key = :key"),
+        {"key": sound_key}
+    ).fetchone()
+    
+    if not result or not result[0]:
+        raise HTTPException(status_code=404, detail="Custom sound not found")
+    
+    # Get filename
+    filename_key = f'{sound_type}_sound_filename'
+    filename_result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'av_alerts' AND key = :key"),
+        {"key": filename_key}
+    ).fetchone()
+    filename = filename_result[0] if filename_result else f'{sound_type}.mp3'
+    
+    # Decode and return
+    try:
+        audio_data = base64.b64decode(result[0])
+    except:
+        raise HTTPException(status_code=500, detail="Failed to decode audio data")
+    
+    # Determine content type from filename
+    content_type = 'audio/mpeg'  # default to MP3
+    if filename.endswith('.wav'):
+        content_type = 'audio/wav'
+    elif filename.endswith('.ogg'):
+        content_type = 'audio/ogg'
+    elif filename.endswith('.flac'):
+        content_type = 'audio/flac'
+    
+    return Response(
+        content=audio_data,
+        media_type=content_type,
+        headers={
+            'Content-Disposition': f'inline; filename="{filename}"',
+            'Cache-Control': 'public, max-age=86400',  # Cache for 1 day
+        }
+    )
+
+
+@router.delete("/av-alerts/sound/{sound_type}")
+async def delete_av_alert_sound(
+    sound_type: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a custom sound file, reverting to default.
+    """
+    valid_types = ['dispatch_fire', 'dispatch_ems', 'close']
+    if sound_type not in valid_types:
+        raise HTTPException(status_code=400, detail="Invalid sound type")
+    
+    # Delete sound data and filename
+    db.execute(
+        text("DELETE FROM settings WHERE category = 'av_alerts' AND key IN (:data_key, :filename_key)"),
+        {"data_key": f'{sound_type}_sound_data', "filename_key": f'{sound_type}_sound_filename'}
+    )
+    
+    # Reset path to default
+    default_path = DEFAULT_AV_ALERTS.get(f'{sound_type}_sound', f'/sounds/{sound_type}.mp3')
+    _upsert_setting(db, 'av_alerts', f'{sound_type}_sound', default_path)
+    
+    db.commit()
+    
+    return {"status": "ok", "message": f"Reverted {sound_type} to default sound"}

@@ -1398,6 +1398,20 @@ async def create_incident(
         }
     )
     
+    # Emit AV alert for browser sound/TTS notifications
+    from routers.incidents.av_alerts import emit_av_alert
+    background_tasks.add_task(
+        emit_av_alert,
+        request,
+        "dispatch",
+        incident.id,
+        call_category,
+        data.cad_event_type,
+        data.cad_event_subtype,
+        data.address,
+        None,  # units_due not available at creation time
+    )
+    
     return {
         "id": incident.id, 
         "internal_incident_number": incident_number,
@@ -1682,6 +1696,22 @@ async def close_incident(
             "updated_at": format_utc_iso(incident.updated_at),
             "cad_clear_received_at": format_utc_iso(incident.cad_clear_received_at),
         }
+    )
+    
+    # Emit AV alert for browser sound notifications (close sound)
+    from routers.incidents.av_alerts import emit_av_alert
+    # Extract unit IDs from cad_units for the alert
+    units_due = [u.get('unit_id') for u in (incident.cad_units or []) if u.get('unit_id')]
+    background_tasks.add_task(
+        emit_av_alert,
+        request,
+        "close",
+        incident.id,
+        incident.call_category,
+        incident.cad_event_type,
+        incident.cad_event_subtype,
+        incident.address,
+        units_due,
     )
     
     # Include reconciliation info in response if any personnel were moved

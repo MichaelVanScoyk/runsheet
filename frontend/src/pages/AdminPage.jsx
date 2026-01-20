@@ -7,6 +7,7 @@ import PersonnelPage from './PersonnelPage';
 import ApparatusPage from './ApparatusPage';
 import MunicipalitiesPage from './MunicipalitiesPage';
 import PrintLayoutTab from './PrintLayoutTab';
+import AVAlertsTab from './AVAlertsTab';
 
 const API_BASE = '';
 
@@ -2270,6 +2271,12 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         >
           🤖 ComCat ML
         </button>
+        <button 
+          className={activeTab === 'avalerts' ? 'active' : ''} 
+          onClick={() => setActiveTab('avalerts')}
+        >
+          🔔 AV Alerts
+        </button>
       </div>
 
       <div className="admin-content">
@@ -2286,6 +2293,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'print' && <PrintLayoutTab />}
         {activeTab === 'branding' && <BrandingTab onRefresh={refreshBranding} />}
         {activeTab === 'comcat' && <ComCatTab />}
+        {activeTab === 'avalerts' && <AVAlertsTab />}
       </div>
     </div>
   );

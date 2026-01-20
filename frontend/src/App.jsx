@@ -20,6 +20,7 @@ import { BrowserRouter, Routes, Route, NavLink, useNavigate, useParams } from 'r
 import { BrandingProvider, useBranding } from './contexts/BrandingContext';
 import { setStationTimezone } from './utils/timeUtils';
 import { useInactivityTimeout } from './hooks/useInactivityTimeout';
+import { useAVAlerts } from './hooks/useAVAlerts';
 import IncidentsPage from './pages/IncidentsPage';
 import PersonnelPage from './pages/PersonnelPage';
 import ApparatusPage from './pages/ApparatusPage';
@@ -96,6 +97,22 @@ function AppContent({ tenant, onTenantLogout }) {
   const [registerStep, setRegisterStep] = useState('email');
   const [registerLoading, setRegisterLoading] = useState(false);
 
+  // AV Alerts state - stored in localStorage to persist across sessions
+  const [avAlertsEnabled, setAvAlertsEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('avAlertsEnabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [avAlertsTTSEnabled, setAvAlertsTTSEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('avAlertsTTSEnabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   /**
    * Callback for when inactivity timeout clears user session
    * Syncs local React state with cleared localStorage
@@ -110,6 +127,33 @@ function AppContent({ tenant, onTenantLogout }) {
 
   // Initialize inactivity timeout (replaces old SessionManager)
   useInactivityTimeout({ onUserLogout: handleInactivityLogout });
+
+  // Initialize AV alerts (browser sound notifications for dispatch/close)
+  const { connected: avConnected, lastAlert } = useAVAlerts({
+    enabled: avAlertsEnabled,
+    enableTTS: avAlertsTTSEnabled,
+  });
+
+  // Persist AV alerts state to localStorage
+  const handleToggleAVAlerts = useCallback(() => {
+    const newValue = !avAlertsEnabled;
+    setAvAlertsEnabled(newValue);
+    try {
+      localStorage.setItem('avAlertsEnabled', String(newValue));
+    } catch (e) {
+      console.warn('Failed to save avAlertsEnabled:', e);
+    }
+  }, [avAlertsEnabled]);
+
+  const handleToggleAVAlertsTTS = useCallback(() => {
+    const newValue = !avAlertsTTSEnabled;
+    setAvAlertsTTSEnabled(newValue);
+    try {
+      localStorage.setItem('avAlertsTTSEnabled', String(newValue));
+    } catch (e) {
+      console.warn('Failed to save avAlertsTTSEnabled:', e);
+    }
+  }, [avAlertsTTSEnabled]);
 
   // Load personnel list and timezone setting
   useEffect(() => {
@@ -543,6 +587,47 @@ function AppContent({ tenant, onTenantLogout }) {
             </NavLink>
           </li>
         </ul>
+
+        {/* AV Alerts Toggle */}
+        <div style={{
+          padding: '8px 12px',
+          background: avAlertsEnabled ? '#f0fdf4' : '#fff',
+          borderRadius: '8px',
+          border: `1px solid ${avAlertsEnabled ? '#86efac' : '#ccc'}`,
+          fontSize: '0.8rem',
+          marginBottom: '0.5rem'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: avAlertsEnabled ? '6px' : '0' }}>
+            <span style={{ color: '#333' }}>🔔 Sound Alerts</span>
+            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={avAlertsEnabled}
+                onChange={handleToggleAVAlerts}
+                style={{ marginRight: '4px' }}
+              />
+              <span style={{ fontSize: '0.7rem', color: avAlertsEnabled ? '#166534' : '#666' }}>
+                {avAlertsEnabled ? (avConnected ? 'On' : '...') : 'Off'}
+              </span>
+            </label>
+          </div>
+          {avAlertsEnabled && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px', borderTop: '1px solid #e5e7eb' }}>
+              <span style={{ color: '#666', fontSize: '0.75rem' }}>Text-to-Speech</span>
+              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={avAlertsTTSEnabled}
+                  onChange={handleToggleAVAlertsTTS}
+                  style={{ marginRight: '4px' }}
+                />
+                <span style={{ fontSize: '0.7rem', color: avAlertsTTSEnabled ? '#166534' : '#666' }}>
+                  {avAlertsTTSEnabled ? 'On' : 'Off'}
+                </span>
+              </label>
+            </div>
+          )}
+        </div>
 
         {/* Review Tasks Badge - Officers and Admins only */}
         <ReviewTasksBadge 
