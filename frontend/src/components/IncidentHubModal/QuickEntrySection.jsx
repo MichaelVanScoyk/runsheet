@@ -80,6 +80,7 @@ function QuickEntrySection({
                 placeholder="What was found on arrival..."
                 value={formData.situation_found || ''}
                 onChange={(e) => onFormChange('situation_found', e.target.value)}
+                spellCheck={true}
                 style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}
               />
             </div>
@@ -90,6 +91,7 @@ function QuickEntrySection({
                 placeholder="Actions taken..."
                 value={formData.services_provided || ''}
                 onChange={(e) => onFormChange('services_provided', e.target.value)}
+                spellCheck={true}
                 style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}
               />
             </div>
@@ -101,6 +103,7 @@ function QuickEntrySection({
               placeholder="Detailed narrative..."
               value={formData.narrative || ''}
               onChange={(e) => onFormChange('narrative', e.target.value)}
+              spellCheck={true}
               style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}
             />
           </div>

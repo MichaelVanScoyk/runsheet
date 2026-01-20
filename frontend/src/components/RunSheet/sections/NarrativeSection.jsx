@@ -19,6 +19,7 @@ function AutoTextarea({ value, onChange, placeholder, minRows = 1 }) {
       onChange={onChange}
       placeholder={placeholder}
       rows={minRows}
+      spellCheck={true}
       className="resize-none overflow-hidden"
       style={{ minHeight: `${minRows * 1.5}rem` }}
     />
