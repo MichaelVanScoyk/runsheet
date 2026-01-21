@@ -1765,6 +1765,12 @@ async def delete_incident(
     db.query(IncidentPersonnel).filter(IncidentPersonnel.incident_id == incident_id).delete()
     db.query(IncidentUnit).filter(IncidentUnit.incident_id == incident_id).delete()
     
+    # Delete review tasks for this incident
+    db.execute(text("""
+        DELETE FROM review_tasks 
+        WHERE entity_type = 'incident' AND entity_id = :incident_id
+    """), {"incident_id": incident_id})
+    
     # Delete the incident
     db.delete(incident)
     
