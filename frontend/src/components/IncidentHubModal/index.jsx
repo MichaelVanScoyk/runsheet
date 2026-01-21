@@ -308,6 +308,62 @@ export default function IncidentHubModal({
     }
   }, [incidents, selectedId]);
 
+  // ==========================================================================
+  // WATCH FOR INCIDENT UPDATES FROM PARENT (WebSocket close events)
+  // When the incident in the incidents prop changes (e.g., status OPEN→CLOSED),
+  // refetch the full incident data to update the modal display.
+  // Only refetch if no pending edits to avoid losing user changes.
+  // ==========================================================================
+  useEffect(() => {
+    if (!selectedId || !selectedIncident) return;
+    
+    const incidentFromProp = incidents.find(i => i.id === selectedId);
+    if (!incidentFromProp) return;
+    
+    // Check if status changed (main use case: OPEN → CLOSED)
+    const statusChanged = incidentFromProp.status !== selectedIncident.status;
+    
+    // Check if updated_at changed (indicates new data)
+    const updatedAtChanged = incidentFromProp.updated_at && 
+      selectedIncident.updated_at && 
+      incidentFromProp.updated_at !== selectedIncident.updated_at;
+    
+    if (statusChanged || updatedAtChanged) {
+      // Only refetch if no pending edits
+      const hasPendingEdits = pendingChangesRef.current.assignments !== null || 
+                              pendingChangesRef.current.formData !== null;
+      
+      if (!hasPendingEdits) {
+        // Refetch full incident data
+        getIncident(selectedId).then(res => {
+          const inc = res.data;
+          setSelectedIncident(inc);
+          
+          // Reset assignments from fresh data
+          const newAssignments = {};
+          apparatus.forEach(a => {
+            newAssignments[a.unit_designator] = [];
+          });
+          if (inc.personnel_assignments) {
+            Object.entries(inc.personnel_assignments).forEach(([unitKey, slots]) => {
+              newAssignments[unitKey] = slots.filter(id => id !== null);
+            });
+          }
+          setAssignments(newAssignments);
+          
+          // Reset form data from fresh data
+          setFormData({
+            situation_found: inc.situation_found || '',
+            services_provided: inc.services_provided || '',
+            narrative: inc.narrative || '',
+            officer_in_charge: inc.officer_in_charge || '',
+            completed_by: inc.completed_by || '',
+          });
+        }).catch(err => console.error('Failed to refetch incident on update:', err));
+      }
+    }
+  }, [incidents, selectedId, selectedIncident?.status, selectedIncident?.updated_at, apparatus]);
+
   const getAssignedIds = useCallback(() => {
     const assigned = new Set();
     Object.values(assignments).forEach(slots => {

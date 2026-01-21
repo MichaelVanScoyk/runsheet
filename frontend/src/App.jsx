@@ -97,11 +97,24 @@ function AppContent({ tenant, onTenantLogout }) {
   const [registerStep, setRegisterStep] = useState('email');
   const [registerLoading, setRegisterLoading] = useState(false);
 
-  // AV Alerts state - always starts OFF on page load
-  // Browser audio policy requires user interaction to unlock audio context,
-  // so we can't auto-enable from localStorage - user must click toggle each session
-  const [avAlertsEnabled, setAvAlertsEnabled] = useState(false);
-  const [avAlertsTTSEnabled, setAvAlertsTTSEnabled] = useState(false);
+  // AV Alerts state - persisted in localStorage for kiosk mode
+  // The firehouse computer needs sound alerts to work even after inactivity logout/redirect
+  // Browser audio policy: first sound after page load may be blocked, but WebSocket
+  // events can sometimes trigger audio, and subsequent alerts will work
+  const [avAlertsEnabled, setAvAlertsEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('avAlertsEnabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [avAlertsTTSEnabled, setAvAlertsTTSEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('avAlertsTTSEnabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   /**
    * Callback for when inactivity timeout clears user session
@@ -124,13 +137,29 @@ function AppContent({ tenant, onTenantLogout }) {
     enableTTS: avAlertsTTSEnabled,
   });
 
-  // Toggle AV alerts - user must enable each session (browser audio policy)
+  // Toggle AV alerts - persist to localStorage for kiosk mode
   const handleToggleAVAlerts = useCallback(() => {
-    setAvAlertsEnabled(prev => !prev);
+    setAvAlertsEnabled(prev => {
+      const newValue = !prev;
+      try {
+        localStorage.setItem('avAlertsEnabled', String(newValue));
+      } catch (e) {
+        console.warn('Failed to save avAlertsEnabled:', e);
+      }
+      return newValue;
+    });
   }, []);
 
   const handleToggleAVAlertsTTS = useCallback(() => {
-    setAvAlertsTTSEnabled(prev => !prev);
+    setAvAlertsTTSEnabled(prev => {
+      const newValue = !prev;
+      try {
+        localStorage.setItem('avAlertsTTSEnabled', String(newValue));
+      } catch (e) {
+        console.warn('Failed to save avAlertsTTSEnabled:', e);
+      }
+      return newValue;
+    });
   }, []);
 
   // Load personnel list and timezone setting

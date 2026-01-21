@@ -22,6 +22,28 @@ const DEFAULT_SOUNDS = {
   close_sound: '/sounds/close.mp3',
 };
 
+// Try to unlock audio context - some browsers allow this on any user gesture
+// even if it happened before the page was loaded (e.g., clicking to enable sound previously)
+const tryUnlockAudio = () => {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) {
+      const ctx = new AudioContext();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      // Create and play a silent buffer to fully unlock
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+    }
+  } catch (e) {
+    // Ignore errors - this is best-effort
+  }
+};
+
 export function useAVAlerts({
   enabled = false,  // User must explicitly enable (unlocks audio context)
   enableTTS = false,
@@ -56,6 +78,13 @@ export function useAVAlerts({
   useEffect(() => {
     enableTTSRef.current = enableTTS;
   }, [enableTTS]);
+
+  // Try to unlock audio on mount if enabled (restored from localStorage)
+  useEffect(() => {
+    if (enabled) {
+      tryUnlockAudio();
+    }
+  }, [enabled]);
 
   // Fetch AV alerts settings from API
   useEffect(() => {
