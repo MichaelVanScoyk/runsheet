@@ -97,21 +97,11 @@ function AppContent({ tenant, onTenantLogout }) {
   const [registerStep, setRegisterStep] = useState('email');
   const [registerLoading, setRegisterLoading] = useState(false);
 
-  // AV Alerts state - stored in localStorage to persist across sessions
-  const [avAlertsEnabled, setAvAlertsEnabled] = useState(() => {
-    try {
-      return localStorage.getItem('avAlertsEnabled') === 'true';
-    } catch {
-      return false;
-    }
-  });
-  const [avAlertsTTSEnabled, setAvAlertsTTSEnabled] = useState(() => {
-    try {
-      return localStorage.getItem('avAlertsTTSEnabled') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  // AV Alerts state - always starts OFF on page load
+  // Browser audio policy requires user interaction to unlock audio context,
+  // so we can't auto-enable from localStorage - user must click toggle each session
+  const [avAlertsEnabled, setAvAlertsEnabled] = useState(false);
+  const [avAlertsTTSEnabled, setAvAlertsTTSEnabled] = useState(false);
 
   /**
    * Callback for when inactivity timeout clears user session
@@ -134,26 +124,14 @@ function AppContent({ tenant, onTenantLogout }) {
     enableTTS: avAlertsTTSEnabled,
   });
 
-  // Persist AV alerts state to localStorage
+  // Toggle AV alerts - user must enable each session (browser audio policy)
   const handleToggleAVAlerts = useCallback(() => {
-    const newValue = !avAlertsEnabled;
-    setAvAlertsEnabled(newValue);
-    try {
-      localStorage.setItem('avAlertsEnabled', String(newValue));
-    } catch (e) {
-      console.warn('Failed to save avAlertsEnabled:', e);
-    }
-  }, [avAlertsEnabled]);
+    setAvAlertsEnabled(prev => !prev);
+  }, []);
 
   const handleToggleAVAlertsTTS = useCallback(() => {
-    const newValue = !avAlertsTTSEnabled;
-    setAvAlertsTTSEnabled(newValue);
-    try {
-      localStorage.setItem('avAlertsTTSEnabled', String(newValue));
-    } catch (e) {
-      console.warn('Failed to save avAlertsTTSEnabled:', e);
-    }
-  }, [avAlertsTTSEnabled]);
+    setAvAlertsTTSEnabled(prev => !prev);
+  }, []);
 
   // Load personnel list and timezone setting
   useEffect(() => {
