@@ -102,6 +102,14 @@ DEFAULT_PRINT_LAYOUT = {
         # Row 1: CAD Unit Details table
         {"id": "cad_unit_details", "name": "CAD Unit Details", "enabled": True, "page": 2, "row": 1, "order": 1, "width": "full"},
         
+        # Row 1.5: CAD Units All - Full cascade with all units and configurable columns
+        # Column toggles: showColDP, showColER, showColAR, showColTR, showColTA, showColAV, showColAQ
+        # Other options: showOurUnitsOnly (default false), showMutualAidIndicator (default true)
+        {"id": "cad_units_all", "name": "CAD Units (All)", "enabled": False, "page": 2, "row": 1, "order": 2, "width": "full",
+         "showColDP": True, "showColER": True, "showColAR": True, "showColTR": True, 
+         "showColTA": True, "showColAV": True, "showColAQ": True,
+         "showOurUnitsOnly": False, "showMutualAidIndicator": True},
+        
         # Row 2: Damage/Injury Stats (FIRE only, side-by-side)
         {"id": "property_value_at_risk", "name": "Property at Risk", "enabled": False, "page": 2, "row": 2, "order": 1, "width": "1/4", "fireOnly": True},
         {"id": "fire_damages_estimate", "name": "Fire Damages", "enabled": False, "page": 2, "row": 2, "order": 2, "width": "1/4", "fireOnly": True},

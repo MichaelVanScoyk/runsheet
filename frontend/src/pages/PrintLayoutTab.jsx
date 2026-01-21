@@ -209,6 +209,10 @@ export default function PrintLayoutTab() {
             <span className="text-xs bg-teal-100 text-teal-700 px-1 rounded border border-teal-300">+avail</span>
           )}
           
+          {block.showMutualAidIndicator !== false && block.id === 'cad_units_all' && (
+            <span className="text-xs bg-orange-100 text-orange-700 px-1 rounded border border-orange-300">MA</span>
+          )}
+          
           {block.textColor && (
             <span className={`text-xs px-1 rounded border ${
               block.textColor === 'muted' ? 'bg-gray-200 text-gray-600 border-gray-400' :
@@ -447,6 +451,70 @@ export default function PrintLayoutTab() {
                   >
                     {block.showAvailableTime ? 'Show Available column' : 'Hide Available column'}
                   </button>
+                </div>
+              </div>
+            )}
+            
+            {/* Row 3: Special options for cad_units_all block */}
+            {block.id === 'cad_units_all' && (
+              <div className="mt-2 space-y-2">
+                {/* Row 1: Units filter and MA indicator */}
+                <div className="grid grid-cols-4 gap-2">
+                  <div className="col-span-2">
+                    <label className="text-xs text-gray-600 block mb-1">Units to Show</label>
+                    <button
+                      onClick={() => updateBlock(block.id, { showOurUnitsOnly: !block.showOurUnitsOnly })}
+                      className={`w-full px-2 py-1 rounded text-sm ${
+                        block.showOurUnitsOnly 
+                          ? 'bg-blue-500 text-white border border-blue-600' 
+                          : 'bg-white border border-gray-300 text-gray-500'
+                      }`}
+                    >
+                      {block.showOurUnitsOnly ? 'Station units only' : 'All units (incl. mutual aid)'}
+                    </button>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs text-gray-600 block mb-1">Mutual Aid Indicator</label>
+                    <button
+                      onClick={() => updateBlock(block.id, { showMutualAidIndicator: block.showMutualAidIndicator === false ? true : false })}
+                      className={`w-full px-2 py-1 rounded text-sm ${
+                        block.showMutualAidIndicator !== false
+                          ? 'bg-orange-500 text-white border border-orange-600' 
+                          : 'bg-white border border-gray-300 text-gray-500'
+                      }`}
+                    >
+                      {block.showMutualAidIndicator !== false ? 'Show MA badge' : 'Hide MA badge'}
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Row 2: Column toggles */}
+                <div>
+                  <label className="text-xs text-gray-600 block mb-1">Columns (hover for description)</label>
+                  <div className="flex gap-1 flex-wrap">
+                    {[
+                      { key: 'showColDP', abbr: 'DP', title: 'Dispatched' },
+                      { key: 'showColER', abbr: 'ER', title: 'Enroute' },
+                      { key: 'showColAR', abbr: 'AR', title: 'Arrived' },
+                      { key: 'showColTR', abbr: 'TR', title: 'Transport (EMS)' },
+                      { key: 'showColTA', abbr: 'TA', title: 'Transport Arrive (EMS)' },
+                      { key: 'showColAV', abbr: 'AV', title: 'Available' },
+                      { key: 'showColAQ', abbr: 'AQ', title: 'At Quarters / Cleared' },
+                    ].map(col => (
+                      <button
+                        key={col.key}
+                        title={col.title}
+                        onClick={() => updateBlock(block.id, { [col.key]: block[col.key] === false ? true : false })}
+                        className={`px-2 py-1 rounded text-xs font-mono ${
+                          block[col.key] !== false
+                            ? 'bg-green-500 text-white border border-green-600' 
+                            : 'bg-white border border-gray-300 text-gray-400'
+                        }`}
+                      >
+                        {col.abbr}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

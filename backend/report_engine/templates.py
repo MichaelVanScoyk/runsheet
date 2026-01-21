@@ -395,6 +395,23 @@ def generate_css(branding: dict) -> str:
             text-align: center;
         }}
         
+        .cad-table .unit-name-cell {{
+            white-space: nowrap;
+        }}
+        
+        /* Mutual Aid badge */
+        .ma-badge {{
+            display: inline-block;
+            background: #e67e22;
+            color: #fff;
+            font-size: 6pt;
+            font-weight: bold;
+            padding: 0 3px;
+            border-radius: 2px;
+            margin-left: 4px;
+            vertical-align: middle;
+        }}
+        
         /* Stats boxes */
         .stat-box {{
             text-align: center;

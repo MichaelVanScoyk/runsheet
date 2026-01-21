@@ -578,6 +578,133 @@ def r_cad_unit_details(ctx: RenderContext, block: dict) -> str:
     </div>'''
 
 
+def r_cad_units_all(ctx: RenderContext, block: dict) -> str:
+    """
+    Render full CAD Unit Cascade table with ALL units and configurable columns.
+    
+    Block options:
+    - showOurUnitsOnly: If true, filter to only show station's units (default: false)
+    - showMutualAidIndicator: If true, show MA badge for mutual aid units (default: true)
+    - Column toggles (all default true):
+      - showColDP: Dispatched
+      - showColER: Enroute
+      - showColAR: Arrived
+      - showColTR: Transport
+      - showColTA: Transport Arrive
+      - showColAV: Available
+      - showColAQ: At Quarters
+    
+    Uses apparatus names from apparatus_list when available, falls back to CAD unit ID.
+    """
+    cad_units = ctx.get('cad_units') or []
+    if not cad_units:
+        return ''
+    
+    # Build lookup for apparatus names: unit_designator -> name
+    apparatus_names = {}
+    for a in ctx.apparatus_list:
+        apparatus_names[a.get('unit_designator', '')] = a.get('name', '')
+    
+    # Filter units if showOurUnitsOnly is enabled
+    show_our_only = block.get('showOurUnitsOnly', False)
+    if show_our_only:
+        cad_units = [u for u in cad_units if not u.get('is_mutual_aid', True)]
+    
+    if not cad_units:
+        return ''
+    
+    # Column configuration
+    show_dp = block.get('showColDP', True)
+    show_er = block.get('showColER', True)
+    show_ar = block.get('showColAR', True)
+    show_tr = block.get('showColTR', True)
+    show_ta = block.get('showColTA', True)
+    show_av = block.get('showColAV', True)
+    show_aq = block.get('showColAQ', True)
+    show_ma_indicator = block.get('showMutualAidIndicator', True)
+    
+    # Helper to format time - handles both ISO strings and raw time strings
+    def fmt_unit_time(time_val):
+        if not time_val:
+            return ''
+        # If it's an ISO datetime string, use the context formatter
+        if isinstance(time_val, str) and 'T' in time_val:
+            try:
+                from datetime import datetime as dt_class
+                # Parse ISO format
+                if time_val.endswith('Z'):
+                    time_val = time_val[:-1] + '+00:00'
+                dt = dt_class.fromisoformat(time_val)
+                return ctx.fmt_time(dt)
+            except:
+                pass
+        # Otherwise return as-is (already formatted or raw time)
+        return esc(str(time_val))
+    
+    # Build header cells
+    header_cells = ['<th>Unit</th>']
+    if show_dp:
+        header_cells.append('<th title="Dispatched">DP</th>')
+    if show_er:
+        header_cells.append('<th title="Enroute">ER</th>')
+    if show_ar:
+        header_cells.append('<th title="Arrived">AR</th>')
+    if show_tr:
+        header_cells.append('<th title="Transport">TR</th>')
+    if show_ta:
+        header_cells.append('<th title="Transport Arrive">TA</th>')
+    if show_av:
+        header_cells.append('<th title="Available">AV</th>')
+    if show_aq:
+        header_cells.append('<th title="At Quarters">AQ</th>')
+    
+    # Build rows
+    rows = []
+    for u in cad_units:
+        unit_id = u.get('unit_id', '')
+        # Use apparatus name if available, otherwise CAD unit ID
+        display_name = apparatus_names.get(unit_id, '') or unit_id
+        
+        # Add MA indicator if enabled and unit is mutual aid
+        is_ma = u.get('is_mutual_aid', False)
+        if show_ma_indicator and is_ma:
+            display_name = f'{esc(display_name)} <span class="ma-badge">MA</span>'
+        else:
+            display_name = esc(display_name)
+        
+        row_cells = [f'<td class="unit-name-cell">{display_name}</td>']
+        
+        if show_dp:
+            row_cells.append(f'<td>{fmt_unit_time(u.get("time_dispatched"))}</td>')
+        if show_er:
+            row_cells.append(f'<td>{fmt_unit_time(u.get("time_enroute"))}</td>')
+        if show_ar:
+            row_cells.append(f'<td>{fmt_unit_time(u.get("time_arrived"))}</td>')
+        if show_tr:
+            row_cells.append(f'<td>{fmt_unit_time(u.get("time_transport"))}</td>')
+        if show_ta:
+            row_cells.append(f'<td>{fmt_unit_time(u.get("time_transport_arrive"))}</td>')
+        if show_av:
+            row_cells.append(f'<td>{fmt_unit_time(u.get("time_available"))}</td>')
+        if show_aq:
+            row_cells.append(f'<td>{fmt_unit_time(u.get("time_at_quarters") or u.get("time_cleared"))}</td>')
+        
+        rows.append(f'<tr>{"".join(row_cells)}</tr>')
+    
+    # Determine label
+    hide_label = block.get('hideLabel', False)
+    label = block.get('name', 'CAD Units (All)') if not hide_label else None
+    label_html = f'<span class="label">{esc(label)}:</span>' if label else ''
+    
+    return f'''<div class="field">
+        {label_html}
+        <table class="cad-table cad-units-all">
+            <thead><tr>{"".join(header_cells)}</tr></thead>
+            <tbody>{"".join(rows)}</tbody>
+        </table>
+    </div>'''
+
+
 def r_property_value_at_risk(ctx: RenderContext, block: dict) -> str:
     v = ctx.get('property_value_at_risk')
     if not v:
@@ -813,6 +940,7 @@ FIELD_RENDERERS: Dict[str, Callable[[RenderContext, dict], str]] = {
     'completed_by': r_completed_by,
     'footer': r_footer,
     'cad_unit_details': r_cad_unit_details,
+    'cad_units_all': r_cad_units_all,
     'property_value_at_risk': r_property_value_at_risk,
     'fire_damages_estimate': r_fire_damages_estimate,
     'ff_injuries_count': r_ff_injuries_count,
