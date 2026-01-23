@@ -52,6 +52,22 @@ export const getAdjacentIncidents = (id) => api.get(`/incidents/${id}/adjacent`)
 export const deleteIncident = (id) => api.delete(`/incidents/${id}`);
 
 // ============================================================================
+// ATTENDANCE RECORDS (DETAIL category)
+// ============================================================================
+
+export const createAttendanceRecord = (data) => api.post('/incidents/attendance', data);
+
+export const getAttendance = (incidentId) => api.get(`/incidents/${incidentId}/attendance`);
+
+export const saveAttendance = (incidentId, personnelIds, editedBy = null) => {
+  const params = editedBy ? { edited_by: editedBy } : {};
+  return api.put(`/incidents/${incidentId}/attendance`, { personnel_ids: personnelIds }, { params });
+};
+
+export const getDetailTypes = (activeOnly = true) => 
+  api.get('/detail-types', { params: { active_only: activeOnly } });
+
+// ============================================================================
 // PERSONNEL
 // ============================================================================
 

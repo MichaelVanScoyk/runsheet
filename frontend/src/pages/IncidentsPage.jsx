@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { getIncidents, getIncident, getIncidentYears } from '../api';
+import { getIncidents, getIncident, getIncidentYears, createAttendanceRecord } from '../api';
 import { useBranding } from '../contexts/BrandingContext';
 import RunSheetForm from '../components/RunSheetForm';
+import DetailForm from '../components/DetailForm';
 import IncidentHubModal from '../components/IncidentHubModal';
 import { incidentQualifiesForModal } from '../components/IncidentHubModal/hooks/useActiveIncidents';
 import { formatTimeLocal } from '../utils/timeUtils';
@@ -36,6 +37,17 @@ function needsAutoShow(incident) {
   return new Date(updatedAt).getTime() > new Date(lastAck).getTime();
 }
 
+/**
+ * Check if a DETAIL incident is a roll call type (opens in DetailForm)
+ * vs an operational detail (opens in RunSheetForm)
+ */
+function isRollCallDetail(incident) {
+  if (incident.call_category !== 'DETAIL') return false;
+  // Roll call types have detail_type set to MEETING, WORKNIGHT, TRAINING, DRILL, OTHER
+  // Operational details have detail_type = null
+  return !!incident.detail_type;
+}
+
 function IncidentsPage() {
   const branding = useBranding();
   const [incidents, setIncidents] = useState([]);
@@ -46,6 +58,15 @@ function IncidentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingIncident, setEditingIncident] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState('ALL');
+  
+  // DetailForm state (for roll call attendance records)
+  const [showDetailForm, setShowDetailForm] = useState(false);
+  const [detailFormIncidentId, setDetailFormIncidentId] = useState(null);
+  
+  // New Record dropdown state
+  const [showNewRecordMenu, setShowNewRecordMenu] = useState(false);
+  const [creatingRecord, setCreatingRecord] = useState(false);
+  const newRecordMenuRef = useRef(null);
   
   // Modal state
   const [showHubModal, setShowHubModal] = useState(false);
@@ -63,6 +84,19 @@ function IncidentsPage() {
   const urlIncidentId = searchParams.get('incident');
   const urlIncidentProcessedRef = useRef(null); // Track which incident ID we've processed
 
+  // Close new record menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (newRecordMenuRef.current && !newRecordMenuRef.current.contains(e.target)) {
+        setShowNewRecordMenu(false);
+      }
+    };
+    if (showNewRecordMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showNewRecordMenu]);
+
   // WebSocket handlers for real-time updates
   const handleIncidentCreated = useCallback((incident) => {
     // Add to list if current year matches
@@ -75,8 +109,8 @@ function IncidentsPage() {
       });
     }
     
-    // Check if qualifies for modal auto-popup
-    if (!showForm && !showHubModal) {
+    // Check if qualifies for modal auto-popup (skip DETAIL roll call records)
+    if (!showForm && !showHubModal && !showDetailForm) {
       // Fetch full incident to check qualification
       getIncident(incident.id).then(res => {
         const fullIncident = res.data;
@@ -88,7 +122,7 @@ function IncidentsPage() {
         }
       }).catch(err => console.error('Failed to fetch new incident:', err));
     }
-  }, [year, showForm, showHubModal]);
+  }, [year, showForm, showHubModal, showDetailForm]);
 
   const handleIncidentUpdated = useCallback((incident) => {
     // Update in list
@@ -107,7 +141,7 @@ function IncidentsPage() {
     setModalIncidents(prev => prev.map(i => i.id === incident.id ? { ...i, ...incident } : i));
     
     // Check if now qualifies for modal (e.g., CAD clear just received)
-    if (!showForm && !showHubModal) {
+    if (!showForm && !showHubModal && !showDetailForm) {
       getIncident(incident.id).then(res => {
         const fullIncident = res.data;
         if (incidentQualifiesForModal(fullIncident) && needsAutoShow(fullIncident)) {
@@ -123,7 +157,7 @@ function IncidentsPage() {
         }
       }).catch(err => console.error('Failed to fetch updated incident:', err));
     }
-  }, [showForm, showHubModal]);
+  }, [showForm, showHubModal, showDetailForm]);
 
   const handleIncidentClosed = useCallback((incident) => {
     // Update status in list immediately for responsiveness
@@ -178,6 +212,7 @@ function IncidentsPage() {
   useEffect(() => {
     const handleNavClick = () => {
       if (showForm) { setShowForm(false); setEditingIncident(null); }
+      if (showDetailForm) { setShowDetailForm(false); setDetailFormIncidentId(null); }
       if (showHubModal) {
         modalIncidents.forEach(inc => acknowledgeIncident(inc.id, inc.updated_at || inc.created_at));
         setShowHubModal(false);
@@ -186,7 +221,7 @@ function IncidentsPage() {
     };
     window.addEventListener('nav-incidents-click', handleNavClick);
     return () => window.removeEventListener('nav-incidents-click', handleNavClick);
-  }, [showForm, showHubModal, modalIncidents]);
+  }, [showForm, showDetailForm, showHubModal, modalIncidents]);
 
   const loadData = useCallback(async () => {
     try {
@@ -242,7 +277,7 @@ function IncidentsPage() {
       setQualifyingIncidents(qualifying);
       
       // Auto-open for UNACKNOWLEDGED incidents only
-      if (qualifying.length > 0 && !showHubModal && !showForm) {
+      if (qualifying.length > 0 && !showHubModal && !showForm && !showDetailForm) {
         const needsShow = qualifying.filter(needsAutoShow);
         if (needsShow.length > 0) {
           setModalIncidents(needsShow); // Only unacknowledged ones
@@ -253,7 +288,7 @@ function IncidentsPage() {
     } catch (err) {
       console.error('Failed to load qualifying incidents:', err);
     }
-  }, [showHubModal, showForm]);
+  }, [showHubModal, showForm, showDetailForm]);
 
   // Initial load of qualifying incidents
   useEffect(() => {
@@ -266,7 +301,7 @@ function IncidentsPage() {
     if (wsConnected) return;
     
     // Fallback polling when WebSocket disconnected
-    if (showForm || showHubModal) return;
+    if (showForm || showHubModal || showDetailForm) return;
     
     const interval = setInterval(() => {
       loadData();
@@ -274,7 +309,7 @@ function IncidentsPage() {
     }, POLL_INTERVAL_MS);
     
     return () => clearInterval(interval);
-  }, [wsConnected, loadData, loadQualifyingIncidents, showForm, showHubModal]);
+  }, [wsConnected, loadData, loadQualifyingIncidents, showForm, showHubModal, showDetailForm]);
 
   // URL parameter handling - open incident from direct link (e.g., /?incident=123)
   // This enables Review Tasks links and shareable incident URLs
@@ -291,7 +326,7 @@ function IncidentsPage() {
     if (isNaN(incidentIdNum)) return;
     
     // Skip if currently editing/viewing the SAME incident
-    if (editingIncident?.id === incidentIdNum) {
+    if (editingIncident?.id === incidentIdNum || detailFormIncidentId === incidentIdNum) {
       urlIncidentProcessedRef.current = urlIncidentId;
       setSearchParams({}, { replace: true });
       return;
@@ -317,20 +352,22 @@ function IncidentsPage() {
           setSelectedModalIncidentId(null);
         }
         
-        // Open in appropriate view (modal for qualifying, form for others)
-        if (incidentQualifiesForModal(fullIncident)) {
+        // Route to appropriate form
+        if (isRollCallDetail(fullIncident)) {
+          // Roll call attendance record -> DetailForm
+          setDetailFormIncidentId(fullIncident.id);
+          setShowDetailForm(true);
+          if (showForm) { setShowForm(false); setEditingIncident(null); }
+        } else if (incidentQualifiesForModal(fullIncident)) {
           setModalIncidents([fullIncident]);
           setSelectedModalIncidentId(fullIncident.id);
           setShowHubModal(true);
-          // Close form if open
-          if (showForm) {
-            setShowForm(false);
-            setEditingIncident(null);
-          }
+          if (showForm) { setShowForm(false); setEditingIncident(null); }
+          if (showDetailForm) { setShowDetailForm(false); setDetailFormIncidentId(null); }
         } else {
           setEditingIncident(fullIncident);
           setShowForm(true);
-          // Modal already closed above if it was open
+          if (showDetailForm) { setShowDetailForm(false); setDetailFormIncidentId(null); }
         }
       } catch (err) {
         console.error('Failed to load incident from URL:', err);
@@ -340,18 +377,66 @@ function IncidentsPage() {
     };
     
     openIncidentFromUrl();
-  }, [urlIncidentId, showForm, showHubModal, editingIncident?.id, modalIncidents, setSearchParams]);
+  }, [urlIncidentId, showForm, showDetailForm, showHubModal, editingIncident?.id, detailFormIncidentId, modalIncidents, setSearchParams]);
 
-  const handleNewIncident = () => { setEditingIncident(null); setShowForm(true); };
+  // New Record menu handlers
+  const handleNewRecordClick = () => {
+    setShowNewRecordMenu(prev => !prev);
+  };
 
-  // Manual row click - show ONLY this incident
+  const handleNewFireIncident = () => {
+    setShowNewRecordMenu(false);
+    setEditingIncident(null);
+    setShowForm(true);
+  };
+
+  const handleNewEmsIncident = () => {
+    setShowNewRecordMenu(false);
+    // Create a placeholder with EMS category - RunSheetForm will handle the rest
+    setEditingIncident({ call_category: 'EMS', _isNew: true });
+    setShowForm(true);
+  };
+
+  const handleNewAttendanceRecord = async () => {
+    setShowNewRecordMenu(false);
+    setCreatingRecord(true);
+    
+    try {
+      // Create a new attendance record with today's date
+      const today = new Date().toISOString().split('T')[0];
+      const res = await createAttendanceRecord({
+        detail_type: 'MEETING', // Default, user can change
+        incident_date: today,
+        address: branding.stationShortName || 'Station 48',
+      });
+      
+      // Open the newly created record in DetailForm
+      setDetailFormIncidentId(res.data.id);
+      setShowDetailForm(true);
+      
+      // Refresh the list
+      loadData();
+    } catch (err) {
+      console.error('Failed to create attendance record:', err);
+      alert('Failed to create attendance record');
+    } finally {
+      setCreatingRecord(false);
+    }
+  };
+
+  // Manual row click - route to appropriate form
   const handleIncidentClick = async (incidentSummary) => {
     setLoadingIncident(true);
     try {
       const res = await getIncident(incidentSummary.id);
       const fullIncident = res.data;
       
-      if (incidentQualifiesForModal(fullIncident)) {
+      // Route based on incident type
+      if (isRollCallDetail(fullIncident)) {
+        // Roll call attendance record -> DetailForm
+        setDetailFormIncidentId(fullIncident.id);
+        setShowDetailForm(true);
+      } else if (incidentQualifiesForModal(fullIncident)) {
         setModalIncidents([fullIncident]); // ONLY this one
         setSelectedModalIncidentId(fullIncident.id);
         setShowHubModal(true);
@@ -371,8 +456,16 @@ function IncidentsPage() {
     setLoadingIncident(true);
     try {
       const res = await getIncident(incidentSummary.id);
-      setEditingIncident(res.data);
-      setShowForm(true);
+      const fullIncident = res.data;
+      
+      // Route based on incident type
+      if (isRollCallDetail(fullIncident)) {
+        setDetailFormIncidentId(fullIncident.id);
+        setShowDetailForm(true);
+      } else {
+        setEditingIncident(fullIncident);
+        setShowForm(true);
+      }
     } catch (err) {
       console.error('Failed to load incident:', err);
       alert('Failed to load incident details');
@@ -392,10 +485,21 @@ function IncidentsPage() {
     // Trigger review tasks refresh
     window.dispatchEvent(new CustomEvent('review-tasks-refresh'));
   };
+  
   const handleFormSave = () => { 
     loadData(); 
     // Trigger review tasks refresh (narrative may have been completed)
     window.dispatchEvent(new CustomEvent('review-tasks-refresh'));
+  };
+
+  const handleDetailFormClose = () => {
+    setShowDetailForm(false);
+    setDetailFormIncidentId(null);
+    loadData();
+  };
+
+  const handleDetailFormSave = () => {
+    loadData();
   };
 
   // Modal close - acknowledge all shown
@@ -494,6 +598,17 @@ function IncidentsPage() {
     }
   };
 
+  // Show DetailForm for roll call attendance records
+  if (showDetailForm && detailFormIncidentId) {
+    return (
+      <DetailForm
+        incidentId={detailFormIncidentId}
+        onClose={handleDetailFormClose}
+        onSaved={handleDetailFormSave}
+      />
+    );
+  }
+
   if (showForm) {
     return <RunSheetForm key={editingIncident?.id} incident={editingIncident} onSave={handleFormSave} onClose={handleFormClose} onNavigate={handleNavigateToIncident} />;
   }
@@ -550,7 +665,105 @@ function IncidentsPage() {
             }} />
             {wsConnected ? 'Live' : 'Connecting...'}
           </span>
-          <button className="btn btn-primary" onClick={handleNewIncident}>+ New Incident</button>
+          
+          {/* New Record dropdown */}
+          <div style={{ position: 'relative' }} ref={newRecordMenuRef}>
+            <button 
+              className="btn btn-primary" 
+              onClick={handleNewRecordClick}
+              disabled={creatingRecord}
+              title="Create a new incident or attendance record"
+            >
+              {creatingRecord ? 'Creating...' : '+ New Record ▾'}
+            </button>
+            
+            {showNewRecordMenu && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: '4px',
+                backgroundColor: '#1e293b',
+                border: '1px solid #334155',
+                borderRadius: '6px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                zIndex: 100,
+                minWidth: '200px',
+                overflow: 'hidden',
+              }}>
+                <button
+                  onClick={handleNewFireIncident}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    textAlign: 'left',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    borderBottom: '1px solid #334155',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#334155'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                >
+                  <span style={{ color: '#e74c3c', marginRight: '0.5rem' }}>🔥</span>
+                  Fire Incident
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
+                    Manual fire/rescue report
+                  </span>
+                </button>
+                
+                <button
+                  onClick={handleNewEmsIncident}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    textAlign: 'left',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    borderBottom: '1px solid #334155',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#334155'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                >
+                  <span style={{ color: '#3498db', marginRight: '0.5rem' }}>🚑</span>
+                  EMS Incident
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
+                    Manual medical report
+                  </span>
+                </button>
+                
+                <button
+                  onClick={handleNewAttendanceRecord}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    textAlign: 'left',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#334155'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                >
+                  <span style={{ color: '#8b5cf6', marginRight: '0.5rem' }}>📋</span>
+                  Attendance Record
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
+                    Meeting, worknight, training, drill
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
