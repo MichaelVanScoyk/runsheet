@@ -108,7 +108,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
         setFormData({
           incident_date: inc.incident_date || '',
           detail_type: inc.detail_type || '',
-          address: inc.address || 'Station 48',
+          address: inc.address || '', // Default set by DetailHeader from branding
           time_event_start: inc.time_event_start ? formatForInput(inc.time_event_start) : '',
           time_event_end: inc.time_event_end ? formatForInput(inc.time_event_end) : '',
           narrative: inc.narrative || '',
@@ -189,9 +189,33 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
     setHasChanges(true);
   }, []);
 
+  // Validation - check required fields
+  const validateForm = () => {
+    const errors = [];
+    
+    if (!formData.detail_type) {
+      errors.push('Event Type is required');
+    }
+    if (!formData.address || !formData.address.trim()) {
+      errors.push('Location is required');
+    }
+    if (!formData.narrative || !formData.narrative.trim()) {
+      errors.push('Notes are required');
+    }
+    
+    return errors;
+  };
+
   // Save all changes
   const handleSave = async () => {
     if (!canEdit) return;
+    
+    // Validate required fields
+    const validationErrors = validateForm();
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join('. '));
+      return;
+    }
     
     try {
       setSaving(true);
