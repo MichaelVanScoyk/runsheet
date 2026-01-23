@@ -118,6 +118,32 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
     setHasChanges(true);
   }, []);
 
+  // Handle quick-add personnel from AttendanceGrid
+  const handlePersonnelAdded = useCallback((newPerson) => {
+    // Add to personnel list
+    setPersonnel(prev => {
+      // Check if already exists
+      if (prev.find(p => p.id === newPerson.id)) {
+        return prev;
+      }
+      return [...prev, {
+        id: newPerson.id,
+        first_name: newPerson.first_name,
+        last_name: newPerson.last_name,
+        display_name: newPerson.display_name,
+        rank_order: 999,
+        rank_abbreviation: null,
+        active: true
+      }];
+    });
+    // Mark as present
+    setAttendees(prev => {
+      if (prev.includes(newPerson.id)) return prev;
+      return [...prev, newPerson.id];
+    });
+    setHasChanges(true);
+  }, []);
+
   // Mark all present
   const markAllPresent = useCallback(() => {
     setAttendees(personnel.map(p => p.id));
@@ -291,6 +317,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
           onToggle={toggleAttendee}
           onMarkAll={markAllPresent}
           onClearAll={clearAll}
+          onPersonnelAdded={handlePersonnelAdded}
         />
 
         <NotesSection
