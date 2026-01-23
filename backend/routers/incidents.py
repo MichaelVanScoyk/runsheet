@@ -1541,6 +1541,12 @@ async def update_incident(
             # Remove from update_data since we handled it manually
             del update_data['call_category']
     
+    # Handle detail_type change - sync to cad_event_subtype for list display
+    if 'detail_type' in update_data and incident.call_category == 'DETAIL':
+        new_detail_type = update_data['detail_type']
+        if new_detail_type:
+            update_data['cad_event_subtype'] = new_detail_type
+    
     # Handle incident_date change for DETAIL records (year change triggers renumbering)
     detail_date_changed = False
     if 'incident_date' in update_data and incident.call_category == 'DETAIL':
