@@ -69,6 +69,9 @@ class Personnel(Base):
     pending_email_token = Column(String(100))
     pending_email_expires_at = Column(TIMESTAMP(timezone=True))
     
+    # Flag for personnel manually added (e.g., during roll call) needing admin review
+    needs_profile_review = Column(Boolean, default=False)
+    
     created_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
     updated_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
     
@@ -160,6 +163,21 @@ class Municipality(Base):
     updated_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
 
 
+class DetailType(Base):
+    """
+    Configurable event types for DETAIL category records.
+    Used for attendance tracking: meetings, worknights, training, drills, etc.
+    """
+    __tablename__ = "detail_types"
+    
+    id = Column(Integer, primary_key=True)
+    code = Column(String(50), unique=True, nullable=False)   # MEETING, WORKNIGHT, TRAINING, DRILL, OTHER
+    display_name = Column(String(100), nullable=False)       # Meeting, Worknight, Training, Drill, Other
+    display_order = Column(Integer, default=100)             # For sorting in dropdowns
+    active = Column(Boolean, default=True)
+    created_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
+
+
 # =============================================================================
 # NERIS CODE LOOKUP TABLE
 # =============================================================================
@@ -225,10 +243,14 @@ class Incident(Base):
     # =========================================================================
     # INTERNAL TRACKING
     # =========================================================================
-    internal_incident_number = Column(String(10), unique=True, nullable=False)  # F250001, E250001
+    internal_incident_number = Column(String(10), unique=True, nullable=False)  # F250001, E250001, D250001
     year_prefix = Column(Integer, nullable=False)                               # 2025
-    call_category = Column(String(10), nullable=False, default='FIRE')          # FIRE or EMS
+    call_category = Column(String(10), nullable=False, default='FIRE')          # FIRE, EMS, or DETAIL
     status = Column(String(20), nullable=False, default='OPEN')                 # OPEN, CLOSED, SUBMITTED
+    
+    # Sub-type for DETAIL category (meetings, worknights, training, drills)
+    # NULL for FIRE/EMS incidents and operational DETAIL records
+    detail_type = Column(String(50))                                            # MEETING, WORKNIGHT, TRAINING, DRILL, OTHER
     
     # =========================================================================
     # NERIS IDENTIFIERS
@@ -301,6 +323,13 @@ class Incident(Base):
     time_first_on_scene = Column(TIMESTAMP(timezone=True))  # First unit on scene
     time_last_cleared = Column(TIMESTAMP(timezone=True))    # Last unit cleared
     time_in_service = Column(TIMESTAMP(timezone=True))      # Back in service
+    
+    # =========================================================================
+    # TIMES - Scheduled Events (meetings, training, drills, etc.)
+    # Separate from CAD incident times for clear reporting distinction
+    # =========================================================================
+    time_event_start = Column(TIMESTAMP(timezone=True))     # Start time for scheduled events
+    time_event_end = Column(TIMESTAMP(timezone=True))       # End time for scheduled events
     
     # =========================================================================
     # TIMES - NERIS Tactic Timestamps (mod_tactic_timestamps)
