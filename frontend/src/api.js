@@ -67,6 +67,12 @@ export const saveAttendance = (incidentId, personnelIds, editedBy = null) => {
 export const getDetailTypes = (activeOnly = true) => 
   api.get('/detail-types', { params: { active_only: activeOnly } });
 
+export const createDetailType = (data) => api.post('/detail-types', data);
+
+export const updateDetailType = (id, data) => api.put(`/detail-types/${id}`, data);
+
+export const deleteDetailType = (id) => api.delete(`/detail-types/${id}`);
+
 // ============================================================================
 // PERSONNEL
 // ============================================================================

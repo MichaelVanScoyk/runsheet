@@ -8,6 +8,7 @@ import ApparatusPage from './ApparatusPage';
 import MunicipalitiesPage from './MunicipalitiesPage';
 import PrintLayoutTab from './PrintLayoutTab';
 import AVAlertsTab from './AVAlertsTab';
+import DetailTypesTab from './DetailTypesTab';
 
 const API_BASE = '';
 
@@ -2224,6 +2225,12 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
           🎖️ Ranks
         </button>
         <button 
+          className={activeTab === 'eventtypes' ? 'active' : ''} 
+          onClick={() => setActiveTab('eventtypes')}
+        >
+          📅 Event Types
+        </button>
+        <button 
           className={activeTab === 'apparatus' ? 'active' : ''} 
           onClick={() => setActiveTab('apparatus')}
         >
@@ -2285,6 +2292,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'neris' && <NerisCodesTab />}
         {activeTab === 'personnel' && <PersonnelPage embedded />}
         {activeTab === 'ranks' && <RanksTab />}
+        {activeTab === 'eventtypes' && <DetailTypesTab />}
         {activeTab === 'apparatus' && <ApparatusPage embedded />}
         {activeTab === 'municipalities' && <MunicipalitiesPage embedded />}
         {activeTab === 'audit' && <AuditLogTab />}
