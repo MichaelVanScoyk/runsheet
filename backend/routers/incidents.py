@@ -1489,6 +1489,33 @@ async def update_incident(
             # Remove from update_data since we handled it manually
             del update_data['call_category']
     
+    # Handle incident_date change for DETAIL records (year change triggers renumbering)
+    detail_date_changed = False
+    if 'incident_date' in update_data and incident.call_category == 'DETAIL':
+        new_date_str = update_data['incident_date']
+        if new_date_str:
+            try:
+                new_date = datetime.strptime(new_date_str, "%Y-%m-%d").date()
+                new_year = new_date.year
+                
+                # Check if year is different
+                if new_year != incident.year_prefix:
+                    detail_date_changed = True
+                    old_number = incident.internal_incident_number
+                    old_year = incident.year_prefix
+                    
+                    # Assign new number from target year's DETAIL sequence
+                    new_number = claim_incident_number(db, new_year, 'DETAIL')
+                    incident.internal_incident_number = new_number
+                    incident.year_prefix = new_year
+                    
+                    # Also update cad_event_number for DETAIL (it mirrors incident number)
+                    incident.cad_event_number = new_number
+                    
+                    logger.info(f"DETAIL date changed year: {old_year} → {new_year}, number {old_number} → {new_number}")
+            except ValueError:
+                pass  # Invalid date format, let normal validation handle it
+    
     # Track changes for audit
     changes = {}
     for field, new_value in update_data.items():
@@ -1540,7 +1567,7 @@ async def update_incident(
             incident.neris_id = neris_id
     
     # Audit log (only if actual changes)
-    if changes or category_changed:
+    if changes or category_changed or detail_date_changed:
         # Summarize what changed
         change_keys = list(changes.keys())
         
@@ -1548,6 +1575,14 @@ async def update_incident(
             changes['call_category'] = {"old": old_category, "new": new_category}
             changes['internal_incident_number'] = {"old": old_number, "new": new_number}
             change_keys.extend(['call_category', 'internal_incident_number'])
+        
+        if detail_date_changed:
+            changes['year_prefix'] = {"old": str(old_year), "new": str(new_year)}
+            changes['internal_incident_number'] = {"old": old_number, "new": new_number}
+            if 'year_prefix' not in change_keys:
+                change_keys.append('year_prefix')
+            if 'internal_incident_number' not in change_keys:
+                change_keys.append('internal_incident_number')
         
         if len(change_keys) <= 3:
             summary = f"Updated: {', '.join(change_keys)}"
