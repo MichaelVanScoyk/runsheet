@@ -385,39 +385,50 @@ function AppContent({ tenant, onTenantLogout }) {
           )}
           <span style={{ fontSize: '0.85rem', color: branding.primaryColor }}>{branding.stationName || tenant?.name || 'Fire Department'}</span>
           
-          {/* Tenant logout - subtle */}
-          <button 
-            onClick={onTenantLogout}
-            style={{ 
-              background: 'none', 
-              border: 'none', 
-              color: '#888', 
-              cursor: 'pointer',
-              fontSize: '0.7rem',
-              padding: '4px 0',
-              marginTop: '4px'
-            }}
-            title="Switch department"
-          >
-            Logout {tenant?.slug}
-          </button>
+          {/* Tenant logout */}
+          <div style={{ 
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            width: '100%',
+            marginTop: '8px',
+            fontSize: '0.8rem'
+          }}>
+            <span style={{ color: '#333' }}>{tenant?.slug}</span>
+            <button 
+              onClick={onTenantLogout}
+              style={{ 
+                background: '#dc2626', 
+                border: 'none', 
+                color: '#fff', 
+                cursor: 'pointer',
+                fontSize: '0.7rem',
+                padding: '3px 8px',
+                borderRadius: '3px'
+              }}
+              title="Logout from this department"
+            >
+              Logout
+            </button>
+          </div>
           
           {/* Dispatch Sound toggle */}
           <label style={{ 
             display: 'flex', 
             alignItems: 'center', 
-            gap: '6px',
+            justifyContent: 'space-between',
+            width: '100%',
             fontSize: '0.8rem',
             color: '#666',
             cursor: 'pointer',
             marginTop: '8px'
           }}>
+            Enable Sound
             <input
               type="checkbox"
               checked={avAlertsEnabled}
               onChange={handleToggleAVAlerts}
             />
-            Dispatch Sound
           </label>
         </div>
         
