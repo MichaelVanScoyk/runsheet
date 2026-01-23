@@ -409,10 +409,10 @@ def _render_rollcall_body(data: dict, branding: dict) -> str:
         ''')
     parts.append('</div>')
     
-    # Attendance section - two columns: Officers | Firefighters
-    # Officers = display_order <= 5 (Lt and up), Firefighters = display_order > 5
+    # Attendance section - two columns: Officers | Members
+    # Officers = display_order <= 5 (Lt and up), Members = everyone else
     officers = [p for p in attendees if (p.get('display_order') or 999) <= 5]
-    firefighters = [p for p in attendees if (p.get('display_order') or 999) > 5]
+    members = [p for p in attendees if (p.get('display_order') or 999) > 5]
     
     parts.append('<div class="attendance-section">')
     parts.append(f'<div class="attendance-header">Attendance<span class="attendance-count">({len(attendees)} personnel)</span></div>')
@@ -433,12 +433,12 @@ def _render_rollcall_body(data: dict, branding: dict) -> str:
             parts.append('<p class="no-attendance">None</p>')
         parts.append('</div>')
         
-        # Firefighters column
+        # Members column
         parts.append('<div class="attendance-column">')
-        parts.append('<div class="column-header">Firefighters</div>')
-        if firefighters:
+        parts.append('<div class="column-header">Members</div>')
+        if members:
             parts.append('<ul class="attendance-list">')
-            for person in firefighters:
+            for person in members:
                 name = f"{person.get('last_name', '')}, {person.get('first_name', '')}"
                 parts.append(f'<li>{name}</li>')
             parts.append('</ul>')
