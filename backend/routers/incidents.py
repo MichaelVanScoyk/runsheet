@@ -1096,6 +1096,7 @@ async def get_incident(
         "internal_incident_number": incident.internal_incident_number,
         "year_prefix": incident.year_prefix,
         "call_category": incident.call_category,
+        "detail_type": getattr(incident, 'detail_type', None),
         "neris_id": incident.neris_id,
         "cad_event_number": incident.cad_event_number,
         "cad_event_type": incident.cad_event_type,
