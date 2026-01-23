@@ -51,6 +51,7 @@ import {
 import PrintView from './components/PrintView';
 import ReviewTasksBadge from './components/ReviewTasksBadge';
 import ProfileReviewBadge from './components/ProfileReviewBadge';
+import SequenceAlertBadge from './components/SequenceAlertBadge';
 import './App.css';
 
 // Standalone Print Page - no app shell
@@ -623,6 +624,12 @@ function AppContent({ tenant, onTenantLogout }) {
 
         {/* Profile Review Badge - for manually-added personnel */}
         <ProfileReviewBadge 
+          userSession={userSession} 
+          primaryColor={branding.primaryColor}
+        />
+
+        {/* Sequence Alert Badge - out-of-order incidents */}
+        <SequenceAlertBadge 
           userSession={userSession} 
           primaryColor={branding.primaryColor}
         />

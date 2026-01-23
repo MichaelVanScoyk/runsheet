@@ -47,6 +47,11 @@ export const suggestIncidentNumber = (year = null, category = 'FIRE') => {
 
 export const getIncidentYears = () => api.get('/incidents/years');
 
+export const getSequenceStatus = (year = null) => {
+  const params = year ? { year } : {};
+  return api.get('/incidents/admin/sequence-status', { params });
+};
+
 export const getAdjacentIncidents = (id) => api.get(`/incidents/${id}/adjacent`);
 
 export const deleteIncident = (id) => api.delete(`/incidents/${id}`);

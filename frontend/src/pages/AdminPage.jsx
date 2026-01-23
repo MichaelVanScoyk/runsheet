@@ -260,11 +260,20 @@ function SettingsTab() {
 // INCIDENT SEQUENCE TAB COMPONENT
 // ============================================================================
 
+const CATEGORY_CONFIG = {
+  FIRE: { label: 'Fire', color: '#dc2626', icon: '🔥' },
+  EMS: { label: 'EMS', color: '#2563eb', icon: '🚑' },
+  DETAIL: { label: 'Detail', color: '#8b5cf6', icon: '📋' },
+};
+
 function IncidentSequenceTab() {
   const [loading, setLoading] = useState(true);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [status, setStatus] = useState(null);
   const [data, setData] = useState(null);
   const [year, setYear] = useState(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState([new Date().getFullYear()]);
+  const [selectedCategory, setSelectedCategory] = useState(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [fixResult, setFixResult] = useState(null);
@@ -284,15 +293,36 @@ function IncidentSequenceTab() {
     loadYears();
   }, []);
 
+  // Load status for all categories when year changes
   useEffect(() => {
-    loadSequence();
+    loadStatus();
   }, [year]);
 
-  const loadSequence = async () => {
+  const loadStatus = async () => {
+    setStatusLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/incidents/admin/sequence-status?year=${year}`);
+      const result = await res.json();
+      setStatus(result);
+    } catch (err) {
+      console.error('Failed to load sequence status:', err);
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  // Load sequence for selected category
+  useEffect(() => {
+    if (selectedCategory) {
+      loadSequence(selectedCategory);
+    }
+  }, [selectedCategory, year]);
+
+  const loadSequence = async (category) => {
     setLoading(true);
     setFixResult(null);
     try {
-      const res = await fetch(`${API_BASE}/api/incidents/admin/sequence?year=${year}`);
+      const res = await fetch(`${API_BASE}/api/incidents/admin/sequence?year=${year}&category=${category}`);
       const result = await res.json();
       setData(result);
     } catch (err) {
@@ -303,15 +333,17 @@ function IncidentSequenceTab() {
   };
 
   const handleFixAll = async () => {
+    if (!selectedCategory) return;
     setFixing(true);
     setShowConfirm(false);
     try {
-      const res = await fetch(`${API_BASE}/api/incidents/admin/fix-sequence?year=${year}`, {
+      const res = await fetch(`${API_BASE}/api/incidents/admin/fix-sequence?year=${year}&category=${selectedCategory}`, {
         method: 'POST',
       });
       const result = await res.json();
       setFixResult(result);
-      await loadSequence();
+      await loadSequence(selectedCategory);
+      await loadStatus();
     } catch (err) {
       console.error('Failed to fix sequence:', err);
       setFixResult({ status: 'error', message: 'Failed to fix sequence' });
@@ -320,96 +352,171 @@ function IncidentSequenceTab() {
     }
   };
 
-  if (loading) return <div className="loading">Loading incident sequence...</div>;
+  const handleCategoryClick = (category) => {
+    setSelectedCategory(category);
+    setFixResult(null);
+  };
 
   const hasIssues = data?.out_of_sequence_count > 0;
 
   return (
     <div className="sequence-content">
-      <div className="sequence-header">
+      {/* Year Selector */}
+      <div className="sequence-header" style={{ marginBottom: '1rem' }}>
         <div className="sequence-year-selector">
           <label>Year:</label>
-          <select value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
+          <select value={year} onChange={(e) => { setYear(parseInt(e.target.value)); setSelectedCategory(null); setData(null); }}>
             {availableYears.map(y => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
         </div>
-        
-        {hasIssues && (
-          <button 
-            className="btn btn-fix" 
-            onClick={() => setShowConfirm(true)}
-            disabled={fixing}
-          >
-            {fixing ? 'Fixing...' : `Fix All (${data.out_of_sequence_count})`}
-          </button>
-        )}
       </div>
 
-      {/* Status Banner */}
-      {hasIssues ? (
-        <div className="sequence-banner warning">
-          ⚠️ {data.out_of_sequence_count} incident{data.out_of_sequence_count !== 1 ? 's' : ''} out of sequence
-        </div>
-      ) : (
-        <div className="sequence-banner success">
-          ✓ All {data?.total_incidents || 0} incidents are in correct sequence
-        </div>
-      )}
-
-      {/* Fix Result */}
-      {fixResult && (
-        <div className={`sequence-banner ${fixResult.status === 'ok' ? 'success' : 'error'}`}>
-          {fixResult.status === 'ok' 
-            ? `✓ Fixed ${fixResult.changes_applied} incident${fixResult.changes_applied !== 1 ? 's' : ''}`
-            : `✗ ${fixResult.message || 'Error fixing sequence'}`
-          }
-        </div>
-      )}
-
-      {/* Incidents Table */}
-      <div className="sequence-table-container">
-        <table className="sequence-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Date</th>
-              <th>CAD #</th>
-              <th>Address</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data?.incidents?.map((inc) => (
-              <tr key={inc.id} className={inc.needs_fix ? 'row-out-of-sequence' : ''}>
-                <td className="number-cell">
-                  {inc.number}
-                  {inc.needs_fix && (
-                    <span className="should-be">→ {inc.should_be_number}</span>
-                  )}
-                </td>
-                <td>{inc.date || '-'}</td>
-                <td>{inc.cad_event_number || '-'}</td>
-                <td className="address-cell">{inc.address || '-'}</td>
-                <td className="status-cell">
-                  {inc.needs_fix ? (
-                    <span className="badge-warning">⚠️</span>
-                  ) : (
-                    <span className="badge-ok">✓</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* Category Buttons with Status */}
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        {Object.entries(CATEGORY_CONFIG).map(([cat, config]) => {
+          const catStatus = status?.[cat.toLowerCase()];
+          const outOfSeq = catStatus?.out_of_sequence || 0;
+          const total = catStatus?.total || 0;
+          const isSelected = selectedCategory === cat;
+          
+          return (
+            <button
+              key={cat}
+              onClick={() => handleCategoryClick(cat)}
+              style={{
+                flex: '1',
+                minWidth: '150px',
+                padding: '1rem',
+                background: isSelected ? config.color : '#f5f5f5',
+                color: isSelected ? '#fff' : '#333',
+                border: `2px solid ${config.color}`,
+                borderRadius: '8px',
+                cursor: 'pointer',
+                textAlign: 'center',
+                transition: 'all 0.15s',
+              }}
+            >
+              <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>{config.icon}</div>
+              <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{config.label}</div>
+              {statusLoading ? (
+                <div style={{ fontSize: '0.85rem', opacity: 0.7 }}>Loading...</div>
+              ) : outOfSeq > 0 ? (
+                <div style={{ 
+                  fontSize: '0.85rem', 
+                  color: isSelected ? '#fef2f2' : '#dc2626',
+                  fontWeight: 'bold'
+                }}>
+                  ⚠️ {outOfSeq} out of sequence
+                </div>
+              ) : (
+                <div style={{ 
+                  fontSize: '0.85rem', 
+                  color: isSelected ? '#d1fae5' : '#22c55e' 
+                }}>
+                  ✓ {total} in order
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
+
+      {/* Selected Category Content */}
+      {selectedCategory && (
+        <>
+          {loading ? (
+            <div className="loading">Loading {CATEGORY_CONFIG[selectedCategory].label} incidents...</div>
+          ) : (
+            <>
+              {/* Status Banner */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                {hasIssues ? (
+                  <div className="sequence-banner warning" style={{ flex: 1, marginRight: '1rem' }}>
+                    ⚠️ {data.out_of_sequence_count} {CATEGORY_CONFIG[selectedCategory].label} incident{data.out_of_sequence_count !== 1 ? 's' : ''} out of sequence
+                  </div>
+                ) : (
+                  <div className="sequence-banner success" style={{ flex: 1, marginRight: '1rem' }}>
+                    ✓ All {data?.total_incidents || 0} {CATEGORY_CONFIG[selectedCategory].label} incidents are in correct sequence
+                  </div>
+                )}
+                
+                {hasIssues && (
+                  <button 
+                    className="btn btn-fix" 
+                    onClick={() => setShowConfirm(true)}
+                    disabled={fixing}
+                    style={{ background: CATEGORY_CONFIG[selectedCategory].color }}
+                  >
+                    {fixing ? 'Fixing...' : `Fix All (${data.out_of_sequence_count})`}
+                  </button>
+                )}
+              </div>
+
+              {/* Fix Result */}
+              {fixResult && (
+                <div className={`sequence-banner ${fixResult.status === 'ok' ? 'success' : 'error'}`}>
+                  {fixResult.status === 'ok' 
+                    ? `✓ Fixed ${fixResult.changes_applied} incident${fixResult.changes_applied !== 1 ? 's' : ''}`
+                    : `✗ ${fixResult.message || 'Error fixing sequence'}`
+                  }
+                </div>
+              )}
+
+              {/* Incidents Table */}
+              <div className="sequence-table-container">
+                <table className="sequence-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Date</th>
+                      <th>CAD #</th>
+                      <th>Address</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data?.incidents?.map((inc) => (
+                      <tr key={inc.id} className={inc.needs_fix ? 'row-out-of-sequence' : ''}>
+                        <td className="number-cell">
+                          {inc.number}
+                          {inc.needs_fix && (
+                            <span className="should-be">→ {inc.should_be_number}</span>
+                          )}
+                        </td>
+                        <td>{inc.date || '-'}</td>
+                        <td>{inc.cad_event_number || '-'}</td>
+                        <td className="address-cell">{inc.address || '-'}</td>
+                        <td className="status-cell">
+                          {inc.needs_fix ? (
+                            <span className="badge-warning">⚠️</span>
+                          ) : (
+                            <span className="badge-ok">✓</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {/* No category selected message */}
+      {!selectedCategory && !statusLoading && (
+        <div style={{ textAlign: 'center', color: '#666', padding: '2rem' }}>
+          Select a category above to view and fix incident sequences
+        </div>
+      )}
 
       {/* Confirmation Modal */}
       {showConfirm && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
-            <h3 style={{ margin: '0 0 0.5rem 0' }}>Fix Incident Sequence</h3>
+            <h3 style={{ margin: '0 0 0.5rem 0' }}>Fix {CATEGORY_CONFIG[selectedCategory]?.label} Sequence</h3>
             <p style={{ margin: '0 0 1rem 0' }}>This will renumber {data.changes_preview?.length || 0} incident{(data.changes_preview?.length || 0) !== 1 ? 's' : ''}:</p>
             
             <div className="changes-preview" style={{ flex: 1, overflowY: 'auto', maxHeight: '50vh', marginBottom: '1rem', border: '1px solid #ddd', borderRadius: '4px', padding: '0.5rem' }}>
@@ -427,7 +534,7 @@ function IncidentSequenceTab() {
               <button className="btn btn-secondary" onClick={() => setShowConfirm(false)}>
                 Cancel
               </button>
-              <button className="btn btn-danger" onClick={handleFixAll}>
+              <button className="btn btn-danger" onClick={handleFixAll} style={{ background: CATEGORY_CONFIG[selectedCategory]?.color }}>
                 Apply Changes
               </button>
             </div>
