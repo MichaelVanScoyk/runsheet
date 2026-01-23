@@ -382,9 +382,10 @@ def _generate_rollcall_css(branding: dict) -> str:
         }}
         
         .report-footer {{
-            margin-top: 16px;
-            padding-top: 8px;
-            border-top: 1px {border_style} #ddd;
+            position: fixed;
+            bottom: 0.3in;
+            left: 0.75in;
+            right: 0.3in;
             font-size: 7pt;
             color: {muted_color};
             display: flex;
