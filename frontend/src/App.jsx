@@ -50,6 +50,7 @@ import {
 } from './api';
 import PrintView from './components/PrintView';
 import ReviewTasksBadge from './components/ReviewTasksBadge';
+import ProfileReviewBadge from './components/ProfileReviewBadge';
 import './App.css';
 
 // Standalone Print Page - no app shell
@@ -638,6 +639,12 @@ function AppContent({ tenant, onTenantLogout }) {
 
         {/* Review Tasks Badge - Officers and Admins only */}
         <ReviewTasksBadge 
+          userSession={userSession} 
+          primaryColor={branding.primaryColor}
+        />
+
+        {/* Profile Review Badge - for manually-added personnel */}
+        <ProfileReviewBadge 
           userSession={userSession} 
           primaryColor={branding.primaryColor}
         />

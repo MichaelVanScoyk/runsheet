@@ -186,6 +186,15 @@ export const validateEmailChangeToken = (token) =>
 export const confirmEmailChange = (token) => 
   api.post('/personnel/auth/confirm-email-change', null, { params: { token } });
 
+// Profile Review (for manually-added personnel)
+export const getPersonnelNeedingReview = () => api.get('/personnel/needs-review');
+
+export const completeProfileReview = (personnelId) => 
+  api.post(`/personnel/needs-review/${personnelId}/complete`);
+
+export const quickAddPersonnel = (firstName, lastName) => 
+  api.post('/personnel/quick-add', null, { params: { first_name: firstName, last_name: lastName } });
+
 // ============================================================================
 // APPARATUS
 // ============================================================================
