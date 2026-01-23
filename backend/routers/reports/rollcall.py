@@ -191,6 +191,42 @@ def _generate_rollcall_css(branding: dict) -> str:
             margin-left: 8px;
         }}
         
+        .attendance-columns {{
+            display: flex;
+            gap: 24px;
+        }}
+        
+        .attendance-column {{
+            flex: 1;
+        }}
+        
+        .column-header {{
+            font-weight: bold;
+            color: {primary};
+            border-bottom: 1px {border_style} {primary};
+            padding-bottom: 4px;
+            margin-bottom: 8px;
+            font-size: 10pt;
+        }}
+        
+        .attendance-list {{
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }}
+        
+        .attendance-list li {{
+            padding: 2px 0;
+            font-size: 9pt;
+        }}
+        
+        .no-attendance {{
+            color: #666;
+            font-style: italic;
+            font-size: 9pt;
+            margin: 0;
+        }}
+        
         .attendance-grid {{
             display: flex;
             flex-wrap: wrap;
@@ -373,20 +409,44 @@ def _render_rollcall_body(data: dict, branding: dict) -> str:
         ''')
     parts.append('</div>')
     
-    # Attendance section
+    # Attendance section - two columns: Officers | Firefighters
+    # Officers = display_order <= 5 (Lt and up), Firefighters = display_order > 5
+    officers = [p for p in attendees if (p.get('display_order') or 999) <= 5]
+    firefighters = [p for p in attendees if (p.get('display_order') or 999) > 5]
+    
     parts.append('<div class="attendance-section">')
     parts.append(f'<div class="attendance-header">Attendance<span class="attendance-count">({len(attendees)} personnel)</span></div>')
     
     if attendees:
-        # Table format for better printing
-        parts.append('<table class="attendance-table">')
-        parts.append('<thead><tr><th class="rank-col">Rank</th><th>Name</th></tr></thead>')
-        parts.append('<tbody>')
-        for person in attendees:
-            rank = person.get('rank_abbr') or ''
-            name = f"{person.get('last_name', '')}, {person.get('first_name', '')}"
-            parts.append(f'<tr><td class="rank-col">{rank}</td><td>{name}</td></tr>')
-        parts.append('</tbody></table>')
+        parts.append('<div class="attendance-columns">')
+        
+        # Officers column
+        parts.append('<div class="attendance-column">')
+        parts.append('<div class="column-header">Officers</div>')
+        if officers:
+            parts.append('<ul class="attendance-list">')
+            for person in officers:
+                name = f"{person.get('last_name', '')}, {person.get('first_name', '')}"
+                parts.append(f'<li>{name}</li>')
+            parts.append('</ul>')
+        else:
+            parts.append('<p class="no-attendance">None</p>')
+        parts.append('</div>')
+        
+        # Firefighters column
+        parts.append('<div class="attendance-column">')
+        parts.append('<div class="column-header">Firefighters</div>')
+        if firefighters:
+            parts.append('<ul class="attendance-list">')
+            for person in firefighters:
+                name = f"{person.get('last_name', '')}, {person.get('first_name', '')}"
+                parts.append(f'<li>{name}</li>')
+            parts.append('</ul>')
+        else:
+            parts.append('<p class="no-attendance">None</p>')
+        parts.append('</div>')
+        
+        parts.append('</div>')
     else:
         parts.append('<p style="color: #666; font-style: italic;">No attendance recorded.</p>')
     
