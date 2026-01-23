@@ -88,13 +88,13 @@ def _load_rollcall_data(db: Session, incident_id: int) -> dict:
             ip.rank_name_snapshot,
             p.rank_id,
             r.abbreviation as rank_abbr,
-            r.rank_order
+            r.display_order
         FROM incident_personnel ip
         LEFT JOIN personnel p ON ip.personnel_id = p.id
         LEFT JOIN ranks r ON p.rank_id = r.id
         WHERE ip.incident_id = :incident_id
           AND ip.incident_unit_id IS NULL
-        ORDER BY COALESCE(r.rank_order, 999), ip.personnel_last_name, ip.personnel_first_name
+        ORDER BY COALESCE(r.display_order, 999), ip.personnel_last_name, ip.personnel_first_name
     """), {"incident_id": incident_id}).fetchall()
     
     attendees = []
@@ -105,7 +105,7 @@ def _load_rollcall_data(db: Session, incident_id: int) -> dict:
             'last_name': row[2],
             'rank_name': row[3],
             'rank_abbr': row[5] or '',
-            'rank_order': row[6] or 999,
+            'display_order': row[6] or 999,
         })
     
     # Get completed_by name if set
