@@ -253,7 +253,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
             ← Back
           </button>
           
-          <span className="px-2 py-1 rounded text-sm font-medium bg-purple-600/30 text-purple-300 border border-purple-500">
+          <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: '500', backgroundColor: '#6b7280', color: '#fff' }}>
             DETAIL
           </span>
           
@@ -266,7 +266,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
           </span>
           
           {hasChanges && (
-            <span className="text-xs text-yellow-400 bg-yellow-900/30 px-2 py-1 rounded">
+            <span style={{ fontSize: '0.75rem', backgroundColor: '#ca8a04', color: '#fff', padding: '2px 8px', borderRadius: '4px' }}>
               Unsaved changes
             </span>
           )}
@@ -315,8 +315,6 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
           personnel={personnel}
           attendees={attendees}
           onToggle={toggleAttendee}
-          onMarkAll={markAllPresent}
-          onClearAll={clearAll}
           onPersonnelAdded={handlePersonnelAdded}
         />
 

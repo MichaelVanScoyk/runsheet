@@ -10,7 +10,7 @@
 import { useMemo, useState } from 'react';
 import { quickAddPersonnel } from '../../api';
 
-export default function AttendanceGrid({ personnel, attendees, onToggle, onMarkAll, onClearAll, onPersonnelAdded }) {
+export default function AttendanceGrid({ personnel, attendees, onToggle, onPersonnelAdded }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -80,26 +80,40 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onMarkA
           {presentCount}/{totalCount} present
         </span>
         
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ position: 'relative' }}>
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Filter..."
-            style={{ fontSize: '12px', padding: '4px 8px', width: '100px', border: '1px solid #ccc', borderRadius: '4px' }}
+            style={{ 
+              fontSize: '12px', 
+              padding: '4px 24px 4px 8px', 
+              width: '120px', 
+              border: '1px solid #ccc', 
+              borderRadius: '4px' 
+            }}
           />
-          <button
-            onClick={onMarkAll}
-            style={{ fontSize: '12px', padding: '4px 10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-          >
-            All
-          </button>
-          <button
-            onClick={onClearAll}
-            style={{ fontSize: '12px', padding: '4px 10px', background: '#6b7280', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-          >
-            Clear
-          </button>
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              style={{
+                position: 'absolute',
+                right: '4px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '14px',
+                color: '#999',
+                padding: '0 4px',
+                lineHeight: '1'
+              }}
+            >
+              ×
+            </button>
+          )}
         </div>
       </div>
 
@@ -108,7 +122,7 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onMarkA
         display: 'grid', 
         gridTemplateColumns: 'repeat(4, 1fr)', 
         gap: '2px 16px',
-        maxHeight: '280px',
+        maxHeight: '400px',
         overflowY: 'auto'
       }}>
         {sortedPersonnel.map(person => {
