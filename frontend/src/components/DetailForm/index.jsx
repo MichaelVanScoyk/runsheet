@@ -47,6 +47,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
   
   // Form data (editable fields)
   const [formData, setFormData] = useState({
+    incident_date: '',
     detail_type: '',
     address: '',
     time_event_start: '',
@@ -96,6 +97,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
 
         // Initialize form data from incident
         setFormData({
+          incident_date: inc.incident_date || '',
           detail_type: inc.detail_type || '',
           address: inc.address || 'Station 48',
           time_event_start: inc.time_event_start ? formatForInput(inc.time_event_start) : '',
@@ -188,6 +190,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
 
       // Build update payload - convert datetime-local to ISO
       const updateData = {
+        incident_date: formData.incident_date || null,
         detail_type: formData.detail_type || null,
         address: formData.address || null,
         time_event_start: formData.time_event_start ? new Date(formData.time_event_start).toISOString() : null,
@@ -466,7 +469,6 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
         <DetailHeader 
           formData={formData}
           detailTypes={detailTypes}
-          incidentDate={incident?.incident_date}
           onChange={handleChange}
           disabled={!canEdit}
         />

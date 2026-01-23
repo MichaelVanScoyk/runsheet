@@ -4,20 +4,21 @@
  * Shows: Date, Detail Type dropdown, Location, Start/End times
  */
 
-export default function DetailHeader({ formData, detailTypes, incidentDate, onChange, disabled }) {
+export default function DetailHeader({ formData, detailTypes, onChange, disabled }) {
   return (
     <div className="bg-dark-hover rounded-lg p-4">
       <h3 className="text-sm font-medium text-gray-300 mb-3">Event Details</h3>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Date (read-only) */}
+        {/* Date (editable for backdating/imports) */}
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Date</label>
+          <label className="block text-xs text-gray-400 mb-1">Date *</label>
           <input
-            type="text"
-            value={incidentDate || ''}
-            readOnly
-            className="form-control bg-dark-border text-gray-300 cursor-not-allowed"
+            type="date"
+            value={formData.incident_date || ''}
+            onChange={(e) => onChange('incident_date', e.target.value)}
+            className="form-control"
+            disabled={disabled}
           />
         </div>
 
