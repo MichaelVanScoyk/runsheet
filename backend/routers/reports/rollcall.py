@@ -191,6 +191,17 @@ def _generate_rollcall_css(branding: dict) -> str:
             margin-left: 8px;
         }}
         
+        .attendance-group {{
+            margin-bottom: 12px;
+        }}
+        
+        .group-header {{
+            font-weight: bold;
+            color: {primary};
+            font-size: 9pt;
+            margin-bottom: 4px;
+        }}
+        
         .attendance-columns {{
             display: flex;
             gap: 24px;
@@ -409,7 +420,7 @@ def _render_rollcall_body(data: dict, branding: dict) -> str:
         ''')
     parts.append('</div>')
     
-    # Attendance section - two columns: Officers | Members
+    # Attendance section - single column, officers first then members
     # Officers = display_order <= 5 (Lt and up), Members = everyone else
     officers = [p for p in attendees if (p.get('display_order') or 999) <= 5]
     members = [p for p in attendees if (p.get('display_order') or 999) > 5]
@@ -418,35 +429,27 @@ def _render_rollcall_body(data: dict, branding: dict) -> str:
     parts.append(f'<div class="attendance-header">Attendance<span class="attendance-count">({len(attendees)} personnel)</span></div>')
     
     if attendees:
-        parts.append('<div class="attendance-columns">')
-        
-        # Officers column
-        parts.append('<div class="attendance-column">')
-        parts.append('<div class="column-header">Officers</div>')
+        # Officers
         if officers:
+            parts.append('<div class="attendance-group">')
+            parts.append('<div class="group-header">Officers</div>')
             parts.append('<ul class="attendance-list">')
             for person in officers:
                 name = f"{person.get('last_name', '')}, {person.get('first_name', '')}"
                 parts.append(f'<li>{name}</li>')
             parts.append('</ul>')
-        else:
-            parts.append('<p class="no-attendance">None</p>')
-        parts.append('</div>')
+            parts.append('</div>')
         
-        # Members column
-        parts.append('<div class="attendance-column">')
-        parts.append('<div class="column-header">Members</div>')
+        # Members
         if members:
+            parts.append('<div class="attendance-group">')
+            parts.append('<div class="group-header">Members</div>')
             parts.append('<ul class="attendance-list">')
             for person in members:
                 name = f"{person.get('last_name', '')}, {person.get('first_name', '')}"
                 parts.append(f'<li>{name}</li>')
             parts.append('</ul>')
-        else:
-            parts.append('<p class="no-attendance">None</p>')
-        parts.append('</div>')
-        
-        parts.append('</div>')
+            parts.append('</div>')
     else:
         parts.append('<p style="color: #666; font-style: italic;">No attendance recorded.</p>')
     
