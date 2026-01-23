@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { getIncidents, getIncident, getIncidentYears, createAttendanceRecord } from '../api';
+import { getIncidents, getIncident, getIncidentYears } from '../api';
 import { useBranding } from '../contexts/BrandingContext';
 import RunSheetForm from '../components/RunSheetForm';
 import DetailForm from '../components/DetailForm';
@@ -397,32 +397,11 @@ function IncidentsPage({ userSession }) {
     setShowForm(true);
   };
 
-  const handleNewAttendanceRecord = async () => {
+  const handleNewAttendanceRecord = () => {
     setShowNewRecordMenu(false);
-    setCreatingRecord(true);
-    
-    try {
-      // Create a new attendance record with today's date (local timezone)
-      const now = new Date();
-      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const res = await createAttendanceRecord({
-        detail_type: 'MEETING', // Default, user can change
-        incident_date: today,
-        address: branding.stationShortName || 'Station 48',
-      });
-      
-      // Open the newly created record in DetailForm
-      setDetailFormIncidentId(res.data.id);
-      setShowDetailForm(true);
-      
-      // Refresh the list
-      loadData();
-    } catch (err) {
-      console.error('Failed to create attendance record:', err);
-      alert('Failed to create attendance record');
-    } finally {
-      setCreatingRecord(false);
-    }
+    // Open DetailForm with no incidentId - it will create on first save
+    setDetailFormIncidentId(null);
+    setShowDetailForm(true);
   };
 
   // Manual row click - route to appropriate form
@@ -599,8 +578,8 @@ function IncidentsPage({ userSession }) {
     }
   };
 
-  // Show DetailForm for roll call attendance records
-  if (showDetailForm && detailFormIncidentId) {
+  // Show DetailForm for roll call attendance records (new or existing)
+  if (showDetailForm) {
     return (
       <DetailForm
         incidentId={detailFormIncidentId}

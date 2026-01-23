@@ -7,12 +7,17 @@
  * Attendance stored in incident_personnel with incident_unit_id = NULL.
  * 
  * Auth: Requires login to edit. Uses same session/audit pattern as RunSheetForm.
+ * 
+ * Supports both:
+ * - New records: incidentId=null, creates record on first save
+ * - Existing records: incidentId provided, loads and updates
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   getIncident, 
   updateIncident, 
+  createAttendanceRecord,
   getDetailTypes, 
   getPersonnel,
   getAttendance,
@@ -21,6 +26,7 @@ import {
   getIncidentAuditLog,
   deleteIncident
 } from '../../api';
+import { useBranding } from '../../contexts/BrandingContext';
 import { formatDateTimeLocal } from '../../utils/timeUtils';
 import DetailHeader from './DetailHeader';
 import AttendanceGrid from './AttendanceGrid';
@@ -28,6 +34,12 @@ import NotesSection from './NotesSection';
 import OfficerFields from './OfficerFields';
 
 export default function DetailForm({ incidentId, onClose, onSaved }) {
+  const branding = useBranding();
+  
+  // Track if this is a new record (no incidentId provided)
+  const [isNew, setIsNew] = useState(!incidentId);
+  const [currentIncidentId, setCurrentIncidentId] = useState(incidentId);
+  
   // Data state
   const [incident, setIncident] = useState(null);
   const [detailTypes, setDetailTypes] = useState([]);
@@ -35,7 +47,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
   const [attendees, setAttendees] = useState([]); // Array of personnel IDs
   
   // UI state
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!incidentId); // Only loading if editing existing
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState(null);
@@ -51,11 +63,16 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
   const [showFullAuditLog, setShowFullAuditLog] = useState(false);
   const auditLogRef = useRef(null);
   
-  // Form data (editable fields)
+  // Form data (editable fields) - initialize with defaults for new records
+  const getTodayDate = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  };
+  
   const [formData, setFormData] = useState({
-    incident_date: '',
-    detail_type: '',
-    address: '',
+    incident_date: incidentId ? '' : getTodayDate(), // Default to today for new
+    detail_type: '', // REQUIRED - no default, user must select
+    address: incidentId ? '' : (branding.stationShortName || 'Station 48'), // Default location for new
     time_event_start: '',
     time_event_end: '',
     narrative: '',
@@ -68,7 +85,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
   const canEdit = userSession && userSession.is_approved;
   const isAdmin = userSession?.role === 'ADMIN';
   const isOfficer = userSession?.role === 'OFFICER' || isAdmin;
-  const canDelete = isOfficer && incident?.id && deleteUnlocked;
+  const canDelete = isOfficer && currentIncidentId && deleteUnlocked;
 
   // Close audit log when clicking outside
   useEffect(() => {
@@ -84,31 +101,46 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showFullAuditLog]);
 
-  // Load all data
+  // Load reference data (detail types, personnel) - always needed
   useEffect(() => {
-    const loadData = async () => {
+    const loadReferenceData = async () => {
+      try {
+        const [typesRes, personnelRes] = await Promise.all([
+          getDetailTypes(),
+          getPersonnel(),
+        ]);
+        setDetailTypes(typesRes.data || []);
+        setPersonnel(personnelRes.data?.filter(p => p.active) || []);
+      } catch (err) {
+        console.error('Failed to load reference data:', err);
+      }
+    };
+    loadReferenceData();
+  }, []);
+
+  // Load existing incident data (only if editing)
+  useEffect(() => {
+    const loadIncidentData = async () => {
+      if (!incidentId) return; // New record, nothing to load
+      
       try {
         setLoading(true);
         setError(null);
 
-        const [incidentRes, typesRes, personnelRes, attendanceRes] = await Promise.all([
+        const [incidentRes, attendanceRes] = await Promise.all([
           getIncident(incidentId),
-          getDetailTypes(),
-          getPersonnel(),
           getAttendance(incidentId),
         ]);
 
         const inc = incidentRes.data;
         setIncident(inc);
-        setDetailTypes(typesRes.data || []);
-        setPersonnel(personnelRes.data?.filter(p => p.active) || []);
         setAttendees(attendanceRes.data?.personnel?.map(p => p.personnel_id) || []);
 
         // Initialize form data from incident
         setFormData({
           incident_date: inc.incident_date || '',
           detail_type: inc.detail_type || '',
-          address: inc.address || '', // Default set by DetailHeader from branding
+          address: inc.address || '',
           time_event_start: inc.time_event_start ? formatForInput(inc.time_event_start) : '',
           time_event_end: inc.time_event_end ? formatForInput(inc.time_event_end) : '',
           narrative: inc.narrative || '',
@@ -132,9 +164,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
       }
     };
 
-    if (incidentId) {
-      loadData();
-    }
+    loadIncidentData();
   }, [incidentId]);
 
   // Format ISO datetime to datetime-local input format (local time)
@@ -226,29 +256,59 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
       setSaving(true);
       setError(null);
 
-      // Build update payload - convert datetime-local to ISO
-      const updateData = {
-        incident_date: formData.incident_date || null,
-        detail_type: formData.detail_type || null,
-        address: formData.address || null,
-        time_event_start: formData.time_event_start ? new Date(formData.time_event_start).toISOString() : null,
-        time_event_end: formData.time_event_end ? new Date(formData.time_event_end).toISOString() : null,
-        narrative: formData.narrative || null,
-        completed_by: formData.completed_by || currentUserId || null,
-      };
+      let targetIncidentId = currentIncidentId;
 
-      // Save incident fields
-      await updateIncident(incidentId, updateData, currentUserId);
+      // If new record, create it first
+      if (isNew) {
+        const createData = {
+          detail_type: formData.detail_type,
+          incident_date: formData.incident_date,
+          address: formData.address || null,
+          time_event_start: formData.time_event_start ? new Date(formData.time_event_start).toISOString() : null,
+          time_event_end: formData.time_event_end ? new Date(formData.time_event_end).toISOString() : null,
+          narrative: formData.narrative || null,
+          completed_by: formData.completed_by || currentUserId || null,
+        };
+        
+        const createRes = await createAttendanceRecord(createData);
+        targetIncidentId = createRes.data.id;
+        
+        // Update state to reflect we're now editing an existing record
+        setCurrentIncidentId(targetIncidentId);
+        setIsNew(false);
+        setIncident({ 
+          id: targetIncidentId, 
+          internal_incident_number: createRes.data.internal_incident_number,
+          ...createData 
+        });
+      } else {
+        // Update existing record
+        const updateData = {
+          incident_date: formData.incident_date || null,
+          detail_type: formData.detail_type || null,
+          address: formData.address || null,
+          time_event_start: formData.time_event_start ? new Date(formData.time_event_start).toISOString() : null,
+          time_event_end: formData.time_event_end ? new Date(formData.time_event_end).toISOString() : null,
+          narrative: formData.narrative || null,
+          completed_by: formData.completed_by || currentUserId || null,
+        };
 
-      // Save attendance
-      await saveAttendance(incidentId, attendees, currentUserId);
+        await updateIncident(targetIncidentId, updateData, currentUserId);
+      }
 
-      // Refresh audit log
-      try {
-        const auditRes = await getIncidentAuditLog(incidentId);
-        setAuditLog(auditRes.data.entries || []);
-      } catch (err) {
-        console.error('Failed to refresh audit log:', err);
+      // Save attendance (only if we have attendees)
+      if (attendees.length > 0) {
+        await saveAttendance(targetIncidentId, attendees, currentUserId);
+      }
+
+      // Refresh audit log (only for existing records)
+      if (targetIncidentId) {
+        try {
+          const auditRes = await getIncidentAuditLog(targetIncidentId);
+          setAuditLog(auditRes.data.entries || []);
+        } catch (err) {
+          console.error('Failed to refresh audit log:', err);
+        }
       }
 
       setHasChanges(false);
@@ -261,7 +321,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
 
     } catch (err) {
       console.error('Failed to save:', err);
-      setError('Failed to save changes');
+      setError('Failed to save changes: ' + (err.response?.data?.detail || err.message));
     } finally {
       setSaving(false);
     }
@@ -269,10 +329,10 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
 
   // Delete handler
   const handleDelete = async () => {
-    if (!incident?.id || !canDelete) return;
+    if (!currentIncidentId || !canDelete) return;
     setDeleting(true);
     try {
-      await deleteIncident(incident.id);
+      await deleteIncident(currentIncidentId);
       setShowDeleteConfirm(false);
       if (onClose) onClose();
     } catch (err) {
@@ -304,7 +364,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
 
   // Get detail type display name
   const getDetailTypeDisplay = () => {
-    if (!formData.detail_type) return 'Attendance Record';
+    if (!formData.detail_type) return 'New Attendance Record';
     const dt = detailTypes.find(t => t.code === formData.detail_type);
     return dt?.display_name || formData.detail_type;
   };
@@ -348,7 +408,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
     );
   }
 
-  if (error && !incident) {
+  if (error && !incident && !isNew) {
     return (
       <div className="bg-dark-bg rounded-lg p-6 max-w-4xl mx-auto">
         <div className="text-center py-12">
@@ -418,8 +478,8 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
             {saving ? 'Saving...' : 'Save & Close'}
           </button>
           
-          {/* Delete button - only visible when unlocked */}
-          {canDelete && (
+          {/* Delete button - only visible when unlocked and not a new record */}
+          {canDelete && !isNew && (
             <button 
               className="btn btn-danger" 
               onClick={() => setShowDeleteConfirm(true)} 
@@ -432,8 +492,8 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
         </div>
       </div>
 
-      {/* Audit Trail - matches RunSheetForm AuditTrail style */}
-      {incident?.id && auditLog.length > 0 && (
+      {/* Audit Trail - matches RunSheetForm AuditTrail style - only show for existing records */}
+      {currentIncidentId && auditLog.length > 0 && (
         <div 
           ref={auditLogRef}
           className="bg-dark-hover rounded px-3 py-2 mb-2 text-xs border border-gray-700"
@@ -509,10 +569,10 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
         </span>
         
         <h1 className="text-xl font-semibold text-white flex items-center gap-2">
-          {incident?.internal_incident_number || 'New Record'}
+          {isNew ? 'New Record' : (incident?.internal_incident_number || 'Record')}
           
-          {/* Lock icon for officers/admins to unlock delete */}
-          {incident?.id && isOfficer && (
+          {/* Lock icon for officers/admins to unlock delete - only for existing records */}
+          {!isNew && currentIncidentId && isOfficer && (
             <button
               type="button"
               onClick={() => setDeleteUnlocked(!deleteUnlocked)}
