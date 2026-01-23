@@ -1451,7 +1451,7 @@ async def update_incident(
     
     # IMMUTABLE FIELDS - cannot change after creation (admin can change via unlock)
     # Note: internal_incident_number and cad_event_number CAN be changed by admin
-    IMMUTABLE_FIELDS = ['incident_date', 'created_at', 'neris_id']
+    IMMUTABLE_FIELDS = ['created_at', 'neris_id']
     for field in IMMUTABLE_FIELDS:
         update_data.pop(field, None)
     
