@@ -384,36 +384,43 @@ function AppContent({ tenant, onTenantLogout }) {
             />
           )}
           <span style={{ fontSize: '0.85rem', color: branding.primaryColor }}>{branding.stationName || tenant?.name || 'Fire Department'}</span>
+          {/* Tenant logout - subtle, only shown when user is logged in */}
+          {userSession && (
+            <button 
+              onClick={onTenantLogout}
+              style={{ 
+                background: 'none', 
+                border: 'none', 
+                color: '#999', 
+                cursor: 'pointer',
+                fontSize: '0.7rem',
+                padding: '2px 0',
+                marginTop: '4px'
+              }}
+              title="Switch department"
+            >
+              {tenant?.slug} ✕
+            </button>
+          )}
         </div>
         
-        {/* Tenant info */}
-        <div style={{ 
-          padding: '8px 12px', 
-          background: '#fff', 
-          borderRadius: '8px',
-          border: '1px solid #ccc',
-          fontSize: '0.8rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '0.5rem'
-        }}>
-          <span style={{ color: '#333' }}>🏢 {tenant?.slug}</span>
-          <button 
-            onClick={onTenantLogout}
-            style={{ 
-              background: '#dc2626', 
-              border: 'none', 
-              color: '#fff', 
-              cursor: 'pointer',
-              fontSize: '0.7rem',
-              padding: '3px 8px',
-              borderRadius: '3px'
-            }}
-            title="Logout from this department"
-          >
-            Logout
-          </button>
+        {/* Sound Alerts Toggle - simple on/off */}
+        <div 
+          onClick={handleToggleAVAlerts}
+          style={{ 
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '6px 12px',
+            fontSize: '0.85rem',
+            color: avAlertsEnabled ? branding.primaryColor : '#666',
+            cursor: 'pointer',
+            marginBottom: '0.5rem'
+          }}
+          title={avAlertsEnabled ? 'Sound alerts enabled - click to disable' : 'Sound alerts disabled - click to enable'}
+        >
+          <span>{avAlertsEnabled ? '🔔' : '🔕'}</span>
+          <span>Sound Alerts {avAlertsEnabled ? (avConnected ? 'On' : '...') : 'Off'}</span>
         </div>
         
         {/* User session / login area */}
@@ -589,53 +596,15 @@ function AppContent({ tenant, onTenantLogout }) {
               📈 Analytics
             </NavLink>
           </li>
-          <li>
-            <NavLink to="/admin" className={({ isActive }) => isActive ? 'active' : ''}>
-              🔧 Admin
-            </NavLink>
-          </li>
-        </ul>
-
-        {/* AV Alerts Toggle */}
-        <div style={{
-          padding: '8px 12px',
-          background: avAlertsEnabled ? '#f0fdf4' : '#fff',
-          borderRadius: '8px',
-          border: `1px solid ${avAlertsEnabled ? '#86efac' : '#ccc'}`,
-          fontSize: '0.8rem',
-          marginBottom: '0.5rem'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: avAlertsEnabled ? '6px' : '0' }}>
-            <span style={{ color: '#333' }}>🔔 Sound Alerts</span>
-            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={avAlertsEnabled}
-                onChange={handleToggleAVAlerts}
-                style={{ marginRight: '4px' }}
-              />
-              <span style={{ fontSize: '0.7rem', color: avAlertsEnabled ? '#166534' : '#666' }}>
-                {avAlertsEnabled ? (avConnected ? 'On' : '...') : 'Off'}
-              </span>
-            </label>
-          </div>
-          {avAlertsEnabled && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px', borderTop: '1px solid #e5e7eb' }}>
-              <span style={{ color: '#666', fontSize: '0.75rem' }}>Text-to-Speech</span>
-              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={avAlertsTTSEnabled}
-                  onChange={handleToggleAVAlertsTTS}
-                  style={{ marginRight: '4px' }}
-                />
-                <span style={{ fontSize: '0.7rem', color: avAlertsTTSEnabled ? '#166534' : '#666' }}>
-                  {avAlertsTTSEnabled ? 'On' : 'Off'}
-                </span>
-              </label>
-            </div>
+          {/* Admin - only show for OFFICER or ADMIN */}
+          {userSession && (userSession.role === 'OFFICER' || userSession.role === 'ADMIN') && (
+            <li>
+              <NavLink to="/admin" className={({ isActive }) => isActive ? 'active' : ''}>
+                🔧 Admin
+              </NavLink>
+            </li>
           )}
-        </div>
+        </ul>
 
         {/* Review Tasks Badge - Officers and Admins only */}
         <ReviewTasksBadge 
