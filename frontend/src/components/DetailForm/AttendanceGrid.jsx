@@ -2,13 +2,15 @@
  * AttendanceGrid - Personnel checklist for attendance tracking
  * 
  * Shows all active personnel with toggle checkboxes.
- * Columns with checkbox in front of name.
- * Ranked personnel first (alpha), then unranked (alpha).
+ * Sorted alphabetically DOWN columns (not across rows).
+ * Ranked personnel first (alphabetically), then unranked (alphabetically).
  * Includes quick-add for new personnel.
  */
 
 import { useMemo, useState } from 'react';
 import { quickAddPersonnel } from '../../api';
+
+const NUM_COLUMNS = 4;
 
 export default function AttendanceGrid({ personnel, attendees, onToggle, onPersonnelAdded, disabled }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -35,6 +37,22 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onPerso
         return `${a.last_name}, ${a.first_name}`.localeCompare(`${b.last_name}, ${b.first_name}`);
       });
   }, [personnel, searchTerm]);
+
+  // Reorganize into columns (read down, then across)
+  // e.g., with 12 items in 4 columns: col1=[0,1,2], col2=[3,4,5], col3=[6,7,8], col4=[9,10,11]
+  const columns = useMemo(() => {
+    const total = sortedPersonnel.length;
+    const rowsPerCol = Math.ceil(total / NUM_COLUMNS);
+    const cols = [];
+    
+    for (let c = 0; c < NUM_COLUMNS; c++) {
+      const startIdx = c * rowsPerCol;
+      const endIdx = Math.min(startIdx + rowsPerCol, total);
+      cols.push(sortedPersonnel.slice(startIdx, endIdx));
+    }
+    
+    return cols;
+  }, [sortedPersonnel]);
 
   const presentCount = attendees.length;
   const totalCount = personnel.length;
@@ -72,6 +90,36 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onPerso
     } finally {
       setQuickAddLoading(false);
     }
+  };
+
+  const renderPerson = (person) => {
+    const isPresent = attendees.includes(person.id);
+    
+    return (
+      <label
+        key={person.id}
+        style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '6px', 
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          padding: '2px 0',
+          fontSize: '13px',
+          color: isPresent ? '#16a34a' : '#333',
+          fontWeight: isPresent ? '500' : 'normal',
+          opacity: disabled ? 0.7 : 1
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={isPresent}
+          onChange={() => !disabled && onToggle(person.id)}
+          disabled={disabled}
+          style={{ width: '14px', height: '14px', cursor: disabled ? 'not-allowed' : 'pointer' }}
+        />
+        {person.last_name}, {person.first_name}
+      </label>
+    );
   };
 
   return (
@@ -119,43 +167,18 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onPerso
         </div>
       </div>
 
-      {/* Personnel columns */}
+      {/* Personnel columns - reads down each column, then across */}
       <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(4, 1fr)', 
-        gap: '2px 16px',
+        display: 'flex', 
+        gap: '16px',
         maxHeight: '400px',
         overflowY: 'auto'
       }}>
-        {sortedPersonnel.map(person => {
-          const isPresent = attendees.includes(person.id);
-          
-          return (
-            <label
-              key={person.id}
-              style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '6px', 
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                padding: '2px 0',
-                fontSize: '13px',
-                color: isPresent ? '#16a34a' : '#333',
-                fontWeight: isPresent ? '500' : 'normal',
-                opacity: disabled ? 0.7 : 1
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={isPresent}
-                onChange={() => !disabled && onToggle(person.id)}
-                disabled={disabled}
-                style={{ width: '14px', height: '14px', cursor: disabled ? 'not-allowed' : 'pointer' }}
-              />
-              {person.last_name}, {person.first_name}
-            </label>
-          );
-        })}
+        {columns.map((col, colIdx) => (
+          <div key={colIdx} style={{ flex: 1, minWidth: 0 }}>
+            {col.map(person => renderPerson(person))}
+          </div>
+        ))}
       </div>
 
       {sortedPersonnel.length === 0 && (
