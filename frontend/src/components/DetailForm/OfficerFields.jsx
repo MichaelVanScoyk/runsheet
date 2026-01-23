@@ -4,7 +4,7 @@
  * Simpler than RunSheet's OfficerSection - only needs completed_by.
  */
 
-export default function OfficerFields({ completedBy, personnel, onChange }) {
+export default function OfficerFields({ completedBy, personnel, onChange, disabled }) {
   // Sort personnel by name for dropdown
   const sortedPersonnel = [...personnel].sort((a, b) => 
     `${a.last_name}, ${a.first_name}`.localeCompare(`${b.last_name}, ${b.first_name}`)
@@ -19,6 +19,7 @@ export default function OfficerFields({ completedBy, personnel, onChange }) {
           value={completedBy || ''}
           onChange={(e) => onChange(e.target.value ? parseInt(e.target.value) : null)}
           className="form-control"
+          disabled={disabled}
         >
           <option value="">Select person...</option>
           {sortedPersonnel.map(p => (

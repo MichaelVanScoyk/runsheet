@@ -4,7 +4,7 @@
  * Shows: Date, Detail Type dropdown, Location, Start/End times
  */
 
-export default function DetailHeader({ formData, detailTypes, incidentDate, onChange }) {
+export default function DetailHeader({ formData, detailTypes, incidentDate, onChange, disabled }) {
   return (
     <div className="bg-dark-hover rounded-lg p-4">
       <h3 className="text-sm font-medium text-gray-300 mb-3">Event Details</h3>
@@ -28,6 +28,7 @@ export default function DetailHeader({ formData, detailTypes, incidentDate, onCh
             value={formData.detail_type || ''}
             onChange={(e) => onChange('detail_type', e.target.value)}
             className="form-control"
+            disabled={disabled}
           >
             <option value="">Select type...</option>
             {detailTypes.map(dt => (
@@ -47,6 +48,7 @@ export default function DetailHeader({ formData, detailTypes, incidentDate, onCh
             onChange={(e) => onChange('address', e.target.value)}
             placeholder="Station 48"
             className="form-control"
+            disabled={disabled}
           />
         </div>
 
@@ -58,6 +60,7 @@ export default function DetailHeader({ formData, detailTypes, incidentDate, onCh
             value={formData.time_event_start || ''}
             onChange={(e) => onChange('time_event_start', e.target.value)}
             className="form-control"
+            disabled={disabled}
           />
         </div>
 
@@ -69,6 +72,7 @@ export default function DetailHeader({ formData, detailTypes, incidentDate, onCh
             value={formData.time_event_end || ''}
             onChange={(e) => onChange('time_event_end', e.target.value)}
             className="form-control"
+            disabled={disabled}
           />
         </div>
       </div>

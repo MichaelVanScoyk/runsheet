@@ -2,7 +2,7 @@
  * NotesSection - Narrative/notes field for attendance records
  */
 
-export default function NotesSection({ narrative, onChange }) {
+export default function NotesSection({ narrative, onChange, disabled }) {
   return (
     <div className="bg-dark-hover rounded-lg p-4">
       <h3 className="text-sm font-medium text-gray-300 mb-3">Notes</h3>
@@ -13,6 +13,7 @@ export default function NotesSection({ narrative, onChange }) {
         rows={4}
         placeholder="Optional notes about this event..."
         className="form-control w-full resize-none"
+        disabled={disabled}
       />
     </div>
   );

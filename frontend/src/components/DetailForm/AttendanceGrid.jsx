@@ -10,7 +10,7 @@
 import { useMemo, useState } from 'react';
 import { quickAddPersonnel } from '../../api';
 
-export default function AttendanceGrid({ personnel, attendees, onToggle, onPersonnelAdded }) {
+export default function AttendanceGrid({ personnel, attendees, onToggle, onPersonnelAdded, disabled }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -40,6 +40,8 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onPerso
   const totalCount = personnel.length;
 
   const handleQuickAdd = async () => {
+    if (disabled) return;
+    
     const first = firstName.trim();
     const last = lastName.trim();
     
@@ -135,18 +137,20 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onPerso
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: '6px', 
-                cursor: 'pointer',
+                cursor: disabled ? 'not-allowed' : 'pointer',
                 padding: '2px 0',
                 fontSize: '13px',
                 color: isPresent ? '#16a34a' : '#333',
-                fontWeight: isPresent ? '500' : 'normal'
+                fontWeight: isPresent ? '500' : 'normal',
+                opacity: disabled ? 0.7 : 1
               }}
             >
               <input
                 type="checkbox"
                 checked={isPresent}
-                onChange={() => onToggle(person.id)}
-                style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                onChange={() => !disabled && onToggle(person.id)}
+                disabled={disabled}
+                style={{ width: '14px', height: '14px', cursor: disabled ? 'not-allowed' : 'pointer' }}
               />
               {person.last_name}, {person.first_name}
             </label>
@@ -160,44 +164,46 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onPerso
         </div>
       )}
 
-      {/* Quick add */}
-      <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #ddd' }}>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <input
-            type="text"
-            value={firstName}
-            onChange={(e) => { setFirstName(e.target.value); setQuickAddError(''); }}
-            placeholder="First Name"
-            style={{ fontSize: '12px', padding: '4px 8px', width: '120px', border: '1px solid #ccc', borderRadius: '4px' }}
-          />
-          <input
-            type="text"
-            value={lastName}
-            onChange={(e) => { setLastName(e.target.value); setQuickAddError(''); }}
-            onKeyDown={(e) => e.key === 'Enter' && handleQuickAdd()}
-            placeholder="Last Name"
-            style={{ fontSize: '12px', padding: '4px 8px', width: '120px', border: '1px solid #ccc', borderRadius: '4px' }}
-          />
-          <button
-            onClick={handleQuickAdd}
-            disabled={quickAddLoading || !firstName.trim()}
-            style={{ 
-              fontSize: '12px', 
-              padding: '4px 12px', 
-              background: quickAddLoading || !firstName.trim() ? '#9ca3af' : '#2563eb', 
-              color: '#fff', 
-              border: 'none', 
-              borderRadius: '4px', 
-              cursor: quickAddLoading || !firstName.trim() ? 'default' : 'pointer' 
-            }}
-          >
-            {quickAddLoading ? '...' : 'Add'}
-          </button>
+      {/* Quick add - hidden when disabled */}
+      {!disabled && (
+        <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #ddd' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <input
+              type="text"
+              value={firstName}
+              onChange={(e) => { setFirstName(e.target.value); setQuickAddError(''); }}
+              placeholder="First Name"
+              style={{ fontSize: '12px', padding: '4px 8px', width: '120px', border: '1px solid #ccc', borderRadius: '4px' }}
+            />
+            <input
+              type="text"
+              value={lastName}
+              onChange={(e) => { setLastName(e.target.value); setQuickAddError(''); }}
+              onKeyDown={(e) => e.key === 'Enter' && handleQuickAdd()}
+              placeholder="Last Name"
+              style={{ fontSize: '12px', padding: '4px 8px', width: '120px', border: '1px solid #ccc', borderRadius: '4px' }}
+            />
+            <button
+              onClick={handleQuickAdd}
+              disabled={quickAddLoading || !firstName.trim()}
+              style={{ 
+                fontSize: '12px', 
+                padding: '4px 12px', 
+                background: quickAddLoading || !firstName.trim() ? '#9ca3af' : '#2563eb', 
+                color: '#fff', 
+                border: 'none', 
+                borderRadius: '4px', 
+                cursor: quickAddLoading || !firstName.trim() ? 'default' : 'pointer' 
+              }}
+            >
+              {quickAddLoading ? '...' : 'Add'}
+            </button>
+          </div>
+          {quickAddError && (
+            <div style={{ fontSize: '12px', color: '#ca8a04', marginTop: '4px' }}>{quickAddError}</div>
+          )}
         </div>
-        {quickAddError && (
-          <div style={{ fontSize: '12px', color: '#ca8a04', marginTop: '4px' }}>{quickAddError}</div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
