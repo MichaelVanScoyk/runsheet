@@ -402,6 +402,9 @@ class IncidentUpdate(BaseModel):
     internal_incident_number: Optional[str] = None  # Admin can update this
     cad_event_number: Optional[str] = None  # Admin can update this
     
+    # Incident date - editable for DETAIL records (backdating)
+    incident_date: Optional[str] = None  # YYYY-MM-DD
+    
     # CAD fields (informational, not sent to NERIS)
     cad_event_type: Optional[str] = None
     cad_event_subtype: Optional[str] = None
@@ -1450,7 +1453,7 @@ async def update_incident(
     update_data = data.model_dump(exclude_unset=True)
     
     # IMMUTABLE FIELDS - cannot change after creation (admin can change via unlock)
-    # Note: internal_incident_number and cad_event_number CAN be changed by admin
+    # Note: internal_incident_number, cad_event_number, and incident_date CAN be changed
     IMMUTABLE_FIELDS = ['created_at', 'neris_id']
     for field in IMMUTABLE_FIELDS:
         update_data.pop(field, None)

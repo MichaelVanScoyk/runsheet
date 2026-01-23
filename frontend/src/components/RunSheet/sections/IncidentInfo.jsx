@@ -123,14 +123,27 @@ export default function IncidentInfo() {
       <div className="flex flex-col gap-0.5">
         <label className="text-gray-400 text-xs flex items-center gap-1">
           Incident Date
-          {isLocked && <span className="text-[10px]" title="Cannot change after creation">🔒</span>}
+          {isLocked && (
+            isAdmin ? (
+              <button
+                type="button"
+                onClick={() => toggleUnlock('incident_date')}
+                className="text-[10px] hover:text-yellow-400 transition-colors"
+                title={unlockedFields.incident_date ? "Lock field" : "Admin: Click to unlock"}
+              >
+                {unlockedFields.incident_date ? '🔓' : '🔒'}
+              </button>
+            ) : (
+              <span className="text-[10px]" title="Cannot change after creation">🔒</span>
+            )
+          )}
         </label>
         <input 
           type="date" 
           value={formData.incident_date} 
           onChange={(e) => handleChange('incident_date', e.target.value)} 
-          disabled={isLocked}
-          className={isLocked ? 'opacity-60' : ''}
+          disabled={isFieldLocked('incident_date')}
+          className={isFieldLocked('incident_date') ? 'opacity-60' : ''}
         />
       </div>
       
