@@ -18,7 +18,8 @@ import {
   getAttendance,
   saveAttendance,
   getUserSession,
-  getIncidentAuditLog
+  getIncidentAuditLog,
+  deleteIncident
 } from '../../api';
 import { formatDateTimeLocal } from '../../utils/timeUtils';
 import DetailHeader from './DetailHeader';
@@ -40,6 +41,11 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
   const [error, setError] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
   
+  // Delete state
+  const [deleteUnlocked, setDeleteUnlocked] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  
   // Audit log state
   const [auditLog, setAuditLog] = useState([]);
   const [showFullAuditLog, setShowFullAuditLog] = useState(false);
@@ -60,6 +66,9 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
   const userSession = getUserSession();
   const currentUserId = userSession?.personnel_id;
   const canEdit = userSession && userSession.is_approved;
+  const isAdmin = userSession?.role === 'ADMIN';
+  const isOfficer = userSession?.role === 'OFFICER' || isAdmin;
+  const canDelete = isOfficer && incident?.id && deleteUnlocked;
 
   // Close audit log when clicking outside
   useEffect(() => {
@@ -229,6 +238,22 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
     }
   };
 
+  // Delete handler
+  const handleDelete = async () => {
+    if (!incident?.id || !canDelete) return;
+    setDeleting(true);
+    try {
+      await deleteIncident(incident.id);
+      setShowDeleteConfirm(false);
+      if (onClose) onClose();
+    } catch (err) {
+      console.error('Failed to delete:', err);
+      alert('Failed to delete: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // Save and close
   const handleSaveAndClose = async () => {
     await handleSave();
@@ -363,6 +388,18 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
           >
             {saving ? 'Saving...' : 'Save & Close'}
           </button>
+          
+          {/* Delete button - only visible when unlocked */}
+          {canDelete && (
+            <button 
+              className="btn btn-danger" 
+              onClick={() => setShowDeleteConfirm(true)} 
+              disabled={saving || deleting}
+              title="Permanently delete this record"
+            >
+              Delete
+            </button>
+          )}
         </div>
       </div>
 
@@ -442,8 +479,20 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
           DETAIL
         </span>
         
-        <h1 className="text-xl font-semibold text-white">
+        <h1 className="text-xl font-semibold text-white flex items-center gap-2">
           {incident?.internal_incident_number || 'New Record'}
+          
+          {/* Lock icon for officers/admins to unlock delete */}
+          {incident?.id && isOfficer && (
+            <button
+              type="button"
+              onClick={() => setDeleteUnlocked(!deleteUnlocked)}
+              className="text-sm hover:text-yellow-400 transition-colors"
+              title={deleteUnlocked ? "Lock (hide delete)" : "Officer: Click to unlock delete"}
+            >
+              {deleteUnlocked ? '🔓' : '🔒'}
+            </button>
+          )}
         </h1>
         
         <span className="text-gray-400">
@@ -494,6 +543,37 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
           disabled={!canEdit}
         />
       </div>
+      
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Record?</h3>
+            <p className="text-gray-700 mb-4">
+              Are you sure you want to permanently delete <strong>{incident?.internal_incident_number}</strong>?
+            </p>
+            <p className="text-red-600 text-sm mb-4 font-medium">
+              ⚠️ This action is unrecoverable. The record and all attendance data will be permanently removed.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-danger" 
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
