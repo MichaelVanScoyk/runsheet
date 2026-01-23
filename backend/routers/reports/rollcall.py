@@ -355,9 +355,10 @@ def _generate_rollcall_css(branding: dict) -> str:
         }}
         
         .signature-section {{
-            margin-top: 24px;
-            padding-top: 12px;
-            border-top: 1px {border_style} #ddd;
+            position: fixed;
+            bottom: 0.6in;
+            left: 0.75in;
+            right: 0.3in;
         }}
         
         .signature-row {{
