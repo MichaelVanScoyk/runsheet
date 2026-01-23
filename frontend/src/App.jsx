@@ -384,43 +384,41 @@ function AppContent({ tenant, onTenantLogout }) {
             />
           )}
           <span style={{ fontSize: '0.85rem', color: branding.primaryColor }}>{branding.stationName || tenant?.name || 'Fire Department'}</span>
-          {/* Tenant logout - subtle, only shown when user is logged in */}
-          {userSession && (
-            <button 
-              onClick={onTenantLogout}
-              style={{ 
-                background: 'none', 
-                border: 'none', 
-                color: '#999', 
-                cursor: 'pointer',
-                fontSize: '0.7rem',
-                padding: '2px 0',
-                marginTop: '4px'
-              }}
-              title="Switch department"
-            >
-              {tenant?.slug} ✕
-            </button>
-          )}
-        </div>
-        
-        {/* Sound Alerts Toggle - simple on/off */}
-        <div 
-          onClick={handleToggleAVAlerts}
-          style={{ 
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '6px 12px',
-            fontSize: '0.85rem',
-            color: avAlertsEnabled ? branding.primaryColor : '#666',
+          
+          {/* Tenant logout - subtle */}
+          <button 
+            onClick={onTenantLogout}
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              color: '#888', 
+              cursor: 'pointer',
+              fontSize: '0.7rem',
+              padding: '4px 0',
+              marginTop: '4px'
+            }}
+            title="Switch department"
+          >
+            Logout {tenant?.slug}
+          </button>
+          
+          {/* Dispatch Sound toggle */}
+          <label style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '6px',
+            fontSize: '0.8rem',
+            color: '#666',
             cursor: 'pointer',
-            marginBottom: '0.5rem'
-          }}
-          title={avAlertsEnabled ? 'Sound alerts enabled - click to disable' : 'Sound alerts disabled - click to enable'}
-        >
-          <span>{avAlertsEnabled ? '🔔' : '🔕'}</span>
-          <span>Sound Alerts {avAlertsEnabled ? (avConnected ? 'On' : '...') : 'Off'}</span>
+            marginTop: '8px'
+          }}>
+            <input
+              type="checkbox"
+              checked={avAlertsEnabled}
+              onChange={handleToggleAVAlerts}
+            />
+            Dispatch Sound
+          </label>
         </div>
         
         {/* User session / login area */}
