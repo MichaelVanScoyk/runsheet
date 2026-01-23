@@ -191,6 +191,20 @@ def _generate_rollcall_css(branding: dict) -> str:
             margin-left: 8px;
         }}
         
+        .attendance-list-columns {{
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            column-count: 3;
+            column-gap: 24px;
+        }}
+        
+        .attendance-list-columns li {{
+            padding: 2px 0;
+            font-size: 9pt;
+            break-inside: avoid;
+        }}
+        
         .attendance-layout {{
             display: flex;
             gap: 16px;
@@ -449,44 +463,18 @@ def _render_rollcall_body(data: dict, branding: dict) -> str:
         ''')
     parts.append('</div>')
     
-    # Attendance section - Officers (1/3 width) | Members (2/3 width, multi-column)
-    # Officers = display_order <= 5 (Lt and up), Members = everyone else
-    officers = [p for p in attendees if (p.get('display_order') or 999) <= 5]
-    members = [p for p in attendees if (p.get('display_order') or 999) > 5]
+    # Attendance section - simple multi-column list, alphabetical by last name
+    sorted_attendees = sorted(attendees, key=lambda p: (p.get('last_name', '').lower(), p.get('first_name', '').lower()))
     
     parts.append('<div class="attendance-section">')
     parts.append(f'<div class="attendance-header">Attendance<span class="attendance-count">({len(attendees)} personnel)</span></div>')
     
-    if attendees:
-        parts.append('<div class="attendance-layout">')
-        
-        # Officers column (1/3 width)
-        parts.append('<div class="officers-column">')
-        parts.append('<div class="column-header">Officers</div>')
-        if officers:
-            parts.append('<ul class="attendance-list">')
-            for person in officers:
-                name = f"{person.get('last_name', '')}, {person.get('first_name', '')}"
-                parts.append(f'<li>{name}</li>')
-            parts.append('</ul>')
-        else:
-            parts.append('<p class="no-attendance">None</p>')
-        parts.append('</div>')
-        
-        # Members column (2/3 width, CSS columns for overflow)
-        parts.append('<div class="members-column">')
-        parts.append('<div class="column-header">Members</div>')
-        if members:
-            parts.append('<ul class="members-list">')
-            for person in members:
-                name = f"{person.get('last_name', '')}, {person.get('first_name', '')}"
-                parts.append(f'<li>{name}</li>')
-            parts.append('</ul>')
-        else:
-            parts.append('<p class="no-attendance">None</p>')
-        parts.append('</div>')
-        
-        parts.append('</div>')
+    if sorted_attendees:
+        parts.append('<ul class="attendance-list-columns">')
+        for person in sorted_attendees:
+            name = f"{person.get('last_name', '')}, {person.get('first_name', '')}"
+            parts.append(f'<li>{name}</li>')
+        parts.append('</ul>')
     else:
         parts.append('<p style="color: #666; font-style: italic;">No attendance recorded.</p>')
     
