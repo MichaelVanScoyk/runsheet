@@ -137,12 +137,17 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
     }
   }, [incidentId]);
 
-  // Format ISO datetime to datetime-local input format
+  // Format ISO datetime to datetime-local input format (local time)
   const formatForInput = (isoString) => {
     if (!isoString) return '';
     const date = new Date(isoString);
-    // Format as YYYY-MM-DDTHH:MM for datetime-local input
-    return date.toISOString().slice(0, 16);
+    // Format as YYYY-MM-DDTHH:MM in LOCAL time for datetime-local input
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
   // Handle form field changes

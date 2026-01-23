@@ -431,6 +431,13 @@ class IncidentUpdate(BaseModel):
     time_last_cleared: Optional[datetime] = None
     time_in_service: Optional[datetime] = None
     
+    # Scheduled event times (DETAIL records)
+    time_event_start: Optional[datetime] = None
+    time_event_end: Optional[datetime] = None
+    
+    # Detail type (DETAIL records only)
+    detail_type: Optional[str] = None
+    
     # Tactic timestamps (fire incidents)
     time_command_established: Optional[datetime] = None
     time_sizeup_completed: Optional[datetime] = None
@@ -1166,6 +1173,10 @@ async def get_incident(
         "time_first_on_scene": format_utc_iso(incident.time_first_on_scene),
         "time_last_cleared": format_utc_iso(incident.time_last_cleared),
         "time_in_service": format_utc_iso(incident.time_in_service),
+        
+        # Scheduled event times (DETAIL records)
+        "time_event_start": format_utc_iso(incident.time_event_start),
+        "time_event_end": format_utc_iso(incident.time_event_end),
         
         # Tactic timestamps - ALL UTC with Z suffix
         "time_command_established": iso_or_none(incident, 'time_command_established'),
