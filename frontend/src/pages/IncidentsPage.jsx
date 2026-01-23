@@ -48,7 +48,7 @@ function isRollCallDetail(incident) {
   return !!incident.detail_type;
 }
 
-function IncidentsPage() {
+function IncidentsPage({ userSession }) {
   const branding = useBranding();
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -672,8 +672,9 @@ function IncidentsPage() {
             <button 
               className="btn btn-primary" 
               onClick={handleNewRecordClick}
-              disabled={creatingRecord}
-              title="Create a new incident or attendance record"
+              disabled={creatingRecord || !userSession}
+              title={!userSession ? 'Log in to create records' : 'Create a new incident or attendance record'}
+              style={!userSession ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
             >
               {creatingRecord ? 'Creating...' : '+ New Record ▾'}
             </button>
