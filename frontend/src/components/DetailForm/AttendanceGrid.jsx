@@ -2,7 +2,8 @@
  * AttendanceGrid - Personnel checklist for attendance tracking
  * 
  * Shows all active personnel with toggle checkboxes.
- * Compact layout: ranked personnel first (alpha), then unranked (alpha).
+ * Columns with checkbox in front of name.
+ * Ranked personnel first (alpha), then unranked (alpha).
  * Includes quick-add for new personnel.
  */
 
@@ -28,11 +29,9 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onMarkA
         const aHasRank = a.rank_id != null;
         const bHasRank = b.rank_id != null;
         
-        // Ranked first
         if (aHasRank && !bHasRank) return -1;
         if (!aHasRank && bHasRank) return 1;
         
-        // Within same group, alpha by last name
         return `${a.last_name}, ${a.first_name}`.localeCompare(`${b.last_name}, ${b.first_name}`);
       });
   }, [personnel, searchTerm]);
@@ -40,7 +39,6 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onMarkA
   const presentCount = attendees.length;
   const totalCount = personnel.length;
 
-  // Quick add handler
   const handleQuickAdd = async () => {
     const first = firstName.trim();
     const last = lastName.trim();
@@ -75,77 +73,88 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onMarkA
   };
 
   return (
-    <div className="bg-dark-hover rounded-lg p-3">
+    <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px' }}>
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">
-            {presentCount}/{totalCount} present
-          </span>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+        <span style={{ fontSize: '12px', color: '#666' }}>
+          {presentCount}/{totalCount} present
+        </span>
         
-        <div className="flex items-center gap-2">
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Filter..."
-            className="form-control text-xs py-1 px-2 w-28"
+            style={{ fontSize: '12px', padding: '4px 8px', width: '100px', border: '1px solid #ccc', borderRadius: '4px' }}
           />
           <button
             onClick={onMarkAll}
-            className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+            style={{ fontSize: '12px', padding: '4px 10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
           >
             All
           </button>
           <button
             onClick={onClearAll}
-            className="text-xs px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600"
+            style={{ fontSize: '12px', padding: '4px 10px', background: '#6b7280', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
           >
             Clear
           </button>
         </div>
       </div>
 
-      {/* Compact personnel list */}
-      <div className="flex flex-wrap gap-x-4 gap-y-0.5 max-h-64 overflow-y-auto">
+      {/* Personnel columns */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(4, 1fr)', 
+        gap: '2px 16px',
+        maxHeight: '280px',
+        overflowY: 'auto'
+      }}>
         {sortedPersonnel.map(person => {
           const isPresent = attendees.includes(person.id);
           
           return (
             <label
               key={person.id}
-              className="flex items-center gap-1 cursor-pointer whitespace-nowrap"
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '6px', 
+                cursor: 'pointer',
+                padding: '2px 0',
+                fontSize: '13px',
+                color: isPresent ? '#16a34a' : '#333',
+                fontWeight: isPresent ? '500' : 'normal'
+              }}
             >
               <input
                 type="checkbox"
                 checked={isPresent}
                 onChange={() => onToggle(person.id)}
-                className="h-3 w-3"
+                style={{ width: '14px', height: '14px', cursor: 'pointer' }}
               />
-              <span className={`text-xs ${isPresent ? 'text-green-400 font-medium' : 'text-gray-400'}`}>
-                {person.last_name}, {person.first_name}
-              </span>
+              {person.last_name}, {person.first_name}
             </label>
           );
         })}
-
-        {sortedPersonnel.length === 0 && (
-          <div className="text-xs text-gray-500 py-2">
-            {searchTerm ? 'No match' : 'No personnel'}
-          </div>
-        )}
       </div>
 
+      {sortedPersonnel.length === 0 && (
+        <div style={{ fontSize: '12px', color: '#999', padding: '8px 0' }}>
+          {searchTerm ? 'No match' : 'No personnel'}
+        </div>
+      )}
+
       {/* Quick add */}
-      <div className="mt-3 pt-2 border-t border-dark-border">
-        <div className="flex items-center gap-2">
+      <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #ddd' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <input
             type="text"
             value={firstName}
             onChange={(e) => { setFirstName(e.target.value); setQuickAddError(''); }}
             placeholder="First Name"
-            className="form-control text-xs py-1 px-2 w-28"
+            style={{ fontSize: '12px', padding: '4px 8px', width: '120px', border: '1px solid #ccc', borderRadius: '4px' }}
           />
           <input
             type="text"
@@ -153,18 +162,26 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onMarkA
             onChange={(e) => { setLastName(e.target.value); setQuickAddError(''); }}
             onKeyDown={(e) => e.key === 'Enter' && handleQuickAdd()}
             placeholder="Last Name"
-            className="form-control text-xs py-1 px-2 w-28"
+            style={{ fontSize: '12px', padding: '4px 8px', width: '120px', border: '1px solid #ccc', borderRadius: '4px' }}
           />
           <button
             onClick={handleQuickAdd}
             disabled={quickAddLoading || !firstName.trim()}
-            className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            style={{ 
+              fontSize: '12px', 
+              padding: '4px 12px', 
+              background: quickAddLoading || !firstName.trim() ? '#9ca3af' : '#2563eb', 
+              color: '#fff', 
+              border: 'none', 
+              borderRadius: '4px', 
+              cursor: quickAddLoading || !firstName.trim() ? 'default' : 'pointer' 
+            }}
           >
             {quickAddLoading ? '...' : 'Add'}
           </button>
         </div>
         {quickAddError && (
-          <div className="text-xs text-yellow-400 mt-1">{quickAddError}</div>
+          <div style={{ fontSize: '12px', color: '#ca8a04', marginTop: '4px' }}>{quickAddError}</div>
         )}
       </div>
     </div>
