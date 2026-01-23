@@ -683,8 +683,8 @@ function IncidentsPage() {
                 top: '100%',
                 right: 0,
                 marginTop: '4px',
-                backgroundColor: '#1e293b',
-                border: '1px solid #334155',
+                backgroundColor: branding.primaryColor,
+                border: `1px solid ${branding.primaryHover}`,
                 borderRadius: '6px',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                 zIndex: 100,
@@ -700,16 +700,16 @@ function IncidentsPage() {
                     textAlign: 'left',
                     backgroundColor: 'transparent',
                     border: 'none',
-                    borderBottom: '1px solid #334155',
+                    borderBottom: `1px solid ${branding.primaryHover}`,
                     color: '#fff',
                     cursor: 'pointer',
                     fontSize: '0.9rem',
                   }}
-                  onMouseOver={(e) => e.target.style.backgroundColor = '#334155'}
+                  onMouseOver={(e) => e.target.style.backgroundColor = branding.primaryHover}
                   onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
                 >
                   Fire Incident
-                  <span style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', marginTop: '2px' }}>
                     Manual fire/rescue report
                   </span>
                 </button>
@@ -723,16 +723,16 @@ function IncidentsPage() {
                     textAlign: 'left',
                     backgroundColor: 'transparent',
                     border: 'none',
-                    borderBottom: '1px solid #334155',
+                    borderBottom: `1px solid ${branding.primaryHover}`,
                     color: '#fff',
                     cursor: 'pointer',
                     fontSize: '0.9rem',
                   }}
-                  onMouseOver={(e) => e.target.style.backgroundColor = '#334155'}
+                  onMouseOver={(e) => e.target.style.backgroundColor = branding.primaryHover}
                   onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
                 >
                   EMS Incident
-                  <span style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', marginTop: '2px' }}>
                     Manual medical report
                   </span>
                 </button>
@@ -750,11 +750,11 @@ function IncidentsPage() {
                     cursor: 'pointer',
                     fontSize: '0.9rem',
                   }}
-                  onMouseOver={(e) => e.target.style.backgroundColor = '#334155'}
+                  onMouseOver={(e) => e.target.style.backgroundColor = branding.primaryHover}
                   onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
                 >
                   Attendance Record
-                  <span style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', marginTop: '2px' }}>
                     Meeting, worknight, training, drill
                   </span>
                 </button>
