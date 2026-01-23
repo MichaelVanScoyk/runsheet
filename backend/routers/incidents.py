@@ -761,7 +761,9 @@ async def list_incidents(
         # When filtered to one category, order by incident number
         query = query.order_by(Incident.internal_incident_number.desc())
     else:
-        # When showing ALL, order by date/time (chronological, newest first)
+        # When showing "ALL" (Fire/EMS), exclude DETAIL records
+        query = query.filter(Incident.call_category.in_(['FIRE', 'EMS']))
+        # Order by date/time (chronological, newest first)
         query = query.order_by(Incident.incident_date.desc(), Incident.time_dispatched.desc(), Incident.created_at.desc())
     
     total = query.count()

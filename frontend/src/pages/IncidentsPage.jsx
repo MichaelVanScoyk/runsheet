@@ -772,7 +772,7 @@ function IncidentsPage() {
         </select>
         
         <div style={{ display: 'flex', gap: '0.25rem' }}>
-          <button className={`btn btn-sm ${categoryFilter === 'ALL' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('ALL')} style={{ minWidth: '60px' }}>All</button>
+          <button className={`btn btn-sm ${categoryFilter === 'ALL' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('ALL')} style={{ minWidth: '60px' }}>Fire/EMS</button>
           <button className={`btn btn-sm ${categoryFilter === 'FIRE' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('FIRE')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined, borderColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined }}>Fire</button>
           <button className={`btn btn-sm ${categoryFilter === 'EMS' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('EMS')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'EMS' ? '#3498db' : undefined, borderColor: categoryFilter === 'EMS' ? '#3498db' : undefined }}>EMS</button>
           <button className={`btn btn-sm ${categoryFilter === 'DETAIL' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('DETAIL')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'DETAIL' ? '#6b7280' : undefined, borderColor: categoryFilter === 'DETAIL' ? '#6b7280' : undefined }} title="Training exercises and special assignments">Detail</button>
