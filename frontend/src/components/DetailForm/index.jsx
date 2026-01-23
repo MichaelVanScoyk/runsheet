@@ -452,6 +452,17 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
             {attendees.length} / {personnel.length} present
           </span>
           
+          {/* Print button - only for saved records */}
+          {!isNew && currentIncidentId && (
+            <button
+              onClick={() => window.open(`/api/reports/pdf/rollcall/${currentIncidentId}`, '_blank')}
+              className="btn btn-secondary"
+              title="Print attendance report"
+            >
+              🖨️ Print
+            </button>
+          )}
+          
           <button 
             className="btn btn-secondary" 
             onClick={handleClose} 

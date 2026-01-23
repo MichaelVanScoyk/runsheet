@@ -454,8 +454,14 @@ function IncidentsPage({ userSession }) {
     }
   };
 
-  const handlePrintIncident = (incidentId) => {
-    window.open(`/api/reports/pdf/incident/${incidentId}`, '_blank');
+  const handlePrintIncident = (incident) => {
+    // Route to roll call report for attendance records, incident report for everything else
+    if (incident.call_category === 'DETAIL' && incident.cad_event_subtype) {
+      // cad_event_subtype is synced with detail_type for roll call records
+      window.open(`/api/reports/pdf/rollcall/${incident.id}`, '_blank');
+    } else {
+      window.open(`/api/reports/pdf/incident/${incident.id}`, '_blank');
+    }
   };
 
   const handleFormClose = () => { 
@@ -796,7 +802,7 @@ function IncidentsPage({ userSession }) {
                     <td><span className={`badge badge-${i.status?.toLowerCase()}`}>{i.status}</span>{getComCatStatusDot(i.comcat_status)}</td>
                     <td onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: '0.25rem' }}>
-                        <button className="btn btn-secondary btn-sm" onClick={() => handlePrintIncident(i.id)}>Print</button>
+                        <button className="btn btn-secondary btn-sm" onClick={() => handlePrintIncident(i)}>Print</button>
                         <button className="btn btn-secondary btn-sm" onClick={() => handleEditIncident(i)} disabled={loadingIncident}>Edit</button>
                       </div>
                     </td>
