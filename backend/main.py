@@ -28,6 +28,8 @@ PUBLIC_PATHS = [
     "/api/master/login",
     "/api/master/logout",
     "/api/master/me",
+    # AV alerts settings (read-only, needed by StationBell ESP32 devices)
+    "/api/settings/av-alerts",
 ]
 
 # Path prefixes that don't require tenant auth (for dynamic routes)
@@ -36,6 +38,8 @@ PUBLIC_PATH_PREFIXES = [
     "/api/personnel/auth/accept-invite",
     "/api/personnel/auth/validate-reset/",
     "/api/personnel/auth/complete-reset",
+    # AV alert sound files (needed by StationBell ESP32 devices)
+    "/api/settings/av-alerts/sound/",
 ]
 
 
