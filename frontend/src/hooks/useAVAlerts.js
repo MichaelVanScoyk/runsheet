@@ -65,6 +65,50 @@ export function useAVAlerts({
   // Audio elements (created once, reused)
   const audioRefs = useRef({});
   
+  // Function to reload a specific sound from server
+  const reloadSound = useCallback((soundType) => {
+    // Map sound_type from backend to our internal keys and settings keys
+    const soundTypeMap = {
+      'dispatch_fire': { key: 'dispatch_fire', settingsKey: 'dispatch_fire_sound' },
+      'dispatch_ems': { key: 'dispatch_ems', settingsKey: 'dispatch_ems_sound' },
+      'close': { key: 'close', settingsKey: 'close_sound' },
+    };
+    
+    const mapping = soundTypeMap[soundType];
+    if (!mapping) {
+      console.warn(`Unknown sound type: ${soundType}`);
+      return;
+    }
+    
+    // Fetch fresh settings to get the new URL
+    fetch('/api/settings/av-alerts')
+      .then(res => res.json())
+      .then(data => {
+        const newUrl = data[mapping.settingsKey];
+        if (newUrl) {
+          // Add cache-busting query param to force reload
+          const urlWithCacheBust = `${newUrl}${newUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`;
+          console.log(`AV Alerts: Reloading ${soundType} from ${urlWithCacheBust}`);
+          
+          const audio = new Audio(urlWithCacheBust);
+          audio.preload = 'auto';
+          audioRefs.current[mapping.key] = audio;
+          
+          // Update settings state so UI reflects change
+          setSettings(data);
+        }
+      })
+      .catch(err => {
+        console.warn(`Failed to reload sound ${soundType}:`, err);
+      });
+  }, []);
+  
+  // Store reloadSound in ref for WebSocket handler access
+  const reloadSoundRef = useRef(reloadSound);
+  useEffect(() => {
+    reloadSoundRef.current = reloadSound;
+  }, [reloadSound]);
+  
   // Store callback in ref
   const onAlertRef = useRef(onAlert);
   useEffect(() => {
@@ -291,9 +335,11 @@ export function useAVAlerts({
             break;
           
           case 'sound_updated':
-            // StationBell notification - browser ignores this
-            // (StationBell ESP32 devices use this to re-download sounds)
-            console.log(`AV Alerts: Sound updated notification for ${data.sound_type} (ignored by browser)`);
+            // Admin updated a sound - reload it
+            console.log(`AV Alerts: Sound updated notification for ${data.sound_type}`);
+            if (data.sound_type && reloadSoundRef.current) {
+              reloadSoundRef.current(data.sound_type);
+            }
             break;
             
           default:
