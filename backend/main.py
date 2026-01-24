@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 from routers import incidents, lookups, apparatus, personnel, settings, neris_codes, admin, backup, tenant_auth, master_admin
-from routers import branding, print_layout, comcat, websocket, analytics, review_tasks, analytics_v2, detail_types
+from routers import branding, print_layout, comcat, websocket, analytics, review_tasks, analytics_v2, detail_types, test_alerts
 from routers.reports import router as reports_router
 from database import engine, Base
 from master_database import MasterSessionLocal
@@ -265,6 +265,7 @@ app.include_router(analytics.router)  # Analytics has its own prefix: /api/analy
 app.include_router(analytics_v2.router)  # Analytics V2 has its own prefix: /api/analytics/v2
 app.include_router(review_tasks.router, prefix="/api/review-tasks", tags=["Review Tasks"])
 app.include_router(detail_types.router, prefix="/api/detail-types", tags=["Detail Types"])
+app.include_router(test_alerts.router, prefix="/api/test-alerts", tags=["Test Alerts"])
 
 @app.get("/")
 async def root():
