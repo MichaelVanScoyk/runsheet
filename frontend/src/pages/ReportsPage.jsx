@@ -34,6 +34,7 @@ function ReportsPage() {
   const [personnelData, setPersonnelData] = useState(null);
   const [unitData, setUnitData] = useState(null);
   const [incidentsData, setIncidentsData] = useState(null);
+  const [detailsData, setDetailsData] = useState(null);
   const [trendData, setTrendData] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -83,6 +84,7 @@ function ReportsPage() {
     else if (activeReport === 'personnel') loadPersonnelData();
     else if (activeReport === 'units') loadUnitsData();
     else if (activeReport === 'incidents') loadIncidentsData();
+    else if (activeReport === 'details') loadDetailsData();
   }, [activeReport, startDate, endDate, categoryFilter]);
 
   // ==========================================================================
@@ -146,6 +148,16 @@ function ReportsPage() {
     finally { setLoading(false); }
   };
 
+  const loadDetailsData = async () => {
+    setLoading(true);
+    try {
+      const params = `start_date=${startDate}&end_date=${endDate}&limit=50`;
+      const res = await fetch(`${API_BASE}/api/reports/admin/details?${params}`);
+      setDetailsData(await res.json());
+    } catch (err) { console.error('Failed to load details data:', err); }
+    finally { setLoading(false); }
+  };
+
   // ==========================================================================
   // PDF OPENERS
   // ==========================================================================
@@ -164,6 +176,10 @@ function ReportsPage() {
 
   const openIncidentsPdf = () => {
     window.open(`${API_BASE}/api/reports/admin/incidents/pdf?start_date=${startDate}&end_date=${endDate}`, '_blank');
+  };
+
+  const openDetailsPdf = () => {
+    window.open(`${API_BASE}/api/reports/admin/details/pdf?start_date=${startDate}&end_date=${endDate}`, '_blank');
   };
 
   // ==========================================================================
@@ -403,6 +419,7 @@ function ReportsPage() {
             { id: 'personnel', label: '👥 Personnel' },
             { id: 'units', label: '🚒 Units' },
             { id: 'incidents', label: '🔥 Incidents' },
+            { id: 'details', label: '📝 Details' },
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveReport(tab.id)}
               style={{ ...s.btn, ...s.btnSmall, ...(activeReport === tab.id ? s.btnGreen : s.btnGray) }}>
@@ -431,7 +448,7 @@ function ReportsPage() {
         )}
         
         {/* Date range controls for other tabs */}
-        {['overview', 'personnel', 'units', 'incidents'].includes(activeReport) && (
+        {['overview', 'personnel', 'units', 'incidents', 'details'].includes(activeReport) && (
           <>
             <span style={{ color: colors.grayDark, fontSize: '0.85rem' }}>From:</span>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ ...s.input, width: 'auto' }} />
@@ -447,6 +464,9 @@ function ReportsPage() {
             )}
             {activeReport === 'incidents' && (
               <button onClick={openIncidentsPdf} style={{ ...s.btn, ...s.btnGreen }}>🖨️ Print PDF</button>
+            )}
+            {activeReport === 'details' && (
+              <button onClick={openDetailsPdf} style={{ ...s.btn, ...s.btnGreen }}>🖨️ Print PDF</button>
             )}
           </>
         )}
@@ -487,6 +507,7 @@ function ReportsPage() {
           {activeReport === 'personnel' && personnelData && <PersonnelReport data={personnelData} s={s} colors={colors} startDate={startDate} endDate={endDate} onItemClick={(id, name) => openDetailModal('personnel', id, name)} />}
           {activeReport === 'units' && unitData && <UnitsReport data={unitData} s={s} colors={colors} startDate={startDate} endDate={endDate} onItemClick={(id, name) => openDetailModal('units', id, name)} />}
           {activeReport === 'incidents' && incidentsData && <IncidentsReport data={incidentsData} s={s} colors={colors} startDate={startDate} endDate={endDate} onItemClick={(typeName) => openDetailModal('incidents', typeName, typeName)} />}
+          {activeReport === 'details' && detailsData && <DetailsReport data={detailsData} s={s} colors={colors} startDate={startDate} endDate={endDate} onItemClick={(id, name) => openDetailModal('details', id, name)} />}
           {activeReport === 'custom' && queryResult && <CustomQueryResult result={queryResult} s={s} colors={colors} />}
         </>
       )}
@@ -1090,6 +1111,116 @@ function CustomQueryResult({ result, s, colors }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// =============================================================================
+// DETAILS REPORT (ROLL CALL ATTENDANCE)
+// =============================================================================
+function DetailsReport({ data, s, colors, startDate, endDate, onItemClick }) {
+  if (!data) return null;
+  
+  const summary = data.summary || {};
+  const personnel = data.personnel || [];
+  const typeBreakdown = data.type_breakdown || [];
+
+  return (
+    <div>
+      {/* Summary Stats */}
+      <div style={s.card}>
+        <div style={s.cardHeader}>Summary</div>
+        <div style={s.cardBody}>
+          <div style={s.statGrid}>
+            <div style={s.statBox}>
+              <div style={{ ...s.statValue, color: colors.green }}>{summary.total_events || 0}</div>
+              <div style={s.statLabel}>Total Events</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{summary.unique_attendees || 0}</div>
+              <div style={s.statLabel}>Unique Attendees</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{summary.total_attendance_records || 0}</div>
+              <div style={s.statLabel}>Total Attendance</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{(summary.total_hours || 0).toFixed(1)}</div>
+              <div style={s.statLabel}>Total Hours</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={s.twoCol}>
+        {/* Personnel Rankings */}
+        <div style={s.card}>
+          <div style={s.cardHeader}>Personnel Rankings</div>
+          <div style={{ padding: 0 }}>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  <th style={s.th}>#</th>
+                  <th style={s.th}>Name</th>
+                  <th style={s.th}>Rank</th>
+                  <th style={{ ...s.th, textAlign: 'right' }}>Events</th>
+                  <th style={{ ...s.th, textAlign: 'right' }}>Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+                {personnel.map((p, i) => (
+                  <tr 
+                    key={p.id} 
+                    onClick={() => onItemClick && onItemClick(p.id, p.name)}
+                    style={{ 
+                      background: i < 3 ? colors.greenLight : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                    title={`Click to view ${p.name}'s detail attendance report`}
+                  >
+                    <td style={s.td}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
+                    <td style={{ ...s.td, fontWeight: '500' }}>{p.name}</td>
+                    <td style={{ ...s.td, color: colors.grayDark }}>{p.rank_abbrev || p.rank || '-'}</td>
+                    <td style={{ ...s.td, ...s.tdRight, ...s.tdGreen }}>{p.event_count}</td>
+                    <td style={{ ...s.td, ...s.tdRight }}>{(p.total_hours || 0).toFixed(1)}</td>
+                  </tr>
+                ))}
+                {(!personnel.length) && (
+                  <tr><td colSpan="5" style={{ ...s.td, textAlign: 'center', color: colors.grayDark }}>No data</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Event Type Breakdown */}
+        <div style={s.card}>
+          <div style={s.cardHeader}>Breakdown by Event Type</div>
+          <div style={{ padding: 0 }}>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Event Type</th>
+                  <th style={{ ...s.th, textAlign: 'right' }}>Events</th>
+                  <th style={{ ...s.th, textAlign: 'right' }}>Attendees</th>
+                </tr>
+              </thead>
+              <tbody>
+                {typeBreakdown.map((t, i) => (
+                  <tr key={i}>
+                    <td style={s.td}>{t.type_name}</td>
+                    <td style={{ ...s.td, ...s.tdRight, ...s.tdGreen }}>{t.event_count}</td>
+                    <td style={{ ...s.td, ...s.tdRight }}>{t.unique_attendees}</td>
+                  </tr>
+                ))}
+                {(!typeBreakdown.length) && (
+                  <tr><td colSpan="3" style={{ ...s.td, textAlign: 'center', color: colors.grayDark }}>No data</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

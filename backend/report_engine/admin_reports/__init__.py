@@ -20,6 +20,7 @@ from .base import AdminReport
 from .personnel import PersonnelListReport, PersonnelDetailReport
 from .units import UnitsListReport, UnitsDetailReport
 from .incidents import IncidentsListReport, IncidentTypeDetailReport
+from .details import DetailListReport, DetailPersonnelReport
 
 __all__ = [
     'AdminReport',
@@ -29,4 +30,6 @@ __all__ = [
     'UnitsDetailReport',
     'IncidentsListReport',
     'IncidentTypeDetailReport',
+    'DetailListReport',
+    'DetailPersonnelReport',
 ]

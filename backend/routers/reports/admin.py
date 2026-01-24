@@ -25,6 +25,8 @@ from report_engine.admin_reports import (
     UnitsDetailReport,
     IncidentsListReport,
     IncidentTypeDetailReport,
+    DetailListReport,
+    DetailPersonnelReport,
 )
 
 router = APIRouter()
@@ -103,6 +105,148 @@ async def get_personnel_pdf(
         start_date=start_date,
         end_date=end_date,
         category=category
+    )
+    
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={filename}"}
+    )
+
+
+# =============================================================================
+# DETAIL ATTENDANCE REPORTS
+# =============================================================================
+
+@router.get("/details")
+async def get_details_report(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    limit: int = Query(50, le=100),
+    db: Session = Depends(get_db)
+):
+    """
+    Get detail attendance report data (JSON).
+    
+    Shows personnel attendance for DETAIL incidents (meetings, worknights, training, drills).
+    """
+    branding = get_branding(db)
+    report = DetailListReport(db, branding)
+    
+    return report.get_data(
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit
+    )
+
+
+@router.get("/details/html")
+async def get_details_html(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    limit: int = Query(50, le=100),
+    db: Session = Depends(get_db)
+):
+    """Get detail attendance report as HTML (for preview)."""
+    branding = get_branding(db)
+    report = DetailListReport(db, branding)
+    
+    html = report.generate_html(
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit
+    )
+    
+    return HTMLResponse(content=html)
+
+
+@router.get("/details/pdf")
+async def get_details_pdf(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    limit: int = Query(50, le=100),
+    db: Session = Depends(get_db)
+):
+    """Get detail attendance report as PDF."""
+    branding = get_branding(db)
+    report = DetailListReport(db, branding)
+    
+    pdf_bytes = report.generate_pdf(
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit
+    )
+    
+    filename = report.get_pdf_filename(
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={filename}"}
+    )
+
+
+@router.get("/details/{personnel_id}")
+async def get_detail_personnel(
+    personnel_id: int,
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Get individual personnel detail attendance data (JSON).
+    
+    Returns breakdown by detail type (meetings, worknights, etc.).
+    """
+    branding = get_branding(db)
+    report = DetailPersonnelReport(db, branding)
+    
+    data = report.get_data(
+        personnel_id=personnel_id,
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    if data.get("error"):
+        raise HTTPException(status_code=404, detail=data["error"])
+    
+    return data
+
+
+@router.get("/details/{personnel_id}/pdf")
+async def get_detail_personnel_pdf(
+    personnel_id: int,
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Get individual personnel detail attendance report as PDF."""
+    branding = get_branding(db)
+    report = DetailPersonnelReport(db, branding)
+    
+    # Check if personnel exists
+    data = report.get_data(
+        personnel_id=personnel_id,
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    if data.get("error"):
+        raise HTTPException(status_code=404, detail=data["error"])
+    
+    pdf_bytes = report.generate_pdf(
+        personnel_id=personnel_id,
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    filename = report.get_pdf_filename(
+        personnel_id=personnel_id,
+        start_date=start_date,
+        end_date=end_date
     )
     
     return StreamingResponse(
@@ -433,6 +577,148 @@ async def get_incident_type_detail_pdf(
     
     filename = report.get_pdf_filename(
         incident_type=incident_type,
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={filename}"}
+    )
+
+
+# =============================================================================
+# DETAIL ATTENDANCE REPORTS
+# =============================================================================
+
+@router.get("/details")
+async def get_details_report(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    limit: int = Query(50, le=100),
+    db: Session = Depends(get_db)
+):
+    """
+    Get detail attendance report data (JSON).
+    
+    Shows personnel attendance for DETAIL incidents (meetings, worknights, training, drills).
+    """
+    branding = get_branding(db)
+    report = DetailListReport(db, branding)
+    
+    return report.get_data(
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit
+    )
+
+
+@router.get("/details/html")
+async def get_details_html(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    limit: int = Query(50, le=100),
+    db: Session = Depends(get_db)
+):
+    """Get detail attendance report as HTML (for preview)."""
+    branding = get_branding(db)
+    report = DetailListReport(db, branding)
+    
+    html = report.generate_html(
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit
+    )
+    
+    return HTMLResponse(content=html)
+
+
+@router.get("/details/pdf")
+async def get_details_pdf(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    limit: int = Query(50, le=100),
+    db: Session = Depends(get_db)
+):
+    """Get detail attendance report as PDF."""
+    branding = get_branding(db)
+    report = DetailListReport(db, branding)
+    
+    pdf_bytes = report.generate_pdf(
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit
+    )
+    
+    filename = report.get_pdf_filename(
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={filename}"}
+    )
+
+
+@router.get("/details/{personnel_id}")
+async def get_detail_personnel(
+    personnel_id: int,
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Get individual personnel detail attendance data (JSON).
+    
+    Returns breakdown by detail type (meetings, worknights, etc.).
+    """
+    branding = get_branding(db)
+    report = DetailPersonnelReport(db, branding)
+    
+    data = report.get_data(
+        personnel_id=personnel_id,
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    if data.get("error"):
+        raise HTTPException(status_code=404, detail=data["error"])
+    
+    return data
+
+
+@router.get("/details/{personnel_id}/pdf")
+async def get_detail_personnel_pdf(
+    personnel_id: int,
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Get individual personnel detail attendance report as PDF."""
+    branding = get_branding(db)
+    report = DetailPersonnelReport(db, branding)
+    
+    # Check if personnel exists
+    data = report.get_data(
+        personnel_id=personnel_id,
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    if data.get("error"):
+        raise HTTPException(status_code=404, detail=data["error"])
+    
+    pdf_bytes = report.generate_pdf(
+        personnel_id=personnel_id,
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    filename = report.get_pdf_filename(
+        personnel_id=personnel_id,
         start_date=start_date,
         end_date=end_date
     )

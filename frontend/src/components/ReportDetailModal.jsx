@@ -46,6 +46,8 @@ export default function ReportDetailModal({
         url = `${API_BASE}/api/reports/admin/units/${itemId}?start_date=${startDate}&end_date=${endDate}`;
       } else if (type === 'incidents') {
         url = `${API_BASE}/api/reports/admin/incidents/types/${encodeURIComponent(itemId)}?start_date=${startDate}&end_date=${endDate}`;
+      } else if (type === 'details') {
+        url = `${API_BASE}/api/reports/admin/details/${itemId}?start_date=${startDate}&end_date=${endDate}`;
       }
       
       const res = await fetch(url);
@@ -70,6 +72,8 @@ export default function ReportDetailModal({
       url = `${API_BASE}/api/reports/admin/units/${itemId}/pdf?start_date=${startDate}&end_date=${endDate}`;
     } else if (type === 'incidents') {
       url = `${API_BASE}/api/reports/admin/incidents/types/${encodeURIComponent(itemId)}/pdf?start_date=${startDate}&end_date=${endDate}`;
+    } else if (type === 'details') {
+      url = `${API_BASE}/api/reports/admin/details/${itemId}/pdf?start_date=${startDate}&end_date=${endDate}`;
     }
     window.open(url, '_blank');
   };
