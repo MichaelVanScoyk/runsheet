@@ -6,7 +6,7 @@ Handles generic settings CRUD. Specialized settings have their own routers:
 - Print Layout: /api/print-layout (print_layout.py)
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional, Any
@@ -621,11 +621,13 @@ async def update_av_alerts_settings(
 async def upload_av_alert_sound(
     sound_type: str,  # 'dispatch_fire', 'dispatch_ems', 'close'
     data: dict,       # {"data": "base64...", "filename": "alert.mp3"}
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None,
 ):
     """
     Upload a custom sound file for AV alerts.
     Stores as base64 in settings (simple approach for small audio files).
+    Broadcasts sound_updated message to all connected StationBells via WebSocket.
     """
     import base64
     
@@ -681,6 +683,29 @@ async def upload_av_alert_sound(
     _upsert_setting(db, 'av_alerts', path_key, f'/api/settings/av-alerts/sound/{sound_type}')
     
     db.commit()
+    
+    # Broadcast sound_updated to all connected StationBells via WebSocket
+    # This notifies ESP32 devices to re-download the updated sound file
+    try:
+        from routers.websocket import broadcast_av_alert
+        from database import _extract_slug
+        
+        # Extract tenant from request host header
+        tenant_slug = "glenmoorefc"  # Default
+        if request:
+            host = request.headers.get('host', '')
+            tenant_slug = _extract_slug(host) or "glenmoorefc"
+        
+        await broadcast_av_alert(tenant_slug, {
+            "type": "sound_updated",
+            "sound_type": sound_type,
+            "path": f'/api/settings/av-alerts/sound/{sound_type}',
+            "filename": filename,
+        })
+    except Exception as e:
+        # Don't fail the upload if broadcast fails
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to broadcast sound_updated: {e}")
     
     return {
         "status": "ok",

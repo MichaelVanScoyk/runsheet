@@ -289,6 +289,12 @@ export function useAVAlerts({
           case 'connected':
             console.log(`AV Alerts connected to ${data.tenant}`);
             break;
+          
+          case 'sound_updated':
+            // StationBell notification - browser ignores this
+            // (StationBell ESP32 devices use this to re-download sounds)
+            console.log(`AV Alerts: Sound updated notification for ${data.sound_type} (ignored by browser)`);
+            break;
             
           default:
             // Alert message (dispatch or close)
