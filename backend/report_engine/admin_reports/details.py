@@ -150,8 +150,8 @@ class DetailListReport(AdminReport):
         # Breakdown by detail type
         type_breakdown_result = self.db.execute(text("""
             SELECT 
-                detail_type,
-                COUNT(*) AS event_count,
+                i.detail_type,
+                COUNT(DISTINCT i.id) AS event_count,
                 COUNT(DISTINCT ip.personnel_id) AS unique_attendees
             FROM incidents i
             LEFT JOIN incident_personnel ip ON ip.incident_id = i.id
@@ -159,7 +159,7 @@ class DetailListReport(AdminReport):
               AND i.deleted_at IS NULL
               AND i.call_category = 'DETAIL'
               AND i.detail_type IS NOT NULL
-            GROUP BY detail_type
+            GROUP BY i.detail_type
             ORDER BY event_count DESC
         """), {"start_date": start_date, "end_date": end_date})
         
