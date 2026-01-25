@@ -166,13 +166,17 @@ export function useAVAlerts({
       close: soundConfig.close_sound || DEFAULT_SOUNDS.close_sound,
     };
     
+    // Use a single cache-bust timestamp for this load
+    const cacheBust = Date.now();
+    
     Object.entries(soundMap).forEach(([key, src]) => {
-      // Only create new audio if source changed or doesn't exist
-      if (!audioRefs.current[key] || audioRefs.current[key].src !== src) {
-        const audio = new Audio(src);
-        audio.preload = 'auto';
-        audioRefs.current[key] = audio;
-      }
+      // Add cache-busting to avoid stale cached audio
+      const srcWithCacheBust = `${src}${src.includes('?') ? '&' : '?'}_t=${cacheBust}`;
+      
+      // Always create new audio element to ensure fresh content
+      const audio = new Audio(srcWithCacheBust);
+      audio.preload = 'auto';
+      audioRefs.current[key] = audio;
     });
     
   }, [enabled, settingsLoaded, settings]);
