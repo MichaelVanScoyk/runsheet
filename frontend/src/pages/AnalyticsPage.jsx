@@ -21,6 +21,7 @@ import {
 } from 'recharts';
 
 import api from '../api';
+import PersonnelStatsSection from '../components/PersonnelStatsSection';
 
 // =============================================================================
 // DATE HELPERS
@@ -287,6 +288,9 @@ const AnalyticsPage = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-6">
         
+        {/* Section 0: Personnel Stats (when logged in) */}
+        <PersonnelStatsSection />
+
         {/* Section 1: Response Times by Call Type */}
         <CollapsibleSection
           title={`Response Times by Call Type (${category})`}
