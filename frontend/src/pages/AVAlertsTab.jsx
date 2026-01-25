@@ -164,13 +164,11 @@ function AVAlertsTab() {
     
     if (!soundPath) return;
     
-    // Create or reuse audio element
-    if (!audioRefs.current[soundType]) {
-      audioRefs.current[soundType] = new Audio();
-    }
+    // Add cache-busting to ensure we get the latest version
+    const cacheBustedPath = `${soundPath}${soundPath.includes('?') ? '&' : '?'}_t=${Date.now()}`;
     
-    const audio = audioRefs.current[soundType];
-    audio.src = soundPath;
+    // Always create a new audio element to avoid caching issues
+    const audio = new Audio(cacheBustedPath);
     audio.currentTime = 0;
     audio.play().catch(err => {
       console.warn('Audio playback failed:', err);
