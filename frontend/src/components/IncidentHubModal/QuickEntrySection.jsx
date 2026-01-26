@@ -107,6 +107,30 @@ function QuickEntrySection({
               style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}
             />
           </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '10px', marginTop: '10px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>Problems/Issues</label>
+              <textarea
+                rows={2}
+                placeholder="Any problems encountered..."
+                value={formData.problems_issues || ''}
+                onChange={(e) => onFormChange('problems_issues', e.target.value)}
+                spellCheck={true}
+                style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>Equipment Used</label>
+              <textarea
+                rows={2}
+                placeholder="Halligan, Pike Pole, Chain Saw..."
+                value={Array.isArray(formData.equipment_used) ? formData.equipment_used.join(', ') : (formData.equipment_used || '')}
+                onChange={(e) => onFormChange('equipment_used', e.target.value)}
+                spellCheck={true}
+                style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
         </div>
       )}
 

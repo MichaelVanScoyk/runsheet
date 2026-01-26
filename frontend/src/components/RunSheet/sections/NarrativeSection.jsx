@@ -98,6 +98,15 @@ export default function NarrativeSection() {
           onChange={(e) => handleChange('problems_issues', e.target.value)}
         />
       </div>
+      
+      <div className="flex flex-col gap-0.5">
+        <label className="text-gray-400 text-xs">Equipment Used</label>
+        <AutoTextarea 
+          value={Array.isArray(formData.equipment_used) ? formData.equipment_used.join(', ') : (formData.equipment_used || '')} 
+          onChange={(e) => handleChange('equipment_used', e.target.value)}
+          placeholder="Halligan, Pike Pole, Chain Saw..."
+        />
+      </div>
     </div>
   );
 }

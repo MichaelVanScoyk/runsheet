@@ -44,6 +44,8 @@ export default function IncidentHubModal({
     situation_found: '',
     services_provided: '',
     narrative: '',
+    problems_issues: '',
+    equipment_used: '',
     officer_in_charge: '',
     completed_by: '',
   });
@@ -102,6 +104,8 @@ export default function IncidentHubModal({
         if (pendingFormData.situation_found !== undefined) updatePayload.situation_found = pendingFormData.situation_found;
         if (pendingFormData.services_provided !== undefined) updatePayload.services_provided = pendingFormData.services_provided;
         if (pendingFormData.narrative !== undefined) updatePayload.narrative = pendingFormData.narrative;
+        if (pendingFormData.problems_issues !== undefined) updatePayload.problems_issues = pendingFormData.problems_issues;
+        if (pendingFormData.equipment_used !== undefined) updatePayload.equipment_used = pendingFormData.equipment_used;
         if (pendingFormData.officer_in_charge !== undefined) updatePayload.officer_in_charge = pendingFormData.officer_in_charge || null;
         if (pendingFormData.completed_by !== undefined) updatePayload.completed_by = pendingFormData.completed_by || null;
 
@@ -283,6 +287,8 @@ export default function IncidentHubModal({
           situation_found: inc.situation_found || '',
           services_provided: inc.services_provided || '',
           narrative: inc.narrative || '',
+          problems_issues: inc.problems_issues || '',
+          equipment_used: Array.isArray(inc.equipment_used) ? inc.equipment_used.join(', ') : (inc.equipment_used || ''),
           officer_in_charge: inc.officer_in_charge || '',
           completed_by: inc.completed_by || '',
         });
@@ -356,6 +362,8 @@ export default function IncidentHubModal({
             situation_found: inc.situation_found || '',
             services_provided: inc.services_provided || '',
             narrative: inc.narrative || '',
+            problems_issues: inc.problems_issues || '',
+            equipment_used: Array.isArray(inc.equipment_used) ? inc.equipment_used.join(', ') : (inc.equipment_used || ''),
             officer_in_charge: inc.officer_in_charge || '',
             completed_by: inc.completed_by || '',
           });
@@ -498,6 +506,8 @@ export default function IncidentHubModal({
         if (formData.situation_found) updatePayload.situation_found = formData.situation_found;
         if (formData.services_provided) updatePayload.services_provided = formData.services_provided;
         if (formData.narrative) updatePayload.narrative = formData.narrative;
+        if (formData.problems_issues) updatePayload.problems_issues = formData.problems_issues;
+        if (formData.equipment_used) updatePayload.equipment_used = formData.equipment_used;
         // Officer fields - always include (even if empty to allow clearing)
         updatePayload.officer_in_charge = formData.officer_in_charge || null;
         updatePayload.completed_by = formData.completed_by || null;
