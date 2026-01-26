@@ -246,6 +246,7 @@ def get_turnout_vs_crew_size(
         }
     
     # Get first-out unit turnout time and crew count
+    # Only consider units where counts_for_response_times = true (excludes CHF48, ASST48, DEP48, etc.)
     result = db.execute(text(f"""
         WITH first_unit AS (
             SELECT 
@@ -253,15 +254,19 @@ def get_turnout_vs_crew_size(
                 i.time_dispatched,
                 (SELECT unit_elem->>'unit_id' 
                  FROM jsonb_array_elements(i.cad_units) AS unit_elem 
+                 JOIN apparatus a ON a.unit_designator = unit_elem->>'unit_id'
                  WHERE unit_elem->>'time_enroute' IS NOT NULL 
                    AND (unit_elem->>'is_mutual_aid')::boolean IS NOT TRUE
+                   AND a.counts_for_response_times = true
                  ORDER BY unit_elem->>'time_enroute' 
                  LIMIT 1
                 ) as first_unit_id,
                 (SELECT unit_elem->>'time_enroute' 
                  FROM jsonb_array_elements(i.cad_units) AS unit_elem 
+                 JOIN apparatus a ON a.unit_designator = unit_elem->>'unit_id'
                  WHERE unit_elem->>'time_enroute' IS NOT NULL 
                    AND (unit_elem->>'is_mutual_aid')::boolean IS NOT TRUE
+                   AND a.counts_for_response_times = true
                  ORDER BY unit_elem->>'time_enroute' 
                  LIMIT 1
                 ) as first_enroute_time
