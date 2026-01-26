@@ -320,7 +320,7 @@ const AnalyticsPage = ({ userSession }) => {
           <div className="h-px flex-1 bg-gray-300"></div>
         </div>
 
-        {/* Section 1: Response Times by Call Type */
+        {/* Section 1: Response Times by Call Type */}
         <CollapsibleSection
           title={`Response Times by Call Type (${category})`}
           icon={Clock}
