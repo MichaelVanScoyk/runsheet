@@ -57,7 +57,7 @@ def get_personnel_stats(
         },
         "calls": get_call_activity(db, personnel_id, start_date, today),
         "first_out": get_first_out_stats(db, personnel_id, start_date, today),
-        "time_patterns": get_time_patterns(db, personnel_id, start_date, today),
+        "availability": get_availability(db, personnel_id, start_date, today),
         "units": get_unit_stats(db, personnel_id, start_date, today),
         "roles": get_role_stats(db, personnel_id, start_date, today),
         "fun_facts": get_fun_facts(db, personnel_id, start_date, today),
@@ -188,58 +188,14 @@ def get_first_out_stats(db: Session, personnel_id: int, start_date: date, end_da
     }
 
 
-def get_time_patterns(db: Session, personnel_id: int, start_date: date, end_date: date) -> dict:
-    """Get response patterns by hour of day and day of week."""
+def get_availability(db: Session, personnel_id: int, start_date: date, end_date: date) -> dict:
+    """
+    Get availability - percentage of station calls the person responded to.
+    Split by time period (daytime/evening/overnight) and by call type.
+    """
     
-    by_hour = db.execute(text("""
-        SELECT 
-            EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York') as hour,
-            COUNT(DISTINCT i.id) as count
-        FROM incident_personnel ip
-        JOIN incidents i ON ip.incident_id = i.id
-        WHERE ip.personnel_id = :personnel_id
-            AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
-            AND i.deleted_at IS NULL
-            AND i.call_category IN ('FIRE', 'EMS')
-            AND i.time_dispatched IS NOT NULL
-        GROUP BY 1
-        ORDER BY 1
-    """), {
-        'personnel_id': personnel_id,
-        'start_date': start_date,
-        'end_date': end_date
-    }).fetchall()
-    
-    by_day = db.execute(text("""
-        SELECT 
-            EXTRACT(dow FROM i.incident_date) as day_num,
-            CASE EXTRACT(dow FROM i.incident_date)
-                WHEN 0 THEN 'Sun'
-                WHEN 1 THEN 'Mon'
-                WHEN 2 THEN 'Tue'
-                WHEN 3 THEN 'Wed'
-                WHEN 4 THEN 'Thu'
-                WHEN 5 THEN 'Fri'
-                WHEN 6 THEN 'Sat'
-            END as day_name,
-            COUNT(DISTINCT i.id) as count
-        FROM incident_personnel ip
-        JOIN incidents i ON ip.incident_id = i.id
-        WHERE ip.personnel_id = :personnel_id
-            AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
-            AND i.deleted_at IS NULL
-            AND i.call_category IN ('FIRE', 'EMS')
-        GROUP BY 1
-        ORDER BY 1
-    """), {
-        'personnel_id': personnel_id,
-        'start_date': start_date,
-        'end_date': end_date
-    }).fetchall()
-    
-    by_period = db.execute(text("""
+    # Get total station calls by period and category (denominator)
+    station_totals = db.execute(text("""
         SELECT 
             CASE 
                 WHEN EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York') >= 6 
@@ -249,7 +205,33 @@ def get_time_patterns(db: Session, personnel_id: int, start_date: date, end_date
                 THEN 'evening'
                 ELSE 'overnight'
             END as period,
-            COUNT(DISTINCT i.id) as count
+            CASE WHEN i.internal_incident_number LIKE 'F%' THEN 'fire' ELSE 'ems' END as category,
+            COUNT(DISTINCT i.id) as total_calls
+        FROM incidents i
+        WHERE i.incident_date >= :start_date
+            AND i.incident_date < :end_date
+            AND i.deleted_at IS NULL
+            AND i.call_category IN ('FIRE', 'EMS')
+            AND i.time_dispatched IS NOT NULL
+        GROUP BY 1, 2
+    """), {
+        'start_date': start_date,
+        'end_date': end_date
+    }).fetchall()
+    
+    # Get person's calls by period and category (numerator)
+    person_totals = db.execute(text("""
+        SELECT 
+            CASE 
+                WHEN EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York') >= 6 
+                     AND EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York') < 16 
+                THEN 'daytime'
+                WHEN EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York') >= 16 
+                THEN 'evening'
+                ELSE 'overnight'
+            END as period,
+            CASE WHEN i.internal_incident_number LIKE 'F%' THEN 'fire' ELSE 'ems' END as category,
+            COUNT(DISTINCT i.id) as responded
         FROM incident_personnel ip
         JOIN incidents i ON ip.incident_id = i.id
         WHERE ip.personnel_id = :personnel_id
@@ -258,6 +240,66 @@ def get_time_patterns(db: Session, personnel_id: int, start_date: date, end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
             AND i.time_dispatched IS NOT NULL
+        GROUP BY 1, 2
+    """), {
+        'personnel_id': personnel_id,
+        'start_date': start_date,
+        'end_date': end_date
+    }).fetchall()
+    
+    # Build lookup dicts
+    station_lookup = {(r.period, r.category): r.total_calls for r in station_totals}
+    person_lookup = {(r.period, r.category): r.responded for r in person_totals}
+    
+    # Calculate availability by period
+    by_period = {}
+    for period in ['daytime', 'evening', 'overnight']:
+        by_period[period] = {}
+        for category in ['fire', 'ems']:
+            total = station_lookup.get((period, category), 0)
+            responded = person_lookup.get((period, category), 0)
+            pct = round((responded / total) * 100, 1) if total > 0 else 0
+            by_period[period][category] = {
+                "responded": responded,
+                "total": total,
+                "percentage": pct
+            }
+    
+    # Get availability by call type (the "dodge report")
+    station_by_type = db.execute(text("""
+        SELECT 
+            CASE 
+                WHEN i.internal_incident_number LIKE 'F%' THEN COALESCE(i.cad_event_type, 'Unknown')
+                ELSE COALESCE(i.cad_event_subtype, i.cad_event_type, 'Unknown')
+            END as call_type,
+            CASE WHEN i.internal_incident_number LIKE 'F%' THEN 'fire' ELSE 'ems' END as category,
+            COUNT(DISTINCT i.id) as total_calls
+        FROM incidents i
+        WHERE i.incident_date >= :start_date
+            AND i.incident_date < :end_date
+            AND i.deleted_at IS NULL
+            AND i.call_category IN ('FIRE', 'EMS')
+        GROUP BY 1, 2
+        ORDER BY total_calls DESC
+    """), {
+        'start_date': start_date,
+        'end_date': end_date
+    }).fetchall()
+    
+    person_by_type = db.execute(text("""
+        SELECT 
+            CASE 
+                WHEN i.internal_incident_number LIKE 'F%' THEN COALESCE(i.cad_event_type, 'Unknown')
+                ELSE COALESCE(i.cad_event_subtype, i.cad_event_type, 'Unknown')
+            END as call_type,
+            COUNT(DISTINCT i.id) as responded
+        FROM incident_personnel ip
+        JOIN incidents i ON ip.incident_id = i.id
+        WHERE ip.personnel_id = :personnel_id
+            AND i.incident_date >= :start_date
+            AND i.incident_date < :end_date
+            AND i.deleted_at IS NULL
+            AND i.call_category IN ('FIRE', 'EMS')
         GROUP BY 1
     """), {
         'personnel_id': personnel_id,
@@ -265,33 +307,23 @@ def get_time_patterns(db: Session, personnel_id: int, start_date: date, end_date
         'end_date': end_date
     }).fetchall()
     
-    hour_data = {int(r.hour): r.count for r in by_hour}
-    hour_list = [{"hour": h, "count": hour_data.get(h, 0)} for h in range(24)]
+    person_type_lookup = {r.call_type: r.responded for r in person_by_type}
     
-    day_data = [{"day": r.day_name, "day_num": int(r.day_num), "count": r.count} for r in by_day]
-    
-    period_data = {r.period: r.count for r in by_period}
-    total_with_time = sum(period_data.values())
-    
-    period_breakdown = {}
-    for period in ['daytime', 'evening', 'overnight']:
-        count = period_data.get(period, 0)
-        period_breakdown[period] = {
-            "count": count,
-            "percentage": round((count / total_with_time) * 100, 1) if total_with_time > 0 else 0
-        }
-    
-    busiest_hour = max(hour_list, key=lambda x: x['count']) if hour_list else None
-    busiest_day = max(day_data, key=lambda x: x['count']) if day_data else None
+    by_call_type = []
+    for r in station_by_type:
+        responded = person_type_lookup.get(r.call_type, 0)
+        pct = round((responded / r.total_calls) * 100, 1) if r.total_calls > 0 else 0
+        by_call_type.append({
+            "call_type": r.call_type,
+            "category": r.category,
+            "responded": responded,
+            "total": r.total_calls,
+            "percentage": pct
+        })
     
     return {
-        "by_hour": hour_list,
-        "by_day": day_data,
-        "busiest_hour": f"{busiest_hour['hour']:02d}:00" if busiest_hour and busiest_hour['count'] > 0 else None,
-        "busiest_hour_count": busiest_hour['count'] if busiest_hour else 0,
-        "busiest_day": busiest_day['day'] if busiest_day and busiest_day['count'] > 0 else None,
-        "busiest_day_count": busiest_day['count'] if busiest_day else 0,
-        "period_breakdown": period_breakdown,
+        "by_period": by_period,
+        "by_call_type": by_call_type,
         "period_labels": {
             "daytime": "6am - 4pm",
             "evening": "4pm - 12am",

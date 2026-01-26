@@ -134,14 +134,7 @@ const PersonnelStatsSection = ({ userSession }) => {
 };
 
 const PersonnelStatsContent = ({ data, colors }) => {
-  const { personnel, period, calls, first_out, time_patterns, units, roles, fun_facts, details } = data;
-
-  const periodData = Object.entries(time_patterns.period_breakdown || {}).map(([key, val]) => ({
-    name: time_patterns.period_labels?.[key] || key,
-    key: key,
-    value: val.count,
-    percentage: val.percentage,
-  }));
+  const { personnel, period, calls, first_out, availability, units, roles, fun_facts, details } = data;
 
   return (
     <div className="space-y-6">
@@ -264,21 +257,21 @@ const PersonnelStatsContent = ({ data, colors }) => {
 
         {/* Role Breakdown */}
         <div>
-          <Tooltip text="Role derived from your seat position (slot_index) on each unit. Driver = slot 0 on apparatus with driver seat. Officer = slot 1 (or slot 0 if no driver). FF = all other positions. Future: will show specific seat names (Nozzle, Backup, Doorman, etc.) when riding assignments feature is implemented.">
+          <Tooltip text="Role derived from your seat position (slot_index) on each unit. Driver = slot 0 on apparatus with driver seat. Officer = slot 1 (or slot 0 if no driver). FF = all other positions.">
             <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2 cursor-help">
               <Target className="w-4 h-4" /> Roles <Info className="w-3 h-3 text-gray-400" />
             </h4>
           </Tooltip>
           <div className="space-y-2">
             {[
-              { key: 'driver', label: 'Driver', color: '#f59e0b', tooltip: 'Times you drove the apparatus (role = DRIVER)' },
-              { key: 'officer', label: 'Officer', color: '#3b82f6', tooltip: 'Times you served as officer/OIC (role = OFFICER)' },
-              { key: 'ff', label: 'Firefighter', color: '#10b981', tooltip: 'Times as firefighter/crew member (role = FF, EMT, or unspecified)' },
+              { key: 'driver', label: 'Driver', color: '#f59e0b' },
+              { key: 'officer', label: 'Officer', color: '#3b82f6' },
+              { key: 'ff', label: 'Firefighter', color: '#10b981' },
             ].map(role => {
               const roleData = roles[role.key];
               if (!roleData || roleData.count === 0) return null;
               return (
-                <Tooltip key={role.key} text={`${role.tooltip}. ${roleData.count} calls (${roleData.percentage}% of total).`}>
+                <Tooltip key={role.key} text={`${roleData.count} calls as ${role.label} (${roleData.percentage}% of total).`}>
                   <div className="flex items-center gap-2 cursor-help">
                     <div className="w-20 text-xs text-gray-600">{role.label}</div>
                     <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
@@ -297,39 +290,87 @@ const PersonnelStatsContent = ({ data, colors }) => {
           </div>
         </div>
 
-        {/* Time of Day */}
+        {/* Availability by Time Period */}
         <div>
-          <Tooltip text="When your calls occurred based on time_dispatched (converted to local Eastern time). Daytime = 6am-4pm, Evening = 4pm-12am, Overnight = 12am-6am.">
+          <Tooltip text="Percentage of station calls you responded to during each time period. Daytime = 6am-4pm, Evening = 4pm-12am, Overnight = 12am-6am.">
             <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2 cursor-help">
-              <Clock className="w-4 h-4" /> Response Times <Info className="w-3 h-3 text-gray-400" />
+              <Clock className="w-4 h-4" /> Availability <Info className="w-3 h-3 text-gray-400" />
             </h4>
           </Tooltip>
-          <div className="space-y-2">
-            {periodData.map((p, i) => (
-              <Tooltip key={p.key} text={`${p.value} calls during ${p.name} (${p.percentage}% of calls with dispatch time data).`}>
-                <div className="flex items-center gap-2 cursor-help">
-                  <div className="w-24 text-xs text-gray-600">{p.name}</div>
-                  <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
-                    <div 
-                      className="h-full rounded-full"
-                      style={{ 
-                        width: `${p.percentage}%`,
-                        backgroundColor: ['#f59e0b', '#3b82f6', '#6366f1'][i]
-                      }}
-                    />
-                  </div>
-                  <div className="w-12 text-xs text-right text-gray-500">{p.value}</div>
+          {availability?.by_period && (
+            <div className="space-y-3">
+              {/* Fire availability */}
+              <div>
+                <p className="text-xs text-red-600 font-medium mb-1">🔥 Fire</p>
+                <div className="space-y-1">
+                  {['daytime', 'evening', 'overnight'].map((p, i) => {
+                    const d = availability.by_period[p]?.fire || { responded: 0, total: 0, percentage: 0 };
+                    return (
+                      <Tooltip key={p} text={`${d.responded} of ${d.total} fire calls during ${availability.period_labels?.[p] || p}`}>
+                        <div className="flex items-center gap-2 cursor-help">
+                          <div className="w-20 text-xs text-gray-500">{availability.period_labels?.[p] || p}</div>
+                          <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                            <div 
+                              className="h-full rounded-full bg-red-400"
+                              style={{ width: `${d.percentage}%` }}
+                            />
+                          </div>
+                          <div className="w-12 text-xs text-right text-gray-500">{d.percentage}%</div>
+                        </div>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* EMS availability */}
+              <div>
+                <p className="text-xs text-blue-600 font-medium mb-1">🚑 EMS</p>
+                <div className="space-y-1">
+                  {['daytime', 'evening', 'overnight'].map((p, i) => {
+                    const d = availability.by_period[p]?.ems || { responded: 0, total: 0, percentage: 0 };
+                    return (
+                      <Tooltip key={p} text={`${d.responded} of ${d.total} EMS calls during ${availability.period_labels?.[p] || p}`}>
+                        <div className="flex items-center gap-2 cursor-help">
+                          <div className="w-20 text-xs text-gray-500">{availability.period_labels?.[p] || p}</div>
+                          <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                            <div 
+                              className="h-full rounded-full bg-blue-400"
+                              style={{ width: `${d.percentage}%` }}
+                            />
+                          </div>
+                          <div className="w-12 text-xs text-right text-gray-500">{d.percentage}%</div>
+                        </div>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Availability by Call Type */}
+      {availability?.by_call_type?.length > 0 && (
+        <div>
+          <Tooltip text="Percentage of station calls you responded to by call type. Shows how often you respond to each type of call that comes into the station.">
+            <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1 cursor-help">
+              Availability by Call Type <Info className="w-3 h-3 text-gray-400" />
+            </h4>
+          </Tooltip>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            {availability.by_call_type.slice(0, 12).map((type) => (
+              <Tooltip key={type.call_type} text={`${type.responded} of ${type.total} "${type.call_type}" calls (${type.percentage}%)`}>
+                <div className={`rounded-lg p-2 text-center cursor-help ${type.category === 'fire' ? 'bg-red-50' : 'bg-blue-50'}`}>
+                  <p className="text-xs text-gray-600 truncate" title={type.call_type}>{type.call_type}</p>
+                  <p className={`font-bold ${type.category === 'fire' ? 'text-red-700' : 'text-blue-700'}`}>{type.percentage}%</p>
+                  <p className="text-xs text-gray-400">{type.responded}/{type.total}</p>
                 </div>
               </Tooltip>
             ))}
           </div>
-          {time_patterns.busiest_hour && (
-            <p className="text-xs text-gray-500 mt-2">
-              Busiest hour: <span className="font-medium">{time_patterns.busiest_hour}</span> ({time_patterns.busiest_hour_count} calls)
-            </p>
-          )}
         </div>
-      </div>
+      )}
 
       {/* Fun Facts */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
