@@ -57,55 +57,57 @@ export default function NarrativeSection() {
         </div>
       </div>
       
-      {/* Textareas - per doc: start at 1 line, auto-expand */}
-      <div className="flex flex-col gap-0.5">
-        <label className="text-gray-400 text-xs">Situation Found</label>
-        <AutoTextarea 
-          value={formData.situation_found} 
-          onChange={(e) => handleChange('situation_found', e.target.value)}
-        />
-      </div>
-      
-      <div className="flex flex-col gap-0.5">
-        <label className="text-gray-400 text-xs">Damage</label>
-        <AutoTextarea 
-          value={formData.extent_of_damage} 
-          onChange={(e) => handleChange('extent_of_damage', e.target.value)}
-        />
-      </div>
-      
-      <div className="flex flex-col gap-0.5">
-        <label className="text-gray-400 text-xs">Services</label>
-        <AutoTextarea 
-          value={formData.services_provided} 
-          onChange={(e) => handleChange('services_provided', e.target.value)}
-        />
-      </div>
-      
-      <div className="flex flex-col gap-0.5">
-        <label className="text-gray-400 text-xs">Narrative</label>
-        <AutoTextarea 
-          value={formData.narrative} 
-          onChange={(e) => handleChange('narrative', e.target.value)}
-          minRows={2}
-        />
-      </div>
-      
-      <div className="flex flex-col gap-0.5">
-        <label className="text-gray-400 text-xs">Problems</label>
-        <AutoTextarea 
-          value={formData.problems_issues} 
-          onChange={(e) => handleChange('problems_issues', e.target.value)}
-        />
-      </div>
-      
-      <div className="flex flex-col gap-0.5">
-        <label className="text-gray-400 text-xs">Equipment Used</label>
-        <AutoTextarea 
-          value={Array.isArray(formData.equipment_used) ? formData.equipment_used.join(', ') : (formData.equipment_used || '')} 
-          onChange={(e) => handleChange('equipment_used', e.target.value)}
-          placeholder="Halligan, Pike Pole, Chain Saw..."
-        />
+      {/* Narrative fields with shaded background */}
+      <div className="flex flex-col gap-2 p-3 rounded" style={{ backgroundColor: '#ebebeb' }}>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-gray-400 text-xs">Situation Found</label>
+          <AutoTextarea 
+            value={formData.situation_found} 
+            onChange={(e) => handleChange('situation_found', e.target.value)}
+          />
+        </div>
+        
+        <div className="flex flex-col gap-0.5">
+          <label className="text-gray-400 text-xs">Damage</label>
+          <AutoTextarea 
+            value={formData.extent_of_damage} 
+            onChange={(e) => handleChange('extent_of_damage', e.target.value)}
+          />
+        </div>
+        
+        <div className="flex flex-col gap-0.5">
+          <label className="text-gray-400 text-xs">Services</label>
+          <AutoTextarea 
+            value={formData.services_provided} 
+            onChange={(e) => handleChange('services_provided', e.target.value)}
+          />
+        </div>
+        
+        <div className="flex flex-col gap-0.5">
+          <label className="text-gray-400 text-xs">Narrative</label>
+          <AutoTextarea 
+            value={formData.narrative} 
+            onChange={(e) => handleChange('narrative', e.target.value)}
+            minRows={2}
+          />
+        </div>
+        
+        <div className="flex flex-col gap-0.5">
+          <label className="text-gray-400 text-xs">Problems</label>
+          <AutoTextarea 
+            value={formData.problems_issues} 
+            onChange={(e) => handleChange('problems_issues', e.target.value)}
+          />
+        </div>
+        
+        <div className="flex flex-col gap-0.5">
+          <label className="text-gray-400 text-xs">Equipment Used</label>
+          <AutoTextarea 
+            value={Array.isArray(formData.equipment_used) ? formData.equipment_used.join(', ') : (formData.equipment_used || '')} 
+            onChange={(e) => handleChange('equipment_used', e.target.value)}
+            placeholder="Halligan, Pike Pole, Chain Saw..."
+          />
+        </div>
       </div>
     </div>
   );
