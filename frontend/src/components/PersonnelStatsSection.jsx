@@ -353,9 +353,9 @@ const PersonnelStatsContent = ({ data, colors }) => {
             {fireTypes.length > 0 && (
               <div>
                 <p className="text-xs text-red-600 font-semibold mb-2">🔥 Fire</p>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {fireTypes.slice(0, 10).map((type) => (
-                    <div key={type.call_type} className="flex justify-between text-xs">
+                    <div key={type.call_type} className="flex justify-between text-xs py-0.5 px-1 -mx-1 rounded hover:bg-red-50 cursor-default">
                       <span className="text-gray-700 truncate mr-2" title={type.call_type}>{type.call_type}</span>
                       <span className="font-medium text-gray-900 whitespace-nowrap">{type.percentage}% <span className="text-gray-400">({type.responded}/{type.total})</span></span>
                     </div>
@@ -367,9 +367,9 @@ const PersonnelStatsContent = ({ data, colors }) => {
             {emsTypes.length > 0 && (
               <div>
                 <p className="text-xs text-blue-600 font-semibold mb-2">🚑 EMS</p>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {emsTypes.slice(0, 10).map((type) => (
-                    <div key={type.call_type} className="flex justify-between text-xs">
+                    <div key={type.call_type} className="flex justify-between text-xs py-0.5 px-1 -mx-1 rounded hover:bg-blue-50 cursor-default">
                       <span className="text-gray-700 truncate mr-2" title={type.call_type}>{type.call_type}</span>
                       <span className="font-medium text-gray-900 whitespace-nowrap">{type.percentage}% <span className="text-gray-400">({type.responded}/{type.total})</span></span>
                     </div>
