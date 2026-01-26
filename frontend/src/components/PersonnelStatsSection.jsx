@@ -26,12 +26,22 @@ const Tooltip = ({ text, children }) => (
 );
 
 const PersonnelStatsSection = ({ userSession }) => {
-  const [personnelDays, setPersonnelDays] = useState(365);
+  const [personnelDays, setPersonnelDays] = useState('ytd');
   const [personnelStats, setPersonnelStats] = useState(null);
   const [personnelStatsLoading, setPersonnelStatsLoading] = useState(false);
   const [personnelList, setPersonnelList] = useState([]);
   const [selectedPersonnelId, setSelectedPersonnelId] = useState(null);
   const [expanded, setExpanded] = useState(true);
+
+  // Calculate days for API call (YTD = days since Jan 1)
+  const getDaysForApi = () => {
+    if (personnelDays === 'ytd') {
+      const now = new Date();
+      const jan1 = new Date(now.getFullYear(), 0, 1);
+      return Math.ceil((now - jan1) / (1000 * 60 * 60 * 24));
+    }
+    return personnelDays;
+  };
 
   useEffect(() => {
     if (userSession?.personnel_id && !selectedPersonnelId) {
@@ -53,7 +63,7 @@ const PersonnelStatsSection = ({ userSession }) => {
     setPersonnelStatsLoading(true);
     try {
       const res = await api.get('/analytics/v2/personnel/stats', {
-        params: { personnel_id: selectedPersonnelId, days: personnelDays }
+        params: { personnel_id: selectedPersonnelId, days: getDaysForApi() }
       });
       setPersonnelStats(res.data);
     } catch (err) {
@@ -96,7 +106,7 @@ const PersonnelStatsSection = ({ userSession }) => {
             </select>
           )}
           <div className="flex gap-1 bg-white border rounded p-0.5" onClick={(e) => e.stopPropagation()}>
-            {[30, 60, 90, 365].map(days => (
+            {[30, 60, 90, 365, 'ytd'].map(days => (
               <button
                 key={days}
                 onClick={() => setPersonnelDays(days)}
@@ -106,7 +116,7 @@ const PersonnelStatsSection = ({ userSession }) => {
                     : 'text-gray-500 hover:text-gray-900'
                 }`}
               >
-                {days === 365 ? '1yr' : `${days}d`}
+                {days === 'ytd' ? 'YTD' : days === 365 ? '1yr' : `${days}d`}
               </button>
             ))}
           </div>

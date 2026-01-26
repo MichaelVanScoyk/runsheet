@@ -30,7 +30,14 @@ import PersonnelStatsSection from '../components/PersonnelStatsSection';
 const getDateRange = (days) => {
   const end = new Date();
   const start = new Date();
-  start.setDate(start.getDate() - days);
+  
+  if (days === 'ytd') {
+    // Year to date: Jan 1 of current year
+    start.setMonth(0, 1); // January 1
+  } else {
+    start.setDate(start.getDate() - days);
+  }
+  
   return {
     startDate: start.toISOString().split('T')[0],
     endDate: end.toISOString().split('T')[0]
@@ -50,8 +57,8 @@ const formatDate = (dateStr) => {
 // =============================================================================
 
 const AnalyticsPage = ({ userSession }) => {
-  const [dateRange, setDateRange] = useState(getDateRange(90));
-  const [selectedDays, setSelectedDays] = useState(90);
+  const [dateRange, setDateRange] = useState(getDateRange('ytd'));
+  const [selectedDays, setSelectedDays] = useState('ytd');
   const [category, setCategory] = useState('FIRE');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -86,6 +93,16 @@ const AnalyticsPage = ({ userSession }) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
+  // Calculate days for summary endpoint (which expects a number)
+  const getSummaryDays = () => {
+    if (selectedDays === 'ytd') {
+      const now = new Date();
+      const jan1 = new Date(now.getFullYear(), 0, 1);
+      return Math.ceil((now - jan1) / (1000 * 60 * 60 * 24));
+    }
+    return selectedDays;
+  };
+
   // Load all data
   const loadAllData = useCallback(async () => {
     setLoading(true);
@@ -103,7 +120,7 @@ const AnalyticsPage = ({ userSession }) => {
         yoyRes,
         usageRes
       ] = await Promise.all([
-        api.get('/analytics/v2/summary', { params: { days: selectedDays } }),
+        api.get('/analytics/v2/summary', { params: { days: getSummaryDays() } }),
         api.get('/analytics/v2/response-times/by-type', { 
           params: { start_date: dateRange.startDate, end_date: dateRange.endDate, category }
         }),
@@ -208,17 +225,17 @@ const AnalyticsPage = ({ userSession }) => {
             <div className="flex items-center gap-3 flex-wrap">
               {/* Date Range */}
               <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-                {[30, 60, 90].map(days => (
+                {[{ value: 'ytd', label: 'YTD' }, { value: 30, label: '30d' }, { value: 60, label: '60d' }, { value: 90, label: '90d' }, { value: 365, label: '1yr' }].map(opt => (
                   <button
-                    key={days}
-                    onClick={() => handleDaysChange(days)}
+                    key={opt.value}
+                    onClick={() => handleDaysChange(opt.value)}
                     className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                      selectedDays === days
+                      selectedDays === opt.value
                         ? 'bg-white text-gray-900 shadow-sm'
                         : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    {days}d
+                    {opt.label}
                   </button>
                 ))}
               </div>
@@ -291,7 +308,19 @@ const AnalyticsPage = ({ userSession }) => {
         {/* Section 0: Personnel Stats (when logged in) */}
         <PersonnelStatsSection userSession={userSession} />
 
-        {/* Section 1: Response Times by Call Type */}
+        {/* Station Analytics Divider */}
+        <div className="flex items-center gap-3 pt-4">
+          <div className="h-px flex-1 bg-gray-300"></div>
+          <h2 className="text-lg font-bold text-gray-700 flex items-center gap-2">
+            📊 Station Analytics
+            <span className="text-sm font-normal text-gray-500">
+              {formatDate(dateRange.startDate)} – {formatDate(dateRange.endDate)}
+            </span>
+          </h2>
+          <div className="h-px flex-1 bg-gray-300"></div>
+        </div>
+
+        {/* Section 1: Response Times by Call Type */
         <CollapsibleSection
           title={`Response Times by Call Type (${category})`}
           icon={Clock}
