@@ -266,12 +266,14 @@ def get_availability(db: Session, personnel_id: int, start_date: date, end_date:
             }
     
     # Get availability by call type (the "dodge report")
+    # Format: "cad_event_type / cad_event_subtype" for full context
     station_by_type = db.execute(text("""
         SELECT 
-            CASE 
-                WHEN i.internal_incident_number LIKE 'F%' THEN COALESCE(i.cad_event_type, 'Unknown')
-                ELSE COALESCE(i.cad_event_subtype, i.cad_event_type, 'Unknown')
-            END as call_type,
+            COALESCE(i.cad_event_type, 'Unknown') || 
+                CASE WHEN i.cad_event_subtype IS NOT NULL 
+                     THEN ' / ' || i.cad_event_subtype 
+                     ELSE '' 
+                END as call_type,
             CASE WHEN i.internal_incident_number LIKE 'F%' THEN 'fire' ELSE 'ems' END as category,
             COUNT(DISTINCT i.id) as total_calls
         FROM incidents i
@@ -280,7 +282,7 @@ def get_availability(db: Session, personnel_id: int, start_date: date, end_date:
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
         GROUP BY 1, 2
-        ORDER BY total_calls DESC
+        ORDER BY category, total_calls DESC
     """), {
         'start_date': start_date,
         'end_date': end_date
@@ -288,10 +290,11 @@ def get_availability(db: Session, personnel_id: int, start_date: date, end_date:
     
     person_by_type = db.execute(text("""
         SELECT 
-            CASE 
-                WHEN i.internal_incident_number LIKE 'F%' THEN COALESCE(i.cad_event_type, 'Unknown')
-                ELSE COALESCE(i.cad_event_subtype, i.cad_event_type, 'Unknown')
-            END as call_type,
+            COALESCE(i.cad_event_type, 'Unknown') || 
+                CASE WHEN i.cad_event_subtype IS NOT NULL 
+                     THEN ' / ' || i.cad_event_subtype 
+                     ELSE '' 
+                END as call_type,
             COUNT(DISTINCT i.id) as responded
         FROM incident_personnel ip
         JOIN incidents i ON ip.incident_id = i.id

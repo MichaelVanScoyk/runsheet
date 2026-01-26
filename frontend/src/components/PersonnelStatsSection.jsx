@@ -136,6 +136,10 @@ const PersonnelStatsSection = ({ userSession }) => {
 const PersonnelStatsContent = ({ data, colors }) => {
   const { personnel, period, calls, first_out, availability, units, roles, fun_facts, details } = data;
 
+  // Split call types by category
+  const fireTypes = availability?.by_call_type?.filter(t => t.category === 'fire') || [];
+  const emsTypes = availability?.by_call_type?.filter(t => t.category === 'ems') || [];
+
   return (
     <div className="space-y-6">
       {/* Personnel Name & Period */}
@@ -290,7 +294,7 @@ const PersonnelStatsContent = ({ data, colors }) => {
           </div>
         </div>
 
-        {/* Availability by Time Period */}
+        {/* Availability by Time Period - Clean text format */}
         <div>
           <Tooltip text="Percentage of station calls you responded to during each time period. Daytime = 6am-4pm, Evening = 4pm-12am, Overnight = 12am-6am.">
             <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2 cursor-help">
@@ -298,49 +302,35 @@ const PersonnelStatsContent = ({ data, colors }) => {
             </h4>
           </Tooltip>
           {availability?.by_period && (
-            <div className="space-y-3">
+            <div className="space-y-3 text-sm">
               {/* Fire availability */}
               <div>
-                <p className="text-xs text-red-600 font-medium mb-1">🔥 Fire</p>
-                <div className="space-y-1">
-                  {['daytime', 'evening', 'overnight'].map((p, i) => {
+                <p className="text-xs text-red-600 font-semibold mb-1">🔥 Fire</p>
+                <div className="space-y-0.5 ml-4">
+                  {['daytime', 'evening', 'overnight'].map((p) => {
                     const d = availability.by_period[p]?.fire || { responded: 0, total: 0, percentage: 0 };
+                    const label = availability.period_labels?.[p] || p;
                     return (
-                      <Tooltip key={p} text={`${d.responded} of ${d.total} fire calls during ${availability.period_labels?.[p] || p}`}>
-                        <div className="flex items-center gap-2 cursor-help">
-                          <div className="w-20 text-xs text-gray-500">{availability.period_labels?.[p] || p}</div>
-                          <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
-                            <div 
-                              className="h-full rounded-full bg-red-400"
-                              style={{ width: `${d.percentage}%` }}
-                            />
-                          </div>
-                          <div className="w-12 text-xs text-right text-gray-500">{d.percentage}%</div>
-                        </div>
-                      </Tooltip>
+                      <div key={p} className="flex justify-between text-xs">
+                        <span className="text-gray-600">{label}:</span>
+                        <span className="font-medium text-gray-900">{d.percentage}% <span className="text-gray-400">({d.responded}/{d.total})</span></span>
+                      </div>
                     );
                   })}
                 </div>
               </div>
               {/* EMS availability */}
               <div>
-                <p className="text-xs text-blue-600 font-medium mb-1">🚑 EMS</p>
-                <div className="space-y-1">
-                  {['daytime', 'evening', 'overnight'].map((p, i) => {
+                <p className="text-xs text-blue-600 font-semibold mb-1">🚑 EMS</p>
+                <div className="space-y-0.5 ml-4">
+                  {['daytime', 'evening', 'overnight'].map((p) => {
                     const d = availability.by_period[p]?.ems || { responded: 0, total: 0, percentage: 0 };
+                    const label = availability.period_labels?.[p] || p;
                     return (
-                      <Tooltip key={p} text={`${d.responded} of ${d.total} EMS calls during ${availability.period_labels?.[p] || p}`}>
-                        <div className="flex items-center gap-2 cursor-help">
-                          <div className="w-20 text-xs text-gray-500">{availability.period_labels?.[p] || p}</div>
-                          <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
-                            <div 
-                              className="h-full rounded-full bg-blue-400"
-                              style={{ width: `${d.percentage}%` }}
-                            />
-                          </div>
-                          <div className="w-12 text-xs text-right text-gray-500">{d.percentage}%</div>
-                        </div>
-                      </Tooltip>
+                      <div key={p} className="flex justify-between text-xs">
+                        <span className="text-gray-600">{label}:</span>
+                        <span className="font-medium text-gray-900">{d.percentage}% <span className="text-gray-400">({d.responded}/{d.total})</span></span>
+                      </div>
                     );
                   })}
                 </div>
@@ -350,24 +340,43 @@ const PersonnelStatsContent = ({ data, colors }) => {
         </div>
       </div>
 
-      {/* Availability by Call Type */}
-      {availability?.by_call_type?.length > 0 && (
+      {/* Availability by Call Type - Clean text lists */}
+      {(fireTypes.length > 0 || emsTypes.length > 0) && (
         <div>
-          <Tooltip text="Percentage of station calls you responded to by call type. Shows how often you respond to each type of call that comes into the station.">
-            <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1 cursor-help">
+          <Tooltip text="Percentage of station calls you responded to by call type. Format: CAD Event Type / CAD Event Subtype.">
+            <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-1 cursor-help">
               Availability by Call Type <Info className="w-3 h-3 text-gray-400" />
             </h4>
           </Tooltip>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-            {availability.by_call_type.slice(0, 12).map((type) => (
-              <Tooltip key={type.call_type} text={`${type.responded} of ${type.total} "${type.call_type}" calls (${type.percentage}%)`}>
-                <div className={`rounded-lg p-2 text-center cursor-help ${type.category === 'fire' ? 'bg-red-50' : 'bg-blue-50'}`}>
-                  <p className="text-xs text-gray-600 truncate" title={type.call_type}>{type.call_type}</p>
-                  <p className={`font-bold ${type.category === 'fire' ? 'text-red-700' : 'text-blue-700'}`}>{type.percentage}%</p>
-                  <p className="text-xs text-gray-400">{type.responded}/{type.total}</p>
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Fire Types */}
+            {fireTypes.length > 0 && (
+              <div>
+                <p className="text-xs text-red-600 font-semibold mb-2">🔥 Fire</p>
+                <div className="space-y-1">
+                  {fireTypes.slice(0, 10).map((type) => (
+                    <div key={type.call_type} className="flex justify-between text-xs">
+                      <span className="text-gray-700 truncate mr-2" title={type.call_type}>{type.call_type}</span>
+                      <span className="font-medium text-gray-900 whitespace-nowrap">{type.percentage}% <span className="text-gray-400">({type.responded}/{type.total})</span></span>
+                    </div>
+                  ))}
                 </div>
-              </Tooltip>
-            ))}
+              </div>
+            )}
+            {/* EMS Types */}
+            {emsTypes.length > 0 && (
+              <div>
+                <p className="text-xs text-blue-600 font-semibold mb-2">🚑 EMS</p>
+                <div className="space-y-1">
+                  {emsTypes.slice(0, 10).map((type) => (
+                    <div key={type.call_type} className="flex justify-between text-xs">
+                      <span className="text-gray-700 truncate mr-2" title={type.call_type}>{type.call_type}</span>
+                      <span className="font-medium text-gray-900 whitespace-nowrap">{type.percentage}% <span className="text-gray-400">({type.responded}/{type.total})</span></span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
