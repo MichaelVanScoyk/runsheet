@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, Award, Zap, Target, Truck, Clock, Loader2, Info } from 'lucide-react';
-import api, { getUserSession } from '../api';
+import api from '../api';
 
 const formatDateLong = (dateStr) => {
   if (!dateStr) return '';
@@ -25,8 +25,7 @@ const Tooltip = ({ text, children }) => (
   </div>
 );
 
-const PersonnelStatsSection = () => {
-  const [userSession] = useState(getUserSession());
+const PersonnelStatsSection = ({ userSession }) => {
   const [personnelDays, setPersonnelDays] = useState(365);
   const [personnelStats, setPersonnelStats] = useState(null);
   const [personnelStatsLoading, setPersonnelStatsLoading] = useState(false);

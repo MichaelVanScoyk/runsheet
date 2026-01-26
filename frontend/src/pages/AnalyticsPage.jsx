@@ -49,7 +49,7 @@ const formatDate = (dateStr) => {
 // MAIN COMPONENT
 // =============================================================================
 
-const AnalyticsPage = () => {
+const AnalyticsPage = ({ userSession }) => {
   const [dateRange, setDateRange] = useState(getDateRange(90));
   const [selectedDays, setSelectedDays] = useState(90);
   const [category, setCategory] = useState('FIRE');
@@ -289,7 +289,7 @@ const AnalyticsPage = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-6">
         
         {/* Section 0: Personnel Stats (when logged in) */}
-        <PersonnelStatsSection />
+        <PersonnelStatsSection userSession={userSession} />
 
         {/* Section 1: Response Times by Call Type */}
         <CollapsibleSection

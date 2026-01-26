@@ -638,7 +638,7 @@ function AppContent({ tenant, onTenantLogout }) {
         <Routes>
           <Route path="/" element={<IncidentsPage userSession={userSession} />} />
           <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/analytics" element={<AnalyticsPage userSession={userSession} />} />
           <Route path="/personnel" element={<PersonnelPage />} />
           <Route path="/apparatus" element={<ApparatusPage />} />
           <Route path="/municipalities" element={<MunicipalitiesPage />} />
