@@ -264,7 +264,7 @@ const PersonnelStatsContent = ({ data, colors }) => {
 
         {/* Role Breakdown */}
         <div>
-          <Tooltip text="Your role on each call from incident_personnel.role field. DRIVER = apparatus driver, OFFICER = crew officer/OIC, FF = firefighter (default if not specified). EMT counts as FF.">
+          <Tooltip text="Role derived from your seat position (slot_index) on each unit. Driver = slot 0 on apparatus with driver seat. Officer = slot 1 (or slot 0 if no driver). FF = all other positions. Future: will show specific seat names (Nozzle, Backup, Doorman, etc.) when riding assignments feature is implemented.">
             <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2 cursor-help">
               <Target className="w-4 h-4" /> Roles <Info className="w-3 h-3 text-gray-400" />
             </h4>

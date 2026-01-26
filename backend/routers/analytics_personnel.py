@@ -346,14 +346,35 @@ def get_unit_stats(db: Session, personnel_id: int, start_date: date, end_date: d
 
 
 def get_role_stats(db: Session, personnel_id: int, start_date: date, end_date: date) -> dict:
-    """Get role breakdown (driver, officer, FF)."""
+    """
+    Get role breakdown (driver, officer, FF) derived from slot_index and apparatus config.
+    
+    Role is determined by position on the unit (slot_index) combined with
+    the apparatus configuration (has_driver, has_officer flags):
+    - slot_index 0 + apparatus.has_driver = DRIVER
+    - slot_index 1 + apparatus.has_officer (when has_driver=true) = OFFICER  
+    - slot_index 0 + apparatus.has_officer (when has_driver=false) = OFFICER
+    - All other slots = FF
+    
+    FUTURE: When apparatus_seats table is implemented, this query will join to
+    that table to get actual seat names (Nozzle, Backup, Doorman, Hydrant, Tools, etc.)
+    instead of generic FF. The apparatus_seats table will define named positions
+    per apparatus, allowing admin-configurable riding assignments.
+    """
     
     result = db.execute(text("""
         SELECT 
-            COALESCE(ip.role, 'FF') as role,
+            CASE 
+                WHEN a.has_driver = true AND ip.slot_index = 0 THEN 'DRIVER'
+                WHEN a.has_officer = true AND a.has_driver = true AND ip.slot_index = 1 THEN 'OFFICER'
+                WHEN a.has_officer = true AND a.has_driver = false AND ip.slot_index = 0 THEN 'OFFICER'
+                ELSE 'FF'
+            END as derived_role,
             COUNT(DISTINCT i.id) as count
         FROM incident_personnel ip
         JOIN incidents i ON ip.incident_id = i.id
+        JOIN incident_units iu ON ip.incident_unit_id = iu.id
+        JOIN apparatus a ON iu.apparatus_id = a.id
         WHERE ip.personnel_id = :personnel_id
             AND i.incident_date >= :start_date
             AND i.incident_date < :end_date
@@ -369,11 +390,13 @@ def get_role_stats(db: Session, personnel_id: int, start_date: date, end_date: d
     
     total = sum(r.count for r in result)
     
-    role_map = {'DRIVER': 'driver', 'OFFICER': 'officer', 'FF': 'ff', 'EMT': 'ff'}
+    # Initialize all roles
     roles = {'driver': 0, 'officer': 0, 'ff': 0}
     
+    # Map results to role buckets
+    role_map = {'DRIVER': 'driver', 'OFFICER': 'officer', 'FF': 'ff'}
     for r in result:
-        normalized = role_map.get(r.role.upper(), 'ff') if r.role else 'ff'
+        normalized = role_map.get(r.derived_role, 'ff')
         roles[normalized] += r.count
     
     role_data = {}
