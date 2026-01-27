@@ -1,13 +1,16 @@
 """
-AV Alerts - Audio/Visual alert broadcasting for browser notifications.
+AV Alerts - Audio/Visual alert broadcasting for browser and device notifications.
 
 Broadcasts alerts to /ws/AValerts WebSocket endpoint when:
 - New incident is created (dispatch alert)
 - Incident is closed (close alert)
 
-Frontend receives these alerts and plays sounds / TTS based on:
+For dispatch alerts, also generates TTS audio announcement.
+
+Frontend/devices receive these alerts and play sounds / TTS based on:
 - event_type: "dispatch" or "close"
 - call_category: "FIRE" or "EMS"
+- audio_url: URL to TTS MP3 (dispatch only)
 """
 
 import logging
@@ -18,8 +21,9 @@ from database import _extract_slug, _is_internal_ip
 
 logger = logging.getLogger(__name__)
 
-# Lazy import to avoid circular imports
+# Lazy imports to avoid circular imports
 _ws_av_broadcast = None
+_tts_service = None
 
 
 def _get_av_broadcast():
@@ -32,6 +36,19 @@ def _get_av_broadcast():
         except ImportError:
             _ws_av_broadcast = False  # Mark as unavailable
     return _ws_av_broadcast if _ws_av_broadcast else None
+
+
+def _get_tts_service():
+    """Lazy import of TTS service"""
+    global _tts_service
+    if _tts_service is None:
+        try:
+            from services.tts_service import tts_service
+            _tts_service = tts_service
+        except ImportError as e:
+            logger.warning(f"TTS service not available: {e}")
+            _tts_service = False  # Mark as unavailable
+    return _tts_service if _tts_service else None
 
 
 def _extract_tenant_from_request(request) -> str:
@@ -61,6 +78,8 @@ async def emit_av_alert(
     Called from incident create (dispatch) and close endpoints.
     Frontend plays sounds and optionally reads TTS based on this data.
     
+    For dispatch alerts, generates TTS audio and includes audio_url.
+    
     Args:
         request: FastAPI request (to extract tenant)
         event_type: "dispatch" or "close"
@@ -77,6 +96,25 @@ async def emit_av_alert(
     
     tenant_slug = _extract_tenant_from_request(request)
     
+    # Generate TTS audio for dispatch alerts
+    audio_url = None
+    if event_type == "dispatch":
+        tts = _get_tts_service()
+        if tts:
+            try:
+                audio_url = await tts.generate_alert_audio(
+                    tenant=tenant_slug,
+                    incident_id=incident_id,
+                    units=units_due or [],
+                    call_type=cad_event_type or "Emergency",
+                    address=address or "",
+                    subtype=cad_event_subtype
+                )
+                if audio_url:
+                    logger.info(f"TTS audio generated: {audio_url}")
+            except Exception as e:
+                logger.warning(f"TTS generation failed: {e}")
+    
     alert_data = {
         "event_type": event_type,
         "incident_id": incident_id,
@@ -87,6 +125,10 @@ async def emit_av_alert(
         "units_due": units_due or [],
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    
+    # Include audio URL if generated
+    if audio_url:
+        alert_data["audio_url"] = audio_url
     
     try:
         await broadcast(tenant_slug, alert_data)

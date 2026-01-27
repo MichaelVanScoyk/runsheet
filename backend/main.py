@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 from routers import incidents, lookups, apparatus, personnel, settings, neris_codes, admin, backup, tenant_auth, master_admin
 from routers import branding, print_layout, comcat, websocket, analytics, review_tasks, analytics_v2, detail_types, test_alerts
-from routers import analytics_personnel
+from routers import analytics_personnel, alert_audio
 from routers.reports import router as reports_router
 from database import engine, Base
 from master_database import MasterSessionLocal
@@ -41,6 +41,8 @@ PUBLIC_PATH_PREFIXES = [
     "/api/personnel/auth/complete-reset",
     # AV alert sound files (needed by StationBell ESP32 devices)
     "/api/settings/av-alerts/sound/",
+    # TTS audio files for StationBell devices
+    "/alerts/audio/",
 ]
 
 
@@ -272,6 +274,7 @@ app.include_router(review_tasks.router, prefix="/api/review-tasks", tags=["Revie
 app.include_router(detail_types.router, prefix="/api/detail-types", tags=["Detail Types"])
 app.include_router(test_alerts.router, prefix="/api/test-alerts", tags=["Test Alerts"])
 app.include_router(analytics_personnel.router)  # Personnel analytics: /api/analytics/v2/personnel
+app.include_router(alert_audio.router, tags=["Alert Audio"])  # TTS audio files: /alerts/audio
 
 @app.get("/")
 async def root():
