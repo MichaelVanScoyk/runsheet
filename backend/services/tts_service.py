@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 # Piper configuration
 PIPER_PATH = "/home/dashboard/piper/piper/piper"
 MODEL_PATH = "/home/dashboard/piper/en_US-lessac-medium.onnx"
+FFMPEG_PATH = "/usr/bin/ffmpeg"
 
 # Output configuration
 ALERTS_DIR = "/tmp/tts_alerts"
@@ -255,7 +256,7 @@ class TTSService:
                 
                 # Convert WAV to MP3 with ffmpeg
                 proc = await asyncio.create_subprocess_exec(
-                    "ffmpeg", "-y",
+                    FFMPEG_PATH, "-y",
                     "-i", str(wav_path),
                     "-codec:a", "libmp3lame",
                     "-b:a", "64k",  # 64kbps is fine for speech
