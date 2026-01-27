@@ -123,7 +123,7 @@ function QuickEntrySection({
               <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>Equipment Used</label>
               <textarea
                 rows={2}
-                placeholder="Halligan, Pike Pole, Chain Saw..."
+                placeholder=""
                 value={Array.isArray(formData.equipment_used) ? formData.equipment_used.join(', ') : (formData.equipment_used || '')}
                 onChange={(e) => onFormChange('equipment_used', e.target.value)}
                 spellCheck={true}

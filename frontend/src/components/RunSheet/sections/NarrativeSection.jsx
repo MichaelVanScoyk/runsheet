@@ -105,7 +105,6 @@ export default function NarrativeSection() {
           <AutoTextarea 
             value={Array.isArray(formData.equipment_used) ? formData.equipment_used.join(', ') : (formData.equipment_used || '')} 
             onChange={(e) => handleChange('equipment_used', e.target.value)}
-            placeholder="Halligan, Pike Pole, Chain Saw..."
           />
         </div>
       </div>
