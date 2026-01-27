@@ -38,9 +38,17 @@ const getDateRange = (days) => {
     start.setDate(start.getDate() - days);
   }
   
+  // Format as local date string (YYYY-MM-DD) to avoid UTC conversion issues
+  const formatLocalDate = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
   return {
-    startDate: start.toISOString().split('T')[0],
-    endDate: end.toISOString().split('T')[0]
+    startDate: formatLocalDate(start),
+    endDate: formatLocalDate(end)
   };
 };
 

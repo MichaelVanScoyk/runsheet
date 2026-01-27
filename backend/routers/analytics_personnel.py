@@ -79,7 +79,7 @@ def get_call_activity(db: Session, personnel_id: int, start_date: date, end_date
         JOIN incidents i ON ip.incident_id = i.id
         WHERE ip.personnel_id = :personnel_id
             AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
     """), {
@@ -99,7 +99,7 @@ def get_call_activity(db: Session, personnel_id: int, start_date: date, end_date
         JOIN incidents i ON ip.incident_id = i.id
         WHERE ip.personnel_id = :personnel_id
             AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
         GROUP BY 1
@@ -133,7 +133,7 @@ def get_first_out_stats(db: Session, personnel_id: int, start_date: date, end_da
             JOIN incidents i ON ip.incident_id = i.id
             WHERE ip.personnel_id = :personnel_id
                 AND i.incident_date >= :start_date
-                AND i.incident_date < :end_date
+                AND i.incident_date <= :end_date
                 AND i.deleted_at IS NULL
                 AND i.call_category IN ('FIRE', 'EMS')
                 AND i.cad_units IS NOT NULL
@@ -209,7 +209,7 @@ def get_availability(db: Session, personnel_id: int, start_date: date, end_date:
             COUNT(DISTINCT i.id) as total_calls
         FROM incidents i
         WHERE i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
             AND i.time_dispatched IS NOT NULL
@@ -236,7 +236,7 @@ def get_availability(db: Session, personnel_id: int, start_date: date, end_date:
         JOIN incidents i ON ip.incident_id = i.id
         WHERE ip.personnel_id = :personnel_id
             AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
             AND i.time_dispatched IS NOT NULL
@@ -278,7 +278,7 @@ def get_availability(db: Session, personnel_id: int, start_date: date, end_date:
             COUNT(DISTINCT i.id) as total_calls
         FROM incidents i
         WHERE i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
         GROUP BY 1, 2
@@ -300,7 +300,7 @@ def get_availability(db: Session, personnel_id: int, start_date: date, end_date:
         JOIN incidents i ON ip.incident_id = i.id
         WHERE ip.personnel_id = :personnel_id
             AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
         GROUP BY 1
@@ -349,7 +349,7 @@ def get_unit_stats(db: Session, personnel_id: int, start_date: date, end_date: d
         JOIN apparatus a ON iu.apparatus_id = a.id
         WHERE ip.personnel_id = :personnel_id
             AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
             AND a.unit_category = 'APPARATUS'
@@ -412,7 +412,7 @@ def get_role_stats(db: Session, personnel_id: int, start_date: date, end_date: d
         JOIN apparatus a ON iu.apparatus_id = a.id
         WHERE ip.personnel_id = :personnel_id
             AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
         GROUP BY 1
@@ -456,7 +456,7 @@ def get_fun_facts(db: Session, personnel_id: int, start_date: date, end_date: da
         JOIN incidents i ON ip.incident_id = i.id
         WHERE ip.personnel_id = :personnel_id
             AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
             AND i.time_first_on_scene IS NOT NULL
@@ -477,7 +477,7 @@ def get_fun_facts(db: Session, personnel_id: int, start_date: date, end_date: da
         JOIN incidents i ON ip.incident_id = i.id
         WHERE ip.personnel_id = :personnel_id
             AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
         GROUP BY i.incident_date
@@ -497,7 +497,7 @@ def get_fun_facts(db: Session, personnel_id: int, start_date: date, end_date: da
         JOIN incidents i ON ip.incident_id = i.id
         WHERE ip.personnel_id = :personnel_id
             AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
         ORDER BY i.incident_date, i.time_dispatched
@@ -516,7 +516,7 @@ def get_fun_facts(db: Session, personnel_id: int, start_date: date, end_date: da
         JOIN incidents i ON ip.incident_id = i.id
         WHERE ip.personnel_id = :personnel_id
             AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category IN ('FIRE', 'EMS')
         ORDER BY i.incident_date DESC, i.time_dispatched DESC
@@ -600,7 +600,7 @@ def get_detail_participation(db: Session, personnel_id: int, start_date: date, e
         LEFT JOIN detail_types dt ON i.detail_type = dt.code
         WHERE ip.personnel_id = :personnel_id
             AND i.incident_date >= :start_date
-            AND i.incident_date < :end_date
+            AND i.incident_date <= :end_date
             AND i.deleted_at IS NULL
             AND i.call_category = 'DETAIL'
         GROUP BY dt.display_name, dt.display_order
