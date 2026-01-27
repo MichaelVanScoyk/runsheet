@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Piper configuration
 PIPER_PATH = "/home/dashboard/piper/piper/piper"
-MODEL_PATH = "/home/dashboard/piper/en_US-lessac-medium.onnx"
+MODEL_PATH = "/home/dashboard/piper/en_US-ryan-medium.onnx"
 FFMPEG_PATH = "/usr/bin/ffmpeg"
 
 # Output configuration
