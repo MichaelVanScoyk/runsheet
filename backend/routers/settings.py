@@ -798,3 +798,77 @@ async def delete_av_alert_sound(
     db.commit()
     
     return {"status": "ok", "message": f"Reverted {sound_type} to default sound"}
+
+
+# =============================================================================
+# FEATURE FLAGS
+# =============================================================================
+
+# Default feature flag settings
+DEFAULT_FEATURES = {
+    'allow_incident_duplication': False,  # Admin-only incident duplication feature
+}
+
+
+@router.get("/features")
+async def get_features(db: Session = Depends(get_db)):
+    """
+    Get all feature flags.
+    Returns defaults merged with any custom values.
+    """
+    result = db.execute(
+        text("SELECT key, value, value_type FROM settings WHERE category = 'features'")
+    )
+    
+    features = dict(DEFAULT_FEATURES)
+    
+    for row in result:
+        key = row[0]
+        value = _parse_value(row[1], row[2])
+        if key in features:
+            features[key] = value
+    
+    return features
+
+
+@router.put("/features")
+async def update_features(
+    features: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Update feature flags.
+    Only updates keys that are in the allowed list.
+    """
+    allowed_keys = set(DEFAULT_FEATURES.keys())
+    
+    for key, value in features.items():
+        if key not in allowed_keys:
+            continue
+        
+        # Determine value type
+        if isinstance(value, bool):
+            value_str = str(value).lower()
+            value_type = 'boolean'
+        else:
+            value_str = str(value)
+            value_type = 'string'
+        
+        exists = db.execute(
+            text("SELECT 1 FROM settings WHERE category = 'features' AND key = :key"),
+            {"key": key}
+        ).fetchone()
+        
+        if exists:
+            db.execute(
+                text("UPDATE settings SET value = :value, value_type = :vtype, updated_at = NOW() WHERE category = 'features' AND key = :key"),
+                {"key": key, "value": value_str, "vtype": value_type}
+            )
+        else:
+            db.execute(
+                text("INSERT INTO settings (category, key, value, value_type) VALUES ('features', :key, :value, :vtype)"),
+                {"key": key, "value": value_str, "vtype": value_type}
+            )
+    
+    db.commit()
+    return {"status": "ok"}

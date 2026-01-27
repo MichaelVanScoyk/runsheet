@@ -56,6 +56,14 @@ export const getAdjacentIncidents = (id) => api.get(`/incidents/${id}/adjacent`)
 
 export const deleteIncident = (id) => api.delete(`/incidents/${id}`);
 
+// Incident duplication (admin feature)
+export const checkDuplicateStatus = (id) => api.get(`/incidents/${id}/duplicate-check`);
+
+export const duplicateIncident = (id, targetCategory, editedBy = null) => {
+  const params = editedBy ? { edited_by: editedBy } : {};
+  return api.post(`/incidents/${id}/duplicate`, { target_category: targetCategory }, { params });
+};
+
 // ============================================================================
 // ATTENDANCE RECORDS (DETAIL category)
 // ============================================================================
@@ -283,6 +291,11 @@ export const getPrintLayout = () => api.get('/settings/print/layout');
 export const updatePrintLayout = (layout) => api.put('/settings/print/layout', layout);
 
 export const resetPrintLayout = () => api.post('/settings/print/layout/reset');
+
+// Feature Flags
+export const getFeatures = () => api.get('/settings/features');
+
+export const updateFeatures = (features) => api.put('/settings/features', features);
 
 // ============================================================================
 // ADMIN

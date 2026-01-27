@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings, getPrintLayout, updatePrintLayout, resetPrintLayout, getIncidentYears } from '../api';
+import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings, getPrintLayout, updatePrintLayout, resetPrintLayout, getIncidentYears, getFeatures, updateFeatures } from '../api';
 import { useBranding } from '../contexts/BrandingContext';
 import { formatDateTimeLocal } from '../utils/timeUtils';
 import './AdminPage.css';
@@ -2228,6 +2228,126 @@ function ComCatTab() {
 
 
 // ============================================================================
+// FEATURES TAB COMPONENT
+// ============================================================================
+
+function FeaturesTab() {
+  const [features, setFeatures] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(null);
+  const [message, setMessage] = useState(null);
+
+  useEffect(() => {
+    loadFeatures();
+  }, []);
+
+  const loadFeatures = async () => {
+    try {
+      const res = await getFeatures();
+      setFeatures(res.data);
+    } catch (err) {
+      console.error('Failed to load features:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggle = async (key, currentValue) => {
+    setSaving(key);
+    setMessage(null);
+    try {
+      await updateFeatures({ [key]: !currentValue });
+      setFeatures(prev => ({ ...prev, [key]: !currentValue }));
+      setMessage({ type: 'success', text: `Feature ${!currentValue ? 'enabled' : 'disabled'}` });
+    } catch (err) {
+      console.error('Failed to update feature:', err);
+      setMessage({ type: 'error', text: 'Failed to save' });
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  if (loading) return <div className="loading">Loading features...</div>;
+
+  const featureInfo = {
+    allow_incident_duplication: {
+      label: 'Incident Duplication',
+      description: 'Allow admins to duplicate incidents to different categories (FIRE/EMS/DETAIL). Useful for dual-crediting stats when fire units assist on EMS calls.',
+      icon: '📋'
+    }
+  };
+
+  return (
+    <div className="features-tab">
+      <h3 style={{ color: 'var(--primary-color)' }}>Feature Flags</h3>
+      <p className="tab-intro">
+        Enable or disable optional features. These are admin-only capabilities.
+      </p>
+
+      {message && (
+        <div className={`message ${message.type}`} style={{ marginBottom: '1rem' }}>
+          {message.text}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '600px' }}>
+        {Object.entries(features).map(([key, value]) => {
+          const info = featureInfo[key] || { label: key, description: '', icon: '⚙️' };
+          const isSaving = saving === key;
+          
+          return (
+            <div 
+              key={key}
+              style={{
+                background: '#f5f5f5',
+                borderRadius: '8px',
+                padding: '1rem',
+                border: '1px solid #e0e0e0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '1rem'
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>{info.icon}</span>
+                  <strong style={{ color: '#333' }}>{info.label}</strong>
+                </div>
+                <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>
+                  {info.description}
+                </p>
+              </div>
+              <button
+                onClick={() => handleToggle(key, value)}
+                disabled={isSaving}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '4px',
+                  border: 'none',
+                  cursor: isSaving ? 'wait' : 'pointer',
+                  fontWeight: 'bold',
+                  minWidth: '80px',
+                  background: value ? '#22c55e' : '#e5e7eb',
+                  color: value ? '#fff' : '#666'
+                }}
+              >
+                {isSaving ? '...' : (value ? 'ON' : 'OFF')}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {Object.keys(features).length === 0 && (
+        <p style={{ color: '#666' }}>No feature flags available.</p>
+      )}
+    </div>
+  );
+}
+
+
+// ============================================================================
 // ADMIN LOGIN FORM
 // ============================================================================
 
@@ -2391,6 +2511,12 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         >
           🔔 AV Alerts
         </button>
+        <button 
+          className={activeTab === 'features' ? 'active' : ''} 
+          onClick={() => setActiveTab('features')}
+        >
+          🚀 Features
+        </button>
       </div>
 
       <div className="admin-content">
@@ -2409,6 +2535,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'branding' && <BrandingTab onRefresh={refreshBranding} />}
         {activeTab === 'comcat' && <ComCatTab />}
         {activeTab === 'avalerts' && <AVAlertsTab />}
+        {activeTab === 'features' && <FeaturesTab />}
       </div>
     </div>
   );
