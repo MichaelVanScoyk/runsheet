@@ -545,11 +545,25 @@ def get_station_coords(db: Session) -> tuple:
 
 # Default AV alert settings
 DEFAULT_AV_ALERTS = {
+    # Master controls
     'enabled': True,                          # Master enable for department
-    'dispatch_fire_sound': '/sounds/dispatch-fire.mp3',   # Default sound path
+    'tts_enabled': True,                      # Allow TTS department-wide
+    
+    # Sound file paths
+    'dispatch_fire_sound': '/sounds/dispatch-fire.mp3',
     'dispatch_ems_sound': '/sounds/dispatch-ems.mp3',
     'close_sound': '/sounds/close.mp3',
-    'tts_enabled': True,                      # Allow TTS department-wide
+    
+    # TTS field toggles - which incident fields to include in announcement
+    'tts_include_units': True,                # "Engine 4 81, Tower 48"
+    'tts_include_call_type': True,            # "Structure Fire"
+    'tts_include_subtype': False,             # "with entrapment"
+    'tts_include_address': True,              # "123 Valley Road"
+    'tts_include_cross_streets': False,       # "between Main and Oak"
+    'tts_include_box': False,                 # "Box 48-1"
+    
+    # Settings version for cache invalidation
+    'settings_version': 0,
 }
 
 
@@ -577,44 +591,79 @@ async def get_av_alerts_settings(db: Session = Depends(get_db)):
 @router.put("/av-alerts")
 async def update_av_alerts_settings(
     settings: dict,
+    request: Request = None,
     db: Session = Depends(get_db)
 ):
     """
     Update AV alerts settings.
     Only updates keys that are in the allowed list.
+    Increments settings_version on any change for cache invalidation.
     """
     allowed_keys = set(DEFAULT_AV_ALERTS.keys())
+    changes_made = False
     
     for key, value in settings.items():
-        if key not in allowed_keys:
+        if key not in allowed_keys or key == 'settings_version':
             continue
         
         # Determine value type
         if isinstance(value, bool):
             value_str = str(value).lower()
             value_type = 'boolean'
+        elif isinstance(value, int):
+            value_str = str(value)
+            value_type = 'number'
         else:
             value_str = str(value)
             value_type = 'string'
         
         exists = db.execute(
-            text("SELECT 1 FROM settings WHERE category = 'av_alerts' AND key = :key"),
+            text("SELECT value FROM settings WHERE category = 'av_alerts' AND key = :key"),
             {"key": key}
         ).fetchone()
         
         if exists:
+            if exists[0] != value_str:
+                changes_made = True
             db.execute(
                 text("UPDATE settings SET value = :value, value_type = :vtype, updated_at = NOW() WHERE category = 'av_alerts' AND key = :key"),
                 {"key": key, "value": value_str, "vtype": value_type}
             )
         else:
+            changes_made = True
             db.execute(
                 text("INSERT INTO settings (category, key, value, value_type) VALUES ('av_alerts', :key, :value, :vtype)"),
                 {"key": key, "value": value_str, "vtype": value_type}
             )
     
+    # Increment settings_version if changes were made (for cache busting)
+    if changes_made:
+        version_result = db.execute(
+            text("SELECT value FROM settings WHERE category = 'av_alerts' AND key = 'settings_version'")
+        ).fetchone()
+        new_version = int(version_result[0]) + 1 if version_result else 1
+        _upsert_setting(db, 'av_alerts', 'settings_version', str(new_version))
+        
+        # Broadcast settings_updated to all clients
+        try:
+            from routers.websocket import broadcast_av_alert
+            from database import _extract_slug
+            
+            tenant_slug = "glenmoorefc"
+            if request:
+                host = request.headers.get('host', '')
+                tenant_slug = _extract_slug(host) or "glenmoorefc"
+            
+            await broadcast_av_alert(tenant_slug, {
+                "type": "settings_updated",
+                "settings_version": new_version,
+            })
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to broadcast settings_updated: {e}")
+    
     db.commit()
-    return {"status": "ok"}
+    return {"status": "ok", "changes_made": changes_made}
 
 
 @router.post("/av-alerts/upload-sound")

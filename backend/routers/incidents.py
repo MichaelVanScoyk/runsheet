@@ -1468,6 +1468,8 @@ async def create_incident(
         data.cad_event_subtype,
         data.address,
         None,  # units_due not available at creation time
+        incident.cross_streets,
+        incident.esz_box,
     )
     
     return {
@@ -1811,6 +1813,8 @@ async def close_incident(
         incident.cad_event_subtype,
         incident.address,
         units_due,
+        incident.cross_streets,
+        incident.esz_box,
     )
     
     # Include reconciliation info in response if any personnel were moved

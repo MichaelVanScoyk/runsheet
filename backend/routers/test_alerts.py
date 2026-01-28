@@ -1,5 +1,5 @@
 """
-Test Alerts Router - Send test AV alerts without creating incidents
+Test Alerts Router - Send test AV alerts and custom announcements
 """
 
 from fastapi import APIRouter, Request, HTTPException
@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import logging
 
-from routers.av_alerts import emit_av_alert
+from routers.av_alerts import emit_av_alert, emit_custom_announcement
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,8 @@ def _get_tts():
         except ImportError:
             _tts_service = False
     return _tts_service if _tts_service else None
+
+
 router = APIRouter()
 
 
@@ -33,38 +35,40 @@ class TestAlertRequest(BaseModel):
     cad_event_subtype: Optional[str] = None
     address: Optional[str] = "123 Test Street"
     units_due: Optional[List[str]] = ["TEST1", "TEST2"]
+    cross_streets: Optional[str] = None
+    box: Optional[str] = None
+
+
+class CustomAnnouncementRequest(BaseModel):
+    message: str  # The text to announce
 
 
 @router.get("/tts-test")
 async def test_tts_generation():
     """
     Quick test of TTS generation without broadcasting.
-    Returns the generated audio URL.
+    Returns the generated audio URL and formatted text.
     """
     tts = _get_tts()
     if not tts:
         raise HTTPException(status_code=500, detail="TTS service not available")
     
     try:
-        # Generate a test audio file
-        audio_url = await tts.generate_alert_audio(
+        result = await tts.generate_alert_audio(
             tenant="test",
             incident_id=0,
             units=["ENG481", "TWR48"],
             call_type="Structure Fire",
             address="123 Valley Road",
-            subtype=None
+            subtype=None,
+            db=None,  # Uses default settings
         )
         
-        if audio_url:
+        if result:
             return {
                 "success": True,
-                "audio_url": audio_url,
-                "text": tts.format_announcement(
-                    units=["ENG481", "TWR48"],
-                    call_type="Structure Fire",
-                    address="123 Valley Road"
-                )
+                "audio_url": result.get("audio_url"),
+                "tts_text": result.get("tts_text"),
             }
         else:
             raise HTTPException(status_code=500, detail="TTS generation failed")
@@ -83,6 +87,7 @@ async def send_test_alert(
     Send a test AV alert through WebSocket without creating an incident.
     
     Used for testing StationBell hardware and browser alert sounds.
+    The tts_text will be formatted according to admin settings.
     """
     try:
         await emit_av_alert(
@@ -94,6 +99,8 @@ async def send_test_alert(
             cad_event_subtype=alert.cad_event_subtype,
             address=alert.address,
             units_due=alert.units_due,
+            cross_streets=alert.cross_streets,
+            box=alert.box,
         )
         
         logger.info(f"Test alert sent: {alert.event_type} / {alert.call_category}")
@@ -106,3 +113,107 @@ async def send_test_alert(
     except Exception as e:
         logger.error(f"Failed to send test alert: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/announce")
+async def send_custom_announcement(
+    request: Request,
+    data: CustomAnnouncementRequest
+):
+    """
+    Send a custom announcement to all AV alert clients.
+    
+    Used for station paging, test messages, etc.
+    No klaxon sound - just voice announcement.
+    
+    Both web UI and StationBell will receive:
+    - audio_url: Server-generated MP3
+    - tts_text: The message text (for browser TTS fallback)
+    """
+    if not data.message or not data.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    
+    if len(data.message) > 500:
+        raise HTTPException(status_code=400, detail="Message too long (max 500 characters)")
+    
+    try:
+        result = await emit_custom_announcement(
+            request=request,
+            message=data.message.strip(),
+        )
+        
+        if result:
+            logger.info(f"Custom announcement sent: {data.message[:50]}...")
+            return {
+                "success": True,
+                "audio_url": result.get("audio_url"),
+                "tts_text": result.get("tts_text"),
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Announcement generation failed or TTS disabled")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to send custom announcement: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/settings-preview")
+async def preview_tts_settings(request: Request):
+    """
+    Preview what the TTS announcement would look like with current settings.
+    
+    Returns sample announcement text using the admin-configured field toggles.
+    Useful for testing settings changes before a real alert.
+    """
+    from database import get_db_for_tenant, _extract_slug
+    
+    tenant_slug = _extract_slug(request.headers.get('host', ''))
+    
+    db = None
+    try:
+        db = next(get_db_for_tenant(tenant_slug))
+    except Exception:
+        pass
+    
+    tts = _get_tts()
+    if not tts:
+        if db:
+            db.close()
+        return {
+            "success": False,
+            "error": "TTS service not available"
+        }
+    
+    # Import settings getter
+    from services.tts_service import _get_tts_settings
+    settings = _get_tts_settings(db)
+    
+    # Generate sample announcement
+    sample_text = tts.format_announcement(
+        units=["ENG481", "TWR48", "SQ48"],
+        call_type="DWELLING FIRE",
+        address="123 MAIN ST",
+        subtype="W/ENTRAPMENT",
+        cross_streets="OAK AVE / ELM ST",
+        box="48-1",
+        settings=settings,
+    )
+    
+    if db:
+        db.close()
+    
+    return {
+        "success": True,
+        "sample_text": sample_text,
+        "settings": {
+            "tts_enabled": settings.get("tts_enabled", True),
+            "tts_include_units": settings.get("tts_include_units", True),
+            "tts_include_call_type": settings.get("tts_include_call_type", True),
+            "tts_include_subtype": settings.get("tts_include_subtype", False),
+            "tts_include_address": settings.get("tts_include_address", True),
+            "tts_include_cross_streets": settings.get("tts_include_cross_streets", False),
+            "tts_include_box": settings.get("tts_include_box", False),
+        }
+    }

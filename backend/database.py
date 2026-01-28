@@ -131,6 +131,30 @@ def get_db(request: Request):
         db.close()
 
 
+def get_db_for_tenant(tenant_slug: str):
+    """
+    Get database session for a specific tenant by slug.
+    
+    Used by background tasks and services that don't have a request object.
+    Caller is responsible for closing the session.
+    
+    Usage:
+        db = next(get_db_for_tenant("glenmoorefc"))
+        try:
+            # use db
+        finally:
+            db.close()
+    """
+    db_name = _get_tenant_database(tenant_slug)
+    engine = _get_engine(db_name)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 # Legacy: default engine for scripts/migrations that don't go through HTTP
 engine = _get_engine("runsheet_db")
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

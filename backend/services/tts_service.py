@@ -2,29 +2,31 @@
 TTS Service - Text-to-Speech generation using Piper
 
 Generates MP3 announcements for dispatch alerts.
-Shared across all tenants - only the text content varies.
+Text formatting is configurable via admin settings.
 
 Usage:
     from services.tts_service import tts_service
     
-    audio_url = await tts_service.generate_alert_audio(
+    # Generate audio and get both URL and text
+    result = await tts_service.generate_alert_audio(
         tenant="glenmoorefc",
         incident_id=123,
         units=["ENG481", "TWR48"],
         call_type="Structure Fire",
-        address="123 Valley Road"
+        address="123 Valley Road",
+        db=db_session  # Pass DB session to read settings
     )
+    # result = {"audio_url": "/alerts/audio/...", "tts_text": "Engine 4 81..."}
 """
 
 import asyncio
 import logging
 import os
 import re
-import shutil
-import tempfile
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +120,7 @@ def _format_address(address: str) -> str:
     return address
 
 
-def _format_call_type(call_type: str, subtype: Optional[str] = None) -> str:
+def _format_call_type(call_type: str, subtype: Optional[str] = None, include_subtype: bool = False) -> str:
     """
     Format call type for natural speech.
     DWELLING FIRE -> "Dwelling Fire"
@@ -129,14 +131,56 @@ def _format_call_type(call_type: str, subtype: Optional[str] = None) -> str:
     # Title case
     result = call_type.strip().title()
     
-    # Add subtype if meaningful
-    if subtype and subtype.strip():
+    # Add subtype if enabled and meaningful
+    if include_subtype and subtype and subtype.strip():
         subtype_clean = subtype.strip().title()
         # Skip generic subtypes
         if subtype_clean not in ["None", "Unknown", "Other"]:
             result = f"{result}, {subtype_clean}"
     
     return result
+
+
+def _get_tts_settings(db) -> Dict[str, Any]:
+    """
+    Get TTS settings from database.
+    Returns defaults merged with stored settings.
+    """
+    from sqlalchemy import text
+    
+    defaults = {
+        'tts_enabled': True,
+        'tts_include_units': True,
+        'tts_include_call_type': True,
+        'tts_include_subtype': False,
+        'tts_include_address': True,
+        'tts_include_cross_streets': False,
+        'tts_include_box': False,
+        'settings_version': 0,
+    }
+    
+    if not db:
+        return defaults
+    
+    try:
+        result = db.execute(text(
+            "SELECT key, value, value_type FROM settings WHERE category = 'av_alerts'"
+        ))
+        
+        for row in result:
+            key, value, value_type = row[0], row[1], row[2]
+            if key in defaults:
+                # Parse value based on type
+                if value_type == 'boolean':
+                    defaults[key] = value.lower() in ('true', '1', 'yes')
+                elif value_type == 'number':
+                    defaults[key] = int(value)
+                else:
+                    defaults[key] = value
+    except Exception as e:
+        logger.warning(f"Failed to load TTS settings: {e}")
+    
+    return defaults
 
 
 class TTSService:
@@ -175,32 +219,75 @@ class TTSService:
         units: List[str],
         call_type: str,
         address: str,
-        subtype: Optional[str] = None
+        subtype: Optional[str] = None,
+        cross_streets: Optional[str] = None,
+        box: Optional[str] = None,
+        settings: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
-        Format the announcement text.
+        Format the announcement text based on settings.
         
-        Output format: "Engine 4 81, Tower 48. Structure Fire, 123 Valley Road"
+        Settings control which fields are included:
+        - tts_include_units: "Engine 4 81, Tower 48"
+        - tts_include_call_type: "Structure Fire"
+        - tts_include_subtype: "with entrapment"
+        - tts_include_address: "123 Valley Road"
+        - tts_include_cross_streets: "between Main and Oak"
+        - tts_include_box: "Box 48-1"
         """
+        if settings is None:
+            settings = {
+                'tts_include_units': True,
+                'tts_include_call_type': True,
+                'tts_include_subtype': False,
+                'tts_include_address': True,
+                'tts_include_cross_streets': False,
+                'tts_include_box': False,
+            }
+        
         parts = []
         
-        # Units (if any)
-        if units:
+        # Units (if enabled and present)
+        if settings.get('tts_include_units', True) and units:
             expanded_units = [_expand_unit_name(u) for u in units[:5]]  # Limit to 5 units
             parts.append(", ".join(expanded_units))
         
-        # Call type
-        formatted_type = _format_call_type(call_type, subtype)
+        # Call type (if enabled)
+        if settings.get('tts_include_call_type', True):
+            include_subtype = settings.get('tts_include_subtype', False)
+            formatted_type = _format_call_type(call_type, subtype, include_subtype)
+            if formatted_type:
+                parts.append(formatted_type)
         
-        # Address
-        formatted_address = _format_address(address)
+        # Box (if enabled and present) - goes before address
+        if settings.get('tts_include_box', False) and box:
+            parts.append(f"Box {box}")
         
-        # Combine: "Units. Call Type, Address"
-        if parts:
-            units_str = parts[0]
-            return f"{units_str}. {formatted_type}, {formatted_address}"
+        # Address (if enabled and present)
+        if settings.get('tts_include_address', True) and address:
+            formatted_address = _format_address(address)
+            if formatted_address:
+                parts.append(formatted_address)
+        
+        # Cross streets (if enabled and present)
+        if settings.get('tts_include_cross_streets', False) and cross_streets:
+            parts.append(f"between {cross_streets}")
+        
+        if not parts:
+            return "Alert"
+        
+        # Join with periods for pacing: "Units. Call Type. Address"
+        # First part gets no prefix, rest get period separation
+        if len(parts) == 1:
+            return parts[0]
+        
+        # Units first (if present), then ". " separator, then rest comma-separated
+        if settings.get('tts_include_units', True) and units:
+            units_part = parts[0]
+            rest = ", ".join(parts[1:])
+            return f"{units_part}. {rest}"
         else:
-            return f"{formatted_type}, {formatted_address}"
+            return ", ".join(parts)
     
     async def generate_alert_audio(
         self,
@@ -209,24 +296,45 @@ class TTSService:
         units: List[str],
         call_type: str,
         address: str,
-        subtype: Optional[str] = None
-    ) -> Optional[str]:
+        subtype: Optional[str] = None,
+        cross_streets: Optional[str] = None,
+        box: Optional[str] = None,
+        db=None,
+    ) -> Optional[Dict[str, str]]:
         """
         Generate MP3 audio for an alert.
         
         Returns:
-            URL path to the audio file (e.g., "/alerts/audio/glenmoorefc/123.mp3")
+            Dict with:
+                - audio_url: URL path to the audio file with cache-busting timestamp
+                - tts_text: The formatted announcement text (for browser TTS)
             None if generation fails
         """
-        if not self._check_piper():
-            return None
+        # Get settings from database
+        settings = _get_tts_settings(db)
         
         # Format the announcement text
-        text = self.format_announcement(units, call_type, address, subtype)
+        text = self.format_announcement(
+            units=units,
+            call_type=call_type,
+            address=address,
+            subtype=subtype,
+            cross_streets=cross_streets,
+            box=box,
+            settings=settings,
+        )
+        
         logger.info(f"TTS generating: '{text}' for {tenant}/{incident_id}")
+        
+        if not self._check_piper():
+            # Return text only if Piper unavailable
+            return {"audio_url": None, "tts_text": text}
         
         # Ensure directory exists
         tenant_dir = self._ensure_dirs(tenant)
+        
+        # Use timestamp in filename for cache busting
+        timestamp = int(time.time() * 1000)
         
         # Output paths
         wav_path = tenant_dir / f"{incident_id}.wav"
@@ -252,7 +360,7 @@ class TTSService:
                 
                 if proc.returncode != 0:
                     logger.error(f"Piper failed: {stderr.decode()}")
-                    return None
+                    return {"audio_url": None, "tts_text": text}
                 
                 # Convert WAV to MP3 with ffmpeg
                 proc = await asyncio.create_subprocess_exec(
@@ -269,22 +377,112 @@ class TTSService:
                 
                 if proc.returncode != 0:
                     logger.error(f"ffmpeg failed for {incident_id}")
-                    return None
+                    return {"audio_url": None, "tts_text": text}
                 
                 # Remove WAV file
                 wav_path.unlink(missing_ok=True)
                 
-                # Return URL path
-                url_path = f"/alerts/audio/{tenant}/{incident_id}.mp3"
+                # Return URL path with cache-busting timestamp
+                url_path = f"/alerts/audio/{tenant}/{incident_id}.mp3?t={timestamp}"
                 logger.info(f"TTS generated: {url_path} ({mp3_path.stat().st_size} bytes)")
-                return url_path
+                
+                return {
+                    "audio_url": url_path,
+                    "tts_text": text,
+                }
                 
             except asyncio.TimeoutError:
                 logger.error(f"TTS generation timed out for {tenant}/{incident_id}")
-                return None
+                return {"audio_url": None, "tts_text": text}
             except Exception as e:
                 logger.error(f"TTS generation error: {e}")
-                return None
+                return {"audio_url": None, "tts_text": text}
+    
+    async def generate_custom_announcement(
+        self,
+        tenant: str,
+        message: str,
+    ) -> Optional[Dict[str, str]]:
+        """
+        Generate MP3 audio for a custom announcement.
+        Used for station paging, test messages, etc.
+        
+        Returns:
+            Dict with audio_url and tts_text
+        """
+        if not message or not message.strip():
+            return None
+        
+        text = message.strip()
+        logger.info(f"TTS generating custom: '{text}' for {tenant}")
+        
+        if not self._check_piper():
+            return {"audio_url": None, "tts_text": text}
+        
+        # Ensure directory exists
+        tenant_dir = self._ensure_dirs(tenant)
+        
+        # Use timestamp as ID for custom messages
+        timestamp = int(time.time() * 1000)
+        msg_id = f"custom_{timestamp}"
+        
+        wav_path = tenant_dir / f"{msg_id}.wav"
+        mp3_path = tenant_dir / f"{msg_id}.mp3"
+        
+        async with self._semaphore:
+            try:
+                # Generate WAV with Piper
+                proc = await asyncio.create_subprocess_exec(
+                    self.piper_path,
+                    "--model", self.model_path,
+                    "--output_file", str(wav_path),
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(input=text.encode()),
+                    timeout=10.0
+                )
+                
+                if proc.returncode != 0:
+                    logger.error(f"Piper failed: {stderr.decode()}")
+                    return {"audio_url": None, "tts_text": text}
+                
+                # Convert WAV to MP3
+                proc = await asyncio.create_subprocess_exec(
+                    FFMPEG_PATH, "-y",
+                    "-i", str(wav_path),
+                    "-codec:a", "libmp3lame",
+                    "-b:a", "64k",
+                    str(mp3_path),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                
+                await asyncio.wait_for(proc.communicate(), timeout=10.0)
+                
+                if proc.returncode != 0:
+                    logger.error(f"ffmpeg failed for custom message")
+                    return {"audio_url": None, "tts_text": text}
+                
+                wav_path.unlink(missing_ok=True)
+                
+                url_path = f"/alerts/audio/{tenant}/{msg_id}.mp3?t={timestamp}"
+                logger.info(f"TTS custom generated: {url_path}")
+                
+                return {
+                    "audio_url": url_path,
+                    "tts_text": text,
+                }
+                
+            except asyncio.TimeoutError:
+                logger.error(f"TTS custom generation timed out")
+                return {"audio_url": None, "tts_text": text}
+            except Exception as e:
+                logger.error(f"TTS custom generation error: {e}")
+                return {"audio_url": None, "tts_text": text}
     
     async def cleanup_old_files(self, max_age_minutes: int = ALERT_TTL_MINUTES):
         """Remove alert audio files older than max_age_minutes"""
