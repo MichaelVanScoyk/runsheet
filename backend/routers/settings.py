@@ -554,13 +554,9 @@ DEFAULT_AV_ALERTS = {
     'dispatch_ems_sound': '/sounds/dispatch-ems.mp3',
     'close_sound': '/sounds/close.mp3',
     
-    # TTS field toggles - which incident fields to include in announcement
-    'tts_include_units': True,                # "Engine 4 81, Tower 48"
-    'tts_include_call_type': True,            # "Structure Fire"
-    'tts_include_subtype': False,             # "with entrapment"
-    'tts_include_address': True,              # "123 Valley Road"
-    'tts_include_cross_streets': False,       # "between Main and Oak"
-    'tts_include_box': False,                 # "Box 48-1"
+    # TTS field order - ordered list of fields to include in announcement
+    # Available: units, call_type, subtype, box, address, cross_streets, municipality, development
+    'tts_field_order': ['units', 'call_type', 'address'],
     
     # Settings version for cache invalidation
     'settings_version': 0,
@@ -613,6 +609,10 @@ async def update_av_alerts_settings(
         elif isinstance(value, int):
             value_str = str(value)
             value_type = 'number'
+        elif isinstance(value, list):
+            # Handle array values (like tts_field_order)
+            value_str = json.dumps(value)
+            value_type = 'json'
         else:
             value_str = str(value)
             value_type = 'string'

@@ -1470,6 +1470,8 @@ async def create_incident(
         None,  # units_due not available at creation time
         incident.cross_streets,
         incident.esz_box,
+        incident.municipality_code,
+        getattr(incident, 'development', None),
     )
     
     return {
@@ -1815,6 +1817,8 @@ async def close_incident(
         units_due,
         incident.cross_streets,
         incident.esz_box,
+        incident.municipality_code,
+        getattr(incident, 'development', None),
     )
     
     # Include reconciliation info in response if any personnel were moved

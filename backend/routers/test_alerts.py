@@ -164,7 +164,7 @@ async def preview_tts_settings(request: Request):
     """
     Preview what the TTS announcement would look like with current settings.
     
-    Returns sample announcement text using the admin-configured field toggles.
+    Returns sample announcement text using the admin-configured field order.
     Useful for testing settings changes before a real alert.
     """
     from database import get_db_for_tenant, _extract_slug
@@ -190,14 +190,16 @@ async def preview_tts_settings(request: Request):
     from services.tts_service import _get_tts_settings
     settings = _get_tts_settings(db)
     
-    # Generate sample announcement
+    # Generate sample announcement with all possible fields
     sample_text = tts.format_announcement(
         units=["ENG481", "TWR48", "SQ48"],
         call_type="DWELLING FIRE",
         address="123 MAIN ST",
-        subtype="W/ENTRAPMENT",
+        subtype="GAS LEAK INSIDE",
         cross_streets="OAK AVE / ELM ST",
         box="48-1",
+        municipality="WEST NANTMEAL",
+        development="EAGLE VIEW",
         settings=settings,
     )
     
@@ -209,11 +211,6 @@ async def preview_tts_settings(request: Request):
         "sample_text": sample_text,
         "settings": {
             "tts_enabled": settings.get("tts_enabled", True),
-            "tts_include_units": settings.get("tts_include_units", True),
-            "tts_include_call_type": settings.get("tts_include_call_type", True),
-            "tts_include_subtype": settings.get("tts_include_subtype", False),
-            "tts_include_address": settings.get("tts_include_address", True),
-            "tts_include_cross_streets": settings.get("tts_include_cross_streets", False),
-            "tts_include_box": settings.get("tts_include_box", False),
+            "tts_field_order": settings.get("tts_field_order", ["units", "call_type", "address"]),
         }
     }

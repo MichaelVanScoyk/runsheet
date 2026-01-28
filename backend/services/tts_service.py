@@ -147,15 +147,11 @@ def _get_tts_settings(db) -> Dict[str, Any]:
     Returns defaults merged with stored settings.
     """
     from sqlalchemy import text
+    import json
     
     defaults = {
         'tts_enabled': True,
-        'tts_include_units': True,
-        'tts_include_call_type': True,
-        'tts_include_subtype': False,
-        'tts_include_address': True,
-        'tts_include_cross_streets': False,
-        'tts_include_box': False,
+        'tts_field_order': ['units', 'call_type', 'address'],
         'settings_version': 0,
     }
     
@@ -175,6 +171,11 @@ def _get_tts_settings(db) -> Dict[str, Any]:
                     defaults[key] = value.lower() in ('true', '1', 'yes')
                 elif value_type == 'number':
                     defaults[key] = int(value)
+                elif value_type == 'json':
+                    try:
+                        defaults[key] = json.loads(value)
+                    except:
+                        pass
                 else:
                     defaults[key] = value
     except Exception as e:
@@ -222,67 +223,73 @@ class TTSService:
         subtype: Optional[str] = None,
         cross_streets: Optional[str] = None,
         box: Optional[str] = None,
+        municipality: Optional[str] = None,
+        development: Optional[str] = None,
         settings: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Format the announcement text based on settings.
         
-        Settings control which fields are included:
-        - tts_include_units: "Engine 4 81, Tower 48"
-        - tts_include_call_type: "Structure Fire"
-        - tts_include_subtype: "with entrapment"
-        - tts_include_address: "123 Valley Road"
-        - tts_include_cross_streets: "between Main and Oak"
-        - tts_include_box: "Box 48-1"
+        Settings contains tts_field_order - an ordered list of field IDs:
+        - units: "Engine 4 81, Tower 48"
+        - call_type: "Structure Fire"
+        - subtype: "Gas Leak Inside"
+        - address: "123 Valley Road"
+        - cross_streets: "Main Street and Oak Avenue"
+        - box: "Box 48-1"
+        - municipality: "West Nantmeal"
+        - development: "Eagle View"
         """
         if settings is None:
-            settings = {
-                'tts_include_units': True,
-                'tts_include_call_type': True,
-                'tts_include_subtype': False,
-                'tts_include_address': True,
-                'tts_include_cross_streets': False,
-                'tts_include_box': False,
-            }
+            settings = {'tts_field_order': ['units', 'call_type', 'address']}
+        
+        field_order = settings.get('tts_field_order', ['units', 'call_type', 'address'])
         
         parts = []
+        units_first = False
         
-        # Units (if enabled and present)
-        if settings.get('tts_include_units', True) and units:
-            expanded_units = [_expand_unit_name(u) for u in units[:5]]  # Limit to 5 units
-            parts.append(", ".join(expanded_units))
-        
-        # Call type (if enabled)
-        if settings.get('tts_include_call_type', True):
-            include_subtype = settings.get('tts_include_subtype', False)
-            formatted_type = _format_call_type(call_type, subtype, include_subtype)
-            if formatted_type:
-                parts.append(formatted_type)
-        
-        # Box (if enabled and present) - goes before address
-        if settings.get('tts_include_box', False) and box:
-            parts.append(f"Box {box}")
-        
-        # Address (if enabled and present)
-        if settings.get('tts_include_address', True) and address:
-            formatted_address = _format_address(address)
-            if formatted_address:
-                parts.append(formatted_address)
-        
-        # Cross streets (if enabled and present)
-        if settings.get('tts_include_cross_streets', False) and cross_streets:
-            parts.append(f"between {cross_streets}")
+        for field_id in field_order:
+            if field_id == 'units' and units:
+                expanded_units = [_expand_unit_name(u) for u in units[:5]]  # Limit to 5 units
+                parts.append(", ".join(expanded_units))
+                if len(parts) == 1:
+                    units_first = True
+            
+            elif field_id == 'call_type' and call_type:
+                formatted_type = _format_call_type(call_type)
+                if formatted_type:
+                    parts.append(formatted_type)
+            
+            elif field_id == 'subtype' and subtype:
+                formatted_subtype = subtype.strip().title()
+                if formatted_subtype and formatted_subtype not in ["None", "Unknown", "Other"]:
+                    parts.append(formatted_subtype)
+            
+            elif field_id == 'box' and box:
+                parts.append(f"Box {box}")
+            
+            elif field_id == 'address' and address:
+                formatted_address = _format_address(address)
+                if formatted_address:
+                    parts.append(formatted_address)
+            
+            elif field_id == 'cross_streets' and cross_streets:
+                parts.append(f"between {cross_streets}")
+            
+            elif field_id == 'municipality' and municipality:
+                parts.append(municipality.strip().title())
+            
+            elif field_id == 'development' and development:
+                parts.append(development.strip().title())
         
         if not parts:
             return "Alert"
         
-        # Join with periods for pacing: "Units. Call Type. Address"
-        # First part gets no prefix, rest get period separation
         if len(parts) == 1:
             return parts[0]
         
-        # Units first (if present), then ". " separator, then rest comma-separated
-        if settings.get('tts_include_units', True) and units:
+        # If units are first, separate them with a period for pacing
+        if units_first:
             units_part = parts[0]
             rest = ", ".join(parts[1:])
             return f"{units_part}. {rest}"
@@ -299,6 +306,8 @@ class TTSService:
         subtype: Optional[str] = None,
         cross_streets: Optional[str] = None,
         box: Optional[str] = None,
+        municipality: Optional[str] = None,
+        development: Optional[str] = None,
         db=None,
     ) -> Optional[Dict[str, str]]:
         """
@@ -321,6 +330,8 @@ class TTSService:
             subtype=subtype,
             cross_streets=cross_streets,
             box=box,
+            municipality=municipality,
+            development=development,
             settings=settings,
         )
         

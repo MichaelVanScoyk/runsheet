@@ -107,6 +107,8 @@ async def emit_av_alert(
     units_due: Optional[List[str]] = None,
     cross_streets: Optional[str] = None,
     box: Optional[str] = None,
+    municipality: Optional[str] = None,
+    development: Optional[str] = None,
 ):
     """
     Emit AV alert to /ws/AValerts WebSocket connections.
@@ -115,7 +117,7 @@ async def emit_av_alert(
     
     For dispatch alerts:
     - Checks if alerts are enabled in admin settings
-    - Generates TTS audio using admin-configured field toggles
+    - Generates TTS audio using admin-configured field order
     - Formats tts_text for browser TTS fallback
     - Broadcasts to all connected clients (web UI + StationBell)
     
@@ -125,11 +127,13 @@ async def emit_av_alert(
         incident_id: ID of the incident
         call_category: "FIRE" or "EMS"
         cad_event_type: e.g., "DWELLING FIRE", "MEDICAL EMERGENCY"
-        cad_event_subtype: e.g., "W/ENTRAPMENT", "CARDIAC"
+        cad_event_subtype: e.g., "GAS LEAK INSIDE", "CARDIAC"
         address: Incident address
         units_due: List of unit designators ["ENG481", "TWR48", ...]
         cross_streets: Cross streets (optional)
         box: Box/ESZ number (optional)
+        municipality: Municipality name (optional)
+        development: Development name (optional)
     """
     broadcast = _get_av_broadcast()
     if not broadcast:
@@ -169,6 +173,8 @@ async def emit_av_alert(
                     subtype=cad_event_subtype,
                     cross_streets=cross_streets,
                     box=box,
+                    municipality=municipality,
+                    development=development,
                     db=db,
                 )
                 if result:

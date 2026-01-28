@@ -26,14 +26,20 @@ const SOUND_TYPES = [
   { key: 'close', label: 'Incident Closed', description: 'Plays when any incident is cleared/closed' },
 ];
 
-const TTS_FIELDS = [
-  { key: 'tts_include_units', label: 'Units', description: 'Engine 4 81, Tower 48', example: 'ENG481, TWR48' },
-  { key: 'tts_include_call_type', label: 'Call Type', description: 'Structure Fire', example: 'DWELLING FIRE' },
-  { key: 'tts_include_subtype', label: 'Subtype', description: 'with entrapment', example: 'W/ENTRAPMENT' },
-  { key: 'tts_include_address', label: 'Address', description: '123 Valley Road', example: '123 MAIN ST' },
-  { key: 'tts_include_cross_streets', label: 'Cross Streets', description: 'between Main and Oak', example: 'OAK AVE / ELM ST' },
-  { key: 'tts_include_box', label: 'Box/ESZ', description: 'Box 48-1', example: '48-1' },
+// Available TTS fields from CAD data
+const AVAILABLE_TTS_FIELDS = [
+  { id: 'units', label: 'Units', example: 'Engine 4 81, Tower 48' },
+  { id: 'call_type', label: 'Call Type', example: 'Dwelling Fire' },
+  { id: 'subtype', label: 'Subtype', example: 'Gas Leak Inside' },
+  { id: 'box', label: 'Box/ESZ', example: 'Box 48-1' },
+  { id: 'address', label: 'Address', example: '123 Valley Road' },
+  { id: 'cross_streets', label: 'Cross Streets', example: 'Main Street and Oak Avenue' },
+  { id: 'municipality', label: 'Municipality', example: 'West Nantmeal' },
+  { id: 'development', label: 'Development', example: 'Eagle View' },
 ];
+
+// Default field order
+const DEFAULT_TTS_FIELD_ORDER = ['units', 'call_type', 'address'];
 
 function AVAlertsTab() {
   const [settings, setSettings] = useState(null);
@@ -44,6 +50,8 @@ function AVAlertsTab() {
   const [previewText, setPreviewText] = useState('');
   const [customMessage, setCustomMessage] = useState('');
   const [sendingAnnouncement, setSendingAnnouncement] = useState(false);
+  const [ttsFieldOrder, setTtsFieldOrder] = useState(DEFAULT_TTS_FIELD_ORDER);
+  const [draggedField, setDraggedField] = useState(null);
   
   const fileInputRefs = useRef({});
 
@@ -60,6 +68,10 @@ function AVAlertsTab() {
       if (res.ok) {
         const data = await res.json();
         setSettings(data);
+        // Load TTS field order from settings
+        if (data.tts_field_order && Array.isArray(data.tts_field_order)) {
+          setTtsFieldOrder(data.tts_field_order);
+        }
         loadPreview();
       }
     } catch (err) {
@@ -97,7 +109,7 @@ function AVAlertsTab() {
         setSettings(prev => ({ ...prev, [key]: value }));
         setMessage({ type: 'success', text: 'Setting saved' });
         // Reload preview after TTS field change
-        if (key.startsWith('tts_include_')) {
+        if (key === 'tts_field_order') {
           loadPreview();
         }
       } else {
@@ -107,6 +119,60 @@ function AVAlertsTab() {
       setMessage({ type: 'error', text: 'Failed to save setting' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Drag and drop handlers for TTS field ordering
+  const handleDragStart = (e, fieldId) => {
+    setDraggedField(fieldId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, fieldId) => {
+    e.preventDefault();
+    if (draggedField === fieldId) return;
+    
+    const newOrder = [...ttsFieldOrder];
+    const draggedIdx = newOrder.indexOf(draggedField);
+    const targetIdx = newOrder.indexOf(fieldId);
+    
+    if (draggedIdx !== -1 && targetIdx !== -1) {
+      newOrder.splice(draggedIdx, 1);
+      newOrder.splice(targetIdx, 0, draggedField);
+      setTtsFieldOrder(newOrder);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedField(null);
+    // Save the new order
+    updateSetting('tts_field_order', ttsFieldOrder);
+  };
+
+  const toggleFieldEnabled = (fieldId) => {
+    let newOrder;
+    if (ttsFieldOrder.includes(fieldId)) {
+      // Remove from order (disable)
+      newOrder = ttsFieldOrder.filter(f => f !== fieldId);
+    } else {
+      // Add to end of order (enable)
+      newOrder = [...ttsFieldOrder, fieldId];
+    }
+    setTtsFieldOrder(newOrder);
+    updateSetting('tts_field_order', newOrder);
+  };
+
+  const moveField = (fieldId, direction) => {
+    const idx = ttsFieldOrder.indexOf(fieldId);
+    if (idx === -1) return;
+    
+    const newOrder = [...ttsFieldOrder];
+    const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+    
+    if (newIdx >= 0 && newIdx < newOrder.length) {
+      [newOrder[idx], newOrder[newIdx]] = [newOrder[newIdx], newOrder[idx]];
+      setTtsFieldOrder(newOrder);
+      updateSetting('tts_field_order', newOrder);
     }
   };
 
@@ -318,7 +384,7 @@ function AVAlertsTab() {
         </div>
       </div>
 
-      {/* TTS Field Configuration */}
+      {/* TTS Field Configuration - Ordered List */}
       <div style={{ 
         background: '#f5f5f5', 
         borderRadius: '8px', 
@@ -328,39 +394,93 @@ function AVAlertsTab() {
       }}>
         <h4 style={{ marginBottom: '0.5rem', color: '#333' }}>Announcement Content</h4>
         <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
-          Select which incident fields to include in TTS announcements.
-          Changes apply to both browser and StationBell devices.
+          Select and order the fields to include in TTS announcements. Drag to reorder.
         </p>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
-          {TTS_FIELDS.map(({ key, label, description }) => (
-            <label 
-              key={key}
-              style={{ 
-                display: 'flex', 
-                alignItems: 'flex-start', 
-                gap: '0.5rem',
-                padding: '0.5rem',
-                background: '#fff',
-                borderRadius: '4px',
-                border: '1px solid #e0e0e0',
-                cursor: 'pointer'
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={settings?.[key] !== false}
-                onChange={(e) => updateSetting(key, e.target.checked)}
-                disabled={saving}
-                style={{ marginTop: '2px' }}
-              />
-              <div>
-                <div style={{ fontWeight: 500, color: '#333' }}>{label}</div>
-                <div style={{ fontSize: '0.75rem', color: '#666' }}>{description}</div>
+        {/* Enabled fields - ordered list */}
+        <div style={{ marginBottom: '1rem' }}>
+          <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>ENABLED (in order)</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {ttsFieldOrder.length === 0 ? (
+              <div style={{ padding: '1rem', color: '#999', fontStyle: 'italic', textAlign: 'center', background: '#fff', borderRadius: '4px', border: '1px dashed #ccc' }}>
+                No fields enabled. Click fields below to add them.
               </div>
-            </label>
-          ))}
+            ) : (
+              ttsFieldOrder.map((fieldId, index) => {
+                const field = AVAILABLE_TTS_FIELDS.find(f => f.id === fieldId);
+                if (!field) return null;
+                return (
+                  <div
+                    key={fieldId}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, fieldId)}
+                    onDragOver={(e) => handleDragOver(e, fieldId)}
+                    onDragEnd={handleDragEnd}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      padding: '0.5rem 0.75rem',
+                      background: draggedField === fieldId ? '#e3f2fd' : '#fff',
+                      borderRadius: '4px',
+                      border: '1px solid #ddd',
+                      cursor: 'grab',
+                      opacity: draggedField === fieldId ? 0.5 : 1,
+                    }}
+                  >
+                    <span style={{ color: '#999', fontSize: '0.8rem', width: '20px' }}>☰</span>
+                    <span style={{ fontWeight: 500, color: '#333', minWidth: '100px' }}>{field.label}</span>
+                    <span style={{ color: '#666', fontSize: '0.85rem', flex: 1 }}>{field.example}</span>
+                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                      <button
+                        onClick={() => moveField(fieldId, 'up')}
+                        disabled={index === 0 || saving}
+                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: index === 0 ? 'default' : 'pointer', opacity: index === 0 ? 0.3 : 1, border: '1px solid #ccc', borderRadius: '3px', background: '#f5f5f5' }}
+                      >▲</button>
+                      <button
+                        onClick={() => moveField(fieldId, 'down')}
+                        disabled={index === ttsFieldOrder.length - 1 || saving}
+                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: index === ttsFieldOrder.length - 1 ? 'default' : 'pointer', opacity: index === ttsFieldOrder.length - 1 ? 0.3 : 1, border: '1px solid #ccc', borderRadius: '3px', background: '#f5f5f5' }}
+                      >▼</button>
+                    </div>
+                    <button
+                      onClick={() => toggleFieldEnabled(fieldId)}
+                      disabled={saving}
+                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '3px', background: '#fef2f2' }}
+                    >✕</button>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
+        
+        {/* Available fields - not enabled */}
+        {AVAILABLE_TTS_FIELDS.filter(f => !ttsFieldOrder.includes(f.id)).length > 0 && (
+          <div>
+            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>AVAILABLE</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {AVAILABLE_TTS_FIELDS.filter(f => !ttsFieldOrder.includes(f.id)).map(field => (
+                <button
+                  key={field.id}
+                  onClick={() => toggleFieldEnabled(field.id)}
+                  disabled={saving}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    background: '#fff',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    color: '#666',
+                  }}
+                >
+                  + {field.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         
         {/* TTS Preview */}
         <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#e8f4f8', borderRadius: '4px', border: '1px solid #b8d4e3' }}>
