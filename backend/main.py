@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
-from routers import incidents, incidents_admin, incidents_attendance, lookups, apparatus, personnel, settings, neris_codes, admin, backup, tenant_auth, master_admin
+from routers import incidents, incidents_admin, incidents_attendance, incidents_duplicate, lookups, apparatus, personnel, settings, neris_codes, admin, backup, tenant_auth, master_admin
 from routers import branding, print_layout, comcat, websocket, analytics, review_tasks, analytics_v2, detail_types, test_alerts
 from routers import analytics_personnel, alert_audio
 from routers.reports import router as reports_router
@@ -256,6 +256,7 @@ app.add_middleware(
 app.include_router(incidents.router, prefix="/api/incidents", tags=["Incidents"])
 app.include_router(incidents_admin.router, prefix="/api/incidents", tags=["Incidents Admin"])
 app.include_router(incidents_attendance.router, prefix="/api/incidents", tags=["Incidents Attendance"])
+app.include_router(incidents_duplicate.router, prefix="/api/incidents", tags=["Incidents Duplicate"])
 app.include_router(lookups.router, prefix="/api/lookups", tags=["Lookups"])
 app.include_router(apparatus.router, prefix="/api/apparatus", tags=["Apparatus"])
 app.include_router(personnel.router, prefix="/api/personnel", tags=["Personnel"])
