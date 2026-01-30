@@ -484,7 +484,7 @@ const MetricHeader = ({ label, metric, align = 'right' }) => {
             onMouseLeave={() => setShowTooltip(false)}
           />
           {showTooltip && (
-            <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 text-xs font-normal text-left text-white bg-gray-800 rounded shadow-lg">
+            <div className="absolute z-[9999] bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 text-xs font-normal text-left text-white bg-gray-800 rounded shadow-lg">
               {definition}
               <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
             </div>
