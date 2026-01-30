@@ -13,7 +13,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Clock, Users, TrendingUp, TrendingDown, Minus, RefreshCw,
   Flame, Heart, Calendar, MessageSquare, Send, ChevronDown, ChevronUp,
-  ArrowRight, AlertCircle, Loader2
+  ArrowRight, AlertCircle, Loader2, Info
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
@@ -450,6 +450,52 @@ const CollapsibleSection = ({ title, icon: Icon, expanded, onToggle, badge, chil
 // TREND INDICATOR
 // =============================================================================
 
+// =============================================================================
+// METRIC TOOLTIP
+// =============================================================================
+
+const METRIC_DEFINITIONS = {
+  turnout: "Time from dispatch to first unit going enroute (getting out the door)",
+  travel: "Time from first unit enroute to first unit on scene (driving time)",
+  response: "Total time from dispatch to first unit on scene (Turnout + Travel)",
+  onScene: "Time from first unit arrival to last unit cleared (working the call)"
+};
+
+const MetricHeader = ({ label, metric, align = 'right' }) => {
+  const [showTooltip, setShowTooltip] = React.useState(false);
+  const definition = METRIC_DEFINITIONS[metric];
+  
+  if (!definition) {
+    return (
+      <th className={`text-${align} py-2 px-3 font-medium text-gray-600`}>
+        {label}
+      </th>
+    );
+  }
+  
+  return (
+    <th className={`text-${align} py-2 px-3 font-medium text-gray-600`}>
+      <div className={`inline-flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
+        {label}
+        <div className="relative inline-block">
+          <Info 
+            className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 cursor-help" 
+            onMouseEnter={() => setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
+          />
+          {showTooltip && (
+            <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 text-xs font-normal text-left text-white bg-gray-800 rounded shadow-lg">
+              {definition}
+              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
+            </div>
+          )}
+        </div>
+      </div>
+    </th>
+  );
+};
+
+
 const TrendIndicator = ({ value, positiveIsGood = false, suffix = '' }) => {
   if (value == null) return <span className="text-gray-400">-</span>;
   
@@ -515,10 +561,10 @@ const ResponseByTypeSection = ({ data, trends }) => {
             <tr className="border-b">
               <th className="text-left py-2 px-3 font-medium text-gray-600">Call Type</th>
               <th className="text-right py-2 px-3 font-medium text-gray-600">Count</th>
-              <th className="text-right py-2 px-3 font-medium text-gray-600">Turnout</th>
-              <th className="text-right py-2 px-3 font-medium text-gray-600">Travel</th>
-              <th className="text-right py-2 px-3 font-medium text-gray-600">Response</th>
-              <th className="text-right py-2 px-3 font-medium text-gray-600">On Scene</th>
+              <MetricHeader label="Turnout" metric="turnout" />
+              <MetricHeader label="Travel" metric="travel" />
+              <MetricHeader label="Response" metric="response" />
+              <MetricHeader label="On Scene" metric="onScene" />
             </tr>
           </thead>
           <tbody>
