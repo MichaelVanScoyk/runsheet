@@ -2232,32 +2232,12 @@ function ComCatTab() {
 // ============================================================================
 
 /**
- * CAD Settings Tab - Controls how incoming CAD data is processed.
+ * CAD Categories Tab - Set how incoming CAD dispatches are categorized.
  * 
- * PURPOSE:
- *   Many fire departments only run one type of call (fire-only or EMS-only).
- *   The force_category setting allows overriding the automatic category detection
- *   that normally happens based on CAD event type keywords.
- * 
- * HOW IT WORKS:
- *   - Auto-detect (default): MEDICAL events → EMS, everything else → FIRE
- *   - Force FIRE: All incoming CAD imports become FIRE category
- *   - Force EMS: All incoming CAD imports become EMS category
- * 
- * IMPORTANT DISTINCTION:
- *   call_category (FIRE/EMS/DETAIL) is for OPERATIONAL routing within the department:
- *   - Controls which tab the incident appears in on IncidentList
- *   - Controls incident numbering sequences (separate per category)
- *   - Controls station workflow organization
- * 
- *   This is SEPARATE from NERIS classification (federal reporting), which is set
- *   during runsheet completion via neris_incident_type_codes[]. A department can
- *   force all CAD imports to 'FIRE' operationally while still classifying individual
- *   incidents as MEDICAL, RESCUE, etc. for federal NERIS reporting.
- * 
- * DETAIL CATEGORY:
- *   DETAIL is never auto-assigned from CAD. It's only for manually-created entries
- *   like training, standbys, and other non-emergency events.
+ * Options:
+ *   - Auto-detect (default): MEDICAL → EMS, else → FIRE
+ *   - Force FIRE: All CAD → FIRE (fire-only depts)
+ *   - Force EMS: All CAD → EMS (EMS-only agencies)
  */
 function CADSettingsTab() {
   const [settings, setSettings] = useState({ force_category: null });
@@ -2311,10 +2291,9 @@ function CADSettingsTab() {
 
   return (
     <div className="cad-settings-tab">
-      <h3 style={{ color: 'var(--primary-color)' }}>CAD Import Settings</h3>
+      <h3 style={{ color: 'var(--primary-color)' }}>CAD Categories</h3>
       <p className="tab-intro">
-        Configure how incoming CAD data is categorized. This affects which tab incidents 
-        appear in and their numbering sequence.
+        Configure how incoming CAD dispatches are categorized.
       </p>
 
       {message && (
@@ -2431,39 +2410,6 @@ function CADSettingsTab() {
             Saving...
           </div>
         )}
-      </div>
-
-      {/* Info Box */}
-      <div style={{ 
-        marginTop: '1.5rem',
-        padding: '1rem', 
-        background: '#fff3cd', 
-        borderRadius: '6px',
-        border: '1px solid #ffc107',
-        maxWidth: '600px'
-      }}>
-        <strong style={{ color: '#856404' }}>💡 Note about NERIS:</strong>
-        <p style={{ color: '#856404', fontSize: '0.9rem', margin: '0.5rem 0 0 0' }}>
-          This setting controls the <em>operational</em> category (which tab the call appears in).
-          It does NOT affect NERIS classification for federal reporting—that's set separately 
-          during runsheet completion.
-        </p>
-      </div>
-
-      {/* DETAIL info */}
-      <div style={{ 
-        marginTop: '1rem',
-        padding: '1rem', 
-        background: '#f3e8ff', 
-        borderRadius: '6px',
-        border: '1px solid #8b5cf6',
-        maxWidth: '600px'
-      }}>
-        <strong style={{ color: '#5b21b6' }}>📋 About DETAIL category:</strong>
-        <p style={{ color: '#5b21b6', fontSize: '0.9rem', margin: '0.5rem 0 0 0' }}>
-          DETAIL is never auto-assigned from CAD. It's only for manually-created entries 
-          (training, standbys, drills, etc.) via the "New Record" menu.
-        </p>
       </div>
     </div>
   );
@@ -2758,7 +2704,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
           className={activeTab === 'cad' ? 'active' : ''} 
           onClick={() => setActiveTab('cad')}
         >
-          📡 CAD Import
+          📁 CAD Categories
         </button>
         <button 
           className={activeTab === 'features' ? 'active' : ''} 
