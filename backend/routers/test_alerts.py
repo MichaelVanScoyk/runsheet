@@ -330,6 +330,7 @@ async def preview_tts_settings(request: Request):
     if db:
         try:
             # Get most recent incident with CAD data
+            logger.info(f"Loading recent incident for preview from tenant {tenant_slug}")
             result = db.execute(text("""
                 SELECT id, cad_event_type, cad_event_subtype, address, cross_streets, 
                        box, municipality, development, units_due
@@ -340,6 +341,7 @@ async def preview_tts_settings(request: Request):
             """)).fetchone()
             
             if result:
+                logger.info(f"Found incident {result[0]} for preview")
                 incident_info = {"id": result[0]}
                 call_type = result[1] or ""
                 subtype = result[2]
@@ -354,18 +356,24 @@ async def preview_tts_settings(request: Request):
                 if units_raw:
                     import json
                     try:
-                        units = json.loads(units_raw) if units_raw.startswith('[') else [u.strip() for u in units_raw.split(',')]
+                        units = json.loads(units_raw) if isinstance(units_raw, str) and units_raw.startswith('[') else [u.strip() for u in str(units_raw).split(',')]
                     except:
                         units = [u.strip() for u in str(units_raw).split(',')]
+                logger.info(f"Preview data: units={units}, call_type={call_type}, address={address}")
+            else:
+                logger.info("No incidents with CAD data found for preview")
         except Exception as e:
             logger.warning(f"Failed to load recent incident for preview: {e}")
+    else:
+        logger.warning("No DB connection for preview - using sample data")
     
-    # Fallback to sample data if no incident found
+    # Fallback to generic sample data if no incident found
     if not call_type:
-        units = ["ENG481", "TWR48"]
-        call_type = "DWELLING FIRE"
-        address = "123 MAIN ST"
+        units = ["UNIT1", "UNIT2"]
+        call_type = "STRUCTURE FIRE"
+        address = "100 SAMPLE STREET"
         incident_info = None  # Clear to indicate sample data
+        logger.info("Using generic sample data for preview")
     
     # Generate the announcement text
     sample_text = tts.format_announcement(
