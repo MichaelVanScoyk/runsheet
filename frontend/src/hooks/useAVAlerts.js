@@ -193,14 +193,34 @@ export function useAVAlerts({
     }
   }, [settings]);
 
-  // TTS using server-provided tts_text
-  const speakAlert = useCallback((alert) => {
-    if (!enableTTSRef.current || !window.speechSynthesis) return;
+  // Play server-generated audio (from Piper TTS)
+  const playServerAudio = useCallback((audioUrl) => {
+    if (!audioUrl) return Promise.resolve(false);
+    
+    return new Promise((resolve) => {
+      const audio = new Audio(audioUrl);
+      audio.onended = () => resolve(true);
+      audio.onerror = () => resolve(false);
+      audio.play().catch(() => resolve(false));
+    });
+  }, []);
+
+  // TTS using server-provided audio_url (preferred) or browser TTS (fallback)
+  const speakAlert = useCallback(async (alert) => {
+    if (!enableTTSRef.current) return;
     
     // Check if admin disabled TTS
     if (settings?.tts_enabled === false) return;
     
-    // Use server-provided tts_text (consistent with StationBell)
+    // Prefer server-generated audio (Piper TTS) if available
+    if (alert.audio_url) {
+      const played = await playServerAudio(alert.audio_url);
+      if (played) return; // Server audio played successfully
+    }
+    
+    // Fallback to browser TTS if no audio_url or playback failed
+    if (!window.speechSynthesis) return;
+    
     const text = alert.tts_text;
     if (!text) return;
     
@@ -211,7 +231,7 @@ export function useAVAlerts({
     // Cancel any ongoing speech
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
-  }, [settings]);
+  }, [settings, playServerAudio]);
 
   // Handle incoming alert
   const handleAlert = useCallback((alert) => {

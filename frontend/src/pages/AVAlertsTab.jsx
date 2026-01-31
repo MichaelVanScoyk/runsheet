@@ -263,6 +263,49 @@ function AVAlertsTab() {
     });
   }, [settings]);
 
+  // Send test alert to all connected devices
+  const sendTestAlert = async (soundType) => {
+    setMessage(null);
+    
+    // Map sound type to test alert parameters
+    let eventType, callCategory;
+    if (soundType === 'dispatch_fire') {
+      eventType = 'dispatch';
+      callCategory = 'FIRE';
+    } else if (soundType === 'dispatch_ems') {
+      eventType = 'dispatch';
+      callCategory = 'EMS';
+    } else if (soundType === 'close') {
+      eventType = 'close';
+      callCategory = 'FIRE';
+    } else {
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/test-alerts/test-alert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_type: eventType,
+          call_category: callCategory,
+          cad_event_type: 'TEST ALERT',
+          address: '123 Test Street',
+          units_due: ['TEST1', 'TEST2'],
+        }),
+      });
+      
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Test alert sent to all connected devices' });
+      } else {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to send test alert');
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    }
+  };
+
   const testTTS = () => {
     if (!previewText || !window.speechSynthesis) {
       setMessage({ type: 'error', text: 'TTS not available' });
@@ -274,6 +317,67 @@ function AVAlertsTab() {
     utterance.pitch = 1.0;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
+  };
+
+  // Preview custom announcement locally (uses server TTS)
+  const [previewingAnnouncement, setPreviewingAnnouncement] = useState(false);
+  
+  const previewAnnouncement = async () => {
+    if (!customMessage.trim()) {
+      setMessage({ type: 'error', text: 'Please enter a message' });
+      return;
+    }
+    
+    setPreviewingAnnouncement(true);
+    setMessage(null);
+    
+    try {
+      // Generate TTS audio without broadcasting
+      const res = await fetch(`${API_BASE}/api/test-alerts/tts-preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: customMessage.trim() }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        if (data.audio_url) {
+          const audio = new Audio(data.audio_url);
+          audio.play().catch(err => {
+            console.warn('Audio preview failed:', err);
+            // Fallback to browser TTS
+            if (window.speechSynthesis) {
+              const utterance = new SpeechSynthesisUtterance(customMessage.trim());
+              utterance.rate = 0.9;
+              window.speechSynthesis.speak(utterance);
+            }
+          });
+        } else {
+          // No audio_url, use browser TTS fallback
+          if (window.speechSynthesis) {
+            const utterance = new SpeechSynthesisUtterance(customMessage.trim());
+            utterance.rate = 0.9;
+            window.speechSynthesis.speak(utterance);
+          }
+        }
+      } else {
+        // Fallback to browser TTS on error
+        if (window.speechSynthesis) {
+          const utterance = new SpeechSynthesisUtterance(customMessage.trim());
+          utterance.rate = 0.9;
+          window.speechSynthesis.speak(utterance);
+        }
+      }
+    } catch (err) {
+      // Fallback to browser TTS
+      if (window.speechSynthesis) {
+        const utterance = new SpeechSynthesisUtterance(customMessage.trim());
+        utterance.rate = 0.9;
+        window.speechSynthesis.speak(utterance);
+      }
+    } finally {
+      setPreviewingAnnouncement(false);
+    }
   };
 
   const sendAnnouncement = async () => {
@@ -535,11 +639,20 @@ function AVAlertsTab() {
             }}
           />
           <button
+            className="btn btn-secondary"
+            onClick={previewAnnouncement}
+            disabled={previewingAnnouncement || !customMessage.trim()}
+            title="Preview announcement locally (only you hear it)"
+          >
+            {previewingAnnouncement ? '⏳...' : '🎧 Preview'}
+          </button>
+          <button
             className="btn btn-primary"
             onClick={sendAnnouncement}
             disabled={sendingAnnouncement || !customMessage.trim()}
+            title="Send announcement to all connected devices"
           >
-            {sendingAnnouncement ? '⏳ Sending...' : '📣 Send'}
+            {sendingAnnouncement ? '⏳ Sending...' : '📡 Send All'}
           </button>
         </div>
       </div>
@@ -574,13 +687,22 @@ function AVAlertsTab() {
                   {description}
                 </p>
               </div>
-              <button
-                className="btn btn-sm btn-secondary"
-                onClick={() => playSound(key)}
-                title="Test sound"
-              >
-                🔊 Test
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => playSound(key)}
+                  title="Preview sound locally (only you hear it)"
+                >
+                  🎧 Preview
+                </button>
+                <button
+                  className="btn btn-sm btn-primary"
+                  onClick={() => sendTestAlert(key)}
+                  title="Send test to all connected devices"
+                >
+                  📡 Test All
+                </button>
+              </div>
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>

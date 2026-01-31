@@ -43,6 +43,54 @@ class CustomAnnouncementRequest(BaseModel):
     message: str  # The text to announce
 
 
+class TTSPreviewRequest(BaseModel):
+    message: str  # The text to preview
+
+
+@router.post("/tts-preview")
+async def preview_tts_announcement(
+    request: Request,
+    data: TTSPreviewRequest
+):
+    """
+    Preview a custom announcement TTS without broadcasting.
+    
+    Generates the audio file and returns the URL for local playback.
+    Does NOT send to connected devices.
+    """
+    if not data.message or not data.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    
+    if len(data.message) > 500:
+        raise HTTPException(status_code=400, detail="Message too long (max 500 characters)")
+    
+    tts = _get_tts()
+    if not tts:
+        raise HTTPException(status_code=500, detail="TTS service not available")
+    
+    from database import _extract_slug
+    tenant_slug = _extract_slug(request.headers.get('host', ''))
+    
+    try:
+        result = await tts.generate_custom_announcement(
+            tenant=tenant_slug,
+            message=data.message.strip(),
+        )
+        
+        if result:
+            return {
+                "success": True,
+                "audio_url": result.get("audio_url"),
+                "tts_text": result.get("tts_text"),
+            }
+        else:
+            raise HTTPException(status_code=500, detail="TTS generation failed")
+    
+    except Exception as e:
+        logger.error(f"TTS preview failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/tts-test")
 async def test_tts_generation():
     """
