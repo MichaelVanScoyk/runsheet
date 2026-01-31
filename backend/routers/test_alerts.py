@@ -382,8 +382,8 @@ async def preview_tts_settings(request: Request):
         incident_info = None  # Clear to indicate sample data
         logger.info("Using generic sample data for preview")
     
-    # Generate the announcement text
-    sample_text = tts.format_announcement(
+    # Generate the announcement text (now async due to DB lookups)
+    sample_text = await tts.format_announcement(
         units=units,
         call_type=call_type,
         address=address,
@@ -393,6 +393,7 @@ async def preview_tts_settings(request: Request):
         municipality=municipality,
         development=development,
         settings=settings,
+        db=db,
     )
     
     # Generate actual audio for preview
