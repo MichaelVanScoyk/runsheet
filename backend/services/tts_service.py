@@ -3,6 +3,7 @@ TTS Service - Text-to-Speech generation using Piper
 
 Generates MP3 announcements for dispatch alerts.
 Text formatting is configurable via admin settings.
+Unit pronunciations are managed via tts_unit_mappings table.
 
 Usage:
     from services.tts_service import tts_service
@@ -16,7 +17,7 @@ Usage:
         address="123 Valley Road",
         db=db_session  # Pass DB session to read settings
     )
-    # result = {"audio_url": "/alerts/audio/...", "tts_text": "Engine 4 81..."}
+    # result = {"audio_url": "/alerts/audio/...", "tts_text": "Engine forty-eight one..."}
 """
 
 import asyncio
@@ -27,6 +28,12 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Dict, Any
+
+from services.tts_preprocessing import (
+    tts_preprocessor,
+    expand_address,
+    number_to_words,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +51,6 @@ DEFAULT_LENGTH_SCALE = 1.1  # Slightly slower for clarity
 # Output configuration
 ALERTS_DIR = "/tmp/tts_alerts"
 ALERT_TTL_MINUTES = 10  # Auto-cleanup after this time
-
-# No text transformations - pass data through as-is from CAD
-# Piper TTS handles pronunciation naturally
 
 
 def _get_tts_settings(db) -> Dict[str, Any]:
@@ -152,7 +156,17 @@ class TTSService:
             return False
         return True
     
-    def format_announcement(
+    def _get_pause_style_punctuation(self, style: str) -> str:
+        """Map pause style setting to punctuation."""
+        # These match the field-level pauses but for the global setting
+        STYLE_MAP = {
+            'minimal': ',',     # Short pauses everywhere
+            'normal': '.',      # Medium pauses
+            'dramatic': '...',  # Long pauses
+        }
+        return STYLE_MAP.get(style, '.')
+    
+    async def format_announcement(
         self,
         units: List[str],
         call_type: str,
@@ -163,51 +177,80 @@ class TTSService:
         municipality: Optional[str] = None,
         development: Optional[str] = None,
         settings: Optional[Dict[str, Any]] = None,
+        db=None,
+        incident_id: int = None,
     ) -> str:
         """
         Format the announcement text based on settings.
-        Data is passed through as-is from CAD - no transformations.
+        Uses tts_preprocessing for unit pronunciations and field pauses.
         """
         if settings is None:
             settings = {'tts_field_order': ['units', 'call_type', 'address']}
         
         field_order = settings.get('tts_field_order', ['units', 'call_type', 'address'])
+        pause_style = settings.get('tts_pause_style', 'normal')
         
-        parts = []
+        # Get field settings from database
+        field_settings = tts_preprocessor.get_field_settings(db)
+        
+        # Build parts with pause info
+        parts = []  # List of (text, pause_style) tuples
         
         for field_id in field_order:
+            field_cfg = field_settings.get(field_id, {'pause_after': 'medium'})
+            pause_after = field_cfg.get('pause_after', 'medium')
+            prefix = field_cfg.get('prefix', '')
+            
+            text = None
+            
             if field_id == 'units' and units:
-                # Just join units with commas as-is
-                unit_list = [u for u in units[:5] if u]  # Limit to 5 units
-                if unit_list:
-                    parts.append(', '.join(unit_list))
+                # Get spoken pronunciations for each unit
+                spoken_units = await tts_preprocessor.get_units_spoken(db, units[:5], incident_id)
+                if spoken_units:
+                    join_word = field_cfg.get('options', {}).get('join_word', 'and')
+                    if len(spoken_units) == 1:
+                        text = spoken_units[0]
+                    elif len(spoken_units) == 2:
+                        text = f"{spoken_units[0]} {join_word} {spoken_units[1]}"
+                    else:
+                        text = ', '.join(spoken_units[:-1]) + f", {join_word} " + spoken_units[-1]
             
             elif field_id == 'call_type' and call_type:
-                parts.append(call_type)
+                text = call_type.strip()
             
-            elif field_id == 'subtype' and subtype and subtype.lower() not in ['none', 'unknown', 'other']:
-                parts.append(subtype)
+            elif field_id == 'subtype' and subtype:
+                subtype_clean = subtype.strip()
+                if subtype_clean.lower() not in ['none', 'unknown', 'other', '']:
+                    text = subtype_clean
             
             elif field_id == 'box' and box:
-                parts.append(f"Box {box}")
+                box_prefix = prefix or 'Box'
+                text = f"{box_prefix} {box.strip()}"
             
             elif field_id == 'address' and address:
-                parts.append(address)
+                # Expand address abbreviations
+                expand = field_cfg.get('options', {}).get('expand_street_types', True)
+                text = expand_address(address, expand_street_types=expand)
             
             elif field_id == 'cross_streets' and cross_streets:
-                parts.append(cross_streets)
+                streets = cross_streets.replace(" / ", " and ").replace("/", " and ")
+                cross_prefix = prefix or 'between'
+                text = f"{cross_prefix} {streets.strip()}"
             
             elif field_id == 'municipality' and municipality:
-                parts.append(municipality)
+                text = municipality.strip()
             
             elif field_id == 'development' and development:
-                parts.append(development)
+                text = development.strip()
+            
+            if text:
+                parts.append((text, pause_after))
         
         if not parts:
-            return "Alert"
+            return "Alert."
         
-        # Just join with periods - that's it
-        return '. '.join(parts)
+        # Format with pauses
+        return tts_preprocessor.format_with_pauses(parts)
     
     async def generate_alert_audio(
         self,
@@ -235,8 +278,8 @@ class TTSService:
         # Get settings from database
         settings = _get_tts_settings(db)
         
-        # Format the announcement text
-        text = self.format_announcement(
+        # Format the announcement text (now async due to DB lookups)
+        text = await self.format_announcement(
             units=units,
             call_type=call_type,
             address=address,
@@ -246,6 +289,8 @@ class TTSService:
             municipality=municipality,
             development=development,
             settings=settings,
+            db=db,
+            incident_id=incident_id,
         )
         
         # Get speech rate from settings (Piper length_scale)

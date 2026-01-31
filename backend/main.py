@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 from routers import incidents, incidents_admin, incidents_attendance, incidents_duplicate, lookups, apparatus, personnel, settings, neris_codes, admin, backup, tenant_auth, master_admin
 from routers import branding, print_layout, comcat, websocket, analytics, review_tasks, analytics_v2, detail_types, test_alerts
-from routers import analytics_personnel, alert_audio
+from routers import analytics_personnel, alert_audio, tts
 from routers.reports import router as reports_router
 from database import engine, Base
 from master_database import MasterSessionLocal
@@ -278,6 +278,7 @@ app.include_router(detail_types.router, prefix="/api/detail-types", tags=["Detai
 app.include_router(test_alerts.router, prefix="/api/test-alerts", tags=["Test Alerts"])
 app.include_router(analytics_personnel.router)  # Personnel analytics: /api/analytics/v2/personnel
 app.include_router(alert_audio.router, tags=["Alert Audio"])  # TTS audio files: /alerts/audio
+app.include_router(tts.router, prefix="/api/tts", tags=["TTS"])  # TTS unit mappings: /api/tts
 
 @app.get("/")
 async def root():

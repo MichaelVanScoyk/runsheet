@@ -6,8 +6,9 @@
  * 2. Alert Sounds (klaxon tones)
  * 3. Announcement Content (field selection)
  * 4. Voice Settings (speed, pauses)
- * 5. Preview (hear how it sounds)
- * 6. Custom Announcement (send messages)
+ * 5. Unit Pronunciations (how units are spoken)
+ * 6. Preview (hear how it sounds)
+ * 7. Custom Announcement (send messages)
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -58,6 +59,15 @@ function AVAlertsTab() {
   const [playingPreview, setPlayingPreview] = useState(false);
   const [previewingAnnouncement, setPreviewingAnnouncement] = useState(false);
   
+  // Unit pronunciations state
+  const [unitMappings, setUnitMappings] = useState([]);
+  const [unitMappingsLoading, setUnitMappingsLoading] = useState(false);
+  const [needsReviewCount, setNeedsReviewCount] = useState(0);
+  const [editingUnit, setEditingUnit] = useState(null);
+  const [editingSpoken, setEditingSpoken] = useState('');
+  const [unitSearch, setUnitSearch] = useState('');
+  const [showOnlyReview, setShowOnlyReview] = useState(false);
+  
   const fileInputRefs = useRef({});
 
   // Load preview using real last incident data and generate server-side audio
@@ -100,9 +110,37 @@ function AVAlertsTab() {
     }
   };
 
+  // Load unit mappings
+  const loadUnitMappings = async () => {
+    setUnitMappingsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (showOnlyReview) params.append('needs_review', 'true');
+      if (unitSearch) params.append('search', unitSearch);
+      params.append('limit', '50');
+      
+      const res = await fetch(`${API_BASE}/api/tts/units?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUnitMappings(data.units || []);
+        setNeedsReviewCount(data.needs_review_count || 0);
+      }
+    } catch (err) {
+      console.error('Failed to load unit mappings:', err);
+    } finally {
+      setUnitMappingsLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSettings();
+    loadUnitMappings();
   }, []);
+
+  // Reload unit mappings when filter changes
+  useEffect(() => {
+    loadUnitMappings();
+  }, [showOnlyReview, unitSearch]);
 
   const updateSetting = async (key, value) => {
     setSaving(true);
@@ -421,6 +459,82 @@ function AVAlertsTab() {
   const isCustomSound = (soundType) => {
     const path = settings?.[`${soundType}_sound`];
     return path && path.startsWith('/api/');
+  };
+
+  // Unit pronunciation handlers
+  const startEditingUnit = (unit) => {
+    setEditingUnit(unit.cad_unit_id);
+    setEditingSpoken(unit.spoken_as || '');
+  };
+
+  const cancelEditingUnit = () => {
+    setEditingUnit(null);
+    setEditingSpoken('');
+  };
+
+  const saveUnitPronunciation = async (cadUnitId) => {
+    if (!editingSpoken.trim()) {
+      setMessage({ type: 'error', text: 'Pronunciation cannot be empty' });
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/tts/units/${cadUnitId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spoken_as: editingSpoken.trim() }),
+      });
+      
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Pronunciation saved' });
+        setEditingUnit(null);
+        setEditingSpoken('');
+        loadUnitMappings();
+        loadPreview(); // Refresh preview with new pronunciation
+      } else {
+        throw new Error('Save failed');
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to save pronunciation' });
+    }
+  };
+
+  const regenerateUnitPronunciation = async (cadUnitId, stationDigits = 2) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/tts/units/${cadUnitId}/regenerate?station_digits=${stationDigits}`, {
+        method: 'POST',
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setEditingSpoken(data.spoken_as);
+        setMessage({ type: 'success', text: `Regenerated: "${data.spoken_as}"` });
+      } else {
+        throw new Error('Regenerate failed');
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to regenerate pronunciation' });
+    }
+  };
+
+  const markAllReviewed = async () => {
+    if (!confirm('Accept all auto-generated pronunciations?')) return;
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/tts/units/mark-all-reviewed`, {
+        method: 'POST',
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setMessage({ type: 'success', text: `Marked ${data.count} units as reviewed` });
+        loadUnitMappings();
+      } else {
+        throw new Error('Failed');
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to mark units as reviewed' });
+    }
   };
 
   if (loading) {
@@ -806,7 +920,232 @@ function AVAlertsTab() {
         </div>
       </div>
 
-      {/* 5. Preview */}
+      {/* 5. Unit Pronunciations */}
+      <div style={{ 
+        background: needsReviewCount > 0 ? '#fff7ed' : '#f5f5f5', 
+        borderRadius: '8px', 
+        padding: '1rem',
+        marginBottom: '1.5rem',
+        border: needsReviewCount > 0 ? '1px solid #fed7aa' : '1px solid #e0e0e0'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <h4 style={{ margin: 0, color: '#333' }}>
+            Unit Pronunciations
+            {needsReviewCount > 0 && (
+              <span style={{ 
+                marginLeft: '0.5rem', 
+                background: '#f97316', 
+                color: '#fff', 
+                padding: '0.15rem 0.5rem', 
+                borderRadius: '10px', 
+                fontSize: '0.75rem' 
+              }}>
+                {needsReviewCount} need review
+              </span>
+            )}
+          </h4>
+          {needsReviewCount > 0 && (
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={markAllReviewed}
+              title="Accept all auto-generated pronunciations"
+            >
+              ✓ Accept All
+            </button>
+          )}
+        </div>
+        <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Configure how unit IDs from CAD are spoken. New units are auto-detected and flagged for review.
+        </p>
+        
+        {/* Search and filter */}
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+          <input
+            type="text"
+            placeholder="Search units..."
+            value={unitSearch}
+            onChange={(e) => setUnitSearch(e.target.value)}
+            style={{ 
+              flex: 1, 
+              padding: '0.5rem', 
+              border: '1px solid #ddd', 
+              borderRadius: '4px',
+              fontSize: '0.9rem'
+            }}
+          />
+          <label style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.25rem',
+            padding: '0.5rem 0.75rem',
+            background: showOnlyReview ? '#fed7aa' : '#fff',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+          }}>
+            <input
+              type="checkbox"
+              checked={showOnlyReview}
+              onChange={(e) => setShowOnlyReview(e.target.checked)}
+              style={{ width: '14px', height: '14px' }}
+            />
+            Needs review only
+          </label>
+          <button
+            className="btn btn-sm btn-secondary"
+            onClick={loadUnitMappings}
+            disabled={unitMappingsLoading}
+          >
+            {unitMappingsLoading ? '⏳' : '🔄'} Refresh
+          </button>
+        </div>
+        
+        {/* Unit list */}
+        <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+          {unitMappingsLoading ? (
+            <div style={{ padding: '1rem', textAlign: 'center', color: '#666' }}>Loading...</div>
+          ) : unitMappings.length === 0 ? (
+            <div style={{ padding: '1rem', textAlign: 'center', color: '#999', fontStyle: 'italic' }}>
+              {unitSearch || showOnlyReview ? 'No units match your filter' : 'No units recorded yet. Units will appear here after dispatches.'}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {unitMappings.map(unit => (
+                <div
+                  key={unit.cad_unit_id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    padding: '0.5rem 0.75rem',
+                    background: unit.needs_review ? '#fff' : '#fafafa',
+                    borderRadius: '4px',
+                    border: unit.needs_review ? '1px solid #fed7aa' : '1px solid #e5e5e5',
+                  }}
+                >
+                  {/* CAD Unit ID */}
+                  <span style={{ 
+                    fontFamily: 'monospace', 
+                    fontWeight: 600, 
+                    color: '#333', 
+                    minWidth: '80px',
+                    background: unit.is_ours ? '#dbeafe' : '#f5f5f5',
+                    padding: '0.25rem 0.5rem',
+                    borderRadius: '3px',
+                    fontSize: '0.85rem'
+                  }}>
+                    {unit.cad_unit_id}
+                  </span>
+                  
+                  {/* Arrow */}
+                  <span style={{ color: '#999' }}>→</span>
+                  
+                  {/* Spoken form (editable or display) */}
+                  {editingUnit === unit.cad_unit_id ? (
+                    <>
+                      <input
+                        type="text"
+                        value={editingSpoken}
+                        onChange={(e) => setEditingSpoken(e.target.value)}
+                        style={{ 
+                          flex: 1, 
+                          padding: '0.25rem 0.5rem', 
+                          border: '1px solid #3b82f6',
+                          borderRadius: '3px',
+                          fontSize: '0.9rem'
+                        }}
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveUnitPronunciation(unit.cad_unit_id);
+                          if (e.key === 'Escape') cancelEditingUnit();
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => regenerateUnitPronunciation(unit.cad_unit_id, 2)}
+                          title="Regenerate with 2-digit station"
+                          style={{ padding: '0.2rem 0.4rem', fontSize: '0.7rem' }}
+                        >
+                          2d
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => regenerateUnitPronunciation(unit.cad_unit_id, 3)}
+                          title="Regenerate with 3-digit station"
+                          style={{ padding: '0.2rem 0.4rem', fontSize: '0.7rem' }}
+                        >
+                          3d
+                        </button>
+                      </div>
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => saveUnitPronunciation(unit.cad_unit_id)}
+                        style={{ padding: '0.25rem 0.5rem' }}
+                      >
+                        ✓
+                      </button>
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        onClick={cancelEditingUnit}
+                        style={{ padding: '0.25rem 0.5rem' }}
+                      >
+                        ✕
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ 
+                        flex: 1, 
+                        color: '#555', 
+                        fontStyle: 'italic',
+                        fontSize: '0.9rem'
+                      }}>
+                        "{unit.spoken_as}"
+                      </span>
+                      
+                      {/* Status badges */}
+                      {unit.needs_review && (
+                        <span style={{ 
+                          background: '#f97316', 
+                          color: '#fff', 
+                          padding: '0.1rem 0.4rem', 
+                          borderRadius: '3px', 
+                          fontSize: '0.7rem' 
+                        }}>
+                          NEW
+                        </span>
+                      )}
+                      {unit.is_ours && (
+                        <span style={{ 
+                          background: '#3b82f6', 
+                          color: '#fff', 
+                          padding: '0.1rem 0.4rem', 
+                          borderRadius: '3px', 
+                          fontSize: '0.7rem' 
+                        }}>
+                          OURS
+                        </span>
+                      )}
+                      
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => startEditingUnit(unit)}
+                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                      >
+                        Edit
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 6. Preview */}
       <div style={{ 
         background: '#e8f4f8', 
         borderRadius: '8px', 
@@ -859,7 +1198,7 @@ function AVAlertsTab() {
         </div>
       </div>
 
-      {/* 6. Custom Announcement */}
+      {/* 7. Custom Announcement */}
       <div style={{ 
         background: '#fff9e6', 
         borderRadius: '8px', 
@@ -922,6 +1261,7 @@ function AVAlertsTab() {
         <ol style={{ color: '#666', margin: 0, paddingLeft: '1.25rem', lineHeight: 1.8 }}>
           <li><strong>Dispatch received</strong> → Alert tone plays (Fire or EMS)</li>
           <li><strong>TTS announcement</strong> → Selected fields read aloud in order</li>
+          <li><strong>Unit pronunciation</strong> → Configured mappings applied (ENG481 → "Engine forty-eight one")</li>
           <li><strong>All devices</strong> → Browser and StationBell receive same audio</li>
         </ol>
       </div>
