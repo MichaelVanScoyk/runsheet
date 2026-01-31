@@ -610,10 +610,11 @@ async def update_av_alerts_settings(
             continue
         
         # Determine value type
+        # Note: check bool BEFORE int/float because isinstance(True, int) == True
         if isinstance(value, bool):
             value_str = str(value).lower()
             value_type = 'boolean'
-        elif isinstance(value, int):
+        elif isinstance(value, (int, float)):
             value_str = str(value)
             value_type = 'number'
         elif isinstance(value, list):

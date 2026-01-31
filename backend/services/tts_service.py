@@ -151,6 +151,7 @@ def _get_tts_settings(db) -> Dict[str, Any]:
     """
     Get TTS settings from database.
     Returns defaults merged with stored settings.
+    Always fetches fresh from DB - no caching.
     """
     from sqlalchemy import text
     import json
@@ -165,6 +166,7 @@ def _get_tts_settings(db) -> Dict[str, Any]:
     }
     
     if not db:
+        logger.debug("TTS settings: no DB session, using defaults")
         return defaults
     
     try:
@@ -172,7 +174,9 @@ def _get_tts_settings(db) -> Dict[str, Any]:
             "SELECT key, value, value_type FROM settings WHERE category = 'av_alerts'"
         ))
         
+        rows_found = 0
         for row in result:
+            rows_found += 1
             key, value, value_type = row[0], row[1], row[2]
             if key in defaults:
                 # Parse value based on type
@@ -182,7 +186,23 @@ def _get_tts_settings(db) -> Dict[str, Any]:
                     try:
                         defaults[key] = float(value)
                     except:
-                        defaults[key] = int(value)
+                        try:
+                            defaults[key] = int(value)
+                        except:
+                            pass
+                elif key == 'tts_speed':
+                    # Special case: tts_speed might be stored as string type but should be float
+                    try:
+                        defaults[key] = float(value)
+                        logger.debug(f"TTS speed parsed from string: {value} -> {defaults[key]}")
+                    except:
+                        pass
+                elif key == 'tts_pause_style':
+                    # tts_pause_style is always a string, just use the value directly
+                    if value in ('minimal', 'normal', 'dramatic'):
+                        defaults[key] = value
+                    else:
+                        logger.warning(f"Invalid tts_pause_style '{value}', using default")
                 elif value_type == 'json':
                     try:
                         defaults[key] = json.loads(value)
@@ -190,6 +210,9 @@ def _get_tts_settings(db) -> Dict[str, Any]:
                         pass
                 else:
                     defaults[key] = value
+                logger.debug(f"TTS setting loaded: {key}={defaults[key]} (type={value_type})")
+        
+        logger.debug(f"TTS settings: loaded {rows_found} rows from DB. speed={defaults.get('tts_speed')}, pause={defaults.get('tts_pause_style')}")
     except Exception as e:
         logger.warning(f"Failed to load TTS settings: {e}")
     
@@ -256,6 +279,8 @@ class TTSService:
         
         field_order = settings.get('tts_field_order', ['units', 'call_type', 'address'])
         pause_style = settings.get('tts_pause_style', 'normal')
+        
+        logger.info(f"TTS format_announcement: pause_style={pause_style}, field_order={field_order}")
         
         # Determine separator based on pause style
         if pause_style == 'minimal':
@@ -362,16 +387,16 @@ class TTSService:
             settings=settings,
         )
         
-        logger.info(f"TTS generating: '{text}' for {tenant}/{incident_id}")
-        
-        if not self._check_piper():
-            # Return text only if Piper unavailable
-            return {"audio_url": None, "tts_text": text}
-        
         # Get speech rate from settings (Piper length_scale)
         length_scale = settings.get('tts_speed', DEFAULT_LENGTH_SCALE)
         # Clamp to reasonable range
         length_scale = max(0.5, min(2.0, float(length_scale)))
+        
+        logger.info(f"TTS generating: '{text}' for {tenant}/{incident_id} (speed={length_scale})")
+        
+        if not self._check_piper():
+            # Return text only if Piper unavailable
+            return {"audio_url": None, "tts_text": text}
         
         # Ensure directory exists
         tenant_dir = self._ensure_dirs(tenant)
