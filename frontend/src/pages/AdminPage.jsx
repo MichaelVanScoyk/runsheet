@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings, getPrintLayout, updatePrintLayout, resetPrintLayout, getIncidentYears, getFeatures, updateFeatures } from '../api';
+import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings, getPrintLayout, updatePrintLayout, resetPrintLayout, getIncidentYears, getFeatures, updateFeatures, getCadSettings, updateCadSettings } from '../api';
 import { useBranding } from '../contexts/BrandingContext';
 import { formatDateTimeLocal } from '../utils/timeUtils';
 import './AdminPage.css';
@@ -2228,6 +2228,249 @@ function ComCatTab() {
 
 
 // ============================================================================
+// CAD SETTINGS TAB COMPONENT
+// ============================================================================
+
+/**
+ * CAD Settings Tab - Controls how incoming CAD data is processed.
+ * 
+ * PURPOSE:
+ *   Many fire departments only run one type of call (fire-only or EMS-only).
+ *   The force_category setting allows overriding the automatic category detection
+ *   that normally happens based on CAD event type keywords.
+ * 
+ * HOW IT WORKS:
+ *   - Auto-detect (default): MEDICAL events → EMS, everything else → FIRE
+ *   - Force FIRE: All incoming CAD imports become FIRE category
+ *   - Force EMS: All incoming CAD imports become EMS category
+ * 
+ * IMPORTANT DISTINCTION:
+ *   call_category (FIRE/EMS/DETAIL) is for OPERATIONAL routing within the department:
+ *   - Controls which tab the incident appears in on IncidentList
+ *   - Controls incident numbering sequences (separate per category)
+ *   - Controls station workflow organization
+ * 
+ *   This is SEPARATE from NERIS classification (federal reporting), which is set
+ *   during runsheet completion via neris_incident_type_codes[]. A department can
+ *   force all CAD imports to 'FIRE' operationally while still classifying individual
+ *   incidents as MEDICAL, RESCUE, etc. for federal NERIS reporting.
+ * 
+ * DETAIL CATEGORY:
+ *   DETAIL is never auto-assigned from CAD. It's only for manually-created entries
+ *   like training, standbys, and other non-emergency events.
+ */
+function CADSettingsTab() {
+  const [settings, setSettings] = useState({ force_category: null });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const res = await getCadSettings();
+      setSettings(res.data);
+    } catch (err) {
+      console.error('Failed to load CAD settings:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChange = async (value) => {
+    setSaving(true);
+    setMessage(null);
+    
+    // Convert "auto" back to null for storage
+    const newValue = value === 'auto' ? null : value;
+    
+    try {
+      await updateCadSettings({ force_category: newValue });
+      setSettings(prev => ({ ...prev, force_category: newValue }));
+      setMessage({ 
+        type: 'success', 
+        text: value === 'auto' 
+          ? 'Category detection set to auto-detect' 
+          : `All CAD imports will now be categorized as ${value}`
+      });
+    } catch (err) {
+      console.error('Failed to save CAD setting:', err);
+      setMessage({ type: 'error', text: 'Failed to save setting' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="loading">Loading CAD settings...</div>;
+
+  // Convert null to "auto" for display
+  const currentValue = settings.force_category || 'auto';
+
+  return (
+    <div className="cad-settings-tab">
+      <h3 style={{ color: 'var(--primary-color)' }}>CAD Import Settings</h3>
+      <p className="tab-intro">
+        Configure how incoming CAD data is categorized. This affects which tab incidents 
+        appear in and their numbering sequence.
+      </p>
+
+      {message && (
+        <div className={`message ${message.type}`} style={{ marginBottom: '1rem' }}>
+          {message.text}
+        </div>
+      )}
+
+      {/* Force Category Setting */}
+      <div style={{ 
+        background: '#f5f5f5', 
+        borderRadius: '8px', 
+        padding: '1.5rem',
+        maxWidth: '600px',
+        border: '1px solid #e0e0e0'
+      }}>
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem', color: '#333' }}>
+            📁 Call Category Assignment
+          </label>
+          <p style={{ color: '#666', fontSize: '0.9rem', margin: '0 0 1rem 0' }}>
+            How should incoming CAD dispatches be categorized?
+          </p>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {/* Auto-detect option */}
+            <label style={{ 
+              display: 'flex', 
+              alignItems: 'flex-start', 
+              gap: '0.75rem',
+              padding: '0.75rem 1rem',
+              background: currentValue === 'auto' ? '#e8f5e9' : '#fff',
+              border: currentValue === 'auto' ? '2px solid #4caf50' : '1px solid #ddd',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}>
+              <input
+                type="radio"
+                name="force_category"
+                value="auto"
+                checked={currentValue === 'auto'}
+                onChange={(e) => handleChange(e.target.value)}
+                disabled={saving}
+                style={{ marginTop: '0.2rem' }}
+              />
+              <div>
+                <div style={{ fontWeight: '500', color: '#333' }}>🔄 Auto-detect (Default)</div>
+                <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+                  MEDICAL events → EMS, everything else → FIRE
+                </div>
+              </div>
+            </label>
+
+            {/* Force FIRE option */}
+            <label style={{ 
+              display: 'flex', 
+              alignItems: 'flex-start', 
+              gap: '0.75rem',
+              padding: '0.75rem 1rem',
+              background: currentValue === 'FIRE' ? '#ffebee' : '#fff',
+              border: currentValue === 'FIRE' ? '2px solid #dc2626' : '1px solid #ddd',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}>
+              <input
+                type="radio"
+                name="force_category"
+                value="FIRE"
+                checked={currentValue === 'FIRE'}
+                onChange={(e) => handleChange(e.target.value)}
+                disabled={saving}
+                style={{ marginTop: '0.2rem' }}
+              />
+              <div>
+                <div style={{ fontWeight: '500', color: '#333' }}>🔥 Force All to FIRE</div>
+                <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+                  All CAD imports categorized as FIRE (for fire-only departments)
+                </div>
+              </div>
+            </label>
+
+            {/* Force EMS option */}
+            <label style={{ 
+              display: 'flex', 
+              alignItems: 'flex-start', 
+              gap: '0.75rem',
+              padding: '0.75rem 1rem',
+              background: currentValue === 'EMS' ? '#e3f2fd' : '#fff',
+              border: currentValue === 'EMS' ? '2px solid #2563eb' : '1px solid #ddd',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}>
+              <input
+                type="radio"
+                name="force_category"
+                value="EMS"
+                checked={currentValue === 'EMS'}
+                onChange={(e) => handleChange(e.target.value)}
+                disabled={saving}
+                style={{ marginTop: '0.2rem' }}
+              />
+              <div>
+                <div style={{ fontWeight: '500', color: '#333' }}>🚑 Force All to EMS</div>
+                <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>
+                  All CAD imports categorized as EMS (for EMS-only agencies)
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {saving && (
+          <div style={{ color: '#666', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+            Saving...
+          </div>
+        )}
+      </div>
+
+      {/* Info Box */}
+      <div style={{ 
+        marginTop: '1.5rem',
+        padding: '1rem', 
+        background: '#fff3cd', 
+        borderRadius: '6px',
+        border: '1px solid #ffc107',
+        maxWidth: '600px'
+      }}>
+        <strong style={{ color: '#856404' }}>💡 Note about NERIS:</strong>
+        <p style={{ color: '#856404', fontSize: '0.9rem', margin: '0.5rem 0 0 0' }}>
+          This setting controls the <em>operational</em> category (which tab the call appears in).
+          It does NOT affect NERIS classification for federal reporting—that's set separately 
+          during runsheet completion.
+        </p>
+      </div>
+
+      {/* DETAIL info */}
+      <div style={{ 
+        marginTop: '1rem',
+        padding: '1rem', 
+        background: '#f3e8ff', 
+        borderRadius: '6px',
+        border: '1px solid #8b5cf6',
+        maxWidth: '600px'
+      }}>
+        <strong style={{ color: '#5b21b6' }}>📋 About DETAIL category:</strong>
+        <p style={{ color: '#5b21b6', fontSize: '0.9rem', margin: '0.5rem 0 0 0' }}>
+          DETAIL is never auto-assigned from CAD. It's only for manually-created entries 
+          (training, standbys, drills, etc.) via the "New Record" menu.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
+// ============================================================================
 // FEATURES TAB COMPONENT
 // ============================================================================
 
@@ -2512,6 +2755,12 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
           🔔 AV Alerts
         </button>
         <button 
+          className={activeTab === 'cad' ? 'active' : ''} 
+          onClick={() => setActiveTab('cad')}
+        >
+          📡 CAD Import
+        </button>
+        <button 
           className={activeTab === 'features' ? 'active' : ''} 
           onClick={() => setActiveTab('features')}
         >
@@ -2535,6 +2784,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'branding' && <BrandingTab onRefresh={refreshBranding} />}
         {activeTab === 'comcat' && <ComCatTab />}
         {activeTab === 'avalerts' && <AVAlertsTab />}
+        {activeTab === 'cad' && <CADSettingsTab />}
         {activeTab === 'features' && <FeaturesTab />}
       </div>
     </div>

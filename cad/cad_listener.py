@@ -73,6 +73,12 @@ class CADListener:
         self._unit_cache_time: Optional[datetime] = None
         self._unit_cache_ttl = 300  # 5 minutes
         
+        # Cache for CAD settings (force_category, etc.)
+        # Cached to avoid API call on every incoming dispatch
+        self._cad_settings_cache: Optional[Dict[str, Any]] = None
+        self._cad_settings_cache_time: Optional[datetime] = None
+        self._cad_settings_cache_ttl = 60  # 1 minute - shorter TTL since settings changes should apply quickly
+        
         # Setup tenant data directories
         self.data_dir = Path(DATA_BASE_DIR) / self.tenant
         self.backup_dir = self.data_dir / 'cad_backup'
@@ -902,11 +908,81 @@ class CADListener:
         logger.info(f"Closed incident {event_number} (created from clear)")
         self.stats['incidents_closed'] += 1
     
+    def _get_cad_settings(self) -> Dict[str, Any]:
+        """
+        Get CAD import settings from API with caching.
+        
+        Settings control how incoming CAD data is processed:
+        - force_category: Override auto-detection (null, "FIRE", or "EMS")
+        
+        Returns cached settings if still valid, otherwise fetches fresh.
+        Falls back to defaults if API unavailable.
+        """
+        now = datetime.now()
+        
+        # Check cache freshness
+        if (self._cad_settings_cache is not None and 
+            self._cad_settings_cache_time and 
+            (now - self._cad_settings_cache_time).total_seconds() < self._cad_settings_cache_ttl):
+            return self._cad_settings_cache
+        
+        # Fetch fresh settings
+        try:
+            resp = requests.get(
+                f"{self.api_url}/api/settings/cad",
+                headers=self._api_headers,
+                timeout=5
+            )
+            if resp.status_code == 200:
+                self._cad_settings_cache = resp.json()
+                self._cad_settings_cache_time = now
+                return self._cad_settings_cache
+        except Exception as e:
+            logger.warning(f"Could not fetch CAD settings: {e}")
+        
+        # Return defaults if API failed
+        return {'force_category': None}
+    
     def _determine_category(self, event_type: str, event_subtype: str = None) -> str:
         """
-        Determine call category from event type.
-        Simple rule: MEDICAL -> EMS, everything else -> FIRE
+        Determine call category from CAD event type.
+        
+        CATEGORY PURPOSE:
+            call_category is used for OPERATIONAL routing within the department:
+            - IncidentList tab filtering (FIRE / EMS / DETAIL)
+            - Separate incident numbering sequences per category
+            - Station workflow organization
+            
+            This is SEPARATE from NERIS classification which is set during
+            runsheet completion via neris_incident_type_codes[]. A call can be
+            categorized as 'FIRE' operationally while having NERIS type 'MEDICAL'.
+        
+        FORCE_CATEGORY SETTING:
+            Many departments only run one type of call (fire-only or EMS-only).
+            The force_category setting allows overriding auto-detection:
+            - null: Auto-detect based on CAD event type keywords
+            - "FIRE": Force all CAD imports to FIRE category  
+            - "EMS": Force all CAD imports to EMS category
+            
+            This prevents misclassification when a fire dept gets "MEDICAL"
+            events they want tracked as FIRE for their run stats.
+        
+        AUTO-DETECT LOGIC (when force_category is null):
+            - Event types starting with 'MEDICAL' -> EMS
+            - Everything else -> FIRE
+            - Note: DETAIL is never auto-assigned; it's for manual entries
+              like training, standbys, and non-emergency events.
         """
+        # Check for force_category setting
+        cad_settings = self._get_cad_settings()
+        force_category = cad_settings.get('force_category')
+        
+        # If force_category is set (not None/empty), use it directly
+        if force_category and force_category in ('FIRE', 'EMS'):
+            logger.debug(f"Using force_category={force_category} for event_type={event_type}")
+            return force_category
+        
+        # Auto-detect: MEDICAL -> EMS, everything else -> FIRE
         if (event_type or '').upper().startswith('MEDICAL'):
             return 'EMS'
         return 'FIRE'

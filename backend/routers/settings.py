@@ -850,6 +850,106 @@ async def delete_av_alert_sound(
 
 
 # =============================================================================
+# CAD IMPORT SETTINGS
+# =============================================================================
+
+"""
+CAD Import Settings - Controls how incoming CAD data is processed.
+
+PURPOSE OF force_category:
+    Many fire departments only run one type of call (e.g., fire-only or EMS-only).
+    Rather than relying on keyword-based auto-detection (which may misclassify),
+    departments can force ALL incoming CAD imports to a single category.
+
+    NERIS Consideration:
+        This setting affects the operational call_category used for:
+        - IncidentList filtering (FIRE/EMS/DETAIL tabs)
+        - Incident numbering sequences (separate sequences per category)
+        - Station-level workflow routing
+
+        It does NOT affect NERIS classification, which is set separately via
+        neris_incident_type_codes[] during runsheet completion. A department
+        can force all CAD imports to 'FIRE' operationally while still classifying
+        individual incidents as MEDICAL, RESCUE, etc. for federal NERIS reporting.
+
+    Options:
+        - null: Auto-detect based on CAD event type keywords (MEDICAL→EMS, else→FIRE)
+        - "FIRE": Force all CAD imports to FIRE category
+        - "EMS": Force all CAD imports to EMS category
+"""
+
+DEFAULT_CAD_SETTINGS = {
+    # force_category: Override auto-detection of call category from CAD event type
+    # null = auto-detect (MEDICAL→EMS, else→FIRE), "FIRE" or "EMS" = force that category
+    'force_category': None,
+}
+
+
+@router.get("/cad")
+async def get_cad_settings(db: Session = Depends(get_db)):
+    """
+    Get CAD import settings.
+    Returns defaults merged with any custom values stored in database.
+    """
+    result = db.execute(
+        text("SELECT key, value, value_type FROM settings WHERE category = 'cad'")
+    )
+    
+    settings = dict(DEFAULT_CAD_SETTINGS)
+    
+    for row in result:
+        key = row[0]
+        value = _parse_value(row[1], row[2])
+        if key in settings:
+            settings[key] = value
+    
+    return settings
+
+
+@router.put("/cad")
+async def update_cad_settings(
+    settings: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Update CAD import settings.
+    Only updates keys that are in the allowed list.
+    """
+    allowed_keys = set(DEFAULT_CAD_SETTINGS.keys())
+    
+    for key, value in settings.items():
+        if key not in allowed_keys:
+            continue
+        
+        # Handle null/None values - store as empty string, parse back as None
+        if value is None or value == '' or value == 'null':
+            value_str = ''
+            value_type = 'string'
+        else:
+            value_str = str(value)
+            value_type = 'string'
+        
+        exists = db.execute(
+            text("SELECT 1 FROM settings WHERE category = 'cad' AND key = :key"),
+            {"key": key}
+        ).fetchone()
+        
+        if exists:
+            db.execute(
+                text("UPDATE settings SET value = :value, value_type = :vtype, updated_at = NOW() WHERE category = 'cad' AND key = :key"),
+                {"key": key, "value": value_str, "vtype": value_type}
+            )
+        else:
+            db.execute(
+                text("INSERT INTO settings (category, key, value, value_type) VALUES ('cad', :key, :value, :vtype)"),
+                {"key": key, "value": value_str, "vtype": value_type}
+            )
+    
+    db.commit()
+    return {"status": "ok"}
+
+
+# =============================================================================
 # FEATURE FLAGS
 # =============================================================================
 

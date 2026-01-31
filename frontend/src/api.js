@@ -297,6 +297,12 @@ export const getFeatures = () => api.get('/settings/features');
 
 export const updateFeatures = (features) => api.put('/settings/features', features);
 
+// CAD Import Settings
+// Controls how incoming CAD data is processed (e.g., force all calls to FIRE category)
+export const getCadSettings = () => api.get('/settings/cad');
+
+export const updateCadSettings = (settings) => api.put('/settings/cad', settings);
+
 // ============================================================================
 // ADMIN
 // ============================================================================
