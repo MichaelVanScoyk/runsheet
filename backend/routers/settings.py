@@ -559,6 +559,7 @@ DEFAULT_AV_ALERTS = {
     'tts_field_order': ['units', 'call_type', 'address'],
     
     # TTS voice settings
+    'tts_voice': 'en_US-ryan-medium',  # Piper voice model name
     'tts_speed': 1.1,       # Speech rate: 0.8 (fast) to 1.5 (slow), 1.0 = normal
     'tts_pause_style': 'normal',  # 'minimal', 'normal', 'dramatic' - pause duration between sections
     

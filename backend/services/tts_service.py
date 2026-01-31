@@ -32,6 +32,7 @@ from typing import List, Optional, Dict, Any
 from services.tts_preprocessing import (
     tts_preprocessor,
     expand_address,
+    expand_acronyms,
     number_to_words,
 )
 
@@ -273,12 +274,14 @@ class TTSService:
                         text = ', '.join(spoken_units[:-1]) + f", {join_word} " + spoken_units[-1]
             
             elif field_id == 'call_type' and call_type:
-                text = call_type.strip()
+                # Expand acronyms like "ALS" -> "A L S"
+                text = expand_acronyms(call_type.strip())
             
             elif field_id == 'subtype' and subtype:
                 subtype_clean = subtype.strip()
                 if subtype_clean.lower() not in ['none', 'unknown', 'other', '']:
-                    text = subtype_clean
+                    # Expand acronyms like "MVA" -> "M V A"
+                    text = expand_acronyms(subtype_clean)
             
             elif field_id == 'box' and box:
                 box_prefix = prefix or 'Box'

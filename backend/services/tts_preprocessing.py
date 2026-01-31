@@ -234,6 +234,38 @@ def spell_out_letters(text: str) -> str:
     return ' '.join(text.upper())
 
 
+def expand_acronyms(text: str) -> str:
+    """
+    Expand 2-4 letter all-caps words to spell them out.
+    
+    Examples:
+        "ALS" -> "A L S"
+        "BLS" -> "B L S"
+        "MVA" -> "M V A"
+        "Structure Fire" -> "Structure Fire" (unchanged)
+    """
+    if not text:
+        return ""
+    
+    words = text.split()
+    result = []
+    
+    for word in words:
+        # Check if word is 2-4 letters and all uppercase
+        clean_word = word.rstrip('.,!?')
+        if len(clean_word) >= 2 and len(clean_word) <= 4 and clean_word.isupper() and clean_word.isalpha():
+            # Spell it out
+            spelled = ' '.join(clean_word)
+            # Preserve any trailing punctuation
+            if word != clean_word:
+                spelled += word[len(clean_word):]
+            result.append(spelled)
+        else:
+            result.append(word)
+    
+    return ' '.join(result)
+
+
 def spell_out_mixed(text: str) -> str:
     """Spell out mixed alphanumeric: 'A1B2' -> 'A one B two'"""
     result = []
