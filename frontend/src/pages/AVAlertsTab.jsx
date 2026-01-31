@@ -1,12 +1,13 @@
 /**
  * AVAlertsTab - Admin settings for Audio/Visual alerts
  * 
- * Allows admins to:
- * - Enable/disable AV alerts and TTS department-wide
- * - Configure which fields are included in TTS announcements
- * - Upload custom sound files (or use defaults)
- * - Test sounds and preview TTS (all server-side Piper TTS)
- * - Send custom announcements
+ * Page order:
+ * 1. Master Controls
+ * 2. Alert Sounds (klaxon tones)
+ * 3. Announcement Content (field selection)
+ * 4. Voice Settings (speed, pauses)
+ * 5. Preview (hear how it sounds)
+ * 6. Custom Announcement (send messages)
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -60,7 +61,9 @@ function AVAlertsTab() {
   const fileInputRefs = useRef({});
 
   // Load preview using real last incident data and generate server-side audio
+  // Always clears cached audio to force regeneration with current settings
   const loadPreview = async () => {
+    setPreviewAudioUrl(null); // Clear cached audio so it regenerates
     try {
       const res = await fetch(`${API_BASE}/api/test-alerts/settings-preview?_t=${Date.now()}`);
       if (res.ok) {
@@ -117,7 +120,7 @@ function AVAlertsTab() {
         setMessage({ type: 'success', text: 'Setting saved' });
         // Reload preview after any TTS-related change
         if (key === 'tts_field_order' || key === 'tts_pause_style' || key === 'tts_speed' || key === 'tts_announce_all_units') {
-          // Small delay to let server process the setting
+          // Small delay to let server process the setting, then regenerate preview
           setTimeout(loadPreview, 300);
         }
       } else {
@@ -311,44 +314,36 @@ function AVAlertsTab() {
     }
   };
 
-  // Play server-generated TTS preview (Piper audio)
+  // Play server-generated TTS preview (Piper audio) - always fetches fresh
   const playServerPreview = async () => {
-    if (!previewAudioUrl) {
-      // No cached audio, regenerate
-      setPlayingPreview(true);
-      try {
-        const res = await fetch(`${API_BASE}/api/test-alerts/settings-preview?_t=${Date.now()}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.audio_url) {
-            const audio = new Audio(data.audio_url);
-            audio.onended = () => setPlayingPreview(false);
-            audio.onerror = () => {
-              setPlayingPreview(false);
-              setMessage({ type: 'error', text: 'Failed to play audio' });
-            };
-            audio.play();
-            setPreviewText(data.sample_text || '');
-            setPreviewAudioUrl(data.audio_url);
-          } else {
-            setMessage({ type: 'error', text: 'No audio available' });
+    setPlayingPreview(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/test-alerts/settings-preview?_t=${Date.now()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewText(data.sample_text || '');
+        setPreviewIncidentInfo(data.incident_info || null);
+        
+        if (data.audio_url) {
+          const audio = new Audio(data.audio_url + '&_t=' + Date.now());
+          audio.onended = () => setPlayingPreview(false);
+          audio.onerror = () => {
             setPlayingPreview(false);
-          }
+            setMessage({ type: 'error', text: 'Failed to play audio' });
+          };
+          audio.play();
+          setPreviewAudioUrl(data.audio_url);
+        } else {
+          setMessage({ type: 'error', text: 'No audio available' });
+          setPlayingPreview(false);
         }
-      } catch (err) {
+      } else {
         setMessage({ type: 'error', text: 'Failed to generate preview' });
         setPlayingPreview(false);
       }
-    } else {
-      // Play cached audio
-      setPlayingPreview(true);
-      const audio = new Audio(previewAudioUrl + '&_t=' + Date.now());
-      audio.onended = () => setPlayingPreview(false);
-      audio.onerror = () => {
-        setPlayingPreview(false);
-        setMessage({ type: 'error', text: 'Failed to play audio' });
-      };
-      audio.play();
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to generate preview' });
+      setPlayingPreview(false);
     }
   };
 
@@ -363,7 +358,6 @@ function AVAlertsTab() {
     setMessage(null);
     
     try {
-      // Generate TTS audio without broadcasting
       const res = await fetch(`${API_BASE}/api/test-alerts/tts-preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -447,7 +441,7 @@ function AVAlertsTab() {
         </div>
       )}
 
-      {/* Master Toggles */}
+      {/* 1. Master Toggles */}
       <div style={{ 
         background: '#f5f5f5', 
         borderRadius: '8px', 
@@ -483,7 +477,7 @@ function AVAlertsTab() {
             <div>
               <strong style={{ color: '#333' }}>Enable Text-to-Speech</strong>
               <p style={{ color: '#666', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
-                Read incident details aloud on dispatch
+                Read incident details aloud after alert tone
               </p>
             </div>
             <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
@@ -502,7 +496,96 @@ function AVAlertsTab() {
         </div>
       </div>
 
-      {/* TTS Field Configuration - Ordered List */}
+      {/* 2. Alert Sounds */}
+      <div style={{ 
+        background: '#f5f5f5', 
+        borderRadius: '8px', 
+        padding: '1rem',
+        marginBottom: '1.5rem',
+        border: '1px solid #e0e0e0'
+      }}>
+        <h4 style={{ marginBottom: '0.5rem', color: '#333' }}>Alert Sounds</h4>
+        <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Choose the klaxon/tone that plays before the announcement.
+        </p>
+        
+        {SOUND_TYPES.map(({ key, label, description }) => (
+          <div 
+            key={key}
+            style={{ 
+              background: '#fff',
+              borderRadius: '6px',
+              padding: '1rem',
+              marginBottom: '0.75rem',
+              border: '1px solid #e0e0e0'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+              <div>
+                <strong style={{ color: '#333' }}>{label}</strong>
+                <p style={{ color: '#666', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+                  {description}
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => playSound(key)}
+                  title="Preview sound locally"
+                >
+                  🎧 Preview
+                </button>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <span style={{ 
+                color: isCustomSound(key) ? '#22c55e' : '#666',
+                fontSize: '0.85rem',
+                background: isCustomSound(key) ? '#f0fdf4' : '#f5f5f5',
+                padding: '0.25rem 0.5rem',
+                borderRadius: '4px',
+                border: `1px solid ${isCustomSound(key) ? '#86efac' : '#e0e0e0'}`
+              }}>
+                {isCustomSound(key) ? '✓ Custom sound' : 'Using default'}
+              </span>
+              
+              <input
+                type="file"
+                ref={el => fileInputRefs.current[key] = el}
+                accept="audio/mpeg,audio/mp3,audio/wav,audio/ogg,audio/flac"
+                onChange={(e) => handleFileSelect(key, e)}
+                style={{ display: 'none' }}
+              />
+              
+              <button
+                className="btn btn-sm btn-primary"
+                onClick={() => fileInputRefs.current[key]?.click()}
+                disabled={uploading === key}
+              >
+                {uploading === key ? '⏳ Uploading...' : '📤 Upload Custom'}
+              </button>
+              
+              {isCustomSound(key) && (
+                <button
+                  className="btn btn-sm btn-danger"
+                  onClick={() => handleDeleteSound(key)}
+                  disabled={uploading === key}
+                  title="Revert to default"
+                >
+                  🗑️ Remove
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        
+        <p style={{ color: '#888', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+          Supported: MP3, WAV, OGG, FLAC • Max 1MB • Keep sounds 1-3 seconds
+        </p>
+      </div>
+
+      {/* 3. Announcement Content */}
       <div style={{ 
         background: '#f5f5f5', 
         borderRadius: '8px', 
@@ -633,39 +716,9 @@ function AVAlertsTab() {
             </div>
           </div>
         )}
-        
-        {/* TTS Preview - using real incident data and server-side audio */}
-        <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#e8f4f8', borderRadius: '4px', border: '1px solid #b8d4e3' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-            <div>
-              <strong style={{ color: '#1e3a5f', fontSize: '0.85rem' }}>Preview</strong>
-              {previewIncidentInfo && (
-                <span style={{ color: '#666', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
-                  (from incident #{previewIncidentInfo.id})
-                </span>
-              )}
-            </div>
-            <button
-              className="btn btn-sm btn-secondary"
-              onClick={playServerPreview}
-              disabled={playingPreview || !previewText}
-              title="Play server-generated TTS audio (Piper voice)"
-            >
-              {playingPreview ? '⏳ Playing...' : '🔊 Play Preview'}
-            </button>
-          </div>
-          <div style={{ color: '#333', fontStyle: 'italic', fontSize: '0.9rem' }}>
-            "{previewText || 'Loading preview...'}"
-          </div>
-          {!previewIncidentInfo && previewText && (
-            <div style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-              No recent incidents found - using sample data
-            </div>
-          )}
-        </div>
       </div>
 
-      {/* TTS Voice Settings */}
+      {/* 4. Voice Settings */}
       <div style={{ 
         background: '#f5f5f5', 
         borderRadius: '8px', 
@@ -675,7 +728,7 @@ function AVAlertsTab() {
       }}>
         <h4 style={{ marginBottom: '0.5rem', color: '#333' }}>Voice Settings</h4>
         <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
-          Adjust how the TTS voice sounds. Changes apply to server-generated announcements.
+          Adjust how the TTS voice sounds.
         </p>
         
         {/* Speech Speed */}
@@ -690,7 +743,7 @@ function AVAlertsTab() {
               min="0.8"
               max="1.5"
               step="0.1"
-              value={settings?.tts_speed || 1.1}
+              value={parseFloat(settings?.tts_speed) || 1.1}
               onChange={(e) => updateSetting('tts_speed', parseFloat(e.target.value))}
               disabled={saving}
               style={{ flex: 1, cursor: 'pointer' }}
@@ -706,7 +759,7 @@ function AVAlertsTab() {
               fontSize: '0.85rem',
               fontWeight: 500
             }}>
-                          {(parseFloat(settings?.tts_speed) || 1.1).toFixed(1)}
+              {(parseFloat(settings?.tts_speed) || 1.1).toFixed(1)}
             </span>
           </div>
           <p style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.25rem' }}>
@@ -753,7 +806,60 @@ function AVAlertsTab() {
         </div>
       </div>
 
-      {/* Custom Announcement */}
+      {/* 5. Preview */}
+      <div style={{ 
+        background: '#e8f4f8', 
+        borderRadius: '8px', 
+        padding: '1rem',
+        marginBottom: '1.5rem',
+        border: '1px solid #b8d4e3'
+      }}>
+        <h4 style={{ marginBottom: '0.5rem', color: '#1e3a5f' }}>Preview</h4>
+        <p style={{ color: '#4a6785', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Hear how your announcement will sound with current settings.
+        </p>
+        
+        <div style={{ 
+          background: '#fff', 
+          borderRadius: '4px', 
+          padding: '1rem',
+          marginBottom: '1rem',
+          border: '1px solid #d0e3ed'
+        }}>
+          <div style={{ color: '#333', fontStyle: 'italic', fontSize: '0.95rem', marginBottom: '0.5rem' }}>
+            "{previewText || 'Loading preview...'}"
+          </div>
+          {previewIncidentInfo ? (
+            <div style={{ color: '#666', fontSize: '0.75rem' }}>
+              Based on incident #{previewIncidentInfo.id}
+            </div>
+          ) : previewText && (
+            <div style={{ color: '#888', fontSize: '0.75rem' }}>
+              Using sample data (no recent incidents)
+            </div>
+          )}
+        </div>
+        
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            className="btn btn-primary"
+            onClick={playServerPreview}
+            disabled={playingPreview || !previewText}
+            title="Play server-generated TTS audio"
+          >
+            {playingPreview ? '⏳ Playing...' : '🔊 Play Preview'}
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => sendTestAlert('dispatch_fire')}
+            title="Send full test alert (tone + TTS) to all devices"
+          >
+            📡 Test All Devices
+          </button>
+        </div>
+      </div>
+
+      {/* 6. Custom Announcement */}
       <div style={{ 
         background: '#fff9e6', 
         borderRadius: '8px', 
@@ -763,7 +869,7 @@ function AVAlertsTab() {
       }}>
         <h4 style={{ marginBottom: '0.5rem', color: '#7c6a0a' }}>📢 Custom Announcement</h4>
         <p style={{ color: '#8b7a14', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
-          Send a custom message to all connected devices (no klaxon sound).
+          Send a custom message to all connected devices (TTS only, no klaxon).
         </p>
         
         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -790,7 +896,7 @@ function AVAlertsTab() {
             className="btn btn-secondary"
             onClick={previewAnnouncement}
             disabled={previewingAnnouncement || !customMessage.trim()}
-            title="Preview announcement locally (only you hear it)"
+            title="Preview locally (only you hear it)"
           >
             {previewingAnnouncement ? '⏳...' : '🎧 Preview'}
           </button>
@@ -798,102 +904,11 @@ function AVAlertsTab() {
             className="btn btn-primary"
             onClick={sendAnnouncement}
             disabled={sendingAnnouncement || !customMessage.trim()}
-            title="Send announcement to all connected devices"
+            title="Send to all connected devices"
           >
             {sendingAnnouncement ? '⏳ Sending...' : '📡 Send All'}
           </button>
         </div>
-      </div>
-
-      {/* Sound Files */}
-      <div style={{ 
-        background: '#f5f5f5', 
-        borderRadius: '8px', 
-        padding: '1rem',
-        border: '1px solid #e0e0e0'
-      }}>
-        <h4 style={{ marginBottom: '1rem', color: '#333' }}>Alert Sounds</h4>
-        <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
-          Default sounds are included. Upload custom sounds to override them.
-        </p>
-        
-        {SOUND_TYPES.map(({ key, label, description }) => (
-          <div 
-            key={key}
-            style={{ 
-              background: '#fff',
-              borderRadius: '6px',
-              padding: '1rem',
-              marginBottom: '1rem',
-              border: '1px solid #e0e0e0'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-              <div>
-                <strong style={{ color: '#333' }}>{label}</strong>
-                <p style={{ color: '#666', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
-                  {description}
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  className="btn btn-sm btn-secondary"
-                  onClick={() => playSound(key)}
-                  title="Preview sound locally (only you hear it)"
-                >
-                  🎧 Preview
-                </button>
-                <button
-                  className="btn btn-sm btn-primary"
-                  onClick={() => sendTestAlert(key)}
-                  title="Send test to all connected devices"
-                >
-                  📡 Test All
-                </button>
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <span style={{ 
-                color: isCustomSound(key) ? '#22c55e' : '#666',
-                fontSize: '0.85rem',
-                background: isCustomSound(key) ? '#f0fdf4' : '#f5f5f5',
-                padding: '0.25rem 0.5rem',
-                borderRadius: '4px',
-                border: `1px solid ${isCustomSound(key) ? '#86efac' : '#e0e0e0'}`
-              }}>
-                {isCustomSound(key) ? '✓ Custom sound' : 'Using default'}
-              </span>
-              
-              <input
-                type="file"
-                ref={el => fileInputRefs.current[key] = el}
-                accept="audio/mpeg,audio/mp3,audio/wav,audio/ogg,audio/flac"
-                onChange={(e) => handleFileSelect(key, e)}
-                style={{ display: 'none' }}
-              />
-              
-              <button
-                className="btn btn-sm btn-primary"
-                onClick={() => fileInputRefs.current[key]?.click()}
-                disabled={uploading === key}
-              >
-                {uploading === key ? '⏳ Uploading...' : '📤 Upload Custom'}
-              </button>
-              
-              {isCustomSound(key) && (
-                <button
-                  className="btn btn-sm btn-danger"
-                  onClick={() => handleDeleteSound(key)}
-                  disabled={uploading === key}
-                  title="Revert to default"
-                >
-                  🗑️ Remove
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
       </div>
 
       {/* How It Works */}
@@ -901,32 +916,14 @@ function AVAlertsTab() {
         background: '#f8f8f8', 
         borderRadius: '8px', 
         padding: '1rem', 
-        marginTop: '1.5rem',
         border: '1px solid #e0e0e0'
       }}>
         <h4 style={{ marginBottom: '0.75rem', color: '#333' }}>How It Works</h4>
         <ol style={{ color: '#666', margin: 0, paddingLeft: '1.25rem', lineHeight: 1.8 }}>
-          <li><strong>Unified Settings</strong> - Changes here apply to browser AND StationBell devices</li>
-          <li><strong>Server-Side TTS</strong> - All announcements use Piper TTS on the server for consistent voice</li>
-          <li><strong>WebSocket Updates</strong> - Devices receive alerts automatically in real-time</li>
+          <li><strong>Dispatch received</strong> → Alert tone plays (Fire or EMS)</li>
+          <li><strong>TTS announcement</strong> → Selected fields read aloud in order</li>
+          <li><strong>All devices</strong> → Browser and StationBell receive same audio</li>
         </ol>
-      </div>
-
-      {/* File Guidelines */}
-      <div style={{ 
-        background: '#fffbeb', 
-        borderRadius: '8px', 
-        padding: '1rem', 
-        marginTop: '1rem',
-        border: '1px solid #fcd34d'
-      }}>
-        <h4 style={{ marginBottom: '0.5rem', color: '#92400e' }}>📁 Sound File Guidelines</h4>
-        <ul style={{ color: '#78350f', margin: 0, paddingLeft: '1.25rem', fontSize: '0.9rem' }}>
-          <li>Supported formats: MP3, WAV, OGG, FLAC</li>
-          <li>Maximum file size: 1MB</li>
-          <li>Keep sounds short (1-3 seconds recommended)</li>
-          <li>Use distinct tones for Fire vs EMS for easy recognition</li>
-        </ul>
       </div>
     </div>
   );
