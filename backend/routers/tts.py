@@ -18,6 +18,9 @@ from services.tts_preprocessing import tts_preprocessor, generate_spoken_guess
 
 router = APIRouter()
 
+# Piper models directory
+PIPER_MODELS_DIR = "/home/dashboard/piper"
+
 
 # =============================================================================
 # SCHEMAS
@@ -491,4 +494,175 @@ async def preview_tts_text(
     return {
         "tts_text": text,
         "field_order": settings.get('tts_field_order', []),
+    }
+
+
+# =============================================================================
+# VOICE SELECTION
+# =============================================================================
+
+@router.get("/voices")
+async def list_available_voices():
+    """
+    List available Piper TTS voice models.
+    
+    Scans the Piper models directory for .onnx files and returns
+    information about each available voice.
+    """
+    from pathlib import Path
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    voices = []
+    models_dir = Path(PIPER_MODELS_DIR)
+    
+    if not models_dir.exists():
+        logger.warning(f"Piper models directory not found: {PIPER_MODELS_DIR}")
+        return {"voices": [], "error": "Models directory not found"}
+    
+    for onnx_file in models_dir.glob("*.onnx"):
+        # Parse filename: en_US-ryan-medium.onnx -> en_US, ryan, medium
+        name = onnx_file.stem  # e.g., "en_US-ryan-medium"
+        parts = name.split('-')
+        
+        if len(parts) >= 2:
+            language = parts[0]  # e.g., "en_US"
+            voice_name = parts[1] if len(parts) > 1 else "unknown"  # e.g., "ryan"
+            quality = parts[2] if len(parts) > 2 else "medium"  # e.g., "medium"
+            
+            # Make a friendly display name
+            display_name = f"{voice_name.title()} ({language.replace('_', ' ')}, {quality})"
+            
+            voices.append({
+                "id": name,
+                "name": display_name,
+                "voice": voice_name,
+                "language": language,
+                "quality": quality,
+            })
+    
+    # Sort by language, then voice name
+    voices.sort(key=lambda v: (v["language"], v["voice"]))
+    
+    return {"voices": voices}
+
+
+# =============================================================================
+# SEED FROM RECENT INCIDENTS
+# =============================================================================
+
+@router.post("/units/seed-from-incidents")
+async def seed_units_from_incidents(
+    count: int = Query(10, ge=1, le=50, description="Number of recent incidents to scan"),
+    db: Session = Depends(get_db),
+):
+    """
+    Seed unit mappings from recent incidents.
+    
+    Scans the last N incidents, extracts all unique unit IDs,
+    and creates TTS mappings for any that don't already exist.
+    
+    This pre-populates the pronunciation table so admins can
+    configure units before the next dispatch.
+    """
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    # Get units from recent incidents
+    result = db.execute(text("""
+        SELECT id, cad_units
+        FROM incidents
+        WHERE cad_units IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT :count
+    """), {"count": count})
+    
+    all_units = set()
+    incidents_scanned = 0
+    
+    for row in result:
+        incidents_scanned += 1
+        cad_units = row[1]
+        
+        if cad_units:
+            try:
+                # cad_units is JSONB array: [{"unit_id": "ENG481", ...}, ...]
+                if isinstance(cad_units, list):
+                    units_list = cad_units
+                elif isinstance(cad_units, str):
+                    units_list = json.loads(cad_units)
+                else:
+                    continue
+                
+                for unit in units_list:
+                    if isinstance(unit, dict) and unit.get('unit_id'):
+                        all_units.add(unit['unit_id'].upper().strip())
+                    elif isinstance(unit, str):
+                        all_units.add(unit.upper().strip())
+            except Exception as e:
+                logger.warning(f"Failed to parse cad_units for incident {row[0]}: {e}")
+    
+    if not all_units:
+        return {
+            "status": "ok",
+            "message": "No units found in recent incidents",
+            "incidents_scanned": incidents_scanned,
+            "units_found": 0,
+            "units_created": 0,
+        }
+    
+    # Get existing mappings
+    existing_result = db.execute(text(
+        "SELECT cad_unit_id FROM tts_unit_mappings WHERE cad_unit_id = ANY(:units)"
+    ), {"units": list(all_units)})
+    existing_units = {row[0] for row in existing_result}
+    
+    # Create mappings for new units
+    new_units = all_units - existing_units
+    created = 0
+    
+    for unit_id in new_units:
+        # Generate auto-guess pronunciation
+        spoken_as = generate_spoken_guess(unit_id)
+        
+        # Check if this unit is one of ours (in apparatus table)
+        try:
+            apparatus_result = db.execute(text("""
+                SELECT id FROM apparatus 
+                WHERE UPPER(cad_unit_id) = :unit_id 
+                   OR UPPER(unit_designator) = :unit_id
+                LIMIT 1
+            """), {"unit_id": unit_id}).fetchone()
+            apparatus_id = apparatus_result[0] if apparatus_result else None
+        except:
+            apparatus_id = None
+        
+        # Insert new mapping
+        try:
+            db.execute(text("""
+                INSERT INTO tts_unit_mappings (cad_unit_id, spoken_as, needs_review, apparatus_id)
+                VALUES (:unit_id, :spoken, true, :apparatus_id)
+                ON CONFLICT (cad_unit_id) DO NOTHING
+            """), {
+                "unit_id": unit_id,
+                "spoken": spoken_as,
+                "apparatus_id": apparatus_id,
+            })
+            created += 1
+        except Exception as e:
+            logger.warning(f"Failed to create mapping for {unit_id}: {e}")
+    
+    db.commit()
+    
+    logger.info(f"Seeded {created} unit mappings from {incidents_scanned} incidents")
+    
+    return {
+        "status": "ok",
+        "message": f"Created {created} new unit mappings",
+        "incidents_scanned": incidents_scanned,
+        "units_found": len(all_units),
+        "units_already_existed": len(existing_units),
+        "units_created": created,
+        "new_units": sorted(list(new_units)),
     }

@@ -39,7 +39,8 @@ logger = logging.getLogger(__name__)
 
 # Piper configuration
 PIPER_PATH = "/home/dashboard/piper/piper/piper"
-MODEL_PATH = "/home/dashboard/piper/en_US-ryan-medium.onnx"
+PIPER_MODELS_DIR = "/home/dashboard/piper"  # Directory containing .onnx voice models
+DEFAULT_MODEL = "en_US-ryan-medium"  # Default voice
 FFMPEG_PATH = "/usr/bin/ffmpeg"
 
 # Default speech rate (can be overridden by tenant settings)
@@ -51,6 +52,47 @@ DEFAULT_LENGTH_SCALE = 1.1  # Slightly slower for clarity
 # Output configuration
 ALERTS_DIR = "/tmp/tts_alerts"
 ALERT_TTL_MINUTES = 10  # Auto-cleanup after this time
+
+
+def get_available_voices() -> List[Dict[str, str]]:
+    """
+    Scan Piper models directory for available voice models.
+    Returns list of {id, name, language, quality} dicts.
+    """
+    voices = []
+    models_dir = Path(PIPER_MODELS_DIR)
+    
+    if not models_dir.exists():
+        logger.warning(f"Piper models directory not found: {PIPER_MODELS_DIR}")
+        return voices
+    
+    for onnx_file in models_dir.glob("*.onnx"):
+        # Parse filename: en_US-ryan-medium.onnx -> en_US, ryan, medium
+        name = onnx_file.stem  # e.g., "en_US-ryan-medium"
+        parts = name.split('-')
+        
+        if len(parts) >= 2:
+            language = parts[0]  # e.g., "en_US"
+            voice_name = parts[1] if len(parts) > 1 else "unknown"  # e.g., "ryan"
+            quality = parts[2] if len(parts) > 2 else "medium"  # e.g., "medium"
+            
+            # Make a friendly display name
+            display_name = f"{voice_name.title()} ({language}, {quality})"
+            
+            voices.append({
+                "id": name,
+                "name": display_name,
+                "voice": voice_name,
+                "language": language,
+                "quality": quality,
+                "path": str(onnx_file),
+            })
+    
+    # Sort by language, then voice name
+    voices.sort(key=lambda v: (v["language"], v["voice"]))
+    
+    logger.info(f"Found {len(voices)} Piper voice models")
+    return voices
 
 
 def _get_tts_settings(db) -> Dict[str, Any]:
@@ -68,6 +110,7 @@ def _get_tts_settings(db) -> Dict[str, Any]:
         'tts_speed': DEFAULT_LENGTH_SCALE,  # Speech rate (Piper length_scale)
         'tts_pause_style': 'normal',  # 'minimal', 'normal', 'dramatic'
         'tts_announce_all_units': False,  # If True, announce all units; if False, only your department's
+        'tts_voice': DEFAULT_MODEL,  # Piper voice model name
         'settings_version': 0,
     }
     
@@ -135,7 +178,7 @@ class TTSService:
     
     def __init__(self):
         self.piper_path = PIPER_PATH
-        self.model_path = MODEL_PATH
+        self.models_dir = Path(PIPER_MODELS_DIR)
         self.alerts_dir = Path(ALERTS_DIR)
         self._semaphore = asyncio.Semaphore(3)  # Max 3 concurrent generations
         self._initialized = False
@@ -146,13 +189,27 @@ class TTSService:
         tenant_dir.mkdir(parents=True, exist_ok=True)
         return tenant_dir
     
-    def _check_piper(self) -> bool:
+    def _get_model_path(self, voice_id: str = None) -> Path:
+        """Get the full path to a voice model."""
+        voice = voice_id or DEFAULT_MODEL
+        model_path = self.models_dir / f"{voice}.onnx"
+        
+        # Fallback to default if specified voice not found
+        if not model_path.exists():
+            logger.warning(f"Voice model {voice} not found, falling back to {DEFAULT_MODEL}")
+            model_path = self.models_dir / f"{DEFAULT_MODEL}.onnx"
+        
+        return model_path
+    
+    def _check_piper(self, voice_id: str = None) -> bool:
         """Verify Piper is available"""
         if not os.path.exists(self.piper_path):
             logger.error(f"Piper not found at {self.piper_path}")
             return False
-        if not os.path.exists(self.model_path):
-            logger.error(f"Piper model not found at {self.model_path}")
+        
+        model_path = self._get_model_path(voice_id)
+        if not model_path.exists():
+            logger.error(f"Piper model not found at {model_path}")
             return False
         return True
     
@@ -298,11 +355,17 @@ class TTSService:
         # Clamp to reasonable range
         length_scale = max(0.5, min(2.0, float(length_scale)))
         
-        logger.info(f"TTS generating: '{text}' for {tenant}/{incident_id} (speed={length_scale})")
+        # Get voice from settings
+        voice_id = settings.get('tts_voice', DEFAULT_MODEL)
         
-        if not self._check_piper():
+        logger.info(f"TTS generating: '{text}' for {tenant}/{incident_id} (speed={length_scale}, voice={voice_id})")
+        
+        if not self._check_piper(voice_id):
             # Return text only if Piper unavailable
             return {"audio_url": None, "tts_text": text}
+        
+        # Get model path for selected voice
+        model_path = self._get_model_path(voice_id)
         
         # Ensure directory exists
         tenant_dir = self._ensure_dirs(tenant)
@@ -321,7 +384,7 @@ class TTSService:
                 # --length_scale controls speed (>1 = slower, <1 = faster)
                 proc = await asyncio.create_subprocess_exec(
                     self.piper_path,
-                    "--model", self.model_path,
+                    "--model", str(model_path),
                     "--length_scale", str(length_scale),
                     "--output_file", str(wav_path),
                     stdin=asyncio.subprocess.PIPE,
@@ -391,15 +454,20 @@ class TTSService:
             return None
         
         text = message.strip()
-        logger.info(f"TTS generating custom: '{text}' for {tenant}")
         
-        if not self._check_piper():
-            return {"audio_url": None, "tts_text": text}
-        
-        # Get settings for speed
+        # Get settings for speed and voice
         settings = _get_tts_settings(db)
         length_scale = settings.get('tts_speed', DEFAULT_LENGTH_SCALE)
         length_scale = max(0.5, min(2.0, float(length_scale)))
+        voice_id = settings.get('tts_voice', DEFAULT_MODEL)
+        
+        logger.info(f"TTS generating custom: '{text}' for {tenant} (voice={voice_id})")
+        
+        if not self._check_piper(voice_id):
+            return {"audio_url": None, "tts_text": text}
+        
+        # Get model path for selected voice
+        model_path = self._get_model_path(voice_id)
         
         # Ensure directory exists
         tenant_dir = self._ensure_dirs(tenant)
@@ -417,7 +485,7 @@ class TTSService:
                 # --length_scale controls speed (>1 = slower, <1 = faster)
                 proc = await asyncio.create_subprocess_exec(
                     self.piper_path,
-                    "--model", self.model_path,
+                    "--model", str(model_path),
                     "--length_scale", str(length_scale),
                     "--output_file", str(wav_path),
                     stdin=asyncio.subprocess.PIPE,

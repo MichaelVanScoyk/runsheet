@@ -67,6 +67,11 @@ function AVAlertsTab() {
   const [editingSpoken, setEditingSpoken] = useState('');
   const [unitSearch, setUnitSearch] = useState('');
   const [showOnlyReview, setShowOnlyReview] = useState(false);
+  const [seedingUnits, setSeedingUnits] = useState(false);
+  
+  // Voice picker state
+  const [availableVoices, setAvailableVoices] = useState([]);
+  const [voicesLoading, setVoicesLoading] = useState(false);
   
   const fileInputRefs = useRef({});
 
@@ -132,9 +137,57 @@ function AVAlertsTab() {
     }
   };
 
+  // Load available TTS voices
+  const loadVoices = async () => {
+    setVoicesLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/tts/voices`);
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableVoices(data.voices || []);
+      }
+    } catch (err) {
+      console.error('Failed to load voices:', err);
+    } finally {
+      setVoicesLoading(false);
+    }
+  };
+
+  // Seed unit pronunciations from recent incidents
+  const seedFromIncidents = async () => {
+    setSeedingUnits(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/tts/units/seed-from-incidents?count=10`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.units_created > 0) {
+          setMessage({ 
+            type: 'success', 
+            text: `Found ${data.units_found} units, created ${data.units_created} new mappings` 
+          });
+        } else if (data.units_found > 0) {
+          setMessage({ type: 'info', text: `All ${data.units_found} units already configured` });
+        } else {
+          setMessage({ type: 'info', text: 'No units found in recent incidents' });
+        }
+        loadUnitMappings();
+      } else {
+        throw new Error('Seed failed');
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to seed units from incidents' });
+    } finally {
+      setSeedingUnits(false);
+    }
+  };
+
   useEffect(() => {
     loadSettings();
     loadUnitMappings();
+    loadVoices();
   }, []);
 
   // Reload unit mappings when filter changes
@@ -157,7 +210,7 @@ function AVAlertsTab() {
         setSettings(prev => ({ ...prev, [key]: value }));
         setMessage({ type: 'success', text: 'Setting saved' });
         // Reload preview after any TTS-related change
-        if (key === 'tts_field_order' || key === 'tts_pause_style' || key === 'tts_speed' || key === 'tts_announce_all_units') {
+        if (key === 'tts_field_order' || key === 'tts_pause_style' || key === 'tts_speed' || key === 'tts_announce_all_units' || key === 'tts_voice') {
           // Small delay to let server process the setting, then regenerate preview
           setTimeout(loadPreview, 300);
         }
@@ -845,6 +898,42 @@ function AVAlertsTab() {
           Adjust how the TTS voice sounds.
         </p>
         
+        {/* Voice Selection */}
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', fontWeight: 500, color: '#333', marginBottom: '0.5rem' }}>
+            Voice
+          </label>
+          {voicesLoading ? (
+            <span style={{ color: '#666', fontSize: '0.85rem' }}>Loading voices...</span>
+          ) : availableVoices.length === 0 ? (
+            <span style={{ color: '#999', fontSize: '0.85rem', fontStyle: 'italic' }}>No voices available on server</span>
+          ) : (
+            <select
+              value={settings?.tts_voice || 'en_US-ryan-medium'}
+              onChange={(e) => updateSetting('tts_voice', e.target.value)}
+              disabled={saving}
+              style={{
+                padding: '0.5rem',
+                borderRadius: '4px',
+                border: '1px solid #ddd',
+                background: '#fff',
+                fontSize: '0.9rem',
+                minWidth: '250px',
+                cursor: 'pointer',
+              }}
+            >
+              {availableVoices.map(voice => (
+                <option key={voice.id} value={voice.id}>
+                  {voice.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <p style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+            Download more voices from <a href="https://rhasspy.github.io/piper-samples/" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>Piper Samples</a>
+          </p>
+        </div>
+        
         {/* Speech Speed */}
         <div style={{ marginBottom: '1rem' }}>
           <label style={{ display: 'block', fontWeight: 500, color: '#333', marginBottom: '0.5rem' }}>
@@ -959,7 +1048,7 @@ function AVAlertsTab() {
         </p>
         
         {/* Search and filter */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
           <input
             type="text"
             placeholder="Search units..."
@@ -970,7 +1059,8 @@ function AVAlertsTab() {
               padding: '0.5rem', 
               border: '1px solid #ddd', 
               borderRadius: '4px',
-              fontSize: '0.9rem'
+              fontSize: '0.9rem',
+              minWidth: '150px'
             }}
           />
           <label style={{ 
@@ -992,6 +1082,14 @@ function AVAlertsTab() {
             />
             Needs review only
           </label>
+          <button
+            className="btn btn-sm btn-secondary"
+            onClick={seedFromIncidents}
+            disabled={seedingUnits}
+            title="Pre-populate unit pronunciations from the last 10 incidents"
+          >
+            {seedingUnits ? '⏳ Scanning...' : '📥 Seed from Incidents'}
+          </button>
           <button
             className="btn btn-sm btn-secondary"
             onClick={loadUnitMappings}
