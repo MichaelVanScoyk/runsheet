@@ -166,82 +166,48 @@ class TTSService:
     ) -> str:
         """
         Format the announcement text based on settings.
-        
         Data is passed through as-is from CAD - no transformations.
-        
-        Pause styles control punctuation between sections:
-        - 'minimal': comma separators (short ~200ms pauses)
-        - 'normal': period separators (~500ms pauses)
-        - 'dramatic': period + ellipsis (~800ms pauses)
-        
-        Settings contains:
-        - tts_field_order: ordered list of field IDs
-        - tts_pause_style: 'minimal', 'normal', 'dramatic'
         """
         if settings is None:
-            settings = {'tts_field_order': ['units', 'call_type', 'address'], 'tts_pause_style': 'normal'}
+            settings = {'tts_field_order': ['units', 'call_type', 'address']}
         
         field_order = settings.get('tts_field_order', ['units', 'call_type', 'address'])
-        pause_style = settings.get('tts_pause_style', 'normal')
-        
-        logger.info(f"TTS format_announcement: pause_style={pause_style}, field_order={field_order}")
-        
-        # Determine separator based on pause style
-        if pause_style == 'minimal':
-            separator = ", "
-            ending = "."
-        elif pause_style == 'dramatic':
-            separator = "... "
-            ending = "."
-        else:  # normal
-            separator = ". "
-            ending = "."
         
         parts = []
         
         for field_id in field_order:
             if field_id == 'units' and units:
-                # Join multiple units with "and" - pass through as-is
-                unit_list = [u.strip() for u in units[:5] if u.strip()]  # Limit to 5 units
-                if len(unit_list) == 1:
-                    parts.append(unit_list[0])
-                elif len(unit_list) == 2:
-                    parts.append(f"{unit_list[0]} and {unit_list[1]}")
-                else:
-                    # Oxford comma style: "A, B, and C"
-                    parts.append(", ".join(unit_list[:-1]) + ", and " + unit_list[-1])
+                # Just join units with commas as-is
+                unit_list = [u for u in units[:5] if u]  # Limit to 5 units
+                if unit_list:
+                    parts.append(', '.join(unit_list))
             
             elif field_id == 'call_type' and call_type:
-                parts.append(call_type.strip())
+                parts.append(call_type)
             
-            elif field_id == 'subtype' and subtype:
-                subtype_clean = subtype.strip()
-                if subtype_clean and subtype_clean.lower() not in ["none", "unknown", "other"]:
-                    parts.append(subtype_clean)
+            elif field_id == 'subtype' and subtype and subtype.lower() not in ['none', 'unknown', 'other']:
+                parts.append(subtype)
             
             elif field_id == 'box' and box:
                 parts.append(f"Box {box}")
             
             elif field_id == 'address' and address:
-                parts.append(address.strip())
+                parts.append(address)
             
             elif field_id == 'cross_streets' and cross_streets:
-                parts.append(f"between {cross_streets.strip()}")
+                parts.append(cross_streets)
             
             elif field_id == 'municipality' and municipality:
-                parts.append(municipality.strip())
+                parts.append(municipality)
             
             elif field_id == 'development' and development:
-                parts.append(development.strip())
+                parts.append(development)
         
         if not parts:
-            return "Alert."
+            return "Alert"
         
-        if len(parts) == 1:
-            return parts[0] + ending
-        
-        # Join all parts with the configured separator
-        return separator.join(parts) + ending
+        # Just join with periods - that's it
+        return '. '.join(parts)
     
     async def generate_alert_audio(
         self,
