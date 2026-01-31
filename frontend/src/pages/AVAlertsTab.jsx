@@ -59,9 +59,20 @@ function AVAlertsTab() {
   
   const fileInputRefs = useRef({});
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
+  // Load preview using real last incident data and generate server-side audio
+  const loadPreview = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/test-alerts/settings-preview?_t=${Date.now()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewText(data.sample_text || '');
+        setPreviewAudioUrl(data.audio_url || null);
+        setPreviewIncidentInfo(data.incident_info || null);
+      }
+    } catch (err) {
+      console.warn('Failed to load TTS preview:', err);
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -86,20 +97,9 @@ function AVAlertsTab() {
     }
   };
 
-  // Load preview using real last incident data and generate server-side audio
-  const loadPreview = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/test-alerts/settings-preview?_t=${Date.now()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setPreviewText(data.sample_text || '');
-        setPreviewAudioUrl(data.audio_url || null);
-        setPreviewIncidentInfo(data.incident_info || null);
-      }
-    } catch (err) {
-      console.warn('Failed to load TTS preview:', err);
-    }
-  };
+  useEffect(() => {
+    loadSettings();
+  }, []);
 
   const updateSetting = async (key, value) => {
     setSaving(true);
