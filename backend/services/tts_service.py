@@ -45,106 +45,8 @@ DEFAULT_LENGTH_SCALE = 1.1  # Slightly slower for clarity
 ALERTS_DIR = "/tmp/tts_alerts"
 ALERT_TTL_MINUTES = 10  # Auto-cleanup after this time
 
-# Unit name expansions for natural speech
-UNIT_EXPANSIONS = {
-    "ENG": "Engine",
-    "TWR": "Tower",
-    "SQ": "Squad",
-    "RES": "Rescue",
-    "AMB": "Ambulance",
-    "MED": "Medic",
-    "BC": "Battalion Chief",
-    "FM": "Fire Marshal",
-    "UT": "Utility",
-    "BR": "Brush",
-    "TK": "Tanker",
-    "TB": "Tiller",
-    "QT": "Quint",
-    "LAD": "Ladder",
-    "PLT": "Platform",
-}
-
-
-def _expand_unit_name(unit: str) -> str:
-    """
-    Expand unit designator for natural speech.
-    ENG481 -> "Engine 4 81"
-    TWR48 -> "Tower 48"
-    """
-    unit = unit.upper().strip()
-    
-    for prefix, expansion in UNIT_EXPANSIONS.items():
-        if unit.startswith(prefix):
-            number = unit[len(prefix):]
-            # Add spaces between digits for clearer pronunciation
-            # "481" -> "4 81" for "four eighty-one"
-            if len(number) == 3:
-                number = f"{number[0]} {number[1:]}"
-            return f"{expansion} {number}"
-    
-    # Unknown prefix - return as-is with spaced digits
-    return " ".join(unit)
-
-
-def _format_address(address: str) -> str:
-    """
-    Format address for natural speech.
-    - Expand common abbreviations
-    - Clean up formatting
-    """
-    if not address:
-        return ""
-    
-    address = address.strip()
-    
-    # Common abbreviations
-    replacements = {
-        r'\bRD\b': 'Road',
-        r'\bST\b': 'Street',
-        r'\bAVE\b': 'Avenue',
-        r'\bBLVD\b': 'Boulevard',
-        r'\bDR\b': 'Drive',
-        r'\bLN\b': 'Lane',
-        r'\bCT\b': 'Court',
-        r'\bPL\b': 'Place',
-        r'\bCIR\b': 'Circle',
-        r'\bHWY\b': 'Highway',
-        r'\bPKWY\b': 'Parkway',
-        r'\bN\b': 'North',
-        r'\bS\b': 'South',
-        r'\bE\b': 'East',
-        r'\bW\b': 'West',
-        r'\bNE\b': 'Northeast',
-        r'\bNW\b': 'Northwest',
-        r'\bSE\b': 'Southeast',
-        r'\bSW\b': 'Southwest',
-    }
-    
-    for pattern, replacement in replacements.items():
-        address = re.sub(pattern, replacement, address, flags=re.IGNORECASE)
-    
-    return address
-
-
-def _format_call_type(call_type: str, subtype: Optional[str] = None, include_subtype: bool = False) -> str:
-    """
-    Format call type for natural speech.
-    DWELLING FIRE -> "Dwelling Fire"
-    """
-    if not call_type:
-        return "Emergency"
-    
-    # Title case
-    result = call_type.strip().title()
-    
-    # Add subtype if enabled and meaningful
-    if include_subtype and subtype and subtype.strip():
-        subtype_clean = subtype.strip().title()
-        # Skip generic subtypes
-        if subtype_clean not in ["None", "Unknown", "Other"]:
-            result = f"{result}, {subtype_clean}"
-    
-    return result
+# No text transformations - pass data through as-is from CAD
+# Piper TTS handles pronunciation naturally
 
 
 def _get_tts_settings(db) -> Dict[str, Any]:
@@ -265,6 +167,8 @@ class TTSService:
         """
         Format the announcement text based on settings.
         
+        Data is passed through as-is from CAD - no transformations.
+        
         Pause styles control punctuation between sections:
         - 'minimal': comma separators (short ~200ms pauses)
         - 'normal': period separators (~500ms pauses)
@@ -297,44 +201,38 @@ class TTSService:
         
         for field_id in field_order:
             if field_id == 'units' and units:
-                # Join multiple units with "and" for natural speech
-                expanded_units = [_expand_unit_name(u) for u in units[:5]]  # Limit to 5 units
-                if len(expanded_units) == 1:
-                    parts.append(expanded_units[0])
-                elif len(expanded_units) == 2:
-                    parts.append(f"{expanded_units[0]} and {expanded_units[1]}")
+                # Join multiple units with "and" - pass through as-is
+                unit_list = [u.strip() for u in units[:5] if u.strip()]  # Limit to 5 units
+                if len(unit_list) == 1:
+                    parts.append(unit_list[0])
+                elif len(unit_list) == 2:
+                    parts.append(f"{unit_list[0]} and {unit_list[1]}")
                 else:
                     # Oxford comma style: "A, B, and C"
-                    parts.append(", ".join(expanded_units[:-1]) + ", and " + expanded_units[-1])
+                    parts.append(", ".join(unit_list[:-1]) + ", and " + unit_list[-1])
             
             elif field_id == 'call_type' and call_type:
-                formatted_type = _format_call_type(call_type)
-                if formatted_type:
-                    parts.append(formatted_type)
+                parts.append(call_type.strip())
             
             elif field_id == 'subtype' and subtype:
-                formatted_subtype = subtype.strip().title()
-                if formatted_subtype and formatted_subtype not in ["None", "Unknown", "Other"]:
-                    parts.append(formatted_subtype)
+                subtype_clean = subtype.strip()
+                if subtype_clean and subtype_clean.lower() not in ["none", "unknown", "other"]:
+                    parts.append(subtype_clean)
             
             elif field_id == 'box' and box:
                 parts.append(f"Box {box}")
             
             elif field_id == 'address' and address:
-                formatted_address = _format_address(address)
-                if formatted_address:
-                    parts.append(formatted_address)
+                parts.append(address.strip())
             
             elif field_id == 'cross_streets' and cross_streets:
-                # Format cross streets more naturally
-                streets = cross_streets.replace(" / ", " and ").replace("/", " and ")
-                parts.append(f"between {streets}")
+                parts.append(f"between {cross_streets.strip()}")
             
             elif field_id == 'municipality' and municipality:
-                parts.append(municipality.strip().title())
+                parts.append(municipality.strip())
             
             elif field_id == 'development' and development:
-                parts.append(development.strip().title())
+                parts.append(development.strip())
         
         if not parts:
             return "Alert."
@@ -343,9 +241,6 @@ class TTSService:
             return parts[0] + ending
         
         # Join all parts with the configured separator
-        # Example (normal): "Engine 4 81 and Tower 48. Dwelling Fire. 123 Main Street."
-        # Example (dramatic): "Engine 4 81 and Tower 48... Dwelling Fire... 123 Main Street."
-        # Example (minimal): "Engine 4 81 and Tower 48, Dwelling Fire, 123 Main Street."
         return separator.join(parts) + ending
     
     async def generate_alert_audio(
