@@ -330,10 +330,10 @@ async def preview_tts_settings(request: Request):
     if db:
         try:
             # Get most recent incident with CAD data
+            # Using only core columns that definitely exist
             logger.info(f"Loading recent incident for preview from tenant {tenant_slug}")
             result = db.execute(text("""
-                SELECT id, cad_event_type, cad_event_subtype, address, cross_streets, 
-                       municipality, units_due
+                SELECT id, cad_event_type, cad_event_subtype, address, cross_streets, units_due
                 FROM incidents 
                 WHERE cad_event_type IS NOT NULL 
                 ORDER BY created_at DESC 
@@ -347,10 +347,9 @@ async def preview_tts_settings(request: Request):
                 subtype = result[2]
                 address = result[3] or ""
                 cross_streets = result[4]
-                municipality = result[5]
                 
                 # Parse units_due - could be JSON array or comma-separated
-                units_raw = result[6]
+                units_raw = result[5]
                 if units_raw:
                     import json
                     try:
