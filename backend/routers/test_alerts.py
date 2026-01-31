@@ -380,12 +380,15 @@ async def preview_tts_settings(request: Request):
         settings=settings,
     )
     
-    # Generate actual audio for preview (use incident_id=0 for preview files)
+    # Generate actual audio for preview
+    # Use timestamp-based ID to ensure fresh file generation
+    import time
+    preview_id = int(time.time() * 1000) % 1000000  # Unique per request
     audio_url = None
     try:
         result = await tts.generate_alert_audio(
             tenant=tenant_slug,
-            incident_id=0,  # Preview ID
+            incident_id=preview_id,
             units=units,
             call_type=call_type,
             address=address,
