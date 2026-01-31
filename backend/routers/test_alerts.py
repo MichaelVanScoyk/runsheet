@@ -330,10 +330,10 @@ async def preview_tts_settings(request: Request):
     if db:
         try:
             # Get most recent incident with CAD data
-            # Using only core columns that definitely exist
+            # Actual columns: cad_event_type, cad_event_subtype, address, cross_streets, esz_box, cad_units (jsonb)
             logger.info(f"Loading recent incident for preview from tenant {tenant_slug}")
             result = db.execute(text("""
-                SELECT id, cad_event_type, cad_event_subtype, address, cross_streets, units_due
+                SELECT id, cad_event_type, cad_event_subtype, address, cross_streets, esz_box, cad_units
                 FROM incidents 
                 WHERE cad_event_type IS NOT NULL 
                 ORDER BY created_at DESC 
@@ -347,16 +347,26 @@ async def preview_tts_settings(request: Request):
                 subtype = result[2]
                 address = result[3] or ""
                 cross_streets = result[4]
+                box = result[5]
                 
-                # Parse units_due - could be JSON array or comma-separated
-                units_raw = result[5]
-                if units_raw:
-                    import json
+                # Parse cad_units - it's a JSONB array of unit objects
+                # Format: [{"unit_id": "ENG481", ...}, ...]
+                cad_units_raw = result[6]
+                if cad_units_raw:
                     try:
-                        units = json.loads(units_raw) if isinstance(units_raw, str) and units_raw.startswith('[') else [u.strip() for u in str(units_raw).split(',')]
-                    except:
-                        units = [u.strip() for u in str(units_raw).split(',')]
-                logger.info(f"Preview data: units={units}, call_type={call_type}, address={address}")
+                        if isinstance(cad_units_raw, list):
+                            # Already parsed by psycopg2
+                            units = [u.get('unit_id', '') for u in cad_units_raw if u.get('unit_id')]
+                        elif isinstance(cad_units_raw, str):
+                            import json
+                            parsed = json.loads(cad_units_raw)
+                            units = [u.get('unit_id', '') for u in parsed if u.get('unit_id')]
+                        else:
+                            units = []
+                    except Exception as e:
+                        logger.warning(f"Failed to parse cad_units: {e}")
+                        units = []
+                logger.info(f"Preview data: units={units}, call_type={call_type}, address={address}, box={box}")
             else:
                 logger.info("No incidents with CAD data found for preview")
         except Exception as e:
