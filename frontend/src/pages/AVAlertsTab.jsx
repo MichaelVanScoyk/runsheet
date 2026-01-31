@@ -5,7 +5,7 @@
  * - Enable/disable AV alerts and TTS department-wide
  * - Configure which fields are included in TTS announcements
  * - Upload custom sound files (or use defaults)
- * - Test sounds and preview TTS
+ * - Test sounds and preview TTS (all server-side Piper TTS)
  * - Send custom announcements
  */
 
@@ -26,16 +26,16 @@ const SOUND_TYPES = [
   { key: 'close', label: 'Incident Closed', description: 'Plays when any incident is cleared/closed' },
 ];
 
-// Available TTS fields from CAD data
+// Available TTS fields from CAD data - descriptions only, no hardcoded examples
 const AVAILABLE_TTS_FIELDS = [
-  { id: 'units', label: 'Units', example: 'Engine 4 81, Tower 48' },
-  { id: 'call_type', label: 'Call Type', example: 'Dwelling Fire' },
-  { id: 'subtype', label: 'Subtype', example: 'Gas Leak Inside' },
-  { id: 'box', label: 'Box/ESZ', example: 'Box 48-1' },
-  { id: 'address', label: 'Address', example: '123 Valley Road' },
-  { id: 'cross_streets', label: 'Cross Streets', example: 'Main Street and Oak Avenue' },
-  { id: 'municipality', label: 'Municipality', example: 'West Nantmeal' },
-  { id: 'development', label: 'Development', example: 'Eagle View' },
+  { id: 'units', label: 'Units', desc: 'Announces your units on this call', hasAllUnitsOption: true },
+  { id: 'call_type', label: 'Call Type', desc: 'The type of incident' },
+  { id: 'subtype', label: 'Subtype', desc: 'Additional call details if available' },
+  { id: 'box', label: 'Box/ESZ', desc: 'Box number or emergency service zone' },
+  { id: 'address', label: 'Address', desc: 'Street address of the incident' },
+  { id: 'cross_streets', label: 'Cross Streets', desc: 'Nearest intersecting streets' },
+  { id: 'municipality', label: 'Municipality', desc: 'City or township name' },
+  { id: 'development', label: 'Development', desc: 'Subdivision or complex name' },
 ];
 
 // Default field order
@@ -48,10 +48,14 @@ function AVAlertsTab() {
   const [message, setMessage] = useState(null);
   const [uploading, setUploading] = useState(null);
   const [previewText, setPreviewText] = useState('');
+  const [previewAudioUrl, setPreviewAudioUrl] = useState(null);
+  const [previewIncidentInfo, setPreviewIncidentInfo] = useState(null);
   const [customMessage, setCustomMessage] = useState('');
   const [sendingAnnouncement, setSendingAnnouncement] = useState(false);
   const [ttsFieldOrder, setTtsFieldOrder] = useState(DEFAULT_TTS_FIELD_ORDER);
   const [draggedField, setDraggedField] = useState(null);
+  const [playingPreview, setPlayingPreview] = useState(false);
+  const [previewingAnnouncement, setPreviewingAnnouncement] = useState(false);
   
   const fileInputRefs = useRef({});
 
@@ -82,12 +86,15 @@ function AVAlertsTab() {
     }
   };
 
+  // Load preview using real last incident data and generate server-side audio
   const loadPreview = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/test-alerts/settings-preview?_t=${Date.now()}`);
       if (res.ok) {
         const data = await res.json();
         setPreviewText(data.sample_text || '');
+        setPreviewAudioUrl(data.audio_url || null);
+        setPreviewIncidentInfo(data.incident_info || null);
       }
     } catch (err) {
       console.warn('Failed to load TTS preview:', err);
@@ -108,9 +115,10 @@ function AVAlertsTab() {
       if (res.ok) {
         setSettings(prev => ({ ...prev, [key]: value }));
         setMessage({ type: 'success', text: 'Setting saved' });
-        // Reload preview after TTS field change
-        if (key === 'tts_field_order') {
-          loadPreview();
+        // Reload preview after any TTS-related change
+        if (key === 'tts_field_order' || key === 'tts_pause_style' || key === 'tts_speed' || key === 'tts_announce_all_units') {
+          // Small delay to let server process the setting
+          setTimeout(loadPreview, 300);
         }
       } else {
         throw new Error('Save failed');
@@ -289,9 +297,6 @@ function AVAlertsTab() {
         body: JSON.stringify({
           event_type: eventType,
           call_category: callCategory,
-          cad_event_type: 'TEST ALERT',
-          address: '123 Test Street',
-          units_due: ['TEST1', 'TEST2'],
         }),
       });
       
@@ -306,22 +311,48 @@ function AVAlertsTab() {
     }
   };
 
-  const testTTS = () => {
-    if (!previewText || !window.speechSynthesis) {
-      setMessage({ type: 'error', text: 'TTS not available' });
-      return;
+  // Play server-generated TTS preview (Piper audio)
+  const playServerPreview = async () => {
+    if (!previewAudioUrl) {
+      // No cached audio, regenerate
+      setPlayingPreview(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/test-alerts/settings-preview?_t=${Date.now()}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.audio_url) {
+            const audio = new Audio(data.audio_url);
+            audio.onended = () => setPlayingPreview(false);
+            audio.onerror = () => {
+              setPlayingPreview(false);
+              setMessage({ type: 'error', text: 'Failed to play audio' });
+            };
+            audio.play();
+            setPreviewText(data.sample_text || '');
+            setPreviewAudioUrl(data.audio_url);
+          } else {
+            setMessage({ type: 'error', text: 'No audio available' });
+            setPlayingPreview(false);
+          }
+        }
+      } catch (err) {
+        setMessage({ type: 'error', text: 'Failed to generate preview' });
+        setPlayingPreview(false);
+      }
+    } else {
+      // Play cached audio
+      setPlayingPreview(true);
+      const audio = new Audio(previewAudioUrl + '&_t=' + Date.now());
+      audio.onended = () => setPlayingPreview(false);
+      audio.onerror = () => {
+        setPlayingPreview(false);
+        setMessage({ type: 'error', text: 'Failed to play audio' });
+      };
+      audio.play();
     }
-    
-    const utterance = new SpeechSynthesisUtterance(previewText);
-    utterance.rate = 0.9;
-    utterance.pitch = 1.0;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
   };
 
   // Preview custom announcement locally (uses server TTS)
-  const [previewingAnnouncement, setPreviewingAnnouncement] = useState(false);
-  
   const previewAnnouncement = async () => {
     if (!customMessage.trim()) {
       setMessage({ type: 'error', text: 'Please enter a message' });
@@ -343,39 +374,22 @@ function AVAlertsTab() {
         const data = await res.json();
         if (data.audio_url) {
           const audio = new Audio(data.audio_url);
-          audio.play().catch(err => {
-            console.warn('Audio preview failed:', err);
-            // Fallback to browser TTS
-            if (window.speechSynthesis) {
-              const utterance = new SpeechSynthesisUtterance(customMessage.trim());
-              utterance.rate = 0.9;
-              window.speechSynthesis.speak(utterance);
-            }
-          });
+          audio.onended = () => setPreviewingAnnouncement(false);
+          audio.onerror = () => {
+            setPreviewingAnnouncement(false);
+            setMessage({ type: 'error', text: 'Failed to play audio' });
+          };
+          audio.play();
         } else {
-          // No audio_url, use browser TTS fallback
-          if (window.speechSynthesis) {
-            const utterance = new SpeechSynthesisUtterance(customMessage.trim());
-            utterance.rate = 0.9;
-            window.speechSynthesis.speak(utterance);
-          }
+          setMessage({ type: 'error', text: 'TTS generation failed' });
+          setPreviewingAnnouncement(false);
         }
       } else {
-        // Fallback to browser TTS on error
-        if (window.speechSynthesis) {
-          const utterance = new SpeechSynthesisUtterance(customMessage.trim());
-          utterance.rate = 0.9;
-          window.speechSynthesis.speak(utterance);
-        }
+        setMessage({ type: 'error', text: 'TTS generation failed' });
+        setPreviewingAnnouncement(false);
       }
     } catch (err) {
-      // Fallback to browser TTS
-      if (window.speechSynthesis) {
-        const utterance = new SpeechSynthesisUtterance(customMessage.trim());
-        utterance.rate = 0.9;
-        window.speechSynthesis.speak(utterance);
-      }
-    } finally {
+      setMessage({ type: 'error', text: 'Failed to generate preview' });
       setPreviewingAnnouncement(false);
     }
   };
@@ -534,7 +548,40 @@ function AVAlertsTab() {
                   >
                     <span style={{ color: '#999', fontSize: '0.8rem', width: '20px' }}>☰</span>
                     <span style={{ fontWeight: 500, color: '#333', minWidth: '100px' }}>{field.label}</span>
-                    <span style={{ color: '#666', fontSize: '0.85rem', flex: 1 }}>{field.example}</span>
+                    <span style={{ color: '#666', fontSize: '0.85rem', flex: 1 }}>{field.desc}</span>
+                    
+                    {/* All Units toggle for Units field */}
+                    {field.hasAllUnitsOption && (
+                      <label 
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '0.25rem',
+                          fontSize: '0.75rem',
+                          color: '#666',
+                          cursor: 'pointer',
+                          background: settings?.tts_announce_all_units ? '#dbeafe' : '#f5f5f5',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '3px',
+                          border: '1px solid #ddd',
+                        }}
+                        title="Announce all units on the call, not just your department's units"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={settings?.tts_announce_all_units || false}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            updateSetting('tts_announce_all_units', e.target.checked);
+                          }}
+                          disabled={saving}
+                          style={{ width: '14px', height: '14px' }}
+                        />
+                        All units
+                      </label>
+                    )}
+                    
                     <div style={{ display: 'flex', gap: '0.25rem' }}>
                       <button
                         onClick={() => moveField(fieldId, 'up')}
@@ -569,6 +616,7 @@ function AVAlertsTab() {
                   key={field.id}
                   onClick={() => toggleFieldEnabled(field.id)}
                   disabled={saving}
+                  title={field.desc}
                   style={{
                     padding: '0.5rem 0.75rem',
                     background: '#fff',
@@ -586,22 +634,34 @@ function AVAlertsTab() {
           </div>
         )}
         
-        {/* TTS Preview */}
+        {/* TTS Preview - using real incident data and server-side audio */}
         <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#e8f4f8', borderRadius: '4px', border: '1px solid #b8d4e3' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-            <strong style={{ color: '#1e3a5f', fontSize: '0.85rem' }}>Preview</strong>
+            <div>
+              <strong style={{ color: '#1e3a5f', fontSize: '0.85rem' }}>Preview</strong>
+              {previewIncidentInfo && (
+                <span style={{ color: '#666', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                  (from incident #{previewIncidentInfo.id})
+                </span>
+              )}
+            </div>
             <button
               className="btn btn-sm btn-secondary"
-              onClick={testTTS}
-              disabled={!previewText}
-              title="Test TTS in browser"
+              onClick={playServerPreview}
+              disabled={playingPreview || !previewText}
+              title="Play server-generated TTS audio (Piper voice)"
             >
-              🔊 Test TTS
+              {playingPreview ? '⏳ Playing...' : '🔊 Play Preview'}
             </button>
           </div>
           <div style={{ color: '#333', fontStyle: 'italic', fontSize: '0.9rem' }}>
             "{previewText || 'Loading preview...'}"
           </div>
+          {!previewIncidentInfo && previewText && (
+            <div style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+              No recent incidents found - using sample data
+            </div>
+          )}
         </div>
       </div>
 
@@ -661,17 +721,13 @@ function AVAlertsTab() {
           </label>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             {[
-              { value: 'minimal', label: 'Minimal', desc: 'Short pauses (commas)' },
-              { value: 'normal', label: 'Normal', desc: 'Medium pauses (periods)' },
-              { value: 'dramatic', label: 'Dramatic', desc: 'Long pauses (ellipses)' },
+              { value: 'minimal', label: 'Minimal', desc: 'Short pauses' },
+              { value: 'normal', label: 'Normal', desc: 'Medium pauses' },
+              { value: 'dramatic', label: 'Dramatic', desc: 'Long pauses' },
             ].map(option => (
               <button
                 key={option.value}
-                onClick={() => {
-                  updateSetting('tts_pause_style', option.value);
-                  // Reload preview to show updated text format
-                  setTimeout(loadPreview, 500);
-                }}
+                onClick={() => updateSetting('tts_pause_style', option.value)}
                 disabled={saving}
                 style={{
                   padding: '0.5rem 1rem',
@@ -851,9 +907,8 @@ function AVAlertsTab() {
         <h4 style={{ marginBottom: '0.75rem', color: '#333' }}>How It Works</h4>
         <ol style={{ color: '#666', margin: 0, paddingLeft: '1.25rem', lineHeight: 1.8 }}>
           <li><strong>Unified Settings</strong> - Changes here apply to browser AND StationBell devices</li>
-          <li><strong>Consistent Announcements</strong> - Same TTS text on all devices (formatted by server)</li>
-          <li><strong>WebSocket Updates</strong> - Devices reload settings automatically when you save</li>
-          <li><strong>Browser TTS</strong> - Uses your browser's voice; StationBell uses Piper (server)</li>
+          <li><strong>Server-Side TTS</strong> - All announcements use Piper TTS on the server for consistent voice</li>
+          <li><strong>WebSocket Updates</strong> - Devices receive alerts automatically in real-time</li>
         </ol>
       </div>
 

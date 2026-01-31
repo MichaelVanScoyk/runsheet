@@ -562,6 +562,9 @@ DEFAULT_AV_ALERTS = {
     'tts_speed': 1.1,       # Speech rate: 0.8 (fast) to 1.5 (slow), 1.0 = normal
     'tts_pause_style': 'normal',  # 'minimal', 'normal', 'dramatic' - pause duration between sections
     
+    # Unit announcement options
+    'tts_announce_all_units': False,  # If True, announce all units on call; if False, only your department's units
+    
     # Settings version for cache invalidation
     'settings_version': 0,
 }

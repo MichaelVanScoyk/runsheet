@@ -160,6 +160,7 @@ def _get_tts_settings(db) -> Dict[str, Any]:
         'tts_field_order': ['units', 'call_type', 'address'],
         'tts_speed': DEFAULT_LENGTH_SCALE,  # Speech rate (Piper length_scale)
         'tts_pause_style': 'normal',  # 'minimal', 'normal', 'dramatic'
+        'tts_announce_all_units': False,  # If True, announce all units; if False, only your department's
         'settings_version': 0,
     }
     
