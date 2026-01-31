@@ -706,7 +706,7 @@ function AVAlertsTab() {
               fontSize: '0.85rem',
               fontWeight: 500
             }}>
-              {(settings?.tts_speed || 1.1).toFixed(1)}
+                          {(parseFloat(settings?.tts_speed) || 1.1).toFixed(1)}
             </span>
           </div>
           <p style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.25rem' }}>
