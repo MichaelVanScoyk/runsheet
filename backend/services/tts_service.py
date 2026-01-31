@@ -35,6 +35,12 @@ PIPER_PATH = "/home/dashboard/piper/piper/piper"
 MODEL_PATH = "/home/dashboard/piper/en_US-ryan-medium.onnx"
 FFMPEG_PATH = "/usr/bin/ffmpeg"
 
+# Default speech rate (can be overridden by tenant settings)
+# 1.0 = normal speed
+# > 1.0 = slower (e.g., 1.2 = 20% slower)
+# < 1.0 = faster (e.g., 0.8 = 20% faster)
+DEFAULT_LENGTH_SCALE = 1.1  # Slightly slower for clarity
+
 # Output configuration
 ALERTS_DIR = "/tmp/tts_alerts"
 ALERT_TTL_MINUTES = 10  # Auto-cleanup after this time
@@ -152,6 +158,8 @@ def _get_tts_settings(db) -> Dict[str, Any]:
     defaults = {
         'tts_enabled': True,
         'tts_field_order': ['units', 'call_type', 'address'],
+        'tts_speed': DEFAULT_LENGTH_SCALE,  # Speech rate (Piper length_scale)
+        'tts_pause_style': 'normal',  # 'minimal', 'normal', 'dramatic'
         'settings_version': 0,
     }
     
@@ -170,7 +178,10 @@ def _get_tts_settings(db) -> Dict[str, Any]:
                 if value_type == 'boolean':
                     defaults[key] = value.lower() in ('true', '1', 'yes')
                 elif value_type == 'number':
-                    defaults[key] = int(value)
+                    try:
+                        defaults[key] = float(value)
+                    except:
+                        defaults[key] = int(value)
                 elif value_type == 'json':
                     try:
                         defaults[key] = json.loads(value)
@@ -230,30 +241,45 @@ class TTSService:
         """
         Format the announcement text based on settings.
         
-        Settings contains tts_field_order - an ordered list of field IDs:
-        - units: "Engine 4 81, Tower 48"
-        - call_type: "Structure Fire"
-        - subtype: "Gas Leak Inside"
-        - address: "123 Valley Road"
-        - cross_streets: "Main Street and Oak Avenue"
-        - box: "Box 48-1"
-        - municipality: "West Nantmeal"
-        - development: "Eagle View"
+        Pause styles control punctuation between sections:
+        - 'minimal': comma separators (short ~200ms pauses)
+        - 'normal': period separators (~500ms pauses)
+        - 'dramatic': period + ellipsis (~800ms pauses)
+        
+        Settings contains:
+        - tts_field_order: ordered list of field IDs
+        - tts_pause_style: 'minimal', 'normal', 'dramatic'
         """
         if settings is None:
-            settings = {'tts_field_order': ['units', 'call_type', 'address']}
+            settings = {'tts_field_order': ['units', 'call_type', 'address'], 'tts_pause_style': 'normal'}
         
         field_order = settings.get('tts_field_order', ['units', 'call_type', 'address'])
+        pause_style = settings.get('tts_pause_style', 'normal')
+        
+        # Determine separator based on pause style
+        if pause_style == 'minimal':
+            separator = ", "
+            ending = "."
+        elif pause_style == 'dramatic':
+            separator = "... "
+            ending = "."
+        else:  # normal
+            separator = ". "
+            ending = "."
         
         parts = []
-        units_first = False
         
         for field_id in field_order:
             if field_id == 'units' and units:
+                # Join multiple units with "and" for natural speech
                 expanded_units = [_expand_unit_name(u) for u in units[:5]]  # Limit to 5 units
-                parts.append(", ".join(expanded_units))
-                if len(parts) == 1:
-                    units_first = True
+                if len(expanded_units) == 1:
+                    parts.append(expanded_units[0])
+                elif len(expanded_units) == 2:
+                    parts.append(f"{expanded_units[0]} and {expanded_units[1]}")
+                else:
+                    # Oxford comma style: "A, B, and C"
+                    parts.append(", ".join(expanded_units[:-1]) + ", and " + expanded_units[-1])
             
             elif field_id == 'call_type' and call_type:
                 formatted_type = _format_call_type(call_type)
@@ -274,7 +300,9 @@ class TTSService:
                     parts.append(formatted_address)
             
             elif field_id == 'cross_streets' and cross_streets:
-                parts.append(f"between {cross_streets}")
+                # Format cross streets more naturally
+                streets = cross_streets.replace(" / ", " and ").replace("/", " and ")
+                parts.append(f"between {streets}")
             
             elif field_id == 'municipality' and municipality:
                 parts.append(municipality.strip().title())
@@ -283,18 +311,16 @@ class TTSService:
                 parts.append(development.strip().title())
         
         if not parts:
-            return "Alert"
+            return "Alert."
         
         if len(parts) == 1:
-            return parts[0]
+            return parts[0] + ending
         
-        # If units are first, separate them with a period for pacing
-        if units_first:
-            units_part = parts[0]
-            rest = ", ".join(parts[1:])
-            return f"{units_part}. {rest}"
-        else:
-            return ", ".join(parts)
+        # Join all parts with the configured separator
+        # Example (normal): "Engine 4 81 and Tower 48. Dwelling Fire. 123 Main Street."
+        # Example (dramatic): "Engine 4 81 and Tower 48... Dwelling Fire... 123 Main Street."
+        # Example (minimal): "Engine 4 81 and Tower 48, Dwelling Fire, 123 Main Street."
+        return separator.join(parts) + ending
     
     async def generate_alert_audio(
         self,
@@ -341,6 +367,11 @@ class TTSService:
             # Return text only if Piper unavailable
             return {"audio_url": None, "tts_text": text}
         
+        # Get speech rate from settings (Piper length_scale)
+        length_scale = settings.get('tts_speed', DEFAULT_LENGTH_SCALE)
+        # Clamp to reasonable range
+        length_scale = max(0.5, min(2.0, float(length_scale)))
+        
         # Ensure directory exists
         tenant_dir = self._ensure_dirs(tenant)
         
@@ -355,9 +386,11 @@ class TTSService:
         async with self._semaphore:
             try:
                 # Generate WAV with Piper
+                # --length_scale controls speed (>1 = slower, <1 = faster)
                 proc = await asyncio.create_subprocess_exec(
                     self.piper_path,
                     "--model", self.model_path,
+                    "--length_scale", str(length_scale),
                     "--output_file", str(wav_path),
                     stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
@@ -413,6 +446,7 @@ class TTSService:
         self,
         tenant: str,
         message: str,
+        db=None,
     ) -> Optional[Dict[str, str]]:
         """
         Generate MP3 audio for a custom announcement.
@@ -430,6 +464,11 @@ class TTSService:
         if not self._check_piper():
             return {"audio_url": None, "tts_text": text}
         
+        # Get settings for speed
+        settings = _get_tts_settings(db)
+        length_scale = settings.get('tts_speed', DEFAULT_LENGTH_SCALE)
+        length_scale = max(0.5, min(2.0, float(length_scale)))
+        
         # Ensure directory exists
         tenant_dir = self._ensure_dirs(tenant)
         
@@ -443,9 +482,11 @@ class TTSService:
         async with self._semaphore:
             try:
                 # Generate WAV with Piper
+                # --length_scale controls speed (>1 = slower, <1 = faster)
                 proc = await asyncio.create_subprocess_exec(
                     self.piper_path,
                     "--model", self.model_path,
+                    "--length_scale", str(length_scale),
                     "--output_file", str(wav_path),
                     stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,

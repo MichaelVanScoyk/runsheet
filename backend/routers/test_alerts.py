@@ -68,14 +68,25 @@ async def preview_tts_announcement(
     if not tts:
         raise HTTPException(status_code=500, detail="TTS service not available")
     
-    from database import _extract_slug
+    from database import _extract_slug, get_db_for_tenant
     tenant_slug = _extract_slug(request.headers.get('host', ''))
+    
+    # Get db for settings
+    db = None
+    try:
+        db = next(get_db_for_tenant(tenant_slug))
+    except Exception:
+        pass
     
     try:
         result = await tts.generate_custom_announcement(
             tenant=tenant_slug,
             message=data.message.strip(),
+            db=db,
         )
+        
+        if db:
+            db.close()
         
         if result:
             return {
@@ -87,6 +98,8 @@ async def preview_tts_announcement(
             raise HTTPException(status_code=500, detail="TTS generation failed")
     
     except Exception as e:
+        if db:
+            db.close()
         logger.error(f"TTS preview failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -260,5 +273,7 @@ async def preview_tts_settings(request: Request):
         "settings": {
             "tts_enabled": settings.get("tts_enabled", True),
             "tts_field_order": settings.get("tts_field_order", ["units", "call_type", "address"]),
+            "tts_speed": settings.get("tts_speed", 1.1),
+            "tts_pause_style": settings.get("tts_pause_style", "normal"),
         }
     }

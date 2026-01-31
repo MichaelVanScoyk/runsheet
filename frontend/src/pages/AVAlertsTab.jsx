@@ -605,6 +605,98 @@ function AVAlertsTab() {
         </div>
       </div>
 
+      {/* TTS Voice Settings */}
+      <div style={{ 
+        background: '#f5f5f5', 
+        borderRadius: '8px', 
+        padding: '1rem',
+        marginBottom: '1.5rem',
+        border: '1px solid #e0e0e0'
+      }}>
+        <h4 style={{ marginBottom: '0.5rem', color: '#333' }}>Voice Settings</h4>
+        <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Adjust how the TTS voice sounds. Changes apply to server-generated announcements.
+        </p>
+        
+        {/* Speech Speed */}
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', fontWeight: 500, color: '#333', marginBottom: '0.5rem' }}>
+            Speech Speed
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <span style={{ fontSize: '0.85rem', color: '#666' }}>Fast</span>
+            <input
+              type="range"
+              min="0.8"
+              max="1.5"
+              step="0.1"
+              value={settings?.tts_speed || 1.1}
+              onChange={(e) => updateSetting('tts_speed', parseFloat(e.target.value))}
+              disabled={saving}
+              style={{ flex: 1, cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '0.85rem', color: '#666' }}>Slow</span>
+            <span style={{ 
+              minWidth: '50px', 
+              textAlign: 'center', 
+              padding: '0.25rem 0.5rem', 
+              background: '#fff', 
+              borderRadius: '4px', 
+              border: '1px solid #ddd',
+              fontSize: '0.85rem',
+              fontWeight: 500
+            }}>
+              {(settings?.tts_speed || 1.1).toFixed(1)}
+            </span>
+          </div>
+          <p style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+            1.0 = normal speed, higher = slower speech
+          </p>
+        </div>
+        
+        {/* Pause Style */}
+        <div>
+          <label style={{ display: 'block', fontWeight: 500, color: '#333', marginBottom: '0.5rem' }}>
+            Pause Between Sections
+          </label>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {[
+              { value: 'minimal', label: 'Minimal', desc: 'Short pauses (commas)' },
+              { value: 'normal', label: 'Normal', desc: 'Medium pauses (periods)' },
+              { value: 'dramatic', label: 'Dramatic', desc: 'Long pauses (ellipses)' },
+            ].map(option => (
+              <button
+                key={option.value}
+                onClick={() => {
+                  updateSetting('tts_pause_style', option.value);
+                  // Reload preview to show updated text format
+                  setTimeout(loadPreview, 500);
+                }}
+                disabled={saving}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '4px',
+                  border: (settings?.tts_pause_style || 'normal') === option.value 
+                    ? '2px solid var(--primary-color)' 
+                    : '1px solid #ddd',
+                  background: (settings?.tts_pause_style || 'normal') === option.value 
+                    ? 'var(--primary-color)' 
+                    : '#fff',
+                  color: (settings?.tts_pause_style || 'normal') === option.value 
+                    ? '#fff' 
+                    : '#333',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                }}
+              >
+                <div style={{ fontWeight: 500 }}>{option.label}</div>
+                <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>{option.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Custom Announcement */}
       <div style={{ 
         background: '#fff9e6', 

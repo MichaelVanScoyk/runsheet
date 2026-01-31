@@ -269,6 +269,7 @@ async def emit_custom_announcement(
         result = await tts.generate_custom_announcement(
             tenant=tenant_slug,
             message=message,
+            db=db,
         )
     except Exception as e:
         logger.warning(f"Custom announcement TTS failed: {e}")

@@ -558,6 +558,10 @@ DEFAULT_AV_ALERTS = {
     # Available: units, call_type, subtype, box, address, cross_streets, municipality, development
     'tts_field_order': ['units', 'call_type', 'address'],
     
+    # TTS voice settings
+    'tts_speed': 1.1,       # Speech rate: 0.8 (fast) to 1.5 (slow), 1.0 = normal
+    'tts_pause_style': 'normal',  # 'minimal', 'normal', 'dramatic' - pause duration between sections
+    
     # Settings version for cache invalidation
     'settings_version': 0,
 }
