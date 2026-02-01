@@ -234,32 +234,46 @@ def spell_out_letters(text: str) -> str:
     return ' '.join(text.upper())
 
 
-def expand_acronyms(text: str) -> str:
+def preprocess_for_tts(text: str) -> str:
     """
-    Expand 2-4 letter all-caps words to spell them out.
+    Preprocess text for TTS pronunciation.
+    
+    Rules:
+    1. Replace / with space
+    2. All caps words <= 3 chars: spell out (BLS -> B L S)
+    3. All caps words > 3 chars: title case (FALL -> Fall)
     
     Examples:
+        "FALL / LIFT ASSIST - BLS" -> "Fall Lift Assist - B L S"
+        "MEDICAL" -> "Medical"
         "ALS" -> "A L S"
-        "BLS" -> "B L S"
-        "MVA" -> "M V A"
-        "Structure Fire" -> "Structure Fire" (unchanged)
     """
     if not text:
         return ""
+    
+    # Rule 1: Replace / with space
+    text = text.replace('/', ' ')
+    
+    # Clean up multiple spaces
+    text = ' '.join(text.split())
     
     words = text.split()
     result = []
     
     for word in words:
-        # Check if word is 2-4 letters and all uppercase
-        clean_word = word.rstrip('.,!?')
-        if len(clean_word) >= 2 and len(clean_word) <= 4 and clean_word.isupper() and clean_word.isalpha():
-            # Spell it out
-            spelled = ' '.join(clean_word)
-            # Preserve any trailing punctuation
-            if word != clean_word:
-                spelled += word[len(clean_word):]
-            result.append(spelled)
+        # Preserve punctuation
+        clean_word = word.rstrip('.,!?-')
+        trailing = word[len(clean_word):] if word != clean_word else ''
+        
+        # Check if word is all uppercase letters
+        if clean_word.isupper() and clean_word.isalpha():
+            if len(clean_word) <= 3:
+                # Rule 2: Spell out short acronyms
+                spelled = ' '.join(clean_word)
+                result.append(spelled + trailing)
+            else:
+                # Rule 3: Title case longer words
+                result.append(clean_word.title() + trailing)
         else:
             result.append(word)
     
