@@ -31,7 +31,6 @@ from typing import List, Optional, Dict, Any
 
 from services.tts_preprocessing import (
     tts_preprocessor,
-    expand_address,
     number_to_words,
     preprocess_for_tts,
 )
@@ -288,9 +287,12 @@ class TTSService:
                 text = f"{box_prefix} {box.strip()}"
             
             elif field_id == 'address' and address:
-                # Expand address abbreviations
+                # Expand address abbreviations using DB-backed street types
                 expand = field_cfg.get('options', {}).get('expand_street_types', True)
-                text = expand_address(address, expand_street_types=expand)
+                if expand:
+                    text = tts_preprocessor.expand_address(db, address)
+                else:
+                    text = address
             
             elif field_id == 'cross_streets' and cross_streets:
                 streets = cross_streets.replace(" / ", " and ").replace("/", " and ")

@@ -69,6 +69,15 @@ function AVAlertsTab() {
   const [showOnlyReview, setShowOnlyReview] = useState(false);
   const [seedingUnits, setSeedingUnits] = useState(false);
   
+  // Abbreviations state
+  const [abbreviations, setAbbreviations] = useState([]);
+  const [abbreviationsLoading, setAbbreviationsLoading] = useState(false);
+  const [abbreviationsExpanded, setAbbreviationsExpanded] = useState(false);
+  const [editingAbbr, setEditingAbbr] = useState(null);
+  const [editingAbbrSpoken, setEditingAbbrSpoken] = useState('');
+  const [newAbbr, setNewAbbr] = useState({ category: 'unit_prefix', abbreviation: '', spoken_as: '' });
+  const [showAddAbbr, setShowAddAbbr] = useState(false);
+  
   // Voice picker state
   const [availableVoices, setAvailableVoices] = useState([]);
   const [voicesLoading, setVoicesLoading] = useState(false);
@@ -153,6 +162,22 @@ function AVAlertsTab() {
     }
   };
 
+  // Load TTS abbreviations
+  const loadAbbreviations = async () => {
+    setAbbreviationsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/tts/abbreviations`);
+      if (res.ok) {
+        const data = await res.json();
+        setAbbreviations(data.abbreviations || []);
+      }
+    } catch (err) {
+      console.error('Failed to load abbreviations:', err);
+    } finally {
+      setAbbreviationsLoading(false);
+    }
+  };
+
   // Seed unit pronunciations from recent incidents
   const seedFromIncidents = async () => {
     setSeedingUnits(true);
@@ -188,6 +213,7 @@ function AVAlertsTab() {
     loadSettings();
     loadUnitMappings();
     loadVoices();
+    loadAbbreviations();
   }, []);
 
   // Reload unit mappings when filter changes
@@ -518,6 +544,89 @@ function AVAlertsTab() {
   const startEditingUnit = (unit) => {
     setEditingUnit(unit.cad_unit_id);
     setEditingSpoken(unit.spoken_as || '');
+  };
+
+  // Abbreviation handlers
+  const startEditingAbbr = (abbr) => {
+    setEditingAbbr(abbr.id);
+    setEditingAbbrSpoken(abbr.spoken_as || '');
+  };
+
+  const cancelEditingAbbr = () => {
+    setEditingAbbr(null);
+    setEditingAbbrSpoken('');
+  };
+
+  const saveAbbreviation = async (abbrId) => {
+    if (!editingAbbrSpoken.trim()) {
+      setMessage({ type: 'error', text: 'Pronunciation cannot be empty' });
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/tts/abbreviations/${abbrId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spoken_as: editingAbbrSpoken.trim() }),
+      });
+      
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Abbreviation saved' });
+        setEditingAbbr(null);
+        setEditingAbbrSpoken('');
+        loadAbbreviations();
+      } else {
+        throw new Error('Save failed');
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to save abbreviation' });
+    }
+  };
+
+  const deleteAbbreviation = async (abbrId) => {
+    if (!confirm('Delete this abbreviation?')) return;
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/tts/abbreviations/${abbrId}`, {
+        method: 'DELETE',
+      });
+      
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Abbreviation deleted' });
+        loadAbbreviations();
+      } else {
+        throw new Error('Delete failed');
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to delete abbreviation' });
+    }
+  };
+
+  const addAbbreviation = async () => {
+    if (!newAbbr.abbreviation.trim() || !newAbbr.spoken_as.trim()) {
+      setMessage({ type: 'error', text: 'Both fields are required' });
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/tts/abbreviations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newAbbr),
+      });
+      
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Abbreviation added' });
+        setNewAbbr({ category: newAbbr.category, abbreviation: '', spoken_as: '' });
+        setShowAddAbbr(false);
+        loadAbbreviations();
+      } else {
+        const err = await res.json();
+        throw new Error(err.detail || 'Add failed');
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    }
   };
 
   const cancelEditingUnit = () => {
@@ -1241,6 +1350,204 @@ function AVAlertsTab() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* 5b. TTS Abbreviations (expandable) */}
+      <div style={{ 
+        background: '#f5f5f5', 
+        borderRadius: '8px', 
+        marginBottom: '1.5rem',
+        border: '1px solid #e0e0e0',
+        overflow: 'hidden'
+      }}>
+        <div 
+          onClick={() => setAbbreviationsExpanded(!abbreviationsExpanded)}
+          style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            padding: '1rem',
+            cursor: 'pointer',
+            background: abbreviationsExpanded ? '#f0f0f0' : '#f5f5f5',
+          }}
+        >
+          <div>
+            <h4 style={{ margin: 0, color: '#333' }}>TTS Abbreviations</h4>
+            <p style={{ color: '#666', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>
+              Unit prefixes (ENG → Engine) and street types (RD → Road)
+            </p>
+          </div>
+          <span style={{ fontSize: '1.2rem', color: '#666' }}>
+            {abbreviationsExpanded ? '▼' : '▶'}
+          </span>
+        </div>
+        
+        {abbreviationsExpanded && (
+          <div style={{ padding: '0 1rem 1rem 1rem', borderTop: '1px solid #e0e0e0' }}>
+            {/* Add new button */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem', marginBottom: '0.5rem' }}>
+              <button
+                className="btn btn-sm btn-primary"
+                onClick={() => setShowAddAbbr(true)}
+              >
+                + Add Abbreviation
+              </button>
+            </div>
+            
+            {/* Add form */}
+            {showAddAbbr && (
+              <div style={{ 
+                background: '#e8f4f8', 
+                padding: '1rem', 
+                borderRadius: '4px', 
+                marginBottom: '1rem',
+                border: '1px solid #b8d4e3'
+              }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>Category</label>
+                    <select
+                      value={newAbbr.category}
+                      onChange={(e) => setNewAbbr({ ...newAbbr, category: e.target.value })}
+                      style={{ padding: '0.4rem', borderRadius: '3px', border: '1px solid #ddd' }}
+                    >
+                      <option value="unit_prefix">Unit Prefix</option>
+                      <option value="street_type">Street Type</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>Abbreviation</label>
+                    <input
+                      type="text"
+                      value={newAbbr.abbreviation}
+                      onChange={(e) => setNewAbbr({ ...newAbbr, abbreviation: e.target.value.toUpperCase() })}
+                      placeholder="e.g. ENG"
+                      style={{ padding: '0.4rem', borderRadius: '3px', border: '1px solid #ddd', width: '80px' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, minWidth: '150px' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>Spoken As</label>
+                    <input
+                      type="text"
+                      value={newAbbr.spoken_as}
+                      onChange={(e) => setNewAbbr({ ...newAbbr, spoken_as: e.target.value })}
+                      placeholder="e.g. Engine"
+                      style={{ padding: '0.4rem', borderRadius: '3px', border: '1px solid #ddd', width: '100%' }}
+                    />
+                  </div>
+                  <button className="btn btn-sm btn-primary" onClick={addAbbreviation}>Add</button>
+                  <button className="btn btn-sm btn-secondary" onClick={() => { setShowAddAbbr(false); setNewAbbr({ category: 'unit_prefix', abbreviation: '', spoken_as: '' }); }}>Cancel</button>
+                </div>
+              </div>
+            )}
+            
+            {/* Unit Prefixes */}
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>UNIT PREFIXES</div>
+              {abbreviationsLoading ? (
+                <div style={{ padding: '0.5rem', color: '#666' }}>Loading...</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  {abbreviations.filter(a => a.category === 'unit_prefix').map(abbr => (
+                    <div
+                      key={abbr.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.35rem 0.5rem',
+                        background: '#fff',
+                        borderRadius: '3px',
+                        border: '1px solid #e5e5e5',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      <span style={{ fontFamily: 'monospace', fontWeight: 600, minWidth: '50px' }}>{abbr.abbreviation}</span>
+                      <span style={{ color: '#999' }}>→</span>
+                      {editingAbbr === abbr.id ? (
+                        <>
+                          <input
+                            type="text"
+                            value={editingAbbrSpoken}
+                            onChange={(e) => setEditingAbbrSpoken(e.target.value)}
+                            style={{ flex: 1, padding: '0.2rem 0.4rem', border: '1px solid #3b82f6', borderRadius: '3px', fontSize: '0.85rem' }}
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveAbbreviation(abbr.id);
+                              if (e.key === 'Escape') cancelEditingAbbr();
+                            }}
+                          />
+                          <button className="btn btn-sm btn-primary" onClick={() => saveAbbreviation(abbr.id)} style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem' }}>✓</button>
+                          <button className="btn btn-sm btn-secondary" onClick={cancelEditingAbbr} style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem' }}>✕</button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ flex: 1, color: '#555' }}>{abbr.spoken_as}</span>
+                          <button className="btn btn-sm btn-secondary" onClick={() => startEditingAbbr(abbr)} style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem' }}>Edit</button>
+                          <button className="btn btn-sm" onClick={() => deleteAbbreviation(abbr.id)} style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem', color: '#dc2626' }}>✕</button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                  {abbreviations.filter(a => a.category === 'unit_prefix').length === 0 && (
+                    <div style={{ padding: '0.5rem', color: '#999', fontStyle: 'italic' }}>No unit prefixes configured</div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Street Types */}
+            <div>
+              <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem', fontWeight: 500 }}>STREET TYPES</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                {abbreviations.filter(a => a.category === 'street_type').map(abbr => (
+                  <div
+                    key={abbr.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.35rem 0.5rem',
+                      background: '#fff',
+                      borderRadius: '3px',
+                      border: '1px solid #e5e5e5',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    <span style={{ fontFamily: 'monospace', fontWeight: 600, minWidth: '50px' }}>{abbr.abbreviation}</span>
+                    <span style={{ color: '#999' }}>→</span>
+                    {editingAbbr === abbr.id ? (
+                      <>
+                        <input
+                          type="text"
+                          value={editingAbbrSpoken}
+                          onChange={(e) => setEditingAbbrSpoken(e.target.value)}
+                          style={{ flex: 1, padding: '0.2rem 0.4rem', border: '1px solid #3b82f6', borderRadius: '3px', fontSize: '0.85rem' }}
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveAbbreviation(abbr.id);
+                            if (e.key === 'Escape') cancelEditingAbbr();
+                          }}
+                        />
+                        <button className="btn btn-sm btn-primary" onClick={() => saveAbbreviation(abbr.id)} style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem' }}>✓</button>
+                        <button className="btn btn-sm btn-secondary" onClick={cancelEditingAbbr} style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem' }}>✕</button>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ flex: 1, color: '#555' }}>{abbr.spoken_as}</span>
+                        <button className="btn btn-sm btn-secondary" onClick={() => startEditingAbbr(abbr)} style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem' }}>Edit</button>
+                        <button className="btn btn-sm" onClick={() => deleteAbbreviation(abbr.id)} style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem', color: '#dc2626' }}>✕</button>
+                      </>
+                    )}
+                  </div>
+                ))}
+                {abbreviations.filter(a => a.category === 'street_type').length === 0 && (
+                  <div style={{ padding: '0.5rem', color: '#999', fontStyle: 'italic' }}>No street types configured</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 6. Preview */}
