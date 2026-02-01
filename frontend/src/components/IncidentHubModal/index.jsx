@@ -288,7 +288,7 @@ export default function IncidentHubModal({
           services_provided: inc.services_provided || '',
           narrative: inc.narrative || '',
           problems_issues: inc.problems_issues || '',
-          equipment_used: Array.isArray(inc.equipment_used) ? inc.equipment_used.join(', ') : (inc.equipment_used || ''),
+          equipment_used: inc.equipment_used || '',
           officer_in_charge: inc.officer_in_charge || '',
           completed_by: inc.completed_by || '',
         });
@@ -363,7 +363,7 @@ export default function IncidentHubModal({
             services_provided: inc.services_provided || '',
             narrative: inc.narrative || '',
             problems_issues: inc.problems_issues || '',
-            equipment_used: Array.isArray(inc.equipment_used) ? inc.equipment_used.join(', ') : (inc.equipment_used || ''),
+            equipment_used: inc.equipment_used || '',
             officer_in_charge: inc.officer_in_charge || '',
             completed_by: inc.completed_by || '',
           });

@@ -124,7 +124,7 @@ function QuickEntrySection({
               <textarea
                 rows={2}
                 placeholder=""
-                value={Array.isArray(formData.equipment_used) ? formData.equipment_used.join(', ') : (formData.equipment_used || '')}
+                value={formData.equipment_used || ''}
                 onChange={(e) => onFormChange('equipment_used', e.target.value)}
                 spellCheck={true}
                 style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical', fontFamily: 'inherit', backgroundColor: '#fff', color: '#333', boxSizing: 'border-box' }}

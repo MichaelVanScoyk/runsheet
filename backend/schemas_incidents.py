@@ -140,7 +140,7 @@ class IncidentUpdate(BaseModel):
     extent_of_damage: Optional[str] = None
     services_provided: Optional[str] = None
     narrative: Optional[str] = None
-    equipment_used: Optional[List[str]] = None
+    equipment_used: Optional[str] = None
     problems_issues: Optional[str] = None
     
     # ==========================================================================

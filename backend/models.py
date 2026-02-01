@@ -441,7 +441,7 @@ class Incident(Base):
     extent_of_damage = Column(Text)
     services_provided = Column(Text)
     narrative = Column(Text)                    # â†’ incident_narrative_outcome
-    equipment_used = Column(ARRAY(Text))
+    equipment_used = Column(Text)
     problems_issues = Column(Text)              # â†’ incident_narrative_impedance
     
     # =========================================================================
