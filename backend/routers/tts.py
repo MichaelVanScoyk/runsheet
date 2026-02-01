@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import json
 
 from database import get_db
-from services.tts_preprocessing import tts_preprocessor, generate_spoken_guess
+from services.tts_preprocessing import tts_preprocessor
 
 router = APIRouter()
 
@@ -297,8 +297,8 @@ async def regenerate_unit_pronunciation(
     if not existing:
         raise HTTPException(status_code=404, detail="Unit mapping not found")
     
-    # Generate new guess
-    spoken_as = generate_spoken_guess(cad_unit_id, station_digits=station_digits)
+    # Generate new guess using DB-backed prefix map
+    spoken_as = tts_preprocessor.generate_spoken_guess(db, cad_unit_id, station_digits=station_digits)
     
     db.execute(text("""
         UPDATE tts_unit_mappings
@@ -320,12 +320,13 @@ async def regenerate_unit_pronunciation(
 async def preview_pronunciation(
     cad_unit_id: str = Query(..., description="CAD unit ID to preview"),
     station_digits: int = Query(2, ge=1, le=4, description="Number of digits in station number"),
+    db: Session = Depends(get_db),
 ):
     """
     Preview what the auto-generated pronunciation would be for a unit.
     Does not save to database.
     """
-    spoken_as = generate_spoken_guess(cad_unit_id.upper().strip(), station_digits=station_digits)
+    spoken_as = tts_preprocessor.generate_spoken_guess(db, cad_unit_id.upper().strip(), station_digits=station_digits)
     return {
         "cad_unit_id": cad_unit_id.upper().strip(),
         "spoken_as": spoken_as,
@@ -623,8 +624,8 @@ async def seed_units_from_incidents(
     created = 0
     
     for unit_id in new_units:
-        # Generate auto-guess pronunciation
-        spoken_as = generate_spoken_guess(unit_id)
+        # Generate auto-guess pronunciation using DB-backed prefix map
+        spoken_as = tts_preprocessor.generate_spoken_guess(db, unit_id)
         
         # Check if this unit is one of ours (in apparatus table)
         try:
@@ -666,3 +667,193 @@ async def seed_units_from_incidents(
         "units_created": created,
         "new_units": sorted(list(new_units)),
     }
+
+
+# =============================================================================
+# TTS ABBREVIATIONS CRUD
+# =============================================================================
+
+class AbbreviationCreate(BaseModel):
+    category: str  # 'unit_prefix' or 'street_type'
+    abbreviation: str
+    spoken_as: str
+
+
+class AbbreviationUpdate(BaseModel):
+    spoken_as: str
+
+
+@router.get("/abbreviations")
+async def list_abbreviations(
+    category: Optional[str] = Query(None, description="Filter by category: unit_prefix, street_type"),
+    search: Optional[str] = Query(None, description="Search abbreviations"),
+    db: Session = Depends(get_db),
+):
+    """
+    List TTS abbreviations (unit prefixes and street types).
+    These are used to generate pronunciations for new units and expand addresses.
+    """
+    query = """
+        SELECT id, category, abbreviation, spoken_as, created_at, updated_at
+        FROM tts_abbreviations
+        WHERE 1=1
+    """
+    params = {}
+    
+    if category:
+        query += " AND category = :category"
+        params["category"] = category
+    
+    if search:
+        query += " AND (abbreviation ILIKE :search OR spoken_as ILIKE :search)"
+        params["search"] = f"%{search}%"
+    
+    query += " ORDER BY category, abbreviation"
+    
+    result = db.execute(text(query), params)
+    
+    abbreviations = []
+    for row in result:
+        abbreviations.append({
+            "id": row[0],
+            "category": row[1],
+            "abbreviation": row[2],
+            "spoken_as": row[3],
+            "created_at": row[4].isoformat() if row[4] else None,
+            "updated_at": row[5].isoformat() if row[5] else None,
+        })
+    
+    # Group by category for easier UI display
+    by_category = {}
+    for abbr in abbreviations:
+        cat = abbr["category"]
+        if cat not in by_category:
+            by_category[cat] = []
+        by_category[cat].append(abbr)
+    
+    return {
+        "abbreviations": abbreviations,
+        "by_category": by_category,
+        "total": len(abbreviations),
+    }
+
+
+@router.get("/abbreviations/{abbr_id}")
+async def get_abbreviation(
+    abbr_id: int,
+    db: Session = Depends(get_db),
+):
+    """Get a single abbreviation by ID."""
+    result = db.execute(text("""
+        SELECT id, category, abbreviation, spoken_as, created_at, updated_at
+        FROM tts_abbreviations
+        WHERE id = :id
+    """), {"id": abbr_id}).fetchone()
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Abbreviation not found")
+    
+    return {
+        "id": result[0],
+        "category": result[1],
+        "abbreviation": result[2],
+        "spoken_as": result[3],
+        "created_at": result[4].isoformat() if result[4] else None,
+        "updated_at": result[5].isoformat() if result[5] else None,
+    }
+
+
+@router.post("/abbreviations")
+async def create_abbreviation(
+    data: AbbreviationCreate,
+    db: Session = Depends(get_db),
+):
+    """
+    Create a new TTS abbreviation.
+    
+    Categories:
+    - unit_prefix: Used when generating pronunciations for CAD unit IDs (e.g., ENG -> Engine)
+    - street_type: Used when expanding addresses (e.g., RD -> Road)
+    """
+    if data.category not in ('unit_prefix', 'street_type'):
+        raise HTTPException(status_code=400, detail="Invalid category. Must be 'unit_prefix' or 'street_type'")
+    
+    abbreviation = data.abbreviation.upper().strip()
+    
+    # Check if already exists
+    existing = db.execute(text(
+        "SELECT id FROM tts_abbreviations WHERE category = :category AND abbreviation = :abbr"
+    ), {"category": data.category, "abbr": abbreviation}).fetchone()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Abbreviation already exists for this category")
+    
+    result = db.execute(text("""
+        INSERT INTO tts_abbreviations (category, abbreviation, spoken_as)
+        VALUES (:category, :abbr, :spoken)
+        RETURNING id
+    """), {
+        "category": data.category,
+        "abbr": abbreviation,
+        "spoken": data.spoken_as.strip(),
+    })
+    
+    db.commit()
+    
+    # Clear the cache so changes take effect
+    tts_preprocessor.clear_cache()
+    
+    return {"status": "ok", "id": result.fetchone()[0]}
+
+
+@router.put("/abbreviations/{abbr_id}")
+async def update_abbreviation(
+    abbr_id: int,
+    data: AbbreviationUpdate,
+    db: Session = Depends(get_db),
+):
+    """Update an abbreviation's spoken form."""
+    result = db.execute(text("""
+        UPDATE tts_abbreviations
+        SET spoken_as = :spoken, updated_at = NOW()
+        WHERE id = :id
+        RETURNING id
+    """), {
+        "id": abbr_id,
+        "spoken": data.spoken_as.strip(),
+    })
+    
+    row = result.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Abbreviation not found")
+    
+    db.commit()
+    
+    # Clear the cache so changes take effect
+    tts_preprocessor.clear_cache()
+    
+    return {"status": "ok", "id": row[0]}
+
+
+@router.delete("/abbreviations/{abbr_id}")
+async def delete_abbreviation(
+    abbr_id: int,
+    db: Session = Depends(get_db),
+):
+    """Delete an abbreviation."""
+    result = db.execute(text("""
+        DELETE FROM tts_abbreviations
+        WHERE id = :id
+        RETURNING id
+    """), {"id": abbr_id})
+    
+    row = result.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Abbreviation not found")
+    
+    db.commit()
+    
+    # Clear the cache so changes take effect
+    tts_preprocessor.clear_cache()
+    
+    return {"status": "ok"}

@@ -86,39 +86,6 @@ def digits_to_words(digits: str) -> str:
 # UNIT PARSING
 # =============================================================================
 
-# Common unit prefixes and their default pronunciations
-DEFAULT_UNIT_PRONUNCIATIONS = {
-    'ENG': 'Engine',
-    'TWR': 'Tower',
-    'LAD': 'Ladder',
-    'TRK': 'Truck',
-    'RES': 'Rescue',
-    'SQD': 'Squad',
-    'AMB': 'Ambulance',
-    'MED': 'Medic',
-    'MIC': 'M I C U',
-    'BLS': 'B L S',
-    'ALS': 'A L S',
-    'QRS': 'Q R S',
-    'CHF': 'Chief',
-    'BC': 'Battalion Chief',
-    'DC': 'Deputy Chief',
-    'CAR': 'Car',
-    'UT': 'Utility',
-    'UTL': 'Utility',
-    'TAN': 'Tanker',
-    'TNK': 'Tanker',
-    'BR': 'Brush',
-    'BRU': 'Brush',
-    'BOT': 'Boat',
-    'HAZ': 'Hazmat',
-    'HM': 'Hazmat',
-    'AIR': 'Air',
-    'STA': 'Station',
-    'FIR': 'Fire',
-}
-
-
 def parse_unit_id(unit_id: str) -> Tuple[str, str, str]:
     """
     Parse a CAD unit ID into components.
@@ -162,13 +129,13 @@ def parse_unit_id(unit_id: str) -> Tuple[str, str, str]:
     return (prefix, station, suffix)
 
 
-def generate_spoken_guess(unit_id: str, station_digits: int = 2) -> str:
+def generate_spoken_guess_with_prefixes(unit_id: str, prefix_map: Dict[str, str], station_digits: int = 2) -> str:
     """
-    Generate a best-guess pronunciation for a unit ID.
-    Used when auto-creating mappings for unknown units.
+    Generate a best-guess pronunciation for a unit ID using provided prefix map.
     
     Args:
         unit_id: The CAD unit ID (e.g., "ENG481")
+        prefix_map: Dict mapping prefix -> spoken form (e.g., {"ENG": "Engine"})
         station_digits: How many digits make up the station number (default 2)
     
     Returns:
@@ -188,8 +155,8 @@ def generate_spoken_guess(unit_id: str, station_digits: int = 2) -> str:
         # No clear prefix/number split - just return as-is spelled out
         return spell_out_mixed(unit_id)
     
-    # Get spoken prefix
-    spoken_prefix = DEFAULT_UNIT_PRONUNCIATIONS.get(prefix, spell_out_letters(prefix))
+    # Get spoken prefix from map, or spell out if not found
+    spoken_prefix = prefix_map.get(prefix, spell_out_letters(prefix))
     
     # Parse station and unit suffix based on station_digits
     if len(numbers) <= station_digits:
@@ -291,6 +258,52 @@ def spell_out_mixed(text: str) -> str:
     return ' '.join(result)
 
 
+# Direction expansions - hardcoded because they need positional context
+DIRECTIONS = {
+    'N': 'North',
+    'S': 'South',
+    'E': 'East',
+    'W': 'West',
+    'NE': 'Northeast',
+    'NW': 'Northwest',
+    'SE': 'Southeast',
+    'SW': 'Southwest',
+}
+
+
+def expand_address_with_street_types(address: str, street_types: Dict[str, str]) -> str:
+    """
+    Expand abbreviations in an address for TTS.
+    
+    Args:
+        address: The address string
+        street_types: Dict mapping abbreviation -> expansion (from DB)
+    
+    Examples:
+        "123 Main St" -> "123 Main Street"
+        "456 N Oak Ave" -> "456 North Oak Avenue"
+    """
+    if not address:
+        return ""
+    
+    words = address.split()
+    result = []
+    
+    for i, word in enumerate(words):
+        upper = word.upper().rstrip('.,')
+        
+        # Check if it's a direction (usually at start or after number)
+        if upper in DIRECTIONS and (i == 0 or i == 1 or (i > 0 and words[i-1].isdigit())):
+            result.append(DIRECTIONS[upper])
+        # Check if it's a street type
+        elif upper in street_types:
+            result.append(street_types[upper])
+        else:
+            result.append(word)
+    
+    return ' '.join(result)
+
+
 # =============================================================================
 # DATABASE OPERATIONS
 # =============================================================================
@@ -299,6 +312,71 @@ class TTSPreprocessor:
     """
     Handles TTS text preprocessing with database-backed unit mappings.
     """
+    
+    def __init__(self):
+        # Cache for abbreviations to avoid repeated DB queries
+        self._prefix_cache: Optional[Dict[str, str]] = None
+        self._street_type_cache: Optional[Dict[str, str]] = None
+        self._cache_loaded = False
+    
+    def _load_abbreviations_cache(self, db) -> None:
+        """Load abbreviations from database into cache."""
+        if self._cache_loaded:
+            return
+        
+        self._prefix_cache = {}
+        self._street_type_cache = {}
+        
+        try:
+            from sqlalchemy import text
+            
+            result = db.execute(text(
+                "SELECT category, abbreviation, spoken_as FROM tts_abbreviations"
+            ))
+            
+            for row in result:
+                category = row[0]
+                abbrev = row[1].upper()
+                spoken = row[2]
+                
+                if category == 'unit_prefix':
+                    self._prefix_cache[abbrev] = spoken
+                elif category == 'street_type':
+                    self._street_type_cache[abbrev] = spoken
+            
+            self._cache_loaded = True
+            logger.debug(f"Loaded {len(self._prefix_cache)} unit prefixes, {len(self._street_type_cache)} street types")
+            
+        except Exception as e:
+            logger.warning(f"Error loading TTS abbreviations cache: {e}")
+            self._prefix_cache = {}
+            self._street_type_cache = {}
+    
+    def clear_cache(self) -> None:
+        """Clear the abbreviations cache (call after DB updates)."""
+        self._prefix_cache = None
+        self._street_type_cache = None
+        self._cache_loaded = False
+    
+    def get_prefix_map(self, db) -> Dict[str, str]:
+        """Get unit prefix pronunciations from database."""
+        self._load_abbreviations_cache(db)
+        return self._prefix_cache or {}
+    
+    def get_street_type_map(self, db) -> Dict[str, str]:
+        """Get street type expansions from database."""
+        self._load_abbreviations_cache(db)
+        return self._street_type_cache or {}
+    
+    def expand_address(self, db, address: str) -> str:
+        """Expand address abbreviations using DB-backed street types."""
+        street_types = self.get_street_type_map(db)
+        return expand_address_with_street_types(address, street_types)
+    
+    def generate_spoken_guess(self, db, unit_id: str, station_digits: int = 2) -> str:
+        """Generate spoken guess using DB-backed prefix map."""
+        prefix_map = self.get_prefix_map(db)
+        return generate_spoken_guess_with_prefixes(unit_id, prefix_map, station_digits)
     
     async def get_unit_spoken(self, db, cad_unit_id: str, incident_id: int = None) -> str:
         """
@@ -332,7 +410,7 @@ class TTSPreprocessor:
                 if spoken_as:
                     return spoken_as
                 # Has entry but no spoken_as yet - generate one
-                spoken_as = generate_spoken_guess(cad_unit_id)
+                spoken_as = self.generate_spoken_guess(db, cad_unit_id)
                 db.execute(text(
                     "UPDATE tts_unit_mappings SET spoken_as = :spoken WHERE cad_unit_id = :unit_id"
                 ), {"spoken": spoken_as, "unit_id": cad_unit_id})
@@ -340,7 +418,7 @@ class TTSPreprocessor:
                 return spoken_as
             
             # Not found - auto-create with best guess
-            spoken_as = generate_spoken_guess(cad_unit_id)
+            spoken_as = self.generate_spoken_guess(db, cad_unit_id)
             
             # Check if this unit is one of ours (in apparatus table)
             apparatus_result = db.execute(text("""
@@ -373,7 +451,8 @@ class TTSPreprocessor:
         except Exception as e:
             logger.warning(f"Error getting unit spoken form for {cad_unit_id}: {e}")
             # Fallback to generated guess without DB
-            return generate_spoken_guess(cad_unit_id)
+            prefix_map = self.get_prefix_map(db) if db else {}
+            return generate_spoken_guess_with_prefixes(cad_unit_id, prefix_map)
     
     async def get_units_spoken(self, db, cad_unit_ids: List[str], incident_id: int = None) -> List[str]:
         """
@@ -503,122 +582,3 @@ class TTSPreprocessor:
 
 # Singleton instance
 tts_preprocessor = TTSPreprocessor()
-
-
-# =============================================================================
-# ADDRESS FORMATTING
-# =============================================================================
-
-# Street type expansions
-STREET_TYPES = {
-    'RD': 'Road',
-    'ST': 'Street',
-    'AVE': 'Avenue',
-    'AV': 'Avenue',
-    'DR': 'Drive',
-    'LN': 'Lane',
-    'CT': 'Court',
-    'CIR': 'Circle',
-    'BLVD': 'Boulevard',
-    'PL': 'Place',
-    'TER': 'Terrace',
-    'TERR': 'Terrace',
-    'WAY': 'Way',
-    'PKY': 'Parkway',
-    'PKWY': 'Parkway',
-    'HWY': 'Highway',
-    'RT': 'Route',
-    'RTE': 'Route',
-}
-
-# Direction expansions
-DIRECTIONS = {
-    'N': 'North',
-    'S': 'South',
-    'E': 'East',
-    'W': 'West',
-    'NE': 'Northeast',
-    'NW': 'Northwest',
-    'SE': 'Southeast',
-    'SW': 'Southwest',
-}
-
-
-def expand_address(address: str, expand_street_types: bool = True) -> str:
-    """
-    Expand abbreviations in an address for TTS.
-    
-    Examples:
-        "123 Main St" -> "123 Main Street"
-        "456 N Oak Ave" -> "456 North Oak Avenue"
-    """
-    if not address:
-        return ""
-    
-    words = address.split()
-    result = []
-    
-    for i, word in enumerate(words):
-        upper = word.upper().rstrip('.,')
-        
-        # Check if it's a direction (usually at start or after number)
-        if upper in DIRECTIONS and (i == 0 or i == 1 or (i > 0 and words[i-1].isdigit())):
-            result.append(DIRECTIONS[upper])
-        # Check if it's a street type (usually at end)
-        elif expand_street_types and upper in STREET_TYPES:
-            result.append(STREET_TYPES[upper])
-        else:
-            result.append(word)
-    
-    return ' '.join(result)
-
-
-# =============================================================================
-# TESTING
-# =============================================================================
-
-if __name__ == "__main__":
-    print("TTS Preprocessing Tests")
-    print("=" * 50)
-    
-    print("\nNumber to words:")
-    for n in [0, 1, 5, 10, 12, 19, 20, 21, 48, 69, 99]:
-        print(f"  {n} -> '{number_to_words(n)}'")
-    
-    print("\nDigits to words:")
-    for d in ["1", "12", "481", "2441"]:
-        print(f"  '{d}' -> '{digits_to_words(d)}'")
-    
-    print("\nUnit parsing (station_digits=2):")
-    test_units = ["ENG481", "ENG48", "ENG01", "TWR48", "QRS48", "MIC2441", "CHF48", "48"]
-    for unit in test_units:
-        guess = generate_spoken_guess(unit, station_digits=2)
-        print(f"  {unit:10} -> '{guess}'")
-    
-    print("\nUnit parsing (station_digits=3 for ambulance):")
-    test_amb = ["MIC244", "MIC2441", "AMB891", "AMB8911"]
-    for unit in test_amb:
-        guess = generate_spoken_guess(unit, station_digits=3)
-        print(f"  {unit:10} -> '{guess}'")
-    
-    print("\nAddress expansion:")
-    test_addresses = [
-        "123 Main St",
-        "456 N Oak Ave",
-        "789 Valley Rd",
-        "100 S Market St",
-    ]
-    for addr in test_addresses:
-        expanded = expand_address(addr)
-        print(f"  '{addr}' -> '{expanded}'")
-    
-    print("\nPause formatting:")
-    parts = [
-        ("Engine forty-eight one", "medium"),
-        ("Structure Fire", "medium"),
-        ("123 Main Street", "long"),
-    ]
-    preprocessor = TTSPreprocessor()
-    formatted = preprocessor.format_with_pauses(parts)
-    print(f"  Parts: {parts}")
-    print(f"  Result: '{formatted}'")
