@@ -171,8 +171,7 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onPerso
       <div style={{ 
         display: 'flex', 
         gap: '16px',
-        maxHeight: '400px',
-        overflowY: 'auto'
+
       }}>
         {columns.map((col, colIdx) => (
           <div key={colIdx} style={{ flex: 1, minWidth: 0 }}>
