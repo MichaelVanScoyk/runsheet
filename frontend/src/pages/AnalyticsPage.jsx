@@ -1,10 +1,12 @@
 /**
  * Analytics Page V2 - Response Time Deep Dive & Staffing Patterns
  * 
+ * ALL DATA FILTERED BY CATEGORY (Fire or EMS) - NO COMBINED VIEWS
+ * 
  * Sections:
- * 1. Response Time Breakdown by Call Type (Fire/EMS tabs)
+ * 1. Response Time Breakdown by Call Type
  * 2. Turnout Time vs Crew Size (by time period)
- * 3. Patterns & Predictions (monthly volume, best performance times, staffing)
+ * 3. Patterns & Predictions (monthly volume with historical trend, best performance, staffing)
  * 4. Year-over-Year Comparison
  * 5. Natural Language Query (Claude API)
  */
@@ -17,7 +19,7 @@ import {
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  LineChart, Line, Cell, Legend
+  LineChart, Line, Cell, Legend, ComposedChart
 } from 'recharts';
 
 import api from '../api';
@@ -55,9 +57,17 @@ const getDateRange = (days) => {
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
   // Parse as local time by adding T00:00:00 to avoid UTC interpretation
-  // "2026-01-19" alone is parsed as UTC midnight, which displays as Jan 18 in ET
   const localDate = new Date(dateStr + 'T00:00:00');
   return localDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const getPeriodLabel = (selectedDays) => {
+  if (selectedDays === 'ytd') return 'YTD';
+  if (selectedDays === 30) return '30d';
+  if (selectedDays === 60) return '60d';
+  if (selectedDays === 90) return '90d';
+  if (selectedDays === 365) return '1yr';
+  return `${selectedDays}d`;
 };
 
 // =============================================================================
@@ -111,7 +121,7 @@ const AnalyticsPage = ({ userSession }) => {
     return selectedDays;
   };
 
-  // Load all data
+  // Load all data - ALL endpoints now use category filter
   const loadAllData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -128,7 +138,7 @@ const AnalyticsPage = ({ userSession }) => {
         yoyRes,
         usageRes
       ] = await Promise.all([
-        api.get('/analytics/v2/summary', { params: { days: getSummaryDays() } }),
+        api.get('/analytics/v2/summary', { params: { days: getSummaryDays(), category } }),
         api.get('/analytics/v2/response-times/by-type', { 
           params: { start_date: dateRange.startDate, end_date: dateRange.endDate, category }
         }),
@@ -136,14 +146,14 @@ const AnalyticsPage = ({ userSession }) => {
         api.get('/analytics/v2/turnout-vs-crew', {
           params: { start_date: dateRange.startDate, end_date: dateRange.endDate, category }
         }),
-        api.get('/analytics/v2/patterns/monthly-volume', { params: { years_back: 3 } }),
+        api.get('/analytics/v2/patterns/monthly-volume', { params: { category } }),
         api.get('/analytics/v2/patterns/best-performance', {
           params: { start_date: dateRange.startDate, end_date: dateRange.endDate, category }
         }),
         api.get('/analytics/v2/patterns/staffing', {
-          params: { start_date: dateRange.startDate, end_date: dateRange.endDate }
+          params: { start_date: dateRange.startDate, end_date: dateRange.endDate, category }
         }),
-        api.get('/analytics/v2/yoy/this-week-last-year'),
+        api.get('/analytics/v2/yoy/this-week-last-year', { params: { category } }),
         api.get('/analytics/usage').catch(() => ({ data: null }))
       ]);
       
@@ -199,6 +209,10 @@ const AnalyticsPage = ({ userSession }) => {
     }
   };
 
+  const periodLabel = getPeriodLabel(selectedDays);
+  const categoryColor = category === 'FIRE' ? 'red' : 'blue';
+  const CategoryIcon = category === 'FIRE' ? Flame : Heart;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -224,9 +238,12 @@ const AnalyticsPage = ({ userSession }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Response Analytics</h1>
+              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <CategoryIcon className={`w-6 h-6 ${category === 'FIRE' ? 'text-red-600' : 'text-blue-600'}`} />
+                {category === 'FIRE' ? 'Fire' : 'EMS'} Response Analytics
+              </h1>
               <p className="text-sm text-gray-500">
-                {formatDate(dateRange.startDate)} - {formatDate(dateRange.endDate)}
+                {formatDate(dateRange.startDate)} - {formatDate(dateRange.endDate)} · {periodLabel}
               </p>
             </div>
             
@@ -283,26 +300,20 @@ const AnalyticsPage = ({ userSession }) => {
         </div>
       </div>
 
-      {/* Summary Stats */}
+      {/* Summary Stats - Single category only */}
       {summary && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <StatCard 
               label="Dispatched" 
               value={summary.total_dispatched} 
-              subValue={`${summary.station_responded} responded`}
+              color={categoryColor}
             />
             <StatCard 
-              label="Fire" 
-              value={summary.fire_responded} 
-              subValue={`of ${summary.fire_dispatched} dispatched`}
-              color="red" 
-            />
-            <StatCard 
-              label="EMS" 
-              value={summary.ems_responded} 
-              subValue={`of ${summary.ems_dispatched} dispatched`}
-              color="blue" 
+              label="Responded" 
+              value={summary.station_responded} 
+              subValue={`${Math.round((summary.station_responded / summary.total_dispatched) * 100) || 0}% response rate`}
+              color={categoryColor}
             />
             <StatCard label="Avg Turnout" value={summary.avg_turnout_mins ? `${summary.avg_turnout_mins} min` : '-'} />
             <StatCard label="Avg Response" value={summary.avg_response_mins ? `${summary.avg_response_mins} min` : '-'} />
@@ -320,17 +331,16 @@ const AnalyticsPage = ({ userSession }) => {
         <div className="flex items-center gap-3 pt-4">
           <div className="h-px flex-1 bg-gray-300"></div>
           <h2 className="text-lg font-bold text-gray-700 flex items-center gap-2">
-            📊 Station Analytics
-            <span className="text-sm font-normal text-gray-500">
-              {formatDate(dateRange.startDate)} – {formatDate(dateRange.endDate)}
-            </span>
+            <CategoryIcon className={`w-5 h-5 ${category === 'FIRE' ? 'text-red-600' : 'text-blue-600'}`} />
+            {category === 'FIRE' ? 'Fire' : 'EMS'} Station Analytics
           </h2>
           <div className="h-px flex-1 bg-gray-300"></div>
         </div>
 
         {/* Section 1: Response Times by Call Type */}
         <CollapsibleSection
-          title={`Response Times by Call Type (${category})`}
+          title="Response Times by Call Type"
+          periodLabel={periodLabel}
           icon={Clock}
           expanded={expandedSections.responseByType}
           onToggle={() => toggleSection('responseByType')}
@@ -340,7 +350,8 @@ const AnalyticsPage = ({ userSession }) => {
 
         {/* Section 2: Turnout vs Crew Size */}
         <CollapsibleSection
-          title={`Turnout Time vs Crew Size (${category})`}
+          title="Turnout Time vs Crew Size"
+          periodLabel={periodLabel}
           icon={Users}
           expanded={expandedSections.turnoutVsCrew}
           onToggle={() => toggleSection('turnoutVsCrew')}
@@ -351,6 +362,7 @@ const AnalyticsPage = ({ userSession }) => {
         {/* Section 3: Patterns */}
         <CollapsibleSection
           title="Patterns & Performance"
+          periodLabel={periodLabel}
           icon={TrendingUp}
           expanded={expandedSections.patterns}
           onToggle={() => toggleSection('patterns')}
@@ -359,12 +371,14 @@ const AnalyticsPage = ({ userSession }) => {
             monthlyVolume={monthlyVolume}
             bestPerformance={bestPerformance}
             staffingPatterns={staffingPatterns}
+            category={category}
           />
         </CollapsibleSection>
 
         {/* Section 4: Year-over-Year */}
         <CollapsibleSection
           title="This Week vs Last Year"
+          periodLabel="This Week"
           icon={Calendar}
           expanded={expandedSections.yoy}
           onToggle={() => toggleSection('yoy')}
@@ -375,6 +389,7 @@ const AnalyticsPage = ({ userSession }) => {
         {/* Section 5: Natural Language Query */}
         <CollapsibleSection
           title="Ask a Question"
+          periodLabel={periodLabel}
           icon={MessageSquare}
           expanded={expandedSections.nlQuery}
           onToggle={() => toggleSection('nlQuery')}
@@ -424,7 +439,7 @@ const StatCard = ({ label, value, subValue, color }) => {
 // COLLAPSIBLE SECTION
 // =============================================================================
 
-const CollapsibleSection = ({ title, icon: Icon, expanded, onToggle, badge, children }) => (
+const CollapsibleSection = ({ title, periodLabel, icon: Icon, expanded, onToggle, badge, children }) => (
   <div className="bg-white rounded-lg border overflow-hidden">
     <button
       onClick={onToggle}
@@ -433,6 +448,9 @@ const CollapsibleSection = ({ title, icon: Icon, expanded, onToggle, badge, chil
       <div className="flex items-center gap-3">
         <Icon className="w-5 h-5 text-gray-600" />
         <span className="font-semibold text-gray-900">{title}</span>
+        <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
+          {periodLabel}
+        </span>
         {badge && (
           <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
             {badge}
@@ -669,32 +687,58 @@ const TurnoutVsCrewSection = ({ data }) => {
 // SECTION 3: Patterns
 // =============================================================================
 
-const PatternsSection = ({ monthlyVolume, bestPerformance, staffingPatterns }) => {
+const PatternsSection = ({ monthlyVolume, bestPerformance, staffingPatterns, category }) => {
+  const barColor = category === 'FIRE' ? '#dc2626' : '#2563eb';
+  const barColorLight = category === 'FIRE' ? '#fca5a5' : '#93c5fd';
+  
   return (
     <div className="space-y-6">
-      {/* Monthly Volume */}
+      {/* Monthly Volume with Historical Trend */}
       {monthlyVolume?.data && (
         <div>
-          <h4 className="font-medium text-gray-900 mb-3">Monthly Volume (3 year history)</h4>
+          <h4 className="font-medium text-gray-900 mb-1">
+            Monthly Volume
+            <span className="text-xs text-gray-500 font-normal ml-2">
+              Last 2 Years · {monthlyVolume.total_years_of_data}yr trend
+            </span>
+          </h4>
+          <p className="text-xs text-gray-500 mb-3">
+            Solid bars = last 2 years avg/month · Faded bars = all-time avg/month ({monthlyVolume.total_years_of_data} years)
+          </p>
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyVolume.data}>
+              <ComposedChart data={monthlyVolume.data}>
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Legend payload={[
-                  { value: 'Fire (avg/mo)', type: 'square', color: '#dc2626' },
-                  { value: 'EMS (avg/mo)', type: 'square', color: '#2563eb' }
-                ]} />
-                <Bar dataKey="fire_avg_per_month" name="Fire (avg/mo)" fill="#dc2626" />
-                <Bar dataKey="ems_avg_per_month" name="EMS (avg/mo)" fill="#2563eb" />
-              </BarChart>
+                <Tooltip 
+                  formatter={(value, name) => [
+                    `${value} avg/mo`,
+                    name === 'avg_all_time' ? `All-time (${monthlyVolume.total_years_of_data}yr)` : 'Last 2 Years'
+                  ]}
+                />
+                <Legend 
+                  payload={[
+                    { value: 'Last 2 Years', type: 'square', color: barColor },
+                    { value: `All-time (${monthlyVolume.total_years_of_data}yr)`, type: 'square', color: barColorLight }
+                  ]} 
+                />
+                {/* Historical trend (ghosted/faded) - render first so it's behind */}
+                <Bar dataKey="avg_all_time" name={`All-time (${monthlyVolume.total_years_of_data}yr)`} fill={barColorLight} opacity={0.4} />
+                {/* Recent 2 years (highlighted) - render second so it's in front */}
+                <Bar dataKey="avg_recent" name="Last 2 Years" fill={barColor} />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
           {monthlyVolume.insights && (
             <p className="text-sm text-gray-600 mt-2">
-              Busiest: <span className="font-medium text-red-600">{monthlyVolume.insights.busiest_fire_month}</span> for Fire, 
-              <span className="font-medium text-blue-600 ml-1">{monthlyVolume.insights.busiest_ems_month}</span> for EMS
+              Busiest month (recent): <span className={`font-medium ${category === 'FIRE' ? 'text-red-600' : 'text-blue-600'}`}>
+                {monthlyVolume.insights.busiest_month_recent}
+              </span>
+              {monthlyVolume.insights.busiest_month_all_time !== monthlyVolume.insights.busiest_month_recent && (
+                <span className="text-gray-400 ml-2">
+                  (all-time: {monthlyVolume.insights.busiest_month_all_time})
+                </span>
+              )}
             </p>
           )}
         </div>
@@ -820,12 +864,12 @@ const YoYSection = ({ data }) => {
           </p>
           <div className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-gray-600">Total Incidents</span>
-              <span className="font-medium">{thisWeek?.total_incidents || 0}</span>
+              <span className="text-gray-600">Dispatched</span>
+              <span className="font-medium">{thisWeek?.total_dispatched || 0}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Fire / EMS</span>
-              <span className="font-medium">{thisWeek?.fire_count || 0} / {thisWeek?.ems_count || 0}</span>
+              <span className="text-gray-600">Responded</span>
+              <span className="font-medium">{thisWeek?.station_responded || 0}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Avg Turnout</span>
@@ -846,12 +890,12 @@ const YoYSection = ({ data }) => {
           </p>
           <div className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-gray-600">Total Incidents</span>
-              <span className="font-medium">{lastYear?.total_incidents || 0}</span>
+              <span className="text-gray-600">Dispatched</span>
+              <span className="font-medium">{lastYear?.total_dispatched || 0}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Fire / EMS</span>
-              <span className="font-medium">{lastYear?.fire_count || 0} / {lastYear?.ems_count || 0}</span>
+              <span className="text-gray-600">Responded</span>
+              <span className="font-medium">{lastYear?.station_responded || 0}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Avg Turnout</span>

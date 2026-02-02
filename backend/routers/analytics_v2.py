@@ -4,6 +4,8 @@ Replaces the original analytics dashboard with focused metrics.
 
 IMPORTANT: Most metrics filter to incidents where Station 48 units actually
 responded (went enroute), not just all dispatched incidents.
+
+All endpoints filter by category (FIRE or EMS) - no combined views.
 """
 
 from datetime import date, timedelta
@@ -218,7 +220,7 @@ def get_response_time_trends(
 def get_turnout_vs_crew_size(
     start_date: date = Query(...),
     end_date: date = Query(...),
-    category: Optional[str] = Query(None, description="FIRE, EMS, or None for all"),
+    category: str = Query(..., description="FIRE or EMS"),
     db: Session = Depends(get_db)
 ):
     """
@@ -228,22 +230,11 @@ def get_turnout_vs_crew_size(
     Uses cad_units JSONB to find the first unit enroute, then counts
     personnel assigned to that specific unit.
     """
-    prefix_filter = ""
-    prefix = None
-    if category and category.upper() in ('FIRE', 'EMS'):
-        prefix = 'F' if category.upper() == 'FIRE' else 'E'
-        prefix_filter = f"AND i.internal_incident_number LIKE '{prefix}%'"
+    prefix = 'F' if category.upper() == 'FIRE' else 'E'
+    prefix_filter = f"AND i.internal_incident_number LIKE '{prefix}%'"
     
     # Get incident counts for context
-    if prefix:
-        counts = get_incident_counts(db, start_date, end_date, prefix)
-    else:
-        fire_counts = get_incident_counts(db, start_date, end_date, 'F')
-        ems_counts = get_incident_counts(db, start_date, end_date, 'E')
-        counts = {
-            "total_dispatched": fire_counts["total_dispatched"] + ems_counts["total_dispatched"],
-            "station_responded": fire_counts["station_responded"] + ems_counts["station_responded"]
-        }
+    counts = get_incident_counts(db, start_date, end_date, prefix)
     
     # Get first-out unit turnout time and crew count
     # Only consider units where counts_for_response_times = true (excludes CHF48, ASST48, DEP48, etc.)
@@ -364,7 +355,7 @@ def get_turnout_vs_crew_size(
     
     return {
         "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
-        "category": category.upper() if category else "ALL",
+        "category": category.upper(),
         "incident_counts": counts,
         "time_periods": {
             "daytime": "6am - 4pm",
@@ -382,55 +373,109 @@ def get_turnout_vs_crew_size(
 
 @router.get("/patterns/monthly-volume")
 def get_monthly_volume_pattern(
-    years_back: int = Query(3, description="How many years of history"),
+    category: str = Query(..., description="FIRE or EMS"),
     db: Session = Depends(get_db)
 ):
     """
     Monthly incident volume patterns - helps predict "is next month busier?"
-    Shows Fire vs EMS split. This shows ALL dispatched incidents (not filtered).
+    Returns full history with last 2 years highlighted.
+    Filtered by category (FIRE or EMS).
     """
+    prefix = 'F' if category.upper() == 'FIRE' else 'E'
+    today = date.today()
+    two_years_ago = today - timedelta(days=730)  # Approximate 2 years
+    
+    # Get the earliest incident date to know how many years we have
+    earliest = db.execute(text("""
+        SELECT MIN(incident_date) as min_date
+        FROM incidents
+        WHERE deleted_at IS NULL
+            AND internal_incident_number LIKE :prefix || '%'
+    """), {'prefix': prefix}).fetchone()
+    
+    earliest_date = earliest.min_date if earliest and earliest.min_date else today
+    total_years = max(1, (today - earliest_date).days // 365)
+    
+    # Get monthly data with year breakdown
     result = db.execute(text("""
         SELECT 
+            EXTRACT(year FROM incident_date) as year,
             EXTRACT(month FROM incident_date) as month_num,
             TO_CHAR(incident_date, 'Mon') as month_name,
-            SUM(CASE WHEN internal_incident_number LIKE 'F%' THEN 1 ELSE 0 END) as fire_count,
-            SUM(CASE WHEN internal_incident_number LIKE 'E%' THEN 1 ELSE 0 END) as ems_count,
-            COUNT(*) as total_count
+            COUNT(*) as incident_count
         FROM incidents
-        WHERE incident_date >= CURRENT_DATE - INTERVAL ':years years'
-            AND deleted_at IS NULL
-            AND (internal_incident_number LIKE 'F%' OR internal_incident_number LIKE 'E%')
-        GROUP BY EXTRACT(month FROM incident_date), TO_CHAR(incident_date, 'Mon')
-        ORDER BY EXTRACT(month FROM incident_date)
-    """.replace(':years', str(years_back))), {}).fetchall()
+        WHERE deleted_at IS NULL
+            AND internal_incident_number LIKE :prefix || '%'
+        GROUP BY EXTRACT(year FROM incident_date), EXTRACT(month FROM incident_date), TO_CHAR(incident_date, 'Mon')
+        ORDER BY EXTRACT(year FROM incident_date), EXTRACT(month FROM incident_date)
+    """), {'prefix': prefix}).fetchall()
     
-    data = []
+    # Build monthly aggregates
+    monthly_totals = {}  # month_num -> {total, recent_total, years_with_data, recent_years}
     for r in result:
-        years_of_data = years_back
-        data.append({
-            "month": r.month_name,
-            "month_num": int(r.month_num),
-            "fire_total": r.fire_count,
-            "ems_total": r.ems_count,
-            "total": r.total_count,
-            "fire_avg_per_month": round(r.fire_count / years_of_data, 1),
-            "ems_avg_per_month": round(r.ems_count / years_of_data, 1),
-        })
+        month = int(r.month_num)
+        year = int(r.year)
+        is_recent = date(year, month, 1) >= two_years_ago.replace(day=1)
+        
+        if month not in monthly_totals:
+            monthly_totals[month] = {
+                'month_name': r.month_name,
+                'total': 0,
+                'recent_total': 0,
+                'all_years': set(),
+                'recent_years': set()
+            }
+        
+        monthly_totals[month]['total'] += r.incident_count
+        monthly_totals[month]['all_years'].add(year)
+        
+        if is_recent:
+            monthly_totals[month]['recent_total'] += r.incident_count
+            monthly_totals[month]['recent_years'].add(year)
     
-    if data:
-        busiest_fire = max(data, key=lambda x: x["fire_total"])
-        busiest_ems = max(data, key=lambda x: x["ems_total"])
-    else:
-        busiest_fire = busiest_ems = None
+    # Format data
+    data = []
+    for month_num in range(1, 13):
+        if month_num in monthly_totals:
+            m = monthly_totals[month_num]
+            all_years_count = len(m['all_years'])
+            recent_years_count = len(m['recent_years']) or 1
+            
+            data.append({
+                "month": m['month_name'],
+                "month_num": month_num,
+                "total_all_time": m['total'],
+                "total_recent": m['recent_total'],
+                "avg_all_time": round(m['total'] / all_years_count, 1) if all_years_count else 0,
+                "avg_recent": round(m['recent_total'] / recent_years_count, 1) if recent_years_count else 0,
+            })
+        else:
+            # No data for this month
+            month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            data.append({
+                "month": month_names[month_num - 1],
+                "month_num": month_num,
+                "total_all_time": 0,
+                "total_recent": 0,
+                "avg_all_time": 0,
+                "avg_recent": 0,
+            })
+    
+    # Find busiest months
+    busiest_recent = max(data, key=lambda x: x["avg_recent"]) if data else None
+    busiest_all_time = max(data, key=lambda x: x["avg_all_time"]) if data else None
     
     return {
-        "years_analyzed": years_back,
+        "category": category.upper(),
+        "total_years_of_data": total_years,
+        "recent_years": 2,
+        "earliest_date": earliest_date.isoformat() if earliest_date else None,
         "data": data,
         "insights": {
-            "busiest_fire_month": busiest_fire["month"] if busiest_fire else None,
-            "busiest_ems_month": busiest_ems["month"] if busiest_ems else None,
-        },
-        "note": "Shows all dispatched incidents (not filtered to Station 48 responses)"
+            "busiest_month_recent": busiest_recent["month"] if busiest_recent else None,
+            "busiest_month_all_time": busiest_all_time["month"] if busiest_all_time else None,
+        }
     }
 
 
@@ -438,29 +483,18 @@ def get_monthly_volume_pattern(
 def get_best_performance_times(
     start_date: date = Query(...),
     end_date: date = Query(...),
-    category: Optional[str] = Query(None),
+    category: str = Query(..., description="FIRE or EMS"),
     db: Session = Depends(get_db)
 ):
     """
     When do we perform best? Fastest turnout by day of week and hour.
     Only includes incidents where Station 48 responded.
     """
-    prefix_filter = ""
-    prefix = None
-    if category and category.upper() in ('FIRE', 'EMS'):
-        prefix = 'F' if category.upper() == 'FIRE' else 'E'
-        prefix_filter = f"AND i.internal_incident_number LIKE '{prefix}%'"
+    prefix = 'F' if category.upper() == 'FIRE' else 'E'
+    prefix_filter = f"AND i.internal_incident_number LIKE '{prefix}%'"
     
     # Get counts
-    if prefix:
-        counts = get_incident_counts(db, start_date, end_date, prefix)
-    else:
-        fire_counts = get_incident_counts(db, start_date, end_date, 'F')
-        ems_counts = get_incident_counts(db, start_date, end_date, 'E')
-        counts = {
-            "total_dispatched": fire_counts["total_dispatched"] + ems_counts["total_dispatched"],
-            "station_responded": fire_counts["station_responded"] + ems_counts["station_responded"]
-        }
+    counts = get_incident_counts(db, start_date, end_date, prefix)
     
     # By day of week
     by_day = db.execute(text(f"""
@@ -547,7 +581,7 @@ def get_best_performance_times(
     
     return {
         "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
-        "category": category.upper() if category else "ALL",
+        "category": category.upper(),
         "incident_counts": counts,
         "by_day": day_data,
         "by_hour": hour_data,
@@ -564,19 +598,19 @@ def get_best_performance_times(
 def get_staffing_patterns(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    category: str = Query(..., description="FIRE or EMS"),
     db: Session = Depends(get_db)
 ):
     """
     Best staffed calls by day of week and hour.
     Only includes incidents where Station 48 responded.
+    Filtered by category.
     """
+    prefix = 'F' if category.upper() == 'FIRE' else 'E'
+    prefix_filter = f"AND i.internal_incident_number LIKE '{prefix}%'"
+    
     # Get counts
-    fire_counts = get_incident_counts(db, start_date, end_date, 'F')
-    ems_counts = get_incident_counts(db, start_date, end_date, 'E')
-    counts = {
-        "total_dispatched": fire_counts["total_dispatched"] + ems_counts["total_dispatched"],
-        "station_responded": fire_counts["station_responded"] + ems_counts["station_responded"]
-    }
+    counts = get_incident_counts(db, start_date, end_date, prefix)
     
     # By day of week
     by_day = db.execute(text(f"""
@@ -603,6 +637,7 @@ def get_staffing_patterns(
             AND i.incident_date < :end_date
             AND i.deleted_at IS NULL
             AND {STATION_48_RESPONDED_FILTER}
+            {prefix_filter}
         GROUP BY EXTRACT(dow FROM i.incident_date)
         ORDER BY EXTRACT(dow FROM i.incident_date)
     """), {'start_date': start_date, 'end_date': end_date}).fetchall()
@@ -624,6 +659,7 @@ def get_staffing_patterns(
             AND i.deleted_at IS NULL
             AND i.time_dispatched IS NOT NULL
             AND {STATION_48_RESPONDED_FILTER}
+            {prefix_filter}
         GROUP BY EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York')
         ORDER BY EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York')
     """), {'start_date': start_date, 'end_date': end_date}).fetchall()
@@ -653,6 +689,7 @@ def get_staffing_patterns(
     
     return {
         "period": {"start": start_date.isoformat(), "end": end_date.isoformat()},
+        "category": category.upper(),
         "incident_counts": counts,
         "by_day": day_data,
         "by_hour": hour_data,
@@ -671,15 +708,18 @@ def get_staffing_patterns(
 
 @router.get("/yoy/this-week-last-year")
 def get_this_week_last_year(
+    category: str = Query(..., description="FIRE or EMS"),
     db: Session = Depends(get_db)
 ):
     """
     Compare this week (Sunday-Saturday) to the same date range last year.
     Only includes incidents where Station 48 responded.
+    Filtered by category.
     
     Note: Last year uses the same DATE range (not same weekdays) for 
     apples-to-apples comparison.
     """
+    prefix = 'F' if category.upper() == 'FIRE' else 'E'
     today = date.today()
     
     # Week runs Sunday (0) to Saturday (6)
@@ -695,14 +735,11 @@ def get_this_week_last_year(
     
     def get_week_stats(start: date, end: date):
         # Get counts
-        fire_counts = get_incident_counts(db, start, end, 'F')
-        ems_counts = get_incident_counts(db, start, end, 'E')
+        counts = get_incident_counts(db, start, end, prefix)
         
         result = db.execute(text(f"""
             SELECT 
                 COUNT(*) as total_incidents,
-                SUM(CASE WHEN internal_incident_number LIKE 'F%' THEN 1 ELSE 0 END) as fire_count,
-                SUM(CASE WHEN internal_incident_number LIKE 'E%' THEN 1 ELSE 0 END) as ems_count,
                 ROUND(AVG(
                     EXTRACT(EPOCH FROM (time_first_enroute - time_dispatched)) / 60
                 )::numeric, 1) as avg_turnout_mins,
@@ -713,28 +750,30 @@ def get_this_week_last_year(
             WHERE i.incident_date >= :start_date
                 AND i.incident_date < :end_date
                 AND i.deleted_at IS NULL
-                AND (i.internal_incident_number LIKE 'F%' OR i.internal_incident_number LIKE 'E%')
+                AND i.internal_incident_number LIKE :prefix || '%'
                 AND {STATION_48_RESPONDED_FILTER}
-        """), {'start_date': start, 'end_date': end}).fetchone()
+        """), {'start_date': start, 'end_date': end, 'prefix': prefix}).fetchone()
         
+        # Get top call types for this category
+        type_field = "cad_event_type" if category.upper() == 'FIRE' else "cad_event_subtype"
         types = db.execute(text(f"""
             SELECT 
-                COALESCE(cad_event_type, 'Unknown') as call_type,
+                COALESCE({type_field}, 'Unknown') as call_type,
                 COUNT(*) as count
             FROM incidents i
             WHERE i.incident_date >= :start_date
                 AND i.incident_date < :end_date
                 AND i.deleted_at IS NULL
+                AND i.internal_incident_number LIKE :prefix || '%'
                 AND {STATION_48_RESPONDED_FILTER}
-            GROUP BY cad_event_type
+            GROUP BY {type_field}
             ORDER BY COUNT(*) DESC
-        """), {'start_date': start, 'end_date': end}).fetchall()
+            LIMIT 5
+        """), {'start_date': start, 'end_date': end, 'prefix': prefix}).fetchall()
         
         return {
-            "total_dispatched": fire_counts["total_dispatched"] + ems_counts["total_dispatched"],
+            "total_dispatched": counts["total_dispatched"],
             "station_responded": result.total_incidents or 0,
-            "fire_count": result.fire_count or 0,
-            "ems_count": result.ems_count or 0,
             "avg_turnout_mins": float(result.avg_turnout_mins) if result.avg_turnout_mins else None,
             "avg_response_mins": float(result.avg_response_mins) if result.avg_response_mins else None,
             "top_call_types": [{"type": t.call_type, "count": t.count} for t in types]
@@ -754,6 +793,7 @@ def get_this_week_last_year(
         changes["response_diff"] = round(this_week["avg_response_mins"] - last_year["avg_response_mins"], 1)
     
     return {
+        "category": category.upper(),
         "this_week": {
             "period": {"start": this_week_start.isoformat(), "end": this_week_end.isoformat()},
             "stats": this_week
@@ -778,24 +818,23 @@ def get_this_week_last_year(
 @router.get("/summary")
 def get_analytics_summary(
     days: int = Query(30, description="Number of days to analyze"),
+    category: str = Query(..., description="FIRE or EMS"),
     db: Session = Depends(get_db)
 ):
     """
     Quick summary stats for the analytics dashboard header.
-    Shows both dispatched and responded counts.
+    Filtered by category - shows only Fire OR only EMS.
     """
+    prefix = 'F' if category.upper() == 'FIRE' else 'E'
     today = date.today()
     start_date = today - timedelta(days=days)
     
-    # Get counts
-    fire_counts = get_incident_counts(db, start_date, today, 'F')
-    ems_counts = get_incident_counts(db, start_date, today, 'E')
+    # Get counts for this category
+    counts = get_incident_counts(db, start_date, today, prefix)
     
     result = db.execute(text(f"""
         SELECT 
             COUNT(*) as total_incidents,
-            SUM(CASE WHEN internal_incident_number LIKE 'F%' THEN 1 ELSE 0 END) as fire_count,
-            SUM(CASE WHEN internal_incident_number LIKE 'E%' THEN 1 ELSE 0 END) as ems_count,
             ROUND(AVG(
                 EXTRACT(EPOCH FROM (time_first_enroute - time_dispatched)) / 60
             )::numeric, 1) as avg_turnout_mins,
@@ -809,19 +848,16 @@ def get_analytics_summary(
         WHERE i.incident_date >= :start_date
             AND i.incident_date < :end_date
             AND i.deleted_at IS NULL
-            AND (i.internal_incident_number LIKE 'F%' OR i.internal_incident_number LIKE 'E%')
+            AND i.internal_incident_number LIKE :prefix || '%'
             AND {STATION_48_RESPONDED_FILTER}
-    """), {'start_date': start_date, 'end_date': today}).fetchone()
+    """), {'start_date': start_date, 'end_date': today, 'prefix': prefix}).fetchone()
     
     return {
+        "category": category.upper(),
         "period_days": days,
         "period": {"start": start_date.isoformat(), "end": today.isoformat()},
-        "total_dispatched": fire_counts["total_dispatched"] + ems_counts["total_dispatched"],
+        "total_dispatched": counts["total_dispatched"],
         "station_responded": result.total_incidents or 0,
-        "fire_dispatched": fire_counts["total_dispatched"],
-        "fire_responded": result.fire_count or 0,
-        "ems_dispatched": ems_counts["total_dispatched"],
-        "ems_responded": result.ems_count or 0,
         "avg_turnout_mins": float(result.avg_turnout_mins) if result.avg_turnout_mins else None,
         "avg_response_mins": float(result.avg_response_mins) if result.avg_response_mins else None,
         "avg_on_scene_mins": float(result.avg_on_scene_mins) if result.avg_on_scene_mins else None,
