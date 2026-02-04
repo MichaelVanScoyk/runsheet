@@ -8,19 +8,26 @@ Provides tenant-isolated WebSocket connections:
     - incident_updated: Incident data changed  
     - incident_closed: Incident status changed to CLOSED
 
-/ws/AValerts - Audio/Visual alerts for browser notifications
+/ws/AValerts - Audio/Visual alerts for browser and device notifications
     - dispatch: New dispatch (play alert sound, TTS)
     - close: Incident closed (play close sound)
+    - announcement: Custom TTS message
 
 Each tenant's connections are isolated - glenmoorefc browsers
 only receive glenmoorefc events.
+
+AV alert connections are tracked as ConnectedDevice instances,
+enabling device identification, targeted sends, and management.
 """
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from typing import Dict, Set
+from typing import Dict, Set, Optional, List
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import json
 import logging
 import asyncio
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +37,27 @@ router = APIRouter()
 # Key: tenant_slug, Value: set of WebSocket connections
 _connections: Dict[str, Set[WebSocket]] = {}
 
-# Tenant-isolated connection pools for /ws/AValerts
-_av_connections: Dict[str, Set[WebSocket]] = {}
+# =============================================================================
+# AV Alerts device registry
+# =============================================================================
+
+@dataclass
+class ConnectedDevice:
+    """Tracked AV alerts connection with device metadata."""
+    ws: WebSocket
+    connection_id: str
+    tenant_slug: str
+    device_type: str = "unknown"          # browser, stationbell_mini, stationbell_bay, unknown
+    device_name: str = "Unknown"           # Friendly name set via register message
+    device_id: Optional[str] = None        # Persistent ID (MAC for StationBell, None for browsers)
+    user_agent: str = ""
+    ip_address: str = ""
+    connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# Tenant-isolated device registry for /ws/AValerts
+# Key: tenant_slug, Value: { connection_id: ConnectedDevice }
+_av_devices: Dict[str, Dict[str, ConnectedDevice]] = {}
 
 # Locks for thread-safe connection management
 _connections_lock = asyncio.Lock()
@@ -62,7 +88,7 @@ def _extract_tenant_from_host(host: str) -> str:
 
 
 # =============================================================================
-# /ws/incidents connection management
+# /ws/incidents connection management (unchanged)
 # =============================================================================
 
 async def _add_connection(tenant_slug: str, websocket: WebSocket):
@@ -129,26 +155,41 @@ async def broadcast_to_tenant(tenant_slug: str, message: dict):
 
 
 # =============================================================================
-# /ws/AValerts connection management
+# /ws/AValerts device registry management
 # =============================================================================
 
-async def _add_av_connection(tenant_slug: str, websocket: WebSocket):
-    """Add a WebSocket connection to the AV alerts pool"""
+async def _add_av_connection(tenant_slug: str, websocket: WebSocket) -> str:
+    """Add a WebSocket connection to the AV alerts device registry. Returns connection_id."""
+    connection_id = uuid.uuid4().hex[:8]
+
+    device = ConnectedDevice(
+        ws=websocket,
+        connection_id=connection_id,
+        tenant_slug=tenant_slug,
+        user_agent=websocket.headers.get('user-agent', ''),
+        ip_address=websocket.client.host if websocket.client else '',
+    )
+
     async with _av_connections_lock:
-        if tenant_slug not in _av_connections:
-            _av_connections[tenant_slug] = set()
-        _av_connections[tenant_slug].add(websocket)
-        logger.info(f"WebSocket /ws/AValerts connected: {tenant_slug} (total: {len(_av_connections[tenant_slug])})")
+        if tenant_slug not in _av_devices:
+            _av_devices[tenant_slug] = {}
+        _av_devices[tenant_slug][connection_id] = device
+        count = len(_av_devices[tenant_slug])
+
+    logger.info(f"WebSocket /ws/AValerts connected: {tenant_slug} [{connection_id}] from {device.ip_address} (total: {count})")
+    return connection_id
 
 
-async def _remove_av_connection(tenant_slug: str, websocket: WebSocket):
-    """Remove a WebSocket connection from the AV alerts pool"""
+async def _remove_av_connection(tenant_slug: str, connection_id: str):
+    """Remove a device from the AV alerts registry by connection_id."""
     async with _av_connections_lock:
-        if tenant_slug in _av_connections:
-            _av_connections[tenant_slug].discard(websocket)
-            logger.info(f"WebSocket /ws/AValerts disconnected: {tenant_slug} (total: {len(_av_connections[tenant_slug])})")
-            if not _av_connections[tenant_slug]:
-                del _av_connections[tenant_slug]
+        if tenant_slug in _av_devices:
+            removed = _av_devices[tenant_slug].pop(connection_id, None)
+            count = len(_av_devices[tenant_slug])
+            if removed:
+                logger.info(f"WebSocket /ws/AValerts disconnected: {tenant_slug} [{connection_id}] {removed.device_name} (total: {count})")
+            if not _av_devices[tenant_slug]:
+                del _av_devices[tenant_slug]
 
 
 async def broadcast_av_alert(tenant_slug: str, alert_data: dict):
@@ -167,12 +208,12 @@ async def broadcast_av_alert(tenant_slug: str, alert_data: dict):
             - address: str (optional, for TTS)
     """
     async with _av_connections_lock:
-        if tenant_slug not in _av_connections:
+        if tenant_slug not in _av_devices:
             return
         
-        connections = _av_connections[tenant_slug].copy()
+        devices = list(_av_devices[tenant_slug].values())
     
-    if not connections:
+    if not devices:
         return
     
     # Serialize once
@@ -181,23 +222,23 @@ async def broadcast_av_alert(tenant_slug: str, alert_data: dict):
     # Track failed connections for removal
     failed = []
     
-    for websocket in connections:
+    for device in devices:
         try:
-            await websocket.send_text(message_json)
+            await device.ws.send_text(message_json)
         except Exception as e:
-            logger.warning(f"Failed to send to /ws/AValerts WebSocket: {e}")
-            failed.append(websocket)
+            logger.warning(f"Failed to send to /ws/AValerts [{device.connection_id}] {device.device_name}: {e}")
+            failed.append(device.connection_id)
     
     # Remove failed connections
     if failed:
         async with _av_connections_lock:
-            if tenant_slug in _av_connections:
-                for ws in failed:
-                    _av_connections[tenant_slug].discard(ws)
+            if tenant_slug in _av_devices:
+                for conn_id in failed:
+                    _av_devices[tenant_slug].pop(conn_id, None)
 
 
 # =============================================================================
-# Connection counts for monitoring
+# Connection counts and device listing
 # =============================================================================
 
 def get_connection_count(tenant_slug: str = None) -> dict:
@@ -206,13 +247,34 @@ def get_connection_count(tenant_slug: str = None) -> dict:
         return {
             "tenant": tenant_slug,
             "incidents_connections": len(_connections.get(tenant_slug, set())),
-            "av_alerts_connections": len(_av_connections.get(tenant_slug, set())),
+            "av_alerts_connections": len(_av_devices.get(tenant_slug, {})),
         }
     return {
-        "total_tenants": len(set(list(_connections.keys()) + list(_av_connections.keys()))),
+        "total_tenants": len(set(list(_connections.keys()) + list(_av_devices.keys()))),
         "incidents_by_tenant": {k: len(v) for k, v in _connections.items()},
-        "av_alerts_by_tenant": {k: len(v) for k, v in _av_connections.items()},
+        "av_alerts_by_tenant": {k: len(v) for k, v in _av_devices.items()},
     }
+
+
+def get_connected_av_devices(tenant_slug: str) -> List[dict]:
+    """Get list of connected AV alert devices for a tenant.
+    
+    Returns serializable device info for the admin UI.
+    Called by devices router (Phase 3+).
+    """
+    devices = _av_devices.get(tenant_slug, {})
+    return [
+        {
+            "connection_id": d.connection_id,
+            "device_type": d.device_type,
+            "device_name": d.device_name,
+            "device_id": d.device_id,
+            "ip_address": d.ip_address,
+            "user_agent": d.user_agent,
+            "connected_at": d.connected_at.isoformat(),
+        }
+        for d in devices.values()
+    ]
 
 
 # =============================================================================
@@ -330,6 +392,7 @@ async def websocket_av_alerts(websocket: WebSocket):
     
     Sends dispatch and close alerts for browser sound/TTS notifications.
     Connection is automatically associated with tenant based on Host header.
+    Tracked in the device registry for identification and management.
     """
     # Extract tenant from Host header
     host = websocket.headers.get('host', '')
@@ -338,19 +401,20 @@ async def websocket_av_alerts(websocket: WebSocket):
     # Accept the connection
     await websocket.accept()
     
-    # Add to AV alerts connection pool
-    await _add_av_connection(tenant_slug, websocket)
+    # Add to AV alerts device registry
+    connection_id = await _add_av_connection(tenant_slug, websocket)
     
-    # Send connection confirmation
+    # Send connection confirmation (includes connection_id for device registration)
     try:
         await websocket.send_json({
             "type": "connected",
             "tenant": tenant_slug,
+            "connection_id": connection_id,
             "message": f"Connected to {tenant_slug} AV alerts"
         })
     except Exception as e:
         logger.error(f"Failed to send AV alerts connection confirmation: {e}")
-        await _remove_av_connection(tenant_slug, websocket)
+        await _remove_av_connection(tenant_slug, connection_id)
         return
     
     # Use stop event to coordinate shutdown
@@ -381,7 +445,7 @@ async def websocket_av_alerts(websocket: WebSocket):
         stop_event.set()
         ping_task.cancel()
         receive_task.cancel()
-        await _remove_av_connection(tenant_slug, websocket)
+        await _remove_av_connection(tenant_slug, connection_id)
 
 
 @router.get("/ws/status")
