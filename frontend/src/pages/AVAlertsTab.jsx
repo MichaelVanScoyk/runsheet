@@ -9,9 +9,11 @@
  * 5. Unit Pronunciations (how units are spoken)
  * 6. Preview (hear how it sounds)
  * 7. Custom Announcement (send messages)
+ * 8. Connected Devices (live device monitoring)
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import ConnectedDevices from '../components/ConnectedDevices';
 
 const API_BASE = '';
 
@@ -1654,6 +1656,9 @@ function AVAlertsTab() {
           </button>
         </div>
       </div>
+
+      {/* 8. Connected Devices */}
+      <ConnectedDevices />
 
       {/* How It Works */}
       <div style={{ 
