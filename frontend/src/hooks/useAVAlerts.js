@@ -320,7 +320,18 @@ export function useAVAlerts({
             break;
             
           case 'connected':
-            console.log(`AV Alerts connected to ${data.tenant}`);
+            console.log(`AV Alerts connected to ${data.tenant} [${data.connection_id}]`);
+            // Register this browser so the server can identify it in the device list
+            if (ws.current?.readyState === WebSocket.OPEN) {
+              const ua = navigator.userAgent;
+              const browserName = ua.includes('Chrome') ? 'Chrome' : ua.includes('Firefox') ? 'Firefox' : ua.includes('Safari') ? 'Safari' : 'Browser';
+              const osName = ua.includes('Windows') ? 'Windows' : ua.includes('Mac') ? 'Mac' : ua.includes('Linux') ? 'Linux' : ua.includes('Android') ? 'Android' : ua.includes('iPhone') ? 'iPhone' : '';
+              ws.current.send(JSON.stringify({
+                type: 'register',
+                device_type: 'browser',
+                name: osName ? `${browserName} - ${osName}` : browserName,
+              }));
+            }
             break;
           
           case 'sound_updated':

@@ -296,19 +296,31 @@ async def _server_ping_loop(websocket: WebSocket, stop_event: asyncio.Event):
         pass
 
 
-async def _receive_loop(websocket: WebSocket, stop_event: asyncio.Event):
-    """Handle incoming messages from client"""
+async def _receive_loop(
+    websocket: WebSocket,
+    stop_event: asyncio.Event,
+    tenant_slug: str = None,
+    connection_id: str = None,
+):
+    """Handle incoming messages from client.
+    
+    When tenant_slug and connection_id are provided (AV alerts path),
+    also handles 'register' messages to identify the device.
+    """
     try:
         while not stop_event.is_set():
             try:
                 data = await websocket.receive_text()
                 message = json.loads(data)
+                msg_type = message.get("type")
                 
-                if message.get("type") == "ping":
+                if msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
-                elif message.get("type") == "pong":
+                elif msg_type == "pong":
                     # Client responded to our ping - connection is alive
                     pass
+                elif msg_type == "register" and tenant_slug and connection_id:
+                    await _handle_register(tenant_slug, connection_id, message)
                     
             except json.JSONDecodeError as e:
                 logger.warning(f"Invalid JSON received: {e}")
@@ -318,6 +330,32 @@ async def _receive_loop(websocket: WebSocket, stop_event: asyncio.Event):
         logger.error(f"Receive loop error: {e}")
     finally:
         stop_event.set()
+
+
+async def _handle_register(tenant_slug: str, connection_id: str, message: dict):
+    """Update a ConnectedDevice with registration info from the client.
+    
+    Expected message format:
+        { "type": "register", "device_type": "browser", "name": "Chrome - Windows" }
+        { "type": "register", "device_type": "stationbell_bay", "device_id": "AA:BB:CC", "name": "Bay 1" }
+    
+    Devices that never send register still work - they just show as "Unknown".
+    """
+    async with _av_connections_lock:
+        devices = _av_devices.get(tenant_slug, {})
+        device = devices.get(connection_id)
+        if not device:
+            return
+        
+        device.device_type = message.get("device_type", "unknown")
+        device.device_name = message.get("name", "Unknown")
+        device.device_id = message.get("device_id")  # MAC for StationBell, None for browsers
+    
+    logger.info(
+        f"WebSocket /ws/AValerts registered: {tenant_slug} [{connection_id}] "
+        f"type={device.device_type} name={device.device_name}"
+        f"{f' id={device.device_id}' if device.device_id else ''}"
+    )
 
 
 # =============================================================================
@@ -421,8 +459,11 @@ async def websocket_av_alerts(websocket: WebSocket):
     stop_event = asyncio.Event()
     
     # Start server-side ping loop and receive loop concurrently
+    # Pass tenant_slug + connection_id so register messages can be handled
     ping_task = asyncio.create_task(_server_ping_loop(websocket, stop_event))
-    receive_task = asyncio.create_task(_receive_loop(websocket, stop_event))
+    receive_task = asyncio.create_task(
+        _receive_loop(websocket, stop_event, tenant_slug=tenant_slug, connection_id=connection_id)
+    )
     
     try:
         # Wait for either task to complete (indicates disconnect)
