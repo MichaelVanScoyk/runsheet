@@ -2,6 +2,7 @@
  * ConnectedDevices - Shows devices currently connected to AV alerts WebSocket.
  * 
  * Displays device type, name, IP, and connection duration.
+ * Provides per-device actions: test, identify, disconnect.
  * Auto-refreshes every 15 seconds.
  */
 
@@ -34,6 +35,7 @@ function ConnectedDevices() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(false);
+  const [actionStatus, setActionStatus] = useState(null); // { id, msg, type }
 
   const fetchDevices = useCallback(async () => {
     try {
@@ -60,6 +62,30 @@ function ConnectedDevices() {
     const interval = setInterval(fetchDevices, 15000);
     return () => clearInterval(interval);
   }, [fetchDevices]);
+
+  const sendCommand = async (connectionId, command, confirmMsg) => {
+    if (confirmMsg && !confirm(confirmMsg)) return;
+    
+    setActionStatus({ id: connectionId, msg: '...', type: 'info' });
+    try {
+      const res = await fetch(`${API_BASE}/api/av-alerts/devices/${connectionId}/${command}`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const label = command === 'test' ? 'Test sent' : command === 'identify' ? 'Identify sent' : 'Disconnected';
+        setActionStatus({ id: connectionId, msg: label, type: 'success' });
+        if (command === 'disconnect') {
+          // Refresh list after a short delay to let the WS close
+          setTimeout(fetchDevices, 500);
+        }
+      } else {
+        setActionStatus({ id: connectionId, msg: 'Failed', type: 'error' });
+      }
+    } catch {
+      setActionStatus({ id: connectionId, msg: 'Error', type: 'error' });
+    }
+    setTimeout(() => setActionStatus(null), 2000);
+  };
 
   // Group devices by type
   const grouped = {};
@@ -142,41 +168,89 @@ function ConnectedDevices() {
               {/* Device list */}
               {devices.map(d => {
                 const cfg = typeConfig(d.device_type || 'unknown');
+                const isActioning = actionStatus?.id === d.connection_id;
                 return (
                   <div key={d.connection_id} style={{
                     background: '#fff',
                     border: '1px solid #e0e0e0',
                     borderRadius: '6px',
                     padding: '0.75rem 1rem',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '0.5rem',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <span style={{ fontSize: '1.3rem' }}>{cfg.icon}</span>
-                      <div>
-                        <div style={{ fontWeight: 'bold', color: '#333', fontSize: '0.9rem' }}>
-                          {d.device_name || 'Unknown'}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '0.5rem',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <span style={{ fontSize: '1.3rem' }}>{cfg.icon}</span>
+                        <div>
+                          <div style={{ fontWeight: 'bold', color: '#333', fontSize: '0.9rem' }}>
+                            {d.device_name || 'Unknown'}
+                          </div>
+                          <div style={{ color: '#888', fontSize: '0.75rem' }}>
+                            {cfg.label} · {d.connection_id}
+                            {d.device_id && ` · ${d.device_id}`}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ 
+                          color: '#22c55e', 
+                          fontSize: '0.8rem', 
+                          fontWeight: 'bold' 
+                        }}>
+                          ● Connected
                         </div>
                         <div style={{ color: '#888', fontSize: '0.75rem' }}>
-                          {cfg.label} · {d.connection_id}
-                          {d.device_id && ` · ${d.device_id}`}
+                          {timeAgo(d.connected_at)}
                         </div>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ 
-                        color: '#22c55e', 
-                        fontSize: '0.8rem', 
-                        fontWeight: 'bold' 
-                      }}>
-                        ● Connected
-                      </div>
-                      <div style={{ color: '#888', fontSize: '0.75rem' }}>
-                        {timeAgo(d.connected_at)}
-                      </div>
+
+                    {/* Action buttons */}
+                    <div style={{
+                      display: 'flex',
+                      gap: '0.5rem',
+                      marginTop: '0.5rem',
+                      paddingTop: '0.5rem',
+                      borderTop: '1px solid #f0f0f0',
+                      alignItems: 'center',
+                    }}>
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => sendCommand(d.connection_id, 'test')}
+                        title="Send a test alert to this device only"
+                        style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                      >
+                        🔊 Test
+                      </button>
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => sendCommand(d.connection_id, 'identify')}
+                        title="Flash LEDs or change tab title to identify this device"
+                        style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                      >
+                        💡 Identify
+                      </button>
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => sendCommand(d.connection_id, 'disconnect', 'Disconnect this device? It will likely reconnect automatically.')}
+                        title="Force-disconnect this device"
+                        style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', color: '#dc2626' }}
+                      >
+                        ✕ Disconnect
+                      </button>
+                      {isActioning && (
+                        <span style={{
+                          fontSize: '0.75rem',
+                          color: actionStatus.type === 'success' ? '#22c55e' : actionStatus.type === 'error' ? '#dc2626' : '#666',
+                          marginLeft: '0.25rem',
+                        }}>
+                          {actionStatus.msg}
+                        </span>
+                      )}
                     </div>
                   </div>
                 );

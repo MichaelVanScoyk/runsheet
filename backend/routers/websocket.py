@@ -278,6 +278,52 @@ def get_connected_av_devices(tenant_slug: str) -> List[dict]:
 
 
 # =============================================================================
+# Targeted device commands
+# =============================================================================
+
+async def send_to_device(tenant_slug: str, connection_id: str, message: dict) -> bool:
+    """Send a message to a specific connected device.
+    
+    Returns True if sent successfully, False if device not found or send failed.
+    Used by device command endpoints (test, identify, disconnect).
+    """
+    async with _av_connections_lock:
+        devices = _av_devices.get(tenant_slug, {})
+        device = devices.get(connection_id)
+        if not device:
+            return False
+        ws = device.ws
+    
+    try:
+        await ws.send_json(message)
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to send to device [{connection_id}]: {e}")
+        return False
+
+
+async def disconnect_device(tenant_slug: str, connection_id: str) -> bool:
+    """Force-disconnect a specific device by closing its WebSocket.
+    
+    Returns True if found and closed, False if not found.
+    The normal cleanup in the finally block of the endpoint will
+    handle removing it from the registry.
+    """
+    async with _av_connections_lock:
+        devices = _av_devices.get(tenant_slug, {})
+        device = devices.get(connection_id)
+        if not device:
+            return False
+        ws = device.ws
+    
+    try:
+        await ws.close(code=1000, reason="Disconnected by admin")
+    except Exception:
+        pass  # Already closed
+    return True
+
+
+# =============================================================================
 # Shared ping/pong handlers
 # =============================================================================
 

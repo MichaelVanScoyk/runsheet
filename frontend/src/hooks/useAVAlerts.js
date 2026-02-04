@@ -334,6 +334,15 @@ export function useAVAlerts({
             }
             break;
           
+          case 'identify': {
+            console.log('AV Alerts: Identify received');
+            // Brief visual flash so the user can identify this tab
+            const origTitle = document.title;
+            document.title = '🔔 IDENTIFY 🔔';
+            setTimeout(() => { document.title = origTitle; }, 3000);
+            break;
+          }
+
           case 'sound_updated':
             console.log(`AV Alerts: Sound updated - ${data.sound_type}`);
             if (data.sound_type && reloadSoundRef.current) {
