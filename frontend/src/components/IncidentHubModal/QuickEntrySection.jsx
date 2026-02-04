@@ -285,6 +285,7 @@ function UnitSection({ title, assignedIds, unitDesignator, getPersonName, onRemo
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
           {assigned.map((personId, idx) => (
             <div key={idx} style={{ display: 'inline-flex', alignItems: 'center', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '3px', padding: '2px 4px 2px 8px', fontSize: '11px', color: '#333' }}>
+              <span style={{ fontWeight: '700', marginRight: '4px', color: '#666' }}>{idx === 0 ? 'D' : idx === 1 ? 'O' : String(idx + 1)}</span>
               <span style={{ marginRight: '2px' }}>{getPersonName(personId)}</span>
               <button onClick={() => onRemove(unitDesignator, idx)} style={{ background: 'none', border: 'none', color: '#e74c3c', fontSize: '12px', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}>×</button>
             </div>
