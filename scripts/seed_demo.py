@@ -625,38 +625,65 @@ def anonymize_municipalities(conn):
 # ---------------------------------------------------------------------------
 
 def update_branding(conn):
-    """Set demo branding to Brookfield Fire Company, Station 99."""
-    log.info("Updating branding settings...")
+    """Set demo branding, scrub all identifiable settings."""
+    log.info("Updating branding and settings...")
     cur = conn.cursor()
 
-    settings = [
-        ("station", "name", "Brookfield Fire Company"),
-        ("station", "number", "99"),
-        ("station", "short_name", "BFC Sta 99"),
-        ("station", "tagline", "Proudly Serving Brookfield Township"),
-    ]
-
-    for category, key, value in settings:
-        # Delete then insert (safe regardless of unique constraint setup)
+    # --- Upsert helper (delete + insert, safe without unique constraint) ---
+    def _set(category, key, value, value_type="string"):
         cur.execute(
             "DELETE FROM settings WHERE category = %s AND key = %s",
             (category, key),
         )
         cur.execute("""
             INSERT INTO settings (category, key, value, value_type, updated_at)
-            VALUES (%s, %s, %s, 'string', NOW())
-        """, (category, key, value))
+            VALUES (%s, %s, %s, %s, NOW())
+        """, (category, key, value, value_type))
+
+    # Station identity
+    _set("station", "name", "Brookfield Fire Company")
+    _set("station", "number", "99")
+    _set("station", "short_name", "BFC Sta 99")
+    _set("station", "tagline", "Proudly Serving Brookfield Township")
+    _set("station", "address", "100 Brookfield Rd, Brookfield, PA 19000")
+    _set("station", "latitude", "40.1200")
+    _set("station", "longitude", "-75.8100")
+
+    # NERIS identity
+    _set("neris", "fd_name", "Brookfield Fire Company")
+    _set("neris", "fd_neris_id", "")  # Clear real NERIS ID
+
+    # Admin password - set to demo123 (bcrypt)
+    demo_admin_hash = hash_tenant_password(DEMO_TENANT_PASSWORD)
+    _set("admin", "password_hash", demo_admin_hash)
+
+    # API URL - use relative or localhost (not internal IP)
+    _set("api", "url", "")
+
+    # Remap station_units from 48 -> 99
+    cur.execute("""
+        SELECT value FROM settings WHERE category = 'units' AND key = 'station_units'
+    """)
+    row = cur.fetchone()
+    if row and row[0]:
+        remapped = row[0].replace(SOURCE_STATION, DEMO_STATION)
+        _set("units", "station_units", remapped)
+        log.info(f"Remapped station_units: {remapped}")
 
     # Clear any existing logo (it's Glen Moore's)
-    cur.execute("""
-        DELETE FROM settings WHERE category = 'branding' AND key = 'logo'
-    """)
-    cur.execute("""
-        DELETE FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'
-    """)
+    cur.execute("DELETE FROM settings WHERE category = 'branding' AND key = 'logo'")
+    cur.execute("DELETE FROM settings WHERE category = 'branding' AND key = 'logo_mime_type'")
+
+    # Catch-all: scrub any remaining settings containing source identifiers
+    for pattern in ['%Glen Moore%', '%GMFC%', '%glenmoore%', '%Glenmoore%']:
+        cur.execute("""
+            UPDATE settings SET value = 'Brookfield Fire Company'
+            WHERE value ILIKE %s
+            AND NOT (category = 'station' AND key IN ('name', 'short_name', 'tagline', 'address'))
+        """, (pattern,))
 
     conn.commit()
-    log.info("Branding updated to Brookfield Fire Company, Station 99")
+    log.info("Branding and settings updated")
 
 
 # ---------------------------------------------------------------------------
