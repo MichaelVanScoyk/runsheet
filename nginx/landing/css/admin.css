@@ -2,7 +2,7 @@
 
 .admin-container {
     min-height: 100vh;
-    background: var(--bg-secondary);
+    background: #e2e8f0;
 }
 
 .admin-header {
@@ -50,8 +50,8 @@
     display: flex;
     gap: 2rem;
     padding: 1.5rem 2rem;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-color);
+    background: #ffffff;
+    border-bottom: 1px solid #cbd5e1;
 }
 
 .admin-stat {
@@ -119,10 +119,11 @@
 }
 
 .admin-section {
-    background: var(--bg-primary);
+    background: #ffffff;
     border-radius: 12px;
     padding: 1.5rem;
-    border: 1px solid var(--border-color);
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .admin-section-header {
@@ -142,9 +143,10 @@
     max-width: 700px;
     margin: 2rem auto;
     padding: 2rem;
-    background: var(--bg-primary);
+    background: #ffffff;
     border-radius: 12px;
-    border: 1px solid var(--border-color);
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .admin-form-container h2 {
@@ -338,10 +340,10 @@
 }
 
 .data-table th {
-    color: var(--text-secondary);
-    font-weight: 500;
+    color: #1e293b;
+    font-weight: 600;
     font-size: 0.85rem;
-    background: var(--bg-secondary);
+    background: #cbd5e1;
 }
 
 .data-table td {
