@@ -19,6 +19,17 @@
     --text-light: #94a3b8;
     --border: #e2e8f0;
     --green: #16a34a;
+    
+    /* Admin page variables */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --bg-tertiary: #f1f5f9;
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --text-muted: #94a3b8;
+    --border-color: #e2e8f0;
+    --accent-green: #16a34a;
+    --accent-orange: #dd6b20;
 }
 
 body {
