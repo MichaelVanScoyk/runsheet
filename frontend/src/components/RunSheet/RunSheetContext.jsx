@@ -607,23 +607,11 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
   const generateUnitsCalled = () => {
     if (!formData.cad_units || formData.cad_units.length === 0) return '';
     
-    const stationUnits = formData.cad_units
-      .filter(u => !u.is_mutual_aid)
-      .map(u => u.unit_id);
+    // Our units first, then mutual aid
+    const ours = formData.cad_units.filter(u => !u.is_mutual_aid).map(u => u.unit_id);
+    const ma = formData.cad_units.filter(u => u.is_mutual_aid).map(u => u.unit_id);
     
-    const mutualAidUnits = formData.cad_units
-      .filter(u => u.is_mutual_aid)
-      .map(u => u.unit_id);
-    
-    let result = '';
-    if (stationUnits.length > 0) {
-      result += `Station 48: ${stationUnits.join(', ')}`;
-    }
-    if (mutualAidUnits.length > 0) {
-      if (result) result += ' | ';
-      result += `Mutual Aid: ${mutualAidUnits.join(', ')}`;
-    }
-    return result;
+    return [...ours, ...ma].join(', ');
   };
 
   const populateUnitsCalled = () => {

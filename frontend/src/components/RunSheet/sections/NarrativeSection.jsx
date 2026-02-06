@@ -51,7 +51,7 @@ export default function NarrativeSection() {
             type="text" 
             value={formData.companies_called} 
             onChange={(e) => handleChange('companies_called', e.target.value)}
-            placeholder="Station 48: ENG481, CHF48 | Mutual Aid: AMB891"
+
             className="flex-1"
           />
         </div>
