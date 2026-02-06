@@ -95,7 +95,7 @@ export default function CADUnitsTable() {
           if (!aVal && !bVal) return 0;
           break;
         case 'type':
-          // Sort by mutual aid status (Station 48 first, then Mutual Aid)
+          // Sort by mutual aid status (station units first, then Mutual Aid)
           aVal = a.is_mutual_aid ? 1 : 0;
           bVal = b.is_mutual_aid ? 1 : 0;
           break;

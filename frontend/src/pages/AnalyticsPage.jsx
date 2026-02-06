@@ -24,6 +24,7 @@ import {
 
 import api from '../api';
 import PersonnelStatsSection from '../components/PersonnelStatsSection';
+import { useBranding } from '../contexts/BrandingContext';
 
 // =============================================================================
 // DATE HELPERS
@@ -75,6 +76,7 @@ const getPeriodLabel = (selectedDays) => {
 // =============================================================================
 
 const AnalyticsPage = ({ userSession }) => {
+  const branding = useBranding();
   const [dateRange, setDateRange] = useState(getDateRange('ytd'));
   const [selectedDays, setSelectedDays] = useState('ytd');
   const [category, setCategory] = useState('FIRE');
@@ -539,6 +541,7 @@ const TrendIndicator = ({ value, positiveIsGood = false, suffix = '' }) => {
 // =============================================================================
 
 const ResponseByTypeSection = ({ data, trends }) => {
+  const branding = useBranding();
   if (!data?.data?.length) {
     return <p className="text-gray-500 text-center py-4">No data available</p>;
   }
@@ -550,7 +553,7 @@ const ResponseByTypeSection = ({ data, trends }) => {
       {/* Incident Counts Context */}
       {counts && (
         <p className="text-sm text-gray-600">
-          {counts.total_dispatched} incidents dispatched, Station 48 responded to {counts.station_responded}
+          {counts.total_dispatched} incidents dispatched, Station {branding.stationNumber} responded to {counts.station_responded}
         </p>
       )}
       
@@ -609,6 +612,7 @@ const ResponseByTypeSection = ({ data, trends }) => {
 // =============================================================================
 
 const TurnoutVsCrewSection = ({ data }) => {
+  const branding = useBranding();
   if (!data?.data?.length) {
     return <p className="text-gray-500 text-center py-4">No data available</p>;
   }
@@ -639,7 +643,7 @@ const TurnoutVsCrewSection = ({ data }) => {
       {/* Incident Counts Context */}
       {counts && (
         <p className="text-sm text-gray-600">
-          {counts.total_dispatched} incidents dispatched, Station 48 responded to {counts.station_responded}
+          {counts.total_dispatched} incidents dispatched, Station {branding.stationNumber} responded to {counts.station_responded}
         </p>
       )}
       
