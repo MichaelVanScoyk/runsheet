@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useRunSheet } from '../RunSheetContext';
+import { useBranding } from '../../../contexts/BrandingContext';
 import { formatTimeLocal } from '../../../utils/timeUtils';
 
 // Sort indicator component
@@ -18,6 +19,7 @@ function SortIndicator({ active, direction }) {
 
 export default function CADUnitsTable() {
   const { formData } = useRunSheet();
+  const branding = useBranding();
   const [sortConfig, setSortConfig] = useState({ field: null, direction: 'asc' });
   
   if (!formData.cad_units || formData.cad_units.length === 0) return null;
@@ -189,7 +191,7 @@ export default function CADUnitsTable() {
                   <td className={`px-2 py-1.5 border-b border-theme ${isFirstEnroute ? highlightClass : 'text-theme-muted'}`}>{formatTime(unit.time_enroute)}</td>
                   <td className={`px-2 py-1.5 border-b border-theme ${isFirstArrived ? highlightClass : 'text-theme-muted'}`}>{formatTime(unit.time_arrived)}</td>
                   <td className={`px-2 py-1.5 border-b border-theme ${isLastCleared ? highlightClass : 'text-theme-muted'}`}>{formatTime(unit.time_cleared)}</td>
-                  <td className="px-2 py-1.5 border-b border-theme text-theme-muted">{unit.is_mutual_aid ? 'Mutual Aid' : 'Station 48'}</td>
+                  <td className="px-2 py-1.5 border-b border-theme text-theme-muted">{unit.is_mutual_aid ? 'Mutual Aid' : `Station ${branding.stationNumber || ''}`}</td>
                 </tr>
               );
             })}
