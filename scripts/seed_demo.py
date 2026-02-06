@@ -19,11 +19,12 @@ What it does:
     3. Anonymizes all personnel (fake names, clear auth tokens)
     4. Renames apparatus from Station 48 -> Station 99
     5. Anonymizes incident addresses, caller info, narratives
-    6. Renames municipalities to fictional ones
-    7. Updates branding to "Brookfield Fire Company, Station 99"
-    8. Shifts all dates so most recent incident = yesterday
-    9. Creates testuser/demo123 admin account
-   10. Sets tenant password to demo123
+    6. Randomizes mutual aid unit IDs
+    7. Renames municipalities to fictional ones
+    8. Updates branding to "Brookfield Fire Company, Station 99"
+    9. Shifts all dates so most recent incident = yesterday
+   10. Creates testuser/demo123 admin account
+   11. Sets tenant password to demo123
 
 Credentials:
     - Tenant login: demo / demo123
@@ -33,6 +34,7 @@ Credentials:
 import subprocess
 import os
 import sys
+import re
 import random
 import hashlib
 import secrets
@@ -222,6 +224,54 @@ def remap_unit_id(unit_id):
     if not unit_id:
         return unit_id
     return unit_id.replace(SOURCE_STATION, DEMO_STATION)
+
+
+def build_ma_unit_map(conn):
+    """
+    Collect all unique mutual aid unit IDs from cad_units JSONB,
+    then generate a consistent fake ID for each.
+    Preserves letter prefix, randomizes digits.
+    e.g. AMB891 -> AMB263, NO244BLS -> NO738BLS, MED871 -> MED429
+    """
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT unit_obj->>'unit_id' AS uid
+        FROM incidents, jsonb_array_elements(cad_units) AS unit_obj
+        WHERE (unit_obj->>'is_mutual_aid')::boolean = true
+          AND unit_obj->>'unit_id' IS NOT NULL
+    """)
+    real_ids = sorted(set(r[0] for r in cur.fetchall()))
+    cur.close()
+
+    ma_map = {}
+    used = set()
+    for rid in real_ids:
+        # Match pattern: optional prefix letters, digits, optional suffix letters
+        # e.g. AMB891 -> prefix=AMB digits=891 suffix=
+        #      NO244BLS -> prefix=NO digits=244 suffix=BLS
+        #      48QRS -> prefix= digits=48 suffix=QRS (but this is a station unit)
+        m = re.match(r'^([A-Za-z]*)(\d+)([A-Za-z]*)$', rid)
+        if m:
+            prefix, digits, suffix = m.group(1), m.group(2), m.group(3)
+            for _ in range(200):
+                lo = 10 ** (len(digits) - 1)
+                hi = 10 ** len(digits) - 1
+                fake_num = str(random.randint(lo, hi))
+                candidate = f"{prefix}{fake_num}{suffix}"
+                if candidate not in used and candidate != rid:
+                    used.add(candidate)
+                    ma_map[rid] = candidate
+                    break
+            else:
+                ma_map[rid] = f"{prefix}X{digits}{suffix}"
+        else:
+            # No clear pattern - randomize all digits in place
+            fake = re.sub(r'\d', lambda x: str(random.randint(0, 9)), rid)
+            if fake == rid:
+                fake = rid + "X"
+            ma_map[rid] = fake
+
+    return ma_map
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +471,7 @@ def remap_apparatus(conn):
             WHERE id = %s
         """, (new_designator, new_name, new_cad_id, new_aliases, row["id"]))
 
-    # Also update cad_unit_id in incident_units
+    # Also update cad_unit_id in incident_units (station units only here)
     cur.execute("SELECT id, cad_unit_id FROM incident_units")
     for row in cur.fetchall():
         new_cad = remap_unit_id(row["cad_unit_id"])
@@ -436,8 +486,8 @@ def remap_apparatus(conn):
 # Step 5: Anonymize incidents
 # ---------------------------------------------------------------------------
 
-def anonymize_incidents(conn):
-    """Anonymize addresses, caller info, narratives, and shift dates."""
+def anonymize_incidents(conn, ma_map):
+    """Anonymize addresses, caller info, narratives, shift dates, and remap unit IDs."""
     log.info("Anonymizing incidents...")
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -566,7 +616,7 @@ def anonymize_incidents(conn):
             WHERE created_at IS NOT NULL
         """)
 
-    # Remap cad_units JSONB (array of unit objects with unit_id field)
+    # Remap cad_units JSONB: station units (48->99) AND mutual aid units (randomized)
     cur.execute("SELECT id, cad_units FROM incidents WHERE cad_units IS NOT NULL AND cad_units != '[]'::jsonb")
     for row in cur.fetchall():
         units = row["cad_units"]
@@ -577,19 +627,42 @@ def anonymize_incidents(conn):
             for u in units:
                 if isinstance(u, dict) and "unit_id" in u:
                     old = u["unit_id"]
-                    new = remap_unit_id(old)
+                    if u.get("is_mutual_aid"):
+                        # Use MA mapping
+                        new = ma_map.get(old, old)
+                    else:
+                        # Station unit: 48 -> 99
+                        new = remap_unit_id(old)
                     if old != new:
                         u["unit_id"] = new
                         changed = True
+                    # Also remap station field if present
+                    if "station" in u and u["station"]:
+                        old_station = str(u["station"])
+                        new_station = old_station.replace(SOURCE_STATION, DEMO_STATION)
+                        if old_station != new_station:
+                            u["station"] = new_station
+                            changed = True
             if changed:
                 cur.execute("UPDATE incidents SET cad_units = %s WHERE id = %s",
                             (json.dumps(units), row["id"]))
+
+    # Remap mutual aid unit IDs in incident_units table
+    if ma_map:
+        log.info(f"Remapping {len(ma_map)} mutual aid unit IDs in incident_units...")
+        for real_id, fake_id in ma_map.items():
+            cur.execute("""
+                UPDATE incident_units SET cad_unit_id = %s
+                WHERE cad_unit_id = %s
+            """, (fake_id, real_id))
 
     # Clear cad_event_comments (may contain real names/addresses in parsed comments)
     cur.execute("UPDATE incidents SET cad_event_comments = '{}'::jsonb")
 
     conn.commit()
     log.info(f"Anonymized {len(incident_ids)} incidents (date shift: {date_shift} days)")
+    if ma_map:
+        log.info(f"Mutual aid unit mapping: {ma_map}")
 
 
 # ---------------------------------------------------------------------------
@@ -785,7 +858,9 @@ def main():
         try:
             anonymize_personnel(conn)
             remap_apparatus(conn)
-            anonymize_incidents(conn)
+            # Build MA unit map BEFORE anonymizing incidents (needs original IDs)
+            ma_map = build_ma_unit_map(conn)
+            anonymize_incidents(conn, ma_map)
             anonymize_municipalities(conn)
             update_branding(conn)
             create_test_user(conn)
