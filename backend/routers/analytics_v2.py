@@ -2,7 +2,7 @@
 Analytics V2 - Response Time Deep Dive & Staffing Patterns
 Replaces the original analytics dashboard with focused metrics.
 
-IMPORTANT: Most metrics filter to incidents where Station 48 units actually
+IMPORTANT: Most metrics filter to incidents where station units actually
 responded (went enroute), not just all dispatched incidents.
 
 All endpoints filter by category (FIRE or EMS) - no combined views.
@@ -20,10 +20,10 @@ router = APIRouter(prefix="/api/analytics/v2", tags=["analytics-v2"])
 
 
 # =============================================================================
-# HELPER: Station 48 responded filter
+# HELPER: Station responded filter (non-mutual-aid units that went enroute)
 # =============================================================================
 
-STATION_48_RESPONDED_FILTER = """
+STATION_RESPONDED_FILTER = """
     EXISTS (
         SELECT 1 FROM jsonb_array_elements(i.cad_units) AS unit_elem
         WHERE unit_elem->>'time_enroute' IS NOT NULL
@@ -33,7 +33,7 @@ STATION_48_RESPONDED_FILTER = """
 
 
 def get_incident_counts(db: Session, start_date: date, end_date: date, prefix: str):
-    """Get both total dispatched and Station 48 responded counts."""
+    """Get both total dispatched and station responded counts."""
     result = db.execute(text("""
         SELECT 
             COUNT(*) as total_dispatched,
@@ -74,7 +74,7 @@ def get_response_times_by_call_type(
     For FIRE: uses cad_event_type (ALARM, FIRE, ACCIDENT, etc.)
     For EMS: uses cad_event_subtype (RESPIRATORY DIFFICULTY, SEIZURES, etc.)
     
-    Only includes incidents where at least one Station 48 unit (non-mutual-aid)
+    Only includes incidents where at least one station unit (non-mutual-aid)
     actually went enroute.
     """
     prefix = 'F' if category.upper() == 'FIRE' else 'E'
@@ -107,7 +107,7 @@ def get_response_times_by_call_type(
             AND i.deleted_at IS NULL
             AND i.internal_incident_number LIKE :prefix || '%'
             AND i.time_dispatched IS NOT NULL
-            AND {STATION_48_RESPONDED_FILTER}
+            AND {STATION_RESPONDED_FILTER}
         GROUP BY i.{type_field}
         ORDER BY COUNT(*) DESC
     """), {
@@ -142,7 +142,7 @@ def get_response_time_trends(
 ):
     """
     Response time trends for 30/60/90 days.
-    Only includes incidents where Station 48 responded.
+    Only includes incidents where station units responded.
     """
     prefix = 'F' if category.upper() == 'FIRE' else 'E'
     today = date.today()
@@ -178,7 +178,7 @@ def get_response_time_trends(
                 AND i.deleted_at IS NULL
                 AND i.internal_incident_number LIKE :prefix || '%'
                 AND i.time_dispatched IS NOT NULL
-                AND {STATION_48_RESPONDED_FILTER}
+                AND {STATION_RESPONDED_FILTER}
         """), {
             'start_date': start,
             'end_date': today,
@@ -237,7 +237,7 @@ def get_turnout_vs_crew_size(
     counts = get_incident_counts(db, start_date, end_date, prefix)
     
     # Get first-out unit turnout time and crew count
-    # Only consider units where counts_for_response_times = true (excludes CHF48, ASST48, DEP48, etc.)
+    # Only consider units where counts_for_response_times = true (excludes chief, assistant, deputy, etc.)
     result = db.execute(text(f"""
         WITH first_unit AS (
             SELECT 
@@ -488,7 +488,7 @@ def get_best_performance_times(
 ):
     """
     When do we perform best? Fastest turnout by day of week and hour.
-    Only includes incidents where Station 48 responded.
+    Only includes incidents where station units responded.
     """
     prefix = 'F' if category.upper() == 'FIRE' else 'E'
     prefix_filter = f"AND i.internal_incident_number LIKE '{prefix}%'"
@@ -522,7 +522,7 @@ def get_best_performance_times(
             AND i.deleted_at IS NULL
             AND i.time_dispatched IS NOT NULL
             AND i.time_first_enroute IS NOT NULL
-            AND {STATION_48_RESPONDED_FILTER}
+            AND {STATION_RESPONDED_FILTER}
             {prefix_filter}
         GROUP BY EXTRACT(dow FROM i.incident_date)
         ORDER BY EXTRACT(dow FROM i.incident_date)
@@ -545,7 +545,7 @@ def get_best_performance_times(
             AND i.deleted_at IS NULL
             AND i.time_dispatched IS NOT NULL
             AND i.time_first_enroute IS NOT NULL
-            AND {STATION_48_RESPONDED_FILTER}
+            AND {STATION_RESPONDED_FILTER}
             {prefix_filter}
         GROUP BY EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York')
         ORDER BY EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York')
@@ -603,7 +603,7 @@ def get_staffing_patterns(
 ):
     """
     Best staffed calls by day of week and hour.
-    Only includes incidents where Station 48 responded.
+    Only includes incidents where station units responded.
     Filtered by category.
     """
     prefix = 'F' if category.upper() == 'FIRE' else 'E'
@@ -636,7 +636,7 @@ def get_staffing_patterns(
         WHERE i.incident_date >= :start_date
             AND i.incident_date < :end_date
             AND i.deleted_at IS NULL
-            AND {STATION_48_RESPONDED_FILTER}
+            AND {STATION_RESPONDED_FILTER}
             {prefix_filter}
         GROUP BY EXTRACT(dow FROM i.incident_date)
         ORDER BY EXTRACT(dow FROM i.incident_date)
@@ -658,7 +658,7 @@ def get_staffing_patterns(
             AND i.incident_date < :end_date
             AND i.deleted_at IS NULL
             AND i.time_dispatched IS NOT NULL
-            AND {STATION_48_RESPONDED_FILTER}
+            AND {STATION_RESPONDED_FILTER}
             {prefix_filter}
         GROUP BY EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York')
         ORDER BY EXTRACT(hour FROM i.time_dispatched AT TIME ZONE 'America/New_York')
@@ -713,7 +713,7 @@ def get_this_week_last_year(
 ):
     """
     Compare this week (Sunday-Saturday) to the same date range last year.
-    Only includes incidents where Station 48 responded.
+    Only includes incidents where station units responded.
     Filtered by category.
     
     Note: Last year uses the same DATE range (not same weekdays) for 
@@ -751,7 +751,7 @@ def get_this_week_last_year(
                 AND i.incident_date < :end_date
                 AND i.deleted_at IS NULL
                 AND i.internal_incident_number LIKE :prefix || '%'
-                AND {STATION_48_RESPONDED_FILTER}
+                AND {STATION_RESPONDED_FILTER}
         """), {'start_date': start, 'end_date': end, 'prefix': prefix}).fetchone()
         
         # Get top call types for this category
@@ -765,7 +765,7 @@ def get_this_week_last_year(
                 AND i.incident_date < :end_date
                 AND i.deleted_at IS NULL
                 AND i.internal_incident_number LIKE :prefix || '%'
-                AND {STATION_48_RESPONDED_FILTER}
+                AND {STATION_RESPONDED_FILTER}
             GROUP BY {type_field}
             ORDER BY COUNT(*) DESC
             LIMIT 5
@@ -849,7 +849,7 @@ def get_analytics_summary(
             AND i.incident_date < :end_date
             AND i.deleted_at IS NULL
             AND i.internal_incident_number LIKE :prefix || '%'
-            AND {STATION_48_RESPONDED_FILTER}
+            AND {STATION_RESPONDED_FILTER}
     """), {'start_date': start_date, 'end_date': today, 'prefix': prefix}).fetchone()
     
     return {
