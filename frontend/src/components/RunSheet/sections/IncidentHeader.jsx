@@ -1,7 +1,9 @@
 import { useRunSheet } from '../RunSheetContext';
+import { useBranding } from '../../../contexts/BrandingContext';
 
 export default function IncidentHeader() {
   const { incident, formData, formatTimestamp, auditLog } = useRunSheet();
+  const branding = useBranding();
   
   // Get the most recent update time - either from formData or audit log
   const getLatestUpdate = () => {
@@ -19,7 +21,7 @@ export default function IncidentHeader() {
     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3 pb-3 border-b-2 border-accent-red">
       <div className="flex items-center gap-3">
         <div>
-          <h2 className="text-accent-red text-lg font-semibold m-0">Glen Moore Fire Company — Station 48</h2>
+          <h2 className="text-accent-red text-lg font-semibold m-0">{branding.stationName}{branding.stationNumber ? ` — Station ${branding.stationNumber}` : ''}</h2>
           <h3 className="text-gray-400 text-sm font-normal m-0">Incident Report</h3>
         </div>
         {incident && (

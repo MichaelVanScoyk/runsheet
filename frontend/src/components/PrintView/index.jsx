@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getIncident, getApparatus, getPersonnel, getPrintSettings } from '../../api';
 import { formatTimeLocal } from '../../utils/timeUtils';
+import { useBranding } from '../../contexts/BrandingContext';
 import './PrintView.css';
 
 const DEFAULT_PRINT_SETTINGS = {
@@ -24,6 +25,7 @@ const DEFAULT_PRINT_SETTINGS = {
 };
 
 export default function PrintView({ incidentId, onClose }) {
+  const branding = useBranding();
   const [incident, setIncident] = useState(null);
   const [apparatus, setApparatus] = useState([]);
   const [personnel, setPersonnel] = useState([]);
@@ -180,7 +182,7 @@ export default function PrintView({ incidentId, onClose }) {
       <div className="print-content">
         {printSettings.showHeader && (
           <div className="print-header">
-            <h1>Glen Moore Fire Company — Station 48</h1>
+            <h1>{branding.stationName}{branding.stationNumber ? ` — Station ${branding.stationNumber}` : ''}</h1>
             <h2>Incident Report</h2>
           </div>
         )}
