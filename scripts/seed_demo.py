@@ -277,6 +277,17 @@ def ensure_demo_tenant():
 def clone_database():
     """Drop demo DB, dump source, restore into fresh demo DB."""
     log.info(f"Dropping {DEMO_DB} if exists...")
+    # Terminate active connections first (backend may be connected)
+    conn = db_connect("postgres")
+    conn.autocommit = True
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT pg_terminate_backend(pid)
+        FROM pg_stat_activity
+        WHERE datname = '{DEMO_DB}' AND pid <> pg_backend_pid()
+    """)
+    cur.close()
+    conn.close()
     run_pg([DROPDB, "-U", DB_USER, "-h", DB_HOST, "--if-exists", DEMO_DB], check=False)
 
     log.info(f"Creating {DEMO_DB}...")
