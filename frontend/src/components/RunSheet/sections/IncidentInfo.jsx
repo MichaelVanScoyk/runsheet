@@ -35,7 +35,7 @@ export default function IncidentInfo() {
   return (
     <div className="flex flex-col gap-2">
       {/* Row 1: Internal #, Category, CAD # */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2" data-help-id="incident_identifiers">
         <div className="flex flex-col gap-0.5">
           <label className="text-gray-400 text-xs flex items-center gap-1">
             Internal #
@@ -55,6 +55,7 @@ export default function IncidentInfo() {
             )}
           </label>
           <input 
+            data-help-id="internal_incident_number"
             type="text" 
             value={formData.internal_incident_number} 
             onChange={(e) => handleChange('internal_incident_number', e.target.value)} 
@@ -71,6 +72,7 @@ export default function IncidentInfo() {
             )}
           </label>
           <select
+            data-help-id="call_category"
             value={formData.call_category}
             onChange={(e) => handleCategoryChange(e.target.value)}
             disabled={categoryChanging}
@@ -101,6 +103,7 @@ export default function IncidentInfo() {
             )}
           </label>
           <input 
+            data-help-id="cad_event_number"
             type="text" 
             value={formData.cad_event_number} 
             onChange={(e) => handleChange('cad_event_number', e.target.value)} 
@@ -120,7 +123,7 @@ export default function IncidentInfo() {
       )}
       
       {/* Incident Date */}
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5" data-help-id="incident_date">
         <label className="text-gray-400 text-xs flex items-center gap-1">
           Incident Date
           {isLocked && (
@@ -148,7 +151,7 @@ export default function IncidentInfo() {
       </div>
       
       {/* CAD Type */}
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5" data-help-id="cad_event_type">
         <label className="text-gray-400 text-xs">CAD Type</label>
         <input 
           type="text" 
@@ -158,7 +161,7 @@ export default function IncidentInfo() {
       </div>
       
       {/* CAD Subtype */}
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5" data-help-id="cad_event_subtype">
         <label className="text-gray-400 text-xs">CAD Subtype</label>
         <input 
           type="text" 
@@ -168,7 +171,7 @@ export default function IncidentInfo() {
       </div>
       
       {/* Address */}
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5" data-help-id="address">
         <label className="text-gray-400 text-xs">Address</label>
         <input 
           type="text" 
@@ -179,7 +182,7 @@ export default function IncidentInfo() {
       
       {/* Municipality + ESZ */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5" data-help-id="municipality">
           <label className="text-gray-400 text-xs">Municipality</label>
           <select 
             value={formData.municipality_code} 
@@ -193,7 +196,7 @@ export default function IncidentInfo() {
             ))}
           </select>
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5" data-help-id="esz_box">
           <label className="text-gray-400 text-xs">ESZ</label>
           <input 
             type="text" 
@@ -204,7 +207,7 @@ export default function IncidentInfo() {
       </div>
       
       {/* Cross Streets */}
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5" data-help-id="cross_streets">
         <label className="text-gray-400 text-xs">Cross Streets</label>
         <input 
           type="text" 

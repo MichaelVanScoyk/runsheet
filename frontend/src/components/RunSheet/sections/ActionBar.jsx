@@ -250,7 +250,7 @@ export default function ActionBar() {
   };
   
   return (
-    <div className="bg-dark-hover rounded px-3 py-2 mb-2 flex items-center justify-between gap-3 flex-wrap">
+    <div className="bg-dark-hover rounded px-3 py-2 mb-2 flex items-center justify-between gap-3 flex-wrap" data-help-id="action_bar">
       {/* Left side - Back link and navigation */}
       <div className="flex items-center gap-3">
         {onClose && (

@@ -74,9 +74,9 @@ export default function TimeFields() {
   const timeInService = calculateDuration(formData.time_dispatched, formData.time_last_cleared);
   
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5" data-help-id="time_fields">
       {FIELD_KEYS.map(key => (
-        <div key={key} className="flex items-center gap-2">
+        <div key={key} className="flex items-center gap-2" data-help-id={`time_${key}`}>
           <label className="text-gray-400 text-xs w-20 text-right shrink-0">
             {FIELD_LABELS[key]}
           </label>

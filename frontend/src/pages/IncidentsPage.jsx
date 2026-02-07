@@ -612,11 +612,12 @@ function IncidentsPage({ userSession }) {
         />
       )}
 
-      <div className="page-header">
+      <div className="page-header" data-help-id="incidents_header">
         <h2>{branding.stationShortName || branding.stationName || 'Incidents'} — Incidents - {year}</h2>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           {activeCount > 0 && (
             <button
+              data-help-id="active_incidents_button"
               className="btn btn-sm"
               style={{ backgroundColor: '#22c55e', color: '#fff', animation: 'pulse 2s infinite' }}
               onClick={() => {
@@ -641,6 +642,7 @@ function IncidentsPage({ userSession }) {
               backgroundColor: wsConnected ? 'rgba(34, 197, 94, 0.1)' : 'rgba(245, 158, 11, 0.1)',
             }}
             title={wsConnected ? 'Real-time updates active' : 'Reconnecting... (using fallback polling)'}
+            data-help-id="websocket_status"
           >
             <span style={{ 
               width: '8px', 
@@ -653,7 +655,7 @@ function IncidentsPage({ userSession }) {
           </span>
           
           {/* New Record dropdown */}
-          <div style={{ position: 'relative' }} ref={newRecordMenuRef}>
+          <div style={{ position: 'relative' }} ref={newRecordMenuRef} data-help-id="new_record_menu">
             <button 
               className="btn btn-primary" 
               onClick={handleNewRecordClick}
@@ -751,14 +753,14 @@ function IncidentsPage({ userSession }) {
         </div>
       </div>
 
-      <div className="filter-bar" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="filter-bar" data-help-id="filter_bar" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <select value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
           {availableYears.map(y => (
             <option key={y} value={y}>{y}</option>
           ))}
         </select>
         
-        <div style={{ display: 'flex', gap: '0.25rem' }}>
+        <div style={{ display: 'flex', gap: '0.25rem' }} data-help-id="category_filters">
           <button className={`btn btn-sm ${categoryFilter === 'ALL' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('ALL')} style={{ minWidth: '60px' }}>Fire/EMS</button>
           <button className={`btn btn-sm ${categoryFilter === 'FIRE' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('FIRE')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined, borderColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined }}>Fire</button>
           <button className={`btn btn-sm ${categoryFilter === 'EMS' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('EMS')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'EMS' ? '#3498db' : undefined, borderColor: categoryFilter === 'EMS' ? '#3498db' : undefined }}>EMS</button>
@@ -773,7 +775,7 @@ function IncidentsPage({ userSession }) {
       {loading ? (
         <div className="loading">Loading...</div>
       ) : (
-        <div className="table-container">
+        <div className="table-container" data-help-id="incidents_table">
           <table>
             <thead>
               <tr>

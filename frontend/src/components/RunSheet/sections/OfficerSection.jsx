@@ -5,9 +5,9 @@ export default function OfficerSection() {
   const { formData, handleChange, personnel } = useRunSheet();
   
   return (
-    <div className="pt-3 border-t border-dark-border">
+    <div className="pt-3 border-t border-dark-border" data-help-id="officer_section">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5" data-help-id="officer_in_charge">
           <label className="text-gray-400 text-xs">Officer in Charge</label>
           <PersonnelSelect
             value={formData.officer_in_charge || ''}
@@ -18,7 +18,7 @@ export default function OfficerSection() {
             placeholder="Select officer..."
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5" data-help-id="completed_by">
           <label className="text-gray-400 text-xs">Originally Completed By</label>
           <PersonnelSelect
             value={formData.completed_by || ''}

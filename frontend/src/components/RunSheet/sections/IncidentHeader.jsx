@@ -18,7 +18,7 @@ export default function IncidentHeader() {
   };
   
   return (
-    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3 pb-3 border-b-2 border-accent-red">
+    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3 pb-3 border-b-2 border-accent-red" data-help-id="incident_header">
       <div className="flex items-center gap-3">
         <div>
           <h2 className="text-accent-red text-lg font-semibold m-0">{branding.stationName}{branding.stationNumber ? ` — Station ${branding.stationNumber}` : ''}</h2>

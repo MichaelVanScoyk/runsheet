@@ -34,7 +34,7 @@ export default function NarrativeSection() {
   return (
     <div className="flex flex-col gap-2">
       {/* Units Called - per doc: Auto button small, LEFT side */}
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5" data-help-id="units_called">
         <label className="text-gray-400 text-xs">Units Called</label>
         <div className="flex gap-2 items-center">
           {hasCadUnits && (
@@ -58,8 +58,8 @@ export default function NarrativeSection() {
       </div>
       
       {/* Narrative fields with shaded background */}
-      <div className="flex flex-col gap-2 p-3 rounded" style={{ backgroundColor: '#ebebeb' }}>
-        <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-2 p-3 rounded" style={{ backgroundColor: '#ebebeb' }} data-help-id="narrative_block">
+        <div className="flex flex-col gap-0.5" data-help-id="situation_found">
           <label className="text-gray-400 text-xs">Situation Found</label>
           <AutoTextarea 
             value={formData.situation_found} 
@@ -67,7 +67,7 @@ export default function NarrativeSection() {
           />
         </div>
         
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5" data-help-id="extent_of_damage">
           <label className="text-gray-400 text-xs">Damage</label>
           <AutoTextarea 
             value={formData.extent_of_damage} 
@@ -75,7 +75,7 @@ export default function NarrativeSection() {
           />
         </div>
         
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5" data-help-id="services_provided">
           <label className="text-gray-400 text-xs">Services</label>
           <AutoTextarea 
             value={formData.services_provided} 
@@ -83,7 +83,7 @@ export default function NarrativeSection() {
           />
         </div>
         
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5" data-help-id="narrative">
           <label className="text-gray-400 text-xs">Narrative</label>
           <AutoTextarea 
             value={formData.narrative} 
@@ -92,7 +92,7 @@ export default function NarrativeSection() {
           />
         </div>
         
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5" data-help-id="problems_issues">
           <label className="text-gray-400 text-xs">Problems</label>
           <AutoTextarea 
             value={formData.problems_issues} 
@@ -100,7 +100,7 @@ export default function NarrativeSection() {
           />
         </div>
         
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5" data-help-id="equipment_used">
           <label className="text-gray-400 text-xs">Equipment Used</label>
           <AutoTextarea 
             value={formData.equipment_used || ''} 

@@ -121,7 +121,7 @@ export default function CADUnitsTable() {
   ];
   
   return (
-    <div className="pt-3 border-t border-theme">
+    <div className="pt-3 border-t border-theme" data-help-id="cad_units_table">
       <div className="flex items-center justify-between mb-2">
         <h4 className="text-accent-red text-sm font-semibold">
           CAD Units ({formData.cad_units.length})

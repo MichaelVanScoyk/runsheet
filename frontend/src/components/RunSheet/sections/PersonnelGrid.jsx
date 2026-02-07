@@ -66,7 +66,7 @@ export default function PersonnelGrid() {
   };
   
   return (
-    <div className="pt-3 border-t border-theme">
+    <div className="pt-3 border-t border-theme" data-help-id="personnel_grid">
       <h4 className="text-accent-red text-sm font-semibold mb-2">Personnel Assignments</h4>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse" style={{ tableLayout: 'auto' }}>
