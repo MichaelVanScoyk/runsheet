@@ -808,9 +808,6 @@ def cleanup_misc(conn):
     # Clear review tasks (may reference real personnel by name)
     cur.execute("DELETE FROM review_tasks")
 
-    # Wipe audit log entirely - historical entries contain real PII
-    cur.execute("DELETE FROM audit_log")
-
     # Clear tenant_query_usage and saved_queries if they exist
     for table in ["tenant_query_usage", "saved_queries"]:
         try:
@@ -865,6 +862,14 @@ def main():
             update_branding(conn)
             create_test_user(conn)
             cleanup_misc(conn)
+
+            # Wipe audit log LAST - anonymization steps above trigger
+            # DB audit triggers that re-create entries with real data
+            cur = conn.cursor()
+            cur.execute("DELETE FROM audit_log")
+            conn.commit()
+            cur.close()
+            log.info("Wiped audit log (final step)")
         finally:
             conn.close()
 
