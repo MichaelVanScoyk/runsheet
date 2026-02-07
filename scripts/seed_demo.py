@@ -808,8 +808,8 @@ def cleanup_misc(conn):
     # Clear review tasks (may reference real personnel by name)
     cur.execute("DELETE FROM review_tasks")
 
-    # Clear audit log personnel names and historical changes (contains real PII)
-    cur.execute("UPDATE audit_log SET personnel_name = 'Demo User', changes = '{}'::jsonb")
+    # Wipe audit log entirely - historical entries contain real PII
+    cur.execute("DELETE FROM audit_log")
 
     # Clear tenant_query_usage and saved_queries if they exist
     for table in ["tenant_query_usage", "saved_queries"]:
