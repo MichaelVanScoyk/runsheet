@@ -7,15 +7,15 @@
    These are defaults - tenant branding overrides via JS
    ============================================ */
 :root {
-  /* Brand colors - overridden by BrandingContext */
-  --primary-color: #016a2b;
-  --primary-hover: #015a24;
-  --primary-light: #e6f4ea;
-  --secondary-color: #eeee01;
-  --secondary-hover: #d4d400;
-  --secondary-light: #fffde6;
-  --primary-rgb: 1, 106, 43;
-  --secondary-rgb: 238, 238, 1;
+  /* Brand colors - overridden by BrandingContext per tenant */
+  --primary-color: #1e3a5f;
+  --primary-hover: #162d4a;
+  --primary-light: #e8edf2;
+  --secondary-color: #6b7280;
+  --secondary-hover: #4b5563;
+  --secondary-light: #f3f4f6;
+  --primary-rgb: 30, 58, 95;
+  --secondary-rgb: 107, 114, 128;
   
   /* Semantic backgrounds */
   --bg-page: #e8e8e8;

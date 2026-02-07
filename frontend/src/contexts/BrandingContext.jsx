@@ -10,14 +10,14 @@ import { createContext, useContext, useState, useEffect } from 'react';
 const BrandingContext = createContext(null);
 
 const DEFAULT_BRANDING = {
-  stationName: 'Fire Department',
+  stationName: '',
   stationNumber: '',
   stationShortName: '',
   logoUrl: null,
-  primaryColor: '#016a2b',
-  secondaryColor: '#eeee01',
-  primaryHover: '#015a24',
-  primaryLight: '#e6f4ea',
+  primaryColor: '#1e3a5f',
+  secondaryColor: '#6b7280',
+  primaryHover: '#162d4a',
+  primaryLight: '#e8edf2',
   textColor: '#1a1a1a',
   mutedColor: '#666666',
 };
@@ -36,7 +36,7 @@ function applyBrandingToCSS(branding) {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result 
       ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
-      : '1, 107, 43';
+      : '30, 58, 95';
   };
   
   root.style.setProperty('--primary-rgb', hexToRgb(branding.primaryColor));
