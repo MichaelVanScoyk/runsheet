@@ -4,7 +4,6 @@ Help System Router - CRUD for contextual help topics
 Manages the help_texts table for in-app contextual help:
 - Per-page help entries with element targeting via data-help-id
 - Role-based visibility (MEMBER, OFFICER, ADMIN)
-- "What's New" flagging for feature updates
 - Tour mode via sort_order sequencing
 """
 
@@ -30,16 +29,12 @@ class HelpTextCreate(BaseModel):
     body: str
     sort_order: Optional[int] = 100
     min_role: Optional[str] = None
-    is_new: Optional[bool] = False
-    version_added: Optional[str] = None
 
 class HelpTextUpdate(BaseModel):
     title: Optional[str] = None
     body: Optional[str] = None
     sort_order: Optional[int] = None
     min_role: Optional[str] = None
-    is_new: Optional[bool] = None
-    version_added: Optional[str] = None
 
 
 # =============================================================================
@@ -67,7 +62,7 @@ async def get_help_for_page(
         result = db.execute(
             text("""
                 SELECT id, page_key, element_key, title, body, sort_order,
-                       min_role, is_new, version_added, created_by, updated_at
+                       min_role, created_by, updated_at
                 FROM help_texts
                 WHERE page_key = :page_key
                   AND (min_role IS NULL OR min_role IN :roles)
@@ -79,7 +74,7 @@ async def get_help_for_page(
         result = db.execute(
             text("""
                 SELECT id, page_key, element_key, title, body, sort_order,
-                       min_role, is_new, version_added, created_by, updated_at
+                       min_role, created_by, updated_at
                 FROM help_texts
                 WHERE page_key = :page_key
                 ORDER BY sort_order, id
@@ -94,7 +89,7 @@ async def get_all_help(db: Session = Depends(get_db)):
     """Get all help entries (for admin management)"""
     result = db.execute(text("""
         SELECT id, page_key, element_key, title, body, sort_order,
-               min_role, is_new, version_added, created_by, updated_at
+               min_role, created_by, updated_at
         FROM help_texts
         ORDER BY page_key, sort_order, id
     """))
@@ -119,17 +114,16 @@ async def create_help_text(
     result = db.execute(
         text("""
             INSERT INTO help_texts (page_key, element_key, title, body, sort_order,
-                                    min_role, is_new, version_added, created_by)
+                                    min_role, created_by)
             VALUES (:page_key, :element_key, :title, :body, :sort_order,
-                    :min_role, :is_new, :version_added, :created_by)
+                    :min_role, :created_by)
             RETURNING id
         """),
         {
             "page_key": data.page_key, "element_key": data.element_key,
             "title": data.title, "body": data.body,
             "sort_order": data.sort_order or 100,
-            "min_role": data.min_role, "is_new": data.is_new or False,
-            "version_added": data.version_added, "created_by": created_by,
+            "min_role": data.min_role, "created_by": created_by,
         }
     )
     db.commit()
@@ -150,10 +144,6 @@ async def update_help_text(help_id: int, data: HelpTextUpdate, db: Session = Dep
         updates.append("sort_order = :sort_order"); params["sort_order"] = data.sort_order
     if data.min_role is not None:
         updates.append("min_role = :min_role"); params["min_role"] = data.min_role if data.min_role != "" else None
-    if data.is_new is not None:
-        updates.append("is_new = :is_new"); params["is_new"] = data.is_new
-    if data.version_added is not None:
-        updates.append("version_added = :version_added"); params["version_added"] = data.version_added if data.version_added != "" else None
 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -201,7 +191,6 @@ def _row_to_dict(row) -> dict:
     return {
         "id": row[0], "page_key": row[1], "element_key": row[2],
         "title": row[3], "body": row[4], "sort_order": row[5],
-        "min_role": row[6], "is_new": row[7], "version_added": row[8],
-        "created_by": row[9],
-        "updated_at": row[10].isoformat() if row[10] else None,
+        "min_role": row[6], "created_by": row[7],
+        "updated_at": row[8].isoformat() if row[8] else None,
     }
