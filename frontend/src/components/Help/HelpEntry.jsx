@@ -44,7 +44,6 @@ export default function HelpEntry({ entry, onEdit, onDelete }) {
           <span style={{ background: roleColors[entry.min_role] || '#6b7280', color: '#fff', fontSize: '0.6rem', fontWeight: 600, padding: '1px 5px', borderRadius: '3px' }}>{entry.min_role}</span>
         )}
       </div>
-      <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: '0.5rem' }}>{entry.element_key}</div>
       <div style={{ fontSize: '0.85rem', color: '#555', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{entry.body}</div>
       {entry.version_added && (
         <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.5rem' }}>Added in v{entry.version_added}</div>
