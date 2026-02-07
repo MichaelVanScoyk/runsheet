@@ -863,13 +863,32 @@ def main():
             create_test_user(conn)
             cleanup_misc(conn)
 
-            # Wipe audit log LAST - anonymization steps above trigger
-            # DB audit triggers that re-create entries with real data
+            # Drop and recreate audit log LAST - anonymization steps above
+            # trigger DB audit triggers that re-create entries with real data.
+            # DROP/CREATE ensures correct schema and zero real data.
             cur = conn.cursor()
-            cur.execute("DELETE FROM audit_log")
+            cur.execute("""
+                DROP TABLE IF EXISTS audit_log;
+                CREATE TABLE audit_log (
+                    id SERIAL PRIMARY KEY,
+                    personnel_id INTEGER REFERENCES personnel(id) ON DELETE SET NULL,
+                    personnel_name VARCHAR(100),
+                    action VARCHAR(50) NOT NULL,
+                    entity_type VARCHAR(50),
+                    entity_id INTEGER,
+                    entity_display VARCHAR(255),
+                    summary TEXT,
+                    fields_changed JSONB,
+                    ip_address VARCHAR(45),
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX idx_audit_log_created ON audit_log(created_at);
+                CREATE INDEX idx_audit_log_entity ON audit_log(entity_type, entity_id);
+                CREATE INDEX idx_audit_log_personnel ON audit_log(personnel_id);
+            """)
             conn.commit()
             cur.close()
-            log.info("Wiped audit log (final step)")
+            log.info("Dropped and recreated audit_log table (final step)")
         finally:
             conn.close()
 
