@@ -9,6 +9,8 @@ import MunicipalitiesPage from './MunicipalitiesPage';
 import PrintLayoutTab from './PrintLayoutTab';
 import AVAlertsTab from './AVAlertsTab';
 import DetailTypesTab from './DetailTypesTab';
+import HelpAdminTab from './HelpAdminTab';
+import { useHelp } from '../contexts/HelpContext';
 
 const API_BASE = '';
 
@@ -2593,6 +2595,12 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
   const { refreshBranding } = useBranding();
   const [activeTab, setActiveTab] = useState('settings');
 
+  // Notify HelpContext of admin tab changes for page-specific help
+  const { setAdminTab } = useHelp();
+  useEffect(() => {
+    setAdminTab(activeTab);
+  }, [activeTab, setAdminTab]);
+
   if (!isAuthenticated) {
     return (
       <div className="admin-page">
@@ -2712,6 +2720,12 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         >
           🚀 Features
         </button>
+        <button 
+          className={activeTab === 'help' ? 'active' : ''} 
+          onClick={() => setActiveTab('help')}
+        >
+          ❓ Help
+        </button>
       </div>
 
       <div className="admin-content">
@@ -2732,6 +2746,7 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'avalerts' && <AVAlertsTab />}
         {activeTab === 'cad' && <CADSettingsTab />}
         {activeTab === 'features' && <FeaturesTab />}
+        {activeTab === 'help' && <HelpAdminTab />}
       </div>
     </div>
   );

@@ -18,6 +18,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useNavigate, useParams } from 'react-router-dom';
 import { BrandingProvider, useBranding } from './contexts/BrandingContext';
+import { HelpProvider, useHelp } from './contexts/HelpContext';
+import { useHelpHover } from './hooks/useHelpHover';
+import HelpPanel from './components/Help/HelpPanel';
+import HelpHighlight from './components/Help/HelpHighlight';
 import { setStationTimezone } from './utils/timeUtils';
 import { useInactivityTimeout } from './hooks/useInactivityTimeout';
 import { useAVAlerts } from './hooks/useAVAlerts';
@@ -366,6 +370,59 @@ function AppContent({ tenant, onTenantLogout }) {
   };
 
   return (
+    <HelpProvider userSession={userSession}>
+      <AppContentInner
+        branding={branding}
+        navigate={navigate}
+        tenant={tenant}
+        onTenantLogout={onTenantLogout}
+        userSession={userSession}
+        handleUserLogout={handleUserLogout}
+        personnelLoaded={personnelLoaded}
+        personnel={personnel}
+        selectedPersonnelId={selectedPersonnelId}
+        handlePersonnelSelect={handlePersonnelSelect}
+        authStatus={authStatus}
+        authPassword={authPassword}
+        setAuthPassword={setAuthPassword}
+        handleLogin={handleLogin}
+        showRegisterFlow={showRegisterFlow}
+        handleStartRegister={handleStartRegister}
+        registerStep={registerStep}
+        registerEmail={registerEmail}
+        setRegisterEmail={setRegisterEmail}
+        handleRegisterSubmitEmail={handleRegisterSubmitEmail}
+        registerLoading={registerLoading}
+        handleCancelRegister={handleCancelRegister}
+        authError={authError}
+        avAlertsEnabled={avAlertsEnabled}
+        handleToggleAVAlerts={handleToggleAVAlerts}
+        adminAuth={adminAuth}
+        handleAdminLogin={handleAdminLogin}
+        handleAdminLogout={handleAdminLogout}
+      />
+    </HelpProvider>
+  );
+}
+
+function AppContentInner({
+  branding, navigate, tenant, onTenantLogout, userSession,
+  handleUserLogout, personnelLoaded, personnel,
+  selectedPersonnelId, handlePersonnelSelect, authStatus,
+  authPassword, setAuthPassword, handleLogin,
+  showRegisterFlow, handleStartRegister, registerStep,
+  registerEmail, setRegisterEmail, handleRegisterSubmitEmail,
+  registerLoading, handleCancelRegister, authError,
+  avAlertsEnabled, handleToggleAVAlerts,
+  adminAuth, handleAdminLogin, handleAdminLogout,
+}) {
+  // Initialize help hover detection
+  useHelpHover();
+
+  // Get help panel state for content margin adjustment
+  const { helpOpen } = useHelp();
+
+  return (
     <div className="app">
       {/* SessionManager removed - replaced by useInactivityTimeout hook */}
       <nav className="sidebar">
@@ -431,6 +488,8 @@ function AppContent({ tenant, onTenantLogout }) {
               onChange={handleToggleAVAlerts}
             />
           </label>
+          {/* Help toggle - visibility controlled by admin setting */}
+          <HelpToggle />
         </div>
         
         {/* User session / login area */}
@@ -634,7 +693,7 @@ function AppContent({ tenant, onTenantLogout }) {
           primaryColor={branding.primaryColor}
         />
       </nav>
-      <main className="content">
+      <main className="content" style={{ marginRight: helpOpen ? '320px' : '0', transition: 'margin-right 0.2s ease' }}>
         <Routes>
           <Route path="/" element={<IncidentsPage userSession={userSession} />} />
           <Route path="/reports" element={<ReportsPage />} />
@@ -645,8 +704,48 @@ function AppContent({ tenant, onTenantLogout }) {
           <Route path="/admin" element={<AdminPage isAuthenticated={adminAuth} onLogin={handleAdminLogin} onLogout={handleAdminLogout} />} />
         </Routes>
       </main>
+      <HelpPanel />
+      <HelpHighlight />
     </div>
   );
+}
+
+
+/**
+ * HelpToggle - sidebar checkbox for toggling help panel
+ * Only shown if admin has enabled help.toggle_visible
+ */
+function HelpToggle() {
+  const { helpOpen, toggleHelp, helpSettings } = useHelp();
+  if (!helpSettings.toggle_visible) return null;
+  return (
+    <label style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'space-between',
+      width: '100%',
+      fontSize: '0.8rem',
+      color: '#666',
+      cursor: 'pointer',
+      marginTop: '4px'
+    }}>
+      Enable Help
+      <input
+        type="checkbox"
+        checked={helpOpen}
+        onChange={toggleHelp}
+      />
+    </label>
+  );
+}
+
+/**
+ * AppContentWithHelp - wraps AppContent in HelpProvider (needs router context)
+ */
+function AppContentWithHelp({ tenant, onTenantLogout }) {
+  const userSession = null; // Will be set inside AppContent, but we need it at HelpProvider level
+  // HelpProvider is inside AppContent since userSession is managed there
+  return <AppContent tenant={tenant} onTenantLogout={onTenantLogout} />;
 }
 
 /**

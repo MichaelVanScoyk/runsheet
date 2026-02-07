@@ -438,4 +438,31 @@ export const masterAdminGetAdmins = () =>
 export const masterAdminCreateAdmin = (data) =>
   api.post('/master/admins', data, { withCredentials: true });
 
+// ============================================================================
+// HELP SYSTEM
+// ============================================================================
+
+export const getHelpForPage = (pageKey, role = null) => {
+  const params = role ? { role } : {};
+  return api.get(`/help/page/${pageKey}`, { params });
+};
+
+export const getHelpPages = () => api.get('/help/pages');
+
+export const getAllHelp = () => api.get('/help');
+
+export const createHelpText = (data, createdBy = null) => {
+  const params = createdBy ? { created_by: createdBy } : {};
+  return api.post('/help', data, { params });
+};
+
+export const updateHelpText = (id, data) => api.put(`/help/${id}`, data);
+
+export const deleteHelpText = (id) => api.delete(`/help/${id}`);
+
+export const getHelpElementKeys = (pageKey) => api.get(`/help/element-keys/${pageKey}`);
+
+// Help system settings
+export const getHelpSettings = () => api.get('/settings/category/help');
+
 export default api;
