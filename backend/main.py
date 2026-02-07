@@ -209,11 +209,26 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Tenant not found or inactive"}
                 )
             
+            # SECURITY: Validate session tenant matches the subdomain being accessed
+            # Prevents cross-tenant data exposure when cookies leak across subdomains
+            if tenant_slug and tenant.slug.lower() != tenant_slug.lower():
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Middleware: session tenant '{tenant.slug}' does not match "
+                    f"subdomain '{tenant_slug}' - rejecting request"
+                )
+                response = JSONResponse(
+                    status_code=401,
+                    content={"detail": "Session does not match this department"}
+                )
+                response.delete_cookie("tenant_session")
+                return response
+            
             # Update last used timestamp
             session.last_used_at = datetime.now(timezone.utc)
             db.commit()
             
-            # Store tenant info in request state (overwrites subdomain-based lookup with session-based)
+            # Store tenant info in request state (verified to match subdomain)
             request.state.tenant = tenant
             request.state.tenant_id = tenant.id
             request.state.tenant_slug = tenant.slug

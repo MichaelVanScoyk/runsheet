@@ -156,15 +156,24 @@ async def tenant_login(
     tenant.last_login_at = datetime.now(timezone.utc)
     db.commit()
     
-    # Set cookie - no domain = this subdomain only
-    response.set_cookie(
+    # Set cookie scoped to the specific subdomain
+    # Extract full subdomain host to prevent cookie leaking across tenants
+    host = request.headers.get("host", "").split(':')[0].lower()
+    cookie_domain = host if '.cadreport.com' in host else None
+    
+    cookie_kwargs = dict(
         key=SESSION_COOKIE_NAME,
         value=session_token,
         max_age=SESSION_COOKIE_MAX_AGE,
         httponly=True,
-        secure=False,  # Set True in production with HTTPS
+        secure=True,
         samesite="lax",
     )
+    # Only set domain for production subdomains (not localhost)
+    if cookie_domain:
+        cookie_kwargs["domain"] = cookie_domain
+    
+    response.set_cookie(**cookie_kwargs)
     
     logger.info(f"Tenant login: {tenant.slug}")
     
@@ -199,11 +208,26 @@ async def tenant_logout(
 @router.get("/session", response_model=SessionCheckResponse)
 async def check_session(
     request: Request,
+    response: Response,
     db: Session = Depends(get_master_session)
 ):
     tenant = get_tenant_from_session(request, db)
     
     if tenant:
+        # SECURITY: Validate session tenant matches the subdomain being accessed
+        # Prevents cross-tenant data exposure when cookies leak across subdomains
+        host = request.headers.get("host", "")
+        subdomain_slug = _extract_subdomain_slug(host)
+        
+        if subdomain_slug and tenant.slug.lower() != subdomain_slug.lower():
+            logger.warning(
+                f"Tenant session mismatch: cookie belongs to '{tenant.slug}' "
+                f"but accessed from subdomain '{subdomain_slug}' - rejecting session"
+            )
+            # Clear the stale cookie so it doesn't keep causing mismatches
+            response.delete_cookie(SESSION_COOKIE_NAME)
+            return SessionCheckResponse(authenticated=False)
+        
         return SessionCheckResponse(
             authenticated=True,
             tenant_id=tenant.id,
@@ -212,6 +236,22 @@ async def check_session(
         )
     
     return SessionCheckResponse(authenticated=False)
+
+
+def _extract_subdomain_slug(host: str) -> Optional[str]:
+    """Extract tenant slug from Host header for session validation."""
+    if not host:
+        return None
+    host = host.split(':')[0].lower()
+    if host in ('localhost', '127.0.0.1') or host.replace('.', '').isdigit():
+        return None
+    if '.cadreport.com' in host:
+        parts = host.split('.')
+        if len(parts) >= 3:
+            slug = parts[0]
+            if slug and slug not in ('www', 'api', 'admin'):
+                return slug
+    return None
 
 
 @router.post("/signup-request")

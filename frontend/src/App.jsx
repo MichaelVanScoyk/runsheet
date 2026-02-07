@@ -707,18 +707,23 @@ function App() {
     );
   }
 
-  // Show loading while checking session
+  // Show branded splash while checking session - prevents any tenant data flash
   if (checkingSession) {
     return (
       <div style={{ 
         minHeight: '100vh', 
         display: 'flex', 
+        flexDirection: 'column',
         alignItems: 'center', 
         justifyContent: 'center',
-        background: 'var(--dark-bg, #1a1a2e)',
-        color: '#888'
+        background: '#f8f9fa',
       }}>
-        Loading...
+        <div style={{ fontSize: '2rem', fontWeight: '700', color: '#1e3a5f', letterSpacing: '-0.5px' }}>
+          CADReport
+        </div>
+        <div style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '8px' }}>
+          Incident Management System
+        </div>
       </div>
     );
   }
