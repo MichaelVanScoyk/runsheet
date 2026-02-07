@@ -27,9 +27,9 @@ export function useHelpHover() {
 
   useEffect(() => {
     if (!helpOpen) return;
-    const content = document.querySelector('.content');
-    if (!content) return;
-    content.addEventListener('mouseover', handleMouseOver);
-    return () => content.removeEventListener('mouseover', handleMouseOver);
+    const app = document.querySelector('.app');
+    if (!app) return;
+    app.addEventListener('mouseover', handleMouseOver);
+    return () => app.removeEventListener('mouseover', handleMouseOver);
   }, [helpOpen, handleMouseOver]);
 }
