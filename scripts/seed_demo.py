@@ -40,6 +40,7 @@ import hashlib
 import secrets
 import json
 import logging
+import base64
 from datetime import datetime, timezone, timedelta, date
 
 import psycopg2
@@ -708,6 +709,47 @@ def anonymize_municipalities(conn):
 # Step 7: Update branding / settings
 # ---------------------------------------------------------------------------
 
+def restore_demo_branding(conn):
+    """Restore the demo-specific branding: logo, colors, logo_size.
+    
+    Logo file: scripts/demo_logo.webp (CadReport shield)
+    Colors picked from the logo by Mike.
+    """
+    log.info("Restoring demo branding (logo + colors)...")
+    cur = conn.cursor()
+
+    # --- Helper ---
+    def _set_branding(key, value):
+        cur.execute(
+            "DELETE FROM settings WHERE category = 'branding' AND key = %s",
+            (key,),
+        )
+        cur.execute("""
+            INSERT INTO settings (category, key, value, value_type, updated_at)
+            VALUES ('branding', %s, %s, 'string', NOW())
+        """, (key, value))
+
+    # Colors
+    _set_branding("primary_color", "#7e0000")
+    _set_branding("secondary_color", "#eba12d")
+    _set_branding("logo_size", "xlarge")
+
+    # Logo from file
+    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "demo_logo.webp")
+    if os.path.exists(logo_path):
+        with open(logo_path, "rb") as f:
+            logo_b64 = base64.b64encode(f.read()).decode("utf-8")
+        _set_branding("logo", logo_b64)
+        _set_branding("logo_mime_type", "image/webp")
+        log.info(f"Inserted demo logo from {logo_path} ({len(logo_b64)} chars base64)")
+    else:
+        log.warning(f"Demo logo not found at {logo_path}, skipping logo")
+
+    conn.commit()
+    cur.close()
+    log.info("Demo branding restored")
+
+
 def update_branding(conn):
     """Set demo branding, scrub all identifiable settings."""
     log.info("Updating branding and settings...")
@@ -860,6 +902,7 @@ def main():
             anonymize_incidents(conn, ma_map)
             anonymize_municipalities(conn)
             update_branding(conn)
+            restore_demo_branding(conn)
             create_test_user(conn)
             cleanup_misc(conn)
 
