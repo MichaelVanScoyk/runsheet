@@ -13,7 +13,7 @@ import { useHelp } from '../contexts/HelpContext';
 import HelpTopicsManager from '../components/Help/HelpTopicsManager';
 
 export default function HelpAdminTab() {
-  const { helpSettings, setEditMode, editMode } = useHelp();
+  const { helpSettings, setHelpSettings } = useHelp();
   const [toggleVisible, setToggleVisible] = useState(helpSettings.toggle_visible);
   const [editModeEnabled, setEditModeEnabled] = useState(helpSettings.edit_mode);
   const [saving, setSaving] = useState(null);
@@ -46,7 +46,7 @@ export default function HelpAdminTab() {
     try {
       await updateSetting('help', 'edit_mode', String(newValue));
       setEditModeEnabled(newValue);
-      setEditMode(newValue);
+      setHelpSettings(prev => ({ ...prev, edit_mode: newValue }));
       setMessage({ type: 'success', text: 'Edit mode ' + (newValue ? 'enabled' : 'disabled') });
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to save' });

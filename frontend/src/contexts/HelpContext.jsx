@@ -38,7 +38,6 @@ export function HelpProvider({ children, userSession }) {
   const [adminTab, setAdminTab] = useState('settings');
   const [tourActive, setTourActive] = useState(false);
   const [tourIndex, setTourIndex] = useState(0);
-  const [editMode, setEditMode] = useState(false);
   const [helpSettings, setHelpSettings] = useState({
     toggle_visible: true,
     edit_mode: false,
@@ -128,8 +127,8 @@ export function HelpProvider({ children, userSession }) {
 
   const value = {
     helpOpen, entries, loading, activeElementKey, activeEntryKey,
-    pageKey, tourActive, tourIndex, editMode, helpSettings,
-    setActiveElementKey, setActiveEntryKey, setAdminTab, setEditMode,
+    pageKey, tourActive, tourIndex, editMode: helpSettings.edit_mode, helpSettings,
+    setActiveElementKey, setActiveEntryKey, setAdminTab, setHelpSettings,
     toggleHelp, reloadEntries, startTour, tourNext, tourPrev, tourExit,
     userSession,
   };
@@ -151,7 +150,7 @@ export function useHelp() {
       pageKey: '', tourActive: false, tourIndex: 0,
       editMode: false, helpSettings: { toggle_visible: false, edit_mode: false },
       setActiveElementKey: () => {}, setActiveEntryKey: () => {},
-      setAdminTab: () => {}, setEditMode: () => {},
+      setAdminTab: () => {}, setHelpSettings: () => {},
       toggleHelp: () => {}, reloadEntries: () => {},
       startTour: () => {}, tourNext: () => {}, tourPrev: () => {}, tourExit: () => {},
       userSession: null,
