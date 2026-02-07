@@ -18,15 +18,12 @@ export default function HelpPanel() {
     tourActive, startTour, reloadEntries, userSession,
   } = useHelp();
 
-  const [showNewOnly, setShowNewOnly] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const [showForm, setShowForm] = useState(false);
 
   if (!helpOpen) return null;
 
   const isAdmin = userSession?.role === 'ADMIN' || userSession?.role === 'OFFICER';
-  const filteredEntries = showNewOnly ? entries.filter(e => e.is_new) : entries;
-  const newCount = entries.filter(e => e.is_new).length;
   const existingKeys = entries.map(e => e.element_key);
 
   const handleEdit = (entry) => {
@@ -94,15 +91,6 @@ export default function HelpPanel() {
               🎯 Tour
             </button>
           )}
-          {newCount > 0 && (
-            <button onClick={() => setShowNewOnly(!showNewOnly)} style={{
-              padding: '3px 10px', fontSize: '0.75rem', border: '1px solid #d1d5db',
-              borderRadius: '4px', cursor: 'pointer', color: '#555',
-              background: showNewOnly ? '#dcfce7' : '#fff',
-            }}>
-              🆕 New ({newCount})
-            </button>
-          )}
           {editMode && isAdmin && !showForm && (
             <button onClick={handleAdd} style={{
               padding: '3px 10px', fontSize: '0.75rem', border: '1px solid #2563eb',
@@ -133,10 +121,10 @@ export default function HelpPanel() {
           <div style={{ textAlign: 'center', color: '#9ca3af', padding: '2rem', fontSize: '0.85rem' }}>
             Loading...
           </div>
-        ) : filteredEntries.length === 0 && !showForm ? (
+        ) : entries.length === 0 && !showForm ? (
           <div style={{ textAlign: 'center', color: '#9ca3af', padding: '2rem', fontSize: '0.85rem' }}>
-            {showNewOnly ? 'No new entries for this page' : 'No help entries for this page yet'}
-            {editMode && isAdmin && !showNewOnly && (
+            No help entries for this page yet
+            {editMode && isAdmin && (
               <div style={{ marginTop: '0.75rem' }}>
                 <button onClick={handleAdd} style={{
                   padding: '6px 16px', fontSize: '0.85rem', border: '1px solid #2563eb',
@@ -148,7 +136,7 @@ export default function HelpPanel() {
             )}
           </div>
         ) : (
-          filteredEntries.map(entry => (
+          entries.map(entry => (
             <HelpEntry key={entry.id} entry={entry} onEdit={handleEdit} onDelete={handleDelete} />
           ))
         )}

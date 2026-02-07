@@ -19,7 +19,7 @@ export default function HelpEditForm({ entry, pageKey, existingKeys, onSave, onC
   const isEdit = !!entry?.id;
   const [formData, setFormData] = useState({
     page_key: pageKey || '', element_key: '', title: '', body: '',
-    sort_order: 100, min_role: '', is_new: false, version_added: '',
+    sort_order: 100, min_role: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -51,8 +51,6 @@ export default function HelpEditForm({ entry, pageKey, existingKeys, onSave, onC
         body: entry.body || '',
         sort_order: entry.sort_order ?? 100,
         min_role: entry.min_role || '',
-        is_new: entry.is_new || false,
-        version_added: entry.version_added || '',
       });
     }
   }, [entry, pageKey]);
@@ -70,7 +68,6 @@ export default function HelpEditForm({ entry, pageKey, existingKeys, onSave, onC
       await onSave({
         ...formData,
         min_role: formData.min_role || null,
-        version_added: formData.version_added || null,
       }, entry?.id);
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Failed to save');
@@ -151,18 +148,6 @@ export default function HelpEditForm({ entry, pageKey, existingKeys, onSave, onC
             {ROLE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>
         </div>
-      </div>
-
-      {/* Version + NEW checkbox - compact row */}
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-        <div style={{ flex: 1 }}>
-          <label style={{ display: 'block', color: '#555', fontSize: '0.75rem', marginBottom: '2px' }}>Version</label>
-          <input type="text" value={formData.version_added} onChange={(e) => handleChange('version_added', e.target.value)} style={inputStyle} />
-        </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', color: '#555', cursor: 'pointer', paddingBottom: '0.4rem' }}>
-          <input type="checkbox" checked={formData.is_new} onChange={(e) => handleChange('is_new', e.target.checked)} />
-          NEW
-        </label>
       </div>
 
       {/* Actions */}
