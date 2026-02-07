@@ -455,6 +455,7 @@ function AppContentInner({
             <span style={{ color: '#333' }}>{tenant?.slug}</span>
             <button 
               onClick={onTenantLogout}
+              data-help-id="tenant_logout"
               style={{ 
                 background: '#dc2626', 
                 border: 'none', 
@@ -471,7 +472,7 @@ function AppContentInner({
           </div>
           
           {/* Dispatch Sound toggle */}
-          <label style={{ 
+          <label data-help-id="enable_sound" style={{ 
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'space-between',
@@ -493,7 +494,7 @@ function AppContentInner({
         </div>
         
         {/* User session / login area */}
-        <div className="user-auth-area">
+        <div className="user-auth-area" data-help-id="personnel_login">
           {userSession ? (
             // Logged in
             <>
@@ -645,7 +646,7 @@ function AppContentInner({
           )}
         </div>
 
-        <ul className="nav-links">
+        <ul className="nav-links" data-help-id="navigation">
           <li>
             <NavLink 
               to="/" 
@@ -719,7 +720,7 @@ function HelpToggle() {
   const { helpOpen, toggleHelp, helpSettings } = useHelp();
   if (!helpSettings.toggle_visible) return null;
   return (
-    <label style={{ 
+    <label data-help-id="enable_help" style={{ 
       display: 'flex', 
       alignItems: 'center', 
       justifyContent: 'space-between',
