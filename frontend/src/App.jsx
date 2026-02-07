@@ -15,7 +15,7 @@
  * which caused premature logouts.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useNavigate, useParams } from 'react-router-dom';
 import { BrandingProvider, useBranding } from './contexts/BrandingContext';
 import { setStationTimezone } from './utils/timeUtils';
@@ -649,6 +649,48 @@ function AppContent({ tenant, onTenantLogout }) {
   );
 }
 
+/**
+ * SplashGate - Holds the CADReport splash screen until branding is fully loaded + 1 second.
+ * Must be rendered inside BrandingProvider so it can read branding.loading.
+ * Prevents any flash of default/neutral branding before tenant colors apply.
+ */
+function SplashGate({ children }) {
+  const branding = useBranding();
+  const [minTimeElapsed, setMinTimeElapsed] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    // Once branding finishes loading, start 1-second hold timer
+    if (!branding.loading && !timerRef.current) {
+      timerRef.current = setTimeout(() => setMinTimeElapsed(true), 1000);
+    }
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [branding.loading]);
+
+  if (branding.loading || !minTimeElapsed) {
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        flexDirection: 'column',
+        alignItems: 'center', 
+        justifyContent: 'center',
+        background: '#f8f9fa',
+      }}>
+        <img 
+          src="/cadreportlogo.png" 
+          alt="CADReport" 
+          style={{ maxWidth: '380px', width: '80%', height: 'auto' }} 
+        />
+      </div>
+    );
+  }
+
+  return children;
+}
+
 function App() {
   const [tenantSession, setTenantSession] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -738,19 +780,22 @@ function App() {
   }
 
   // Show app with tenant context - wrapped in BrandingProvider
+  // SplashGate holds the splash until branding loads + 1 second
   return (
     <BrandingProvider>
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Routes>
-          {/* Standalone auth pages - no app shell needed */}
-          <Route path="/accept-invite" element={<AcceptInvitePage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          {/* Print route - standalone, no app shell */}
-          <Route path="/print/:id" element={<PrintPage />} />
-          {/* All other routes use the app shell */}
-          <Route path="/*" element={<AppContent tenant={tenantSession} onTenantLogout={handleTenantLogout} />} />
-        </Routes>
-      </BrowserRouter>
+      <SplashGate>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <Routes>
+            {/* Standalone auth pages - no app shell needed */}
+            <Route path="/accept-invite" element={<AcceptInvitePage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            {/* Print route - standalone, no app shell */}
+            <Route path="/print/:id" element={<PrintPage />} />
+            {/* All other routes use the app shell */}
+            <Route path="/*" element={<AppContent tenant={tenantSession} onTenantLogout={handleTenantLogout} />} />
+          </Routes>
+        </BrowserRouter>
+      </SplashGate>
     </BrandingProvider>
   );
 }
