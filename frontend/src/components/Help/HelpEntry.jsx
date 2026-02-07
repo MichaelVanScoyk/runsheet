@@ -5,6 +5,32 @@
 import { useRef, useEffect } from 'react';
 import { useHelp } from '../../contexts/HelpContext';
 
+// Render **bold** and *italic* markdown in help text
+function renderHelpText(text) {
+  if (!text) return null;
+  const parts = [];
+  let remaining = text;
+  let key = 0;
+  const regex = /(\*\*(.+?)\*\*|\*(.+?)\*)/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(remaining.substring(lastIndex - (text.length - remaining.length), match.index - (text.length - remaining.length)));
+    }
+    if (match[2]) {
+      parts.push(<strong key={key++}>{match[2]}</strong>);
+    } else if (match[3]) {
+      parts.push(<em key={key++}>{match[3]}</em>);
+    }
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+  return parts.length > 0 ? parts : text;
+}
+
 export default function HelpEntry({ entry, onEdit, onDelete }) {
   const { activeElementKey, activeEntryKey, setActiveEntryKey, editMode, tourActive, tourIndex, entries, userSession } = useHelp();
   const ref = useRef(null);
@@ -41,7 +67,7 @@ export default function HelpEntry({ entry, onEdit, onDelete }) {
           <span style={{ background: roleColors[entry.min_role] || '#6b7280', color: '#fff', fontSize: '0.6rem', fontWeight: 600, padding: '1px 5px', borderRadius: '3px' }}>{entry.min_role}</span>
         )}
       </div>
-      <div style={{ fontSize: '0.85rem', color: '#555', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{entry.body}</div>
+      <div style={{ fontSize: '0.85rem', color: '#555', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{renderHelpText(entry.body)}</div>
       {editMode && isAdmin && (
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', borderTop: '1px solid #f0f0f0', paddingTop: '0.5rem' }}>
           <button onClick={() => onEdit(entry)} style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: '4px', padding: '2px 8px', fontSize: '0.75rem', color: '#666', cursor: 'pointer' }}>✏️ Edit</button>
