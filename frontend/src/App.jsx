@@ -718,12 +718,11 @@ function App() {
         justifyContent: 'center',
         background: '#f8f9fa',
       }}>
-        <div style={{ fontSize: '2rem', fontWeight: '700', color: '#1e3a5f', letterSpacing: '-0.5px' }}>
-          CADReport
-        </div>
-        <div style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '8px' }}>
-          Incident Management System
-        </div>
+        <img 
+          src="/cadreportlogo.png" 
+          alt="CADReport" 
+          style={{ maxWidth: '380px', width: '80%', height: 'auto' }} 
+        />
       </div>
     );
   }
