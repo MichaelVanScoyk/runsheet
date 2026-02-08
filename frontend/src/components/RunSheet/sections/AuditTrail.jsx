@@ -48,6 +48,7 @@ export default function AuditTrail() {
   return (
     <div 
       ref={auditLogRef}
+      data-help-id="audit_trail"
       className="bg-theme-section rounded px-3 py-2 mb-2 text-xs border border-theme-light"
     >
       <div 
