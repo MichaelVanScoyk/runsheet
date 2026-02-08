@@ -9,5 +9,30 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Auto-reconnect: detects server going down (deploy/restart)
+      // and auto-reloads once it comes back. Retries every 5 seconds.
+      (function() {
+        var checking = false;
+        var serverWasDown = false;
+
+        function checkServer() {
+          fetch('/api/settings/station/timezone', { method: 'HEAD', cache: 'no-store' })
+            .then(function(res) {
+              if (res.ok && serverWasDown) {
+                // Server is back — reload
+                window.location.reload();
+              }
+            })
+            .catch(function() {
+              // Server unreachable
+              serverWasDown = true;
+            });
+        }
+
+        // Poll every 5 seconds
+        setInterval(checkServer, 5000);
+      })();
+    </script>
   </body>
 </html>
