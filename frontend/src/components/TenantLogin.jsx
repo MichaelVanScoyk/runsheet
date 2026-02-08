@@ -1,48 +1,46 @@
 import { useState, useEffect } from 'react';
 import { tenantLogin } from '../api';
 
-// Default branding if fetch fails
-const DEFAULT_BRANDING = {
-  stationName: 'Fire Department',
-  logoUrl: null,
-  primaryColor: '#dc2626',
-};
-
 /**
  * Tenant Login Form
  * 
  * Shown on subdomain (e.g., glenmoorefc.cadreport.com) when not logged in.
  * Light theme matching AcceptInvitePage design with department branding.
+ * Branding is fetched from /api/branding/theme which resolves tenant from subdomain.
  */
 function TenantLogin({ onLogin }) {
   const [slug, setSlug] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [branding, setBranding] = useState(DEFAULT_BRANDING);
+  const [branding, setBranding] = useState(null);
 
   // Pre-fill slug from subdomain
   const subdomain = window.location.hostname.split('.')[0];
   const isSubdomain = subdomain && subdomain !== 'cadreport' && subdomain !== 'www';
 
-  // Fetch branding on mount (public endpoint - no auth required)
+  // Fetch branding on mount (public endpoint - resolves tenant from subdomain Host header)
   useEffect(() => {
     fetch('/api/branding/theme')
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data) {
           setBranding({
-            stationName: data.station_name || DEFAULT_BRANDING.stationName,
+            stationName: data.station_name || '',
             logoUrl: data.logo_url || null,
-            primaryColor: data.primary_color || DEFAULT_BRANDING.primaryColor,
+            primaryColor: data.primary_color || '#dc2626',
           });
-          // Set browser tab title
           if (data.station_name) {
             document.title = `${data.station_name} — CADReport`;
           }
+        } else {
+          setBranding({ stationName: '', logoUrl: null, primaryColor: '#dc2626' });
         }
       })
-      .catch(err => console.error('Failed to load branding:', err));
+      .catch(err => {
+        console.error('Failed to load branding:', err);
+        setBranding({ stationName: '', logoUrl: null, primaryColor: '#dc2626' });
+      });
   }, []);
 
   const handleSubmit = async (e) => {
@@ -62,6 +60,21 @@ function TenantLogin({ onLogin }) {
     }
   };
 
+  // Show simple loading state while branding fetches
+  if (!branding) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <div style={{ textAlign: 'center', padding: '2rem 0', color: '#9ca3af' }}>
+            Loading...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const primaryColor = branding.primaryColor;
+
   return (
     <div style={styles.container}>
       <div style={styles.card}>
@@ -74,16 +87,18 @@ function TenantLogin({ onLogin }) {
               style={styles.logo}
             />
           )}
-          <h1 style={styles.stationName}>{branding.stationName}</h1>
+          {branding.stationName && (
+            <h1 style={styles.stationName}>{branding.stationName}</h1>
+          )}
         </div>
 
         {/* Subdomain indicator */}
         {isSubdomain && (
           <div style={{
             ...styles.subdomainInfo,
-            background: `${branding.primaryColor}10`,
-            borderColor: `${branding.primaryColor}40`,
-            color: branding.primaryColor,
+            background: `${primaryColor}10`,
+            borderColor: `${primaryColor}40`,
+            color: primaryColor,
           }}>
             Logging in to <strong>{subdomain}</strong>
           </div>
@@ -125,7 +140,7 @@ function TenantLogin({ onLogin }) {
             disabled={loading}
             style={{
               ...styles.button,
-              background: branding.primaryColor,
+              background: primaryColor,
               opacity: loading ? 0.6 : 1,
               cursor: loading ? 'not-allowed' : 'pointer',
             }}
