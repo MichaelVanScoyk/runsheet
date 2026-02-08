@@ -556,6 +556,26 @@ async def approve_member(
     person.approved_at = datetime.now(timezone.utc)
     person.approved_by = approver.id
     person.updated_at = datetime.now(timezone.utc)
+    
+    # Auto-resolve any pending_member_approval review tasks for this person
+    try:
+        from models import ReviewTask
+        pending_tasks = db.query(ReviewTask).filter(
+            ReviewTask.entity_type == 'personnel',
+            ReviewTask.entity_id == id,
+            ReviewTask.task_type == 'pending_member_approval',
+            ReviewTask.status == 'pending'
+        ).all()
+        for task in pending_tasks:
+            task.status = 'resolved'
+            task.resolved_by = approver.id
+            task.resolved_at = datetime.now(timezone.utc)
+            task.resolution_notes = f'Approved by {approver.display_name}'
+        if pending_tasks:
+            logger.info(f"Auto-resolved {len(pending_tasks)} pending_member_approval task(s) for personnel {id}")
+    except Exception as e:
+        logger.error(f"Failed to resolve review task on approval: {e}")
+    
     db.commit()
     
     return {
@@ -1451,9 +1471,26 @@ async def accept_invite(
     
     db.commit()
     
-    # If self-activation, notify admins
+    # If self-activation, notify admins and create review task
     if is_self_activation:
         notify_admins_of_self_activation(request, db, person)
+        try:
+            from routers.review_tasks import create_review_task_for_personnel
+            create_review_task_for_personnel(
+                db=db,
+                personnel_id=person.id,
+                task_type='pending_member_approval',
+                title=f'Approve member: {person.first_name} {person.last_name}',
+                description=f'{person.first_name} {person.last_name} self-activated their account and needs approval to access full editing.',
+                metadata={
+                    'personnel_name': f'{person.last_name}, {person.first_name}',
+                    'email': person.email,
+                },
+                priority='normal',
+            )
+            db.commit()
+        except Exception as e:
+            logger.error(f"Failed to create review task for self-activation: {e}")
     
     # Get tenant info and create tenant session for auto-login
     tenant = getattr(request.state, 'tenant', None)

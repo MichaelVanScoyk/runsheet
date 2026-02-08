@@ -628,6 +628,26 @@ async def update_incident(
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
     
+    # Check unapproved member edit limit
+    if edited_by:
+        editor = db.query(Personnel).filter(Personnel.id == edited_by).first()
+        if editor and editor.password_hash and not editor.approved_at:
+            # Count distinct incidents this unapproved member has saved
+            saved_count = db.execute(text(
+                "SELECT COUNT(DISTINCT entity_id) FROM audit_log "
+                "WHERE personnel_id = :pid AND entity_type = 'incident' AND action = 'UPDATE'"
+            ), {"pid": edited_by}).scalar() or 0
+            # Allow editing if this is the same incident they already edited, or their first
+            already_edited_this = db.execute(text(
+                "SELECT COUNT(*) FROM audit_log "
+                "WHERE personnel_id = :pid AND entity_type = 'incident' AND entity_id = :iid AND action = 'UPDATE'"
+            ), {"pid": edited_by, "iid": incident_id}).scalar() or 0
+            if saved_count >= 1 and already_edited_this == 0:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Edit limit reached - your account is pending approval. Please contact an officer or admin."
+                )
+    
     update_data = data.model_dump(exclude_unset=True)
     
     # IMMUTABLE FIELDS - cannot change after creation (admin can change via unlock)
@@ -1041,6 +1061,24 @@ async def save_assignments(
     incident = db.query(Incident).filter(Incident.id == incident_id).first()
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
+    
+    # Check unapproved member edit limit
+    if edited_by:
+        editor = db.query(Personnel).filter(Personnel.id == edited_by).first()
+        if editor and editor.password_hash and not editor.approved_at:
+            saved_count = db.execute(text(
+                "SELECT COUNT(DISTINCT entity_id) FROM audit_log "
+                "WHERE personnel_id = :pid AND entity_type = 'incident' AND action = 'UPDATE'"
+            ), {"pid": edited_by}).scalar() or 0
+            already_edited_this = db.execute(text(
+                "SELECT COUNT(*) FROM audit_log "
+                "WHERE personnel_id = :pid AND entity_type = 'incident' AND entity_id = :iid AND action = 'UPDATE'"
+            ), {"pid": edited_by, "iid": incident_id}).scalar() or 0
+            if saved_count >= 1 and already_edited_this == 0:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Edit limit reached - your account is pending approval. Please contact an officer or admin."
+                )
     
     # Clear existing
     db.query(IncidentPersonnel).filter(IncidentPersonnel.incident_id == incident_id).delete()

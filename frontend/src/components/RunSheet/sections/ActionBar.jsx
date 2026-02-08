@@ -290,8 +290,11 @@ export default function ActionBar() {
         {!userSession && (
           <span className="text-status-warning text-sm">⚠️ Log in to edit</span>
         )}
-        {userSession && !userSession.is_approved && (
-          <span className="text-status-warning text-sm">⚠️ Pending approval</span>
+        {userSession && !userSession.is_approved && userSession.can_edit && (
+          <span className="text-status-warning text-sm">⚠️ Pending approval — you may edit 1 incident</span>
+        )}
+        {userSession && !userSession.is_approved && !userSession.can_edit && (
+          <span className="text-status-warning text-sm">🔒 Edit limit reached — awaiting admin approval</span>
         )}
       </div>
 
@@ -371,8 +374,8 @@ export default function ActionBar() {
         <button 
           className="btn btn-primary" 
           onClick={handleSave} 
-          disabled={saving || !userSession}
-          title={!userSession ? 'Please log in first' : ''}
+          disabled={saving || !userSession || (userSession && !userSession.is_approved && userSession.can_edit === false)}
+          title={!userSession ? 'Please log in first' : (userSession && !userSession.is_approved && userSession.can_edit === false) ? 'Edit limit reached - awaiting approval' : ''}
           data-help-id="btn_save"
         >
           {saving ? 'Saving...' : 'Save'}

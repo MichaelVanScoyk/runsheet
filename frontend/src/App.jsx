@@ -168,15 +168,19 @@ function AppContent({ tenant, onTenantLogout }) {
     });
   }, []);
 
-  // Load personnel list and timezone setting
-  useEffect(() => {
-    // Load personnel
+  // Refresh personnel list (called on mount and when personnel-changed event fires)
+  const refreshPersonnel = useCallback(() => {
     getPersonnel()
       .then(res => {
         setPersonnel(res.data);
         setPersonnelLoaded(true);
       })
       .catch(err => console.error('Failed to load personnel:', err));
+  }, []);
+
+  // Load personnel list and timezone setting
+  useEffect(() => {
+    refreshPersonnel();
     
     // Load timezone setting
     fetch('/api/settings/station/timezone')
@@ -187,7 +191,14 @@ function AppContent({ tenant, onTenantLogout }) {
         }
       })
       .catch(err => console.error('Failed to load timezone:', err));
-  }, []);
+  }, [refreshPersonnel]);
+
+  // Listen for personnel changes from any component (Admin page, Detail quick-add, etc.)
+  useEffect(() => {
+    const handlePersonnelChanged = () => refreshPersonnel();
+    window.addEventListener('personnel-changed', handlePersonnelChanged);
+    return () => window.removeEventListener('personnel-changed', handlePersonnelChanged);
+  }, [refreshPersonnel]);
 
   /**
    * CROSS-TAB SESSION SYNC

@@ -114,10 +114,14 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showDropdown]);
 
-  // Handle incident click - navigate to incidents page
-  const handleIncidentClick = (incidentId) => {
+  // Handle task group click - navigate to appropriate page
+  const handleGroupClick = (group) => {
     setShowDropdown(false);
-    navigate(`/?incident=${incidentId}`);
+    if (group.entity_type === 'personnel') {
+      navigate('/admin?tab=personnel');
+    } else {
+      navigate(`/?incident=${group.incident_id}`);
+    }
   };
 
   // Task type icons
@@ -128,6 +132,7 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
       'neris_validation': '📋',
       'out_of_sequence': '🔢',
       'incomplete_narrative': '📝',
+      'pending_member_approval': '🔑',
     };
     return icons[taskType] || '⚠️';
   };
@@ -192,13 +197,13 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
           ) : (
             <div className="review-task-list">
               {groupedTasks.map((incident) => (
-                <div key={incident.incident_id} className="review-incident-group">
+                <div key={`${incident.entity_type || 'incident'}-${incident.incident_id}`} className="review-incident-group">
                   <button
                     className="review-incident-link"
-                    onClick={() => handleIncidentClick(incident.incident_id)}
+                    onClick={() => handleGroupClick(incident)}
                   >
                     <span className="review-incident-number">
-                      {incident.incident_number}
+                      {incident.entity_type === 'personnel' ? '👤 ' : ''}{incident.incident_number}
                     </span>
                     <span className="review-incident-address">
                       {incident.incident_address || 'No address'}

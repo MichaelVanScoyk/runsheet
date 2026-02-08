@@ -80,6 +80,7 @@ function PersonnelPage({ embedded = false }) {
     try {
       await deletePersonnel(person.id);
       loadData();
+      window.dispatchEvent(new CustomEvent('personnel-changed'));
     } catch (err) {
       console.error('Failed to delete:', err);
       alert('Failed to deactivate personnel');
@@ -102,6 +103,7 @@ function PersonnelPage({ embedded = false }) {
       }
       setShowModal(false);
       loadData();
+      window.dispatchEvent(new CustomEvent('personnel-changed'));
     } catch (err) {
       console.error('Failed to save:', err);
       alert('Failed to save personnel');
@@ -178,6 +180,7 @@ function PersonnelPage({ embedded = false }) {
       setClearExisting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
       loadData();
+      window.dispatchEvent(new CustomEvent('personnel-changed'));
     } catch (err) {
       console.error('Import failed:', err);
       alert('Failed to import: ' + err.message);

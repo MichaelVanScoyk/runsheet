@@ -79,6 +79,9 @@ export default function AttendanceGrid({ personnel, attendees, onToggle, onPerso
         onPersonnelAdded(newPerson);
       }
       
+      // Notify App.jsx to refresh the sidebar personnel dropdown
+      window.dispatchEvent(new CustomEvent('personnel-changed'));
+      
       setFirstName('');
       setLastName('');
       

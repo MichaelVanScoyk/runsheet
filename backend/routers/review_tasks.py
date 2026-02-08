@@ -172,6 +172,7 @@ VALID_TASK_TYPES = [
     'comcat_review',             # CAD comments need categorization
     'neris_validation',          # Missing required NERIS fields
     'out_of_sequence',           # Incident number doesn't match date order
+    'pending_member_approval',   # Self-activated member needs admin/officer approval
 ]
 
 
@@ -332,33 +333,48 @@ async def get_tasks_grouped_by_incident(
     
     Used by: ReviewTasksBadge dropdown component
     """
-    # Get tasks filtered by status
+    # Get tasks filtered by status (incidents AND personnel tasks)
     tasks = db.query(ReviewTask).filter(
         ReviewTask.status == status,
-        ReviewTask.entity_type == 'incident'
+        ReviewTask.entity_type.in_(['incident', 'personnel'])
     ).order_by(
         text("CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 WHEN 'low' THEN 3 END"),
         ReviewTask.created_at.desc()
     ).limit(limit * 5).all()  # Get more than needed since we'll group
     
-    # Group by incident
-    incidents_map = {}
+    # Group by entity (incidents and personnel)
+    groups_map = {}
     for task in tasks:
-        incident_id = task.entity_id
-        if incident_id not in incidents_map:
-            # Fetch incident details
-            incident = db.query(Incident).filter(Incident.id == incident_id).first()
-            if incident:
-                incidents_map[incident_id] = {
-                    "incident_id": incident_id,
-                    "incident_number": incident.internal_incident_number,
-                    "incident_address": incident.address,
-                    "incident_date": incident.incident_date.isoformat() if incident.incident_date else None,
-                    "tasks": []
-                }
+        group_key = f"{task.entity_type}:{task.entity_id}"
         
-        if incident_id in incidents_map:
-            incidents_map[incident_id]["tasks"].append({
+        if group_key not in groups_map:
+            if task.entity_type == 'incident':
+                # Fetch incident details
+                incident = db.query(Incident).filter(Incident.id == task.entity_id).first()
+                if incident:
+                    groups_map[group_key] = {
+                        "incident_id": task.entity_id,
+                        "entity_type": "incident",
+                        "incident_number": incident.internal_incident_number,
+                        "incident_address": incident.address,
+                        "incident_date": incident.incident_date.isoformat() if incident.incident_date else None,
+                        "tasks": []
+                    }
+            elif task.entity_type == 'personnel':
+                # Fetch personnel details
+                person = db.query(Personnel).filter(Personnel.id == task.entity_id).first()
+                if person:
+                    groups_map[group_key] = {
+                        "incident_id": task.entity_id,  # Keep key name for frontend compat
+                        "entity_type": "personnel",
+                        "incident_number": f"{person.last_name}, {person.first_name}",
+                        "incident_address": task.title,
+                        "incident_date": None,
+                        "tasks": []
+                    }
+        
+        if group_key in groups_map:
+            groups_map[group_key]["tasks"].append({
                 "id": task.id,
                 "task_type": task.task_type,
                 "title": task.title,
@@ -367,11 +383,11 @@ async def get_tasks_grouped_by_incident(
             })
     
     # Convert to list and limit
-    result = list(incidents_map.values())[:limit]
+    result = list(groups_map.values())[:limit]
     
     return {
         "total_incidents": len(result),
-        "total_tasks": sum(len(inc["tasks"]) for inc in result),
+        "total_tasks": sum(len(grp["tasks"]) for grp in result),
         "incidents": result
     }
 
@@ -713,6 +729,50 @@ def create_review_task_for_incident(
     db.flush()  # Get ID without committing - caller must commit
     
     logger.info(f"Review task created: {task_type} for incident:{incident_id} (task_id={task.id})")
+    
+    return task
+
+
+def create_review_task_for_personnel(
+    db: Session,
+    personnel_id: int,
+    task_type: str,
+    title: str,
+    description: str = None,
+    metadata: dict = None,
+    priority: str = 'normal',
+    required_action: dict = None,
+    created_by: int = None
+) -> ReviewTask:
+    """
+    Helper function for creating personnel-related review tasks.
+    Same as create_review_task_for_incident but with entity_type='personnel'.
+    
+    IMPORTANT: Calls db.flush() but NOT db.commit(). Caller must commit.
+    """
+    if task_type not in VALID_TASK_TYPES:
+        raise ValueError(f"Invalid task_type '{task_type}'. Must be one of: {VALID_TASK_TYPES}")
+    
+    if priority not in ['low', 'normal', 'high']:
+        priority = 'normal'
+    
+    task = ReviewTask(
+        task_type=task_type,
+        entity_type='personnel',
+        entity_id=personnel_id,
+        title=title,
+        description=description,
+        task_metadata=metadata or {},
+        priority=priority,
+        required_action=required_action,
+        created_by=created_by,
+        status='pending',
+    )
+    
+    db.add(task)
+    db.flush()
+    
+    logger.info(f"Review task created: {task_type} for personnel:{personnel_id} (task_id={task.id})")
     
     return task
 
