@@ -20,7 +20,7 @@ export default function VirtualUnits() {
   if (virtualUnits.length === 0) return null;
   
   return (
-    <div className="pt-3 border-t border-dark-border">
+    <div className="pt-3 border-t border-dark-border" data-help-id="virtual_units">
       <h4 className="text-accent-red text-sm font-semibold mb-2">Direct / Station</h4>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {virtualUnits.map(t => (
