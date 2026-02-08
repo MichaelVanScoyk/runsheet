@@ -2,21 +2,21 @@
  * useInactivityTimeout Hook
  * 
  * Handles automatic inactivity timeouts with two tiers:
- * - 10 minutes: Redirect to incidents page ("/")
- * - 15 minutes: Log out user session (personnel login)
+ * - 10 minutes inactivity: Log out personnel session (user login)
+ * - 15 minutes inactivity: Hard page reload to "/" (full fresh state reset)
  * 
  * Uses react-idle-timer library for robust idle detection.
  * 
- * CROSS-TAB SUPPORT (Updated January 2025):
+ * CROSS-TAB SUPPORT:
  * - crossTab: true enables idle timer sync across all browser tabs
  * - Inactivity in one tab = inactivity across all tabs
  * - Timeout triggers simultaneously in all tabs
  * - Uses BroadcastChannel API with localStorage fallback
  * 
  * Behavior:
- * - 10 min idle: Redirect to "/" (incidents page) from any other page
- * - 15 min idle: Clear personnel session (logout)
- * - If already on "/" and not logged in at 15 min: no action
+ * - 10 min idle: Clear personnel session (logout user, keep on current page)
+ * - 15 min idle: Hard reload to "/" - guarantees completely fresh state
+ *   (current year, no filters, no open forms/modals, as if visiting fresh)
  * 
  * NOTE: This does NOT affect tenant session (department-level login via cookie).
  * Tenant session only expires on explicit logout.
@@ -29,8 +29,8 @@ import { useIdleTimer } from 'react-idle-timer';
 import { clearUserSession, getUserSession, USER_SESSION_KEY } from '../api';
 
 // Timeout values in milliseconds
-const REDIRECT_TIMEOUT_MS = 10 * 60 * 1000;  // 10 minutes - redirect to incidents page
-const LOGOUT_TIMEOUT_MS = 15 * 60 * 1000;    // 15 minutes - log out user session
+const LOGOUT_TIMEOUT_MS = 10 * 60 * 1000;     // 10 minutes - log out user session
+const FULL_RESET_TIMEOUT_MS = 15 * 60 * 1000;  // 15 minutes - hard reload to fresh state
 
 /**
  * Custom hook that manages inactivity timeout for the application.
@@ -40,61 +40,62 @@ const LOGOUT_TIMEOUT_MS = 15 * 60 * 1000;    // 15 minutes - log out user sessio
  * @returns {Object} - Object containing reset function for manual timer reset if needed
  */
 export function useInactivityTimeout({ onUserLogout } = {}) {
-  const logoutTimerRef = useRef(null);
+  const resetTimerRef = useRef(null);
 
   /**
-   * Clear the logout timer
+   * Clear the full-reset timer
    */
-  const clearLogoutTimer = useCallback(() => {
-    if (logoutTimerRef.current) {
-      clearTimeout(logoutTimerRef.current);
-      logoutTimerRef.current = null;
+  const clearResetTimer = useCallback(() => {
+    if (resetTimerRef.current) {
+      clearTimeout(resetTimerRef.current);
+      resetTimerRef.current = null;
     }
   }, []);
 
   /**
-   * Handle user logout (called at 15 min)
-   * Clears session AND returns to incidents list
+   * Handle full page reset (called at 15 min)
+   * Hard reload to "/" guarantees completely fresh state:
+   * - Current year selected
+   * - No filters active
+   * - No forms or modals open
+   * - Personnel logged out (already done at 10 min)
    */
-  const handleLogout = useCallback(() => {
+  const handleFullReset = useCallback(() => {
+    console.log('[InactivityTimeout] Full reset - hard reload to / after 15 min inactivity');
+    window.location.href = '/';
+  }, []);
+
+  /**
+   * Called when user has been idle for 10 minutes (LOGOUT_TIMEOUT_MS)
+   * Logs out the personnel session, then starts timer for full reset at 15 min
+   */
+  const handleLogoutIdle = useCallback(() => {
+    // Clear personnel session
     const session = getUserSession();
     if (session) {
       clearUserSession();
       if (onUserLogout) {
         onUserLogout();
       }
-      console.log('[InactivityTimeout] User session cleared due to 15 min inactivity');
+      console.log('[InactivityTimeout] User session cleared due to 10 min inactivity');
     }
-    // Return to incidents list (closes any open form/modal)
-    console.log('[InactivityTimeout] Returning to incidents list after logout');
-    window.dispatchEvent(new CustomEvent('nav-incidents-click'));
-  }, [onUserLogout]);
 
-  /**
-   * Called when user has been idle for 10 minutes (REDIRECT_TIMEOUT_MS)
-   * Returns to incidents list and starts the logout timer for 5 more minutes
-   */
-  const handleRedirectIdle = useCallback(() => {
-    // Return to incidents list (closes any open form/modal)
-    console.log('[InactivityTimeout] Returning to incidents list due to 10 min inactivity');
-    window.dispatchEvent(new CustomEvent('nav-incidents-click'));
+    // Start the full-reset timer for the remaining 5 minutes (15 - 10 = 5)
+    clearResetTimer();
+    resetTimerRef.current = setTimeout(() => {
+      handleFullReset();
+    }, FULL_RESET_TIMEOUT_MS - LOGOUT_TIMEOUT_MS);
 
-    // Start the logout timer for the remaining 5 minutes (15 - 10 = 5)
-    clearLogoutTimer();
-    logoutTimerRef.current = setTimeout(() => {
-      handleLogout();
-    }, LOGOUT_TIMEOUT_MS - REDIRECT_TIMEOUT_MS);
-    
-    console.log('[InactivityTimeout] Logout timer started (5 min remaining)');
-  }, [clearLogoutTimer, handleLogout]);
+    console.log('[InactivityTimeout] Full reset timer started (5 min remaining)');
+  }, [onUserLogout, clearResetTimer, handleFullReset]);
 
   /**
    * Called when user becomes active again
-   * Clears the logout timer if it was running
+   * Clears the full-reset timer if it was running
    */
   const handleActive = useCallback(() => {
-    clearLogoutTimer();
-  }, [clearLogoutTimer]);
+    clearResetTimer();
+  }, [clearResetTimer]);
 
   /**
    * Listen for storage events from other tabs
@@ -102,17 +103,14 @@ export function useInactivityTimeout({ onUserLogout } = {}) {
    */
   useEffect(() => {
     const handleStorageChange = (event) => {
-      // Only react to userSession changes
       if (event.key !== USER_SESSION_KEY) return;
-      
+
       // Session was cleared in another tab
       if (event.newValue === null && event.oldValue !== null) {
         console.log('[InactivityTimeout] Session cleared in another tab, syncing...');
         if (onUserLogout) {
           onUserLogout();
         }
-        // Return to incidents list
-        window.dispatchEvent(new CustomEvent('nav-incidents-click'));
       }
     };
 
@@ -120,18 +118,18 @@ export function useInactivityTimeout({ onUserLogout } = {}) {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, [onUserLogout]);
 
-  // Cleanup logout timer on unmount
+  // Cleanup reset timer on unmount
   useEffect(() => {
-    return () => clearLogoutTimer();
-  }, [clearLogoutTimer]);
+    return () => clearResetTimer();
+  }, [clearResetTimer]);
 
   // Initialize the idle timer with cross-tab support
-  // This fires at 10 minutes for the redirect
+  // This fires at 10 minutes for the logout
   const { reset, getRemainingTime, isIdle } = useIdleTimer({
-    timeout: REDIRECT_TIMEOUT_MS,
-    onIdle: handleRedirectIdle,
+    timeout: LOGOUT_TIMEOUT_MS,
+    onIdle: handleLogoutIdle,
     onActive: handleActive,
-    debounce: 500, // Debounce activity detection by 500ms for performance
+    debounce: 500,
     events: [
       'mousemove',
       'keydown',
@@ -146,28 +144,21 @@ export function useInactivityTimeout({ onUserLogout } = {}) {
       'visibilitychange',
       'focus'
     ],
-    // Start immediately on mount
     startOnMount: true,
-    // Don't stop the timer when idle (we want continuous monitoring)
     stopOnIdle: false,
-    // CROSS-TAB SUPPORT: Sync idle state across all browser tabs
     crossTab: true,
-    // Name for the cross-tab channel (unique per app)
     name: 'cadreport-idle-timer',
-    // Sync timers across tabs every 500ms for consistency
     syncTimers: 500,
   });
 
-  // Custom reset that also clears the logout timer
+  // Custom reset that also clears the full-reset timer
   const resetAll = useCallback(() => {
-    clearLogoutTimer();
+    clearResetTimer();
     reset();
-  }, [clearLogoutTimer, reset]);
+  }, [clearResetTimer, reset]);
 
   return {
-    // Expose reset in case we need to manually reset the timer
     resetInactivityTimer: resetAll,
-    // Expose these for debugging if needed
     getRemainingTime,
     isIdle,
   };

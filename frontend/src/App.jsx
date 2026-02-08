@@ -1,18 +1,14 @@
 /**
  * App.jsx - Main Application Component
  * 
- * INACTIVITY TIMEOUT & CROSS-TAB SESSION SYSTEM (Updated January 2025):
+ * INACTIVITY TIMEOUT & CROSS-TAB SESSION SYSTEM (Updated February 2026):
  * - Uses react-idle-timer library for robust idle detection
  * - Two-tier timeout system:
- *   - 10 minutes inactivity: Redirect to incidents page ("/")
- *   - 15 minutes inactivity: Log out personnel session
+ *   - 10 minutes inactivity: Log out personnel session
+ *   - 15 minutes inactivity: Hard page reload to "/" (full fresh state reset)
  * - Cross-tab session sharing via localStorage (login/logout syncs across tabs)
  * - Cross-tab idle timer sync via BroadcastChannel
  * - Tenant session (department-level cookie) is NOT affected by inactivity timeout
- * 
- * Previous implementation used custom SessionManager component with setInterval
- * and sessionStorage (per-tab isolation), plus duplicate timeout logic in api.js
- * which caused premature logouts.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
