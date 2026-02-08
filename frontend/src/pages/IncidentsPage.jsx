@@ -8,6 +8,8 @@ import IncidentHubModal from '../components/IncidentHubModal';
 import { incidentQualifiesForModal } from '../components/IncidentHubModal/hooks/useActiveIncidents';
 import { formatTimeLocal } from '../utils/timeUtils';
 import { useIncidentWebSocket } from '../hooks/useIncidentWebSocket';
+import { useMobile } from '../hooks/useMobile';
+import IncidentCards from '../components/IncidentCards';
 
 const FILTER_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const POLL_INTERVAL_MS = 5000; // 5 seconds - fallback when WebSocket disconnected
@@ -50,6 +52,7 @@ function isRollCallDetail(incident) {
 
 function IncidentsPage({ userSession }) {
   const branding = useBranding();
+  const isMobile = useMobile();
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingIncident, setLoadingIncident] = useState(false);
@@ -774,6 +777,16 @@ function IncidentsPage({ userSession }) {
 
       {loading ? (
         <div className="loading">Loading...</div>
+      ) : isMobile ? (
+        <IncidentCards
+          incidents={incidents}
+          qualifyingIncidents={qualifyingIncidents}
+          onIncidentClick={handleIncidentClick}
+          onEditIncident={handleEditIncident}
+          onPrintIncident={handlePrintIncident}
+          loadingIncident={loadingIncident}
+          year={year}
+        />
       ) : (
         <div className="table-container" data-help-id="incidents_table">
           <table>

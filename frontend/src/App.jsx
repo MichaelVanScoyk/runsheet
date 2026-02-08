@@ -415,13 +415,6 @@ function AppContentInner({
 
   // Mobile sidebar toggle
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const sidebarRef = useRef(null);
-
-  // Close sidebar on route change (mobile)
-  const location = window.location.pathname;
-  useEffect(() => {
-    setSidebarOpen(false);
-  }, [location]);
 
   return (
     <div className="app">
@@ -441,7 +434,7 @@ function AppContentInner({
       />
 
       {/* SessionManager removed - replaced by useInactivityTimeout hook */}
-      <nav className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`} ref={sidebarRef}>
+      <nav className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
         <div className="logo">
           {/* Show logo if available */}
           {branding.logoUrl && (
