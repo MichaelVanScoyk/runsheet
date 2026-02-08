@@ -638,7 +638,7 @@ function PersonnelPage({ embedded = false }) {
               {authAction === 'approve' && '✓ Approve Member'}
             </h3>
             
-            <p style={{ color: '#ccc', marginBottom: '1rem' }}>
+            <p style={{ color: '#333', marginBottom: '1rem' }}>
               {authAction === 'invite' && (
                 <>Send an invitation email to <strong>{authTarget.first_name} {authTarget.last_name}</strong>. When they accept, their account will be automatically activated and approved.</>
               )}
@@ -675,7 +675,7 @@ function PersonnelPage({ embedded = false }) {
                 placeholder="Enter your password"
                 required
               />
-              <small style={{ color: '#888', marginTop: '0.25rem', display: 'block' }}>
+              <small style={{ color: '#666', marginTop: '0.25rem', display: 'block' }}>
                 This verifies you have permission to perform this action
               </small>
             </div>
