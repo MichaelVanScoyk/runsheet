@@ -413,10 +413,35 @@ function AppContentInner({
   // Get help panel state for content margin adjustment
   const { helpOpen } = useHelp();
 
+  // Mobile sidebar toggle
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarRef = useRef(null);
+
+  // Close sidebar on route change (mobile)
+  const location = window.location.pathname;
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location]);
+
   return (
     <div className="app">
+      {/* Mobile hamburger button */}
+      <button 
+        className="mobile-menu-btn"
+        onClick={() => setSidebarOpen(prev => !prev)}
+        aria-label="Toggle menu"
+      >
+        {sidebarOpen ? '✕' : '☰'}
+      </button>
+
+      {/* Mobile overlay backdrop */}
+      <div 
+        className={`sidebar-overlay ${sidebarOpen ? 'sidebar-overlay-visible' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+      />
+
       {/* SessionManager removed - replaced by useInactivityTimeout hook */}
-      <nav className="sidebar">
+      <nav className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`} ref={sidebarRef}>
         <div className="logo">
           {/* Show logo if available */}
           {branding.logoUrl && (
@@ -642,25 +667,25 @@ function AppContentInner({
             <NavLink 
               to="/" 
               className={({ isActive }) => isActive ? 'active' : ''}
-              onClick={() => window.dispatchEvent(new CustomEvent('nav-incidents-click'))}
+              onClick={() => { setSidebarOpen(false); window.dispatchEvent(new CustomEvent('nav-incidents-click')); }}
             >
               📋 Incidents
             </NavLink>
           </li>
           <li>
-            <NavLink to="/reports" className={({ isActive }) => isActive ? 'active' : ''}>
+            <NavLink to="/reports" className={({ isActive }) => isActive ? 'active' : ''} onClick={() => setSidebarOpen(false)}>
               📊 Reports
             </NavLink>
           </li>
           <li>
-            <NavLink to="/analytics" className={({ isActive }) => isActive ? 'active' : ''}>
+            <NavLink to="/analytics" className={({ isActive }) => isActive ? 'active' : ''} onClick={() => setSidebarOpen(false)}>
               📈 Analytics
             </NavLink>
           </li>
           {/* Admin - only show for OFFICER or ADMIN */}
           {userSession && (userSession.role === 'OFFICER' || userSession.role === 'ADMIN') && (
             <li>
-              <NavLink to="/admin" className={({ isActive }) => isActive ? 'active' : ''}>
+              <NavLink to="/admin" className={({ isActive }) => isActive ? 'active' : ''} onClick={() => setSidebarOpen(false)}>
                 🔧 Admin
               </NavLink>
             </li>

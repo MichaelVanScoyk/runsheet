@@ -11,6 +11,7 @@ body {
 .app {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ============================================
@@ -22,9 +23,12 @@ body {
   padding: 0.75rem;
   position: fixed;
   height: 100vh;
+  height: 100dvh;
   overflow-y: auto;
   box-shadow: 2px 0 10px rgba(0,0,0,0.1);
   border-right: 3px solid var(--primary-color);
+  z-index: 900;
+  transition: transform 0.25s ease;
 }
 
 .logo {
@@ -90,6 +94,7 @@ body {
   padding: 1.5rem 2rem;
   background: var(--bg-page);
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ============================================
@@ -390,4 +395,105 @@ body {
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.85; transform: scale(1.02); }
+}
+
+/* ============================================
+   MOBILE HAMBURGER BUTTON
+   ============================================ */
+.mobile-menu-btn {
+  display: none;
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 1000;
+  background: var(--primary-color);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  width: 40px;
+  height: 40px;
+  font-size: 1.4rem;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  line-height: 1;
+}
+
+.mobile-menu-btn:active {
+  background: var(--primary-hover);
+}
+
+/* Mobile sidebar overlay backdrop */
+.sidebar-overlay {
+  display: none;
+}
+
+/* ============================================
+   MOBILE RESPONSIVE (<768px)
+   ============================================ */
+@media (max-width: 767px) {
+  .mobile-menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sidebar {
+    transform: translateX(-100%);
+    width: 260px;
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 899;
+  }
+
+  .sidebar-overlay.sidebar-overlay-visible {
+    display: block;
+  }
+
+  .content {
+    margin-left: 0;
+    padding: 60px 1rem 1rem 1rem;
+  }
+
+  /* Make page headers not overlap hamburger */
+  .page-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .page-header h2 {
+    font-size: 1.2rem;
+  }
+
+  /* Filter bar stacks on mobile */
+  .filter-bar {
+    flex-wrap: wrap;
+  }
+
+  /* Tables scroll horizontally */
+  .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Modals full-width on mobile */
+  .modal {
+    width: 95%;
+    max-width: none;
+    max-height: 90vh;
+    max-height: 90dvh;
+    overflow-y: auto;
+  }
+
+  .modal-overlay {
+    align-items: flex-end;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
