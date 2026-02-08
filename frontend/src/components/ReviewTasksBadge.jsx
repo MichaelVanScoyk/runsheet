@@ -198,33 +198,28 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
             <div className="review-task-list">
               {groupedTasks.map((incident) => (
                 <div key={`${incident.entity_type || 'incident'}-${incident.incident_id}`} className="review-incident-group">
-                  <button
-                    className="review-incident-link"
-                    onClick={() => handleGroupClick(incident)}
-                  >
-                    <span className="review-incident-number">
-                      {incident.entity_type === 'personnel' ? '👤 ' : ''}{incident.incident_number}
-                    </span>
-                    <span className="review-incident-address">
-                      {incident.incident_address || 'No address'}
-                    </span>
-                  </button>
-                  
-                  <ul className="review-task-items">
-                    {incident.tasks.map((task) => (
-                      <li key={task.id} className={`review-task-item priority-${task.priority}`}>
+                  {incident.tasks.map((task) => (
+                    <button
+                      key={task.id}
+                      className={`review-task-compact priority-${task.priority}`}
+                      onClick={() => handleGroupClick(incident)}
+                    >
+                      <div className="review-task-line1">
                         <span className="review-task-icon">{getTaskIcon(task.task_type)}</span>
-                        <span className="review-task-title">{task.title}</span>
+                        <span className="review-incident-number">
+                          {incident.entity_type === 'personnel' ? '👤 ' : ''}{incident.incident_number}
+                        </span>
                         <button
                           className="review-task-dismiss"
                           onClick={(e) => handleDismiss(e, task.id)}
-                          title="Dismiss this task"
+                          title="Dismiss"
                         >
                           ×
                         </button>
-                      </li>
-                    ))}
-                  </ul>
+                      </div>
+                      <div className="review-task-line2">{task.title}</div>
+                    </button>
+                  ))}
                 </div>
               ))}
             </div>
@@ -287,10 +282,10 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
         }
 
         .review-dropdown {
-          position: absolute;
-          top: 100%;
-          left: 0;
-          right: 0;
+          position: fixed;
+          left: 8px;
+          width: 204px;
+          bottom: 8px;
           margin-top: 4px;
           background: var(--bg-card);
           border: 1px solid var(--border-color);
@@ -298,7 +293,7 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
           border-radius: 6px;
           box-shadow: 0 4px 12px rgba(0,0,0,0.15);
           z-index: 1000;
-          max-height: 400px;
+          max-height: 50vh;
           overflow-y: auto;
         }
 
@@ -335,76 +330,58 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
         }
 
         .review-incident-group {
-          padding: 0.5rem 0.75rem;
-          border-bottom: 1px solid var(--border-color);
+          padding: 0;
         }
 
-        .review-incident-group:last-child {
-          border-bottom: none;
-        }
-
-        .review-incident-link {
+        .review-task-compact {
           display: flex;
           flex-direction: column;
-          gap: 2px;
           width: 100%;
-          padding: 0.25rem 0;
+          padding: 0.4rem 0.75rem;
           border: none;
+          border-bottom: 1px solid var(--border-color);
           background: none;
           cursor: pointer;
           text-align: left;
-          border-radius: 4px;
           transition: background 0.15s;
         }
 
-        .review-incident-link:hover {
+        .review-task-compact:last-child {
+          border-bottom: none;
+        }
+
+        .review-task-compact:hover {
           background: var(--bg-hover);
+        }
+
+        .review-task-compact.priority-high {
+          border-left: 3px solid #dc2626;
+        }
+
+        .review-task-line1 {
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
         }
 
         .review-incident-number {
           font-weight: 600;
-          font-size: 0.9rem;
+          font-size: 0.8rem;
           color: var(--primary-color);
+          flex: 1;
         }
 
-        .review-incident-address {
-          font-size: 0.8rem;
+        .review-task-line2 {
+          font-size: 0.75rem;
           color: var(--text-muted);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-        }
-
-        .review-task-items {
-          margin: 0.5rem 0 0 0;
-          padding: 0 0 0 0.75rem;
-          list-style: none;
-        }
-
-        .review-task-item {
-          display: flex;
-          align-items: center;
-          gap: 0.35rem;
-          padding: 0.25rem 0.5rem;
-          margin-bottom: 0.25rem;
-          background: var(--bg-hover);
-          border-radius: 4px;
-          font-size: 0.75rem;
-          color: var(--text-primary);
-        }
-
-        .review-task-item.priority-high {
-          background: #fef2f2;
-          color: #991b1b;
-          border-left: 2px solid #dc2626;
+          padding-left: 1.15rem;
         }
 
         .review-task-icon {
           font-size: 0.8rem;
-        }
-
-        .review-task-title {
-          flex: 1;
         }
 
         .review-task-dismiss {
