@@ -185,20 +185,6 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
         <>
         <div className="review-dropdown-backdrop" onClick={() => setShowDropdown(false)} />
         <div className="review-dropdown">
-          <div className="review-dropdown-header">
-            <span className="review-dropdown-title">Pending Review</span>
-            <span className="review-dropdown-count">
-              {pendingCount} task{pendingCount !== 1 ? 's' : ''}
-            </span>
-            <button
-              className="review-dropdown-close"
-              onClick={() => setShowDropdown(false)}
-              title="Close"
-            >
-              ✕
-            </button>
-          </div>
-
           {loading ? (
             <div className="review-loading">Loading...</div>
           ) : groupedTasks.length === 0 ? (
@@ -298,10 +284,10 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
         }
 
         .review-dropdown {
-          position: fixed;
-          left: 8px;
-          width: 204px;
-          bottom: 8px;
+          position: absolute;
+          top: 100%;
+          left: 0;
+          right: 0;
           margin-top: 4px;
           background: var(--bg-card);
           border: 1px solid var(--border-color);
@@ -309,7 +295,7 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
           border-radius: 6px;
           box-shadow: 0 4px 12px rgba(0,0,0,0.15);
           z-index: 1000;
-          max-height: 50vh;
+          max-height: calc(100vh - 100% - 20px);
           overflow-y: auto;
         }
 
