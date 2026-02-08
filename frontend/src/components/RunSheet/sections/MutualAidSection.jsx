@@ -41,7 +41,7 @@ export default function MutualAidSection() {
   };
   
   return (
-    <div className="bg-theme-section rounded-lg p-4 mb-4 border border-theme">
+    <div className="bg-theme-section rounded-lg p-4 mb-4 border border-theme" data-help-id="mutual_aid">
       <h3 className="text-sm font-semibold text-theme-muted border-b border-theme-light pb-2 mb-4 flex items-center gap-2">
         <span>🤝</span>
         Mutual Aid
