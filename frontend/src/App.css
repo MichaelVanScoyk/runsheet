@@ -496,4 +496,29 @@ body {
     align-items: flex-end;
     padding-bottom: env(safe-area-inset-bottom);
   }
+
+  /* Touch-friendly targets (44px minimum per Apple HIG) */
+  .btn, button {
+    min-height: 44px;
+  }
+
+  .btn-sm {
+    min-height: 38px;
+    padding: 0.4rem 0.75rem;
+  }
+
+  input, select, textarea {
+    min-height: 44px;
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
+  }
+
+  .nav-links li a {
+    min-height: 44px;
+    padding: 0.75rem;
+  }
+
+  .badge {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.7rem;
+  }
 }

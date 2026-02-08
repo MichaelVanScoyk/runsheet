@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getApparatus, getPersonnel, updateIncident, getIncident } from '../../api';
+import { useMobile } from '../../hooks/useMobile';
 import IncidentTabs from './IncidentTabs';
 import IncidentDisplay from './IncidentDisplay';
 import StationDirectSection from './StationDirectSection';
@@ -21,6 +22,7 @@ export default function IncidentHubModal({
   onNavigateToEdit,
   refetch,
 }) {
+  const isMobile = useMobile();
   const [selectedId, setSelectedId] = useState(initialIncidentId || incidents[0]?.id);
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [apparatus, setApparatus] = useState([]);
@@ -566,8 +568,8 @@ export default function IncidentHubModal({
 
   if (loadingRef) {
     return (
-      <div style={styles.overlay}>
-        <div style={{ ...styles.modal, padding: '2rem', textAlign: 'center', color: '#333' }}>
+      <div style={isMobile ? styles.overlayMobile : styles.overlay}>
+        <div style={{ ...(isMobile ? styles.modalMobile : styles.modal), padding: '2rem', textAlign: 'center', color: '#333' }}>
           Loading...
         </div>
       </div>
@@ -577,8 +579,8 @@ export default function IncidentHubModal({
   if (incidents.length === 0) return null;
 
   return (
-    <div style={styles.overlay}>
-      <div style={styles.modal}>
+    <div style={isMobile ? styles.overlayMobile : styles.overlay}>
+      <div style={isMobile ? styles.modalMobile : styles.modal}>
         {/* Header - matches report header style */}
         <div style={styles.header}>
           <div style={styles.headerLeft}>
@@ -746,6 +748,14 @@ const styles = {
     zIndex: 1000,
     padding: '1rem',
   },
+  overlayMobile: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: '#fff',
+    zIndex: 1000,
+    padding: 0,
+    display: 'flex',
+  },
   modal: {
     backgroundColor: '#fff',
     borderRadius: '4px',
@@ -757,6 +767,18 @@ const styles = {
     flexDirection: 'column',
     overflow: 'hidden',
     position: 'relative',
+  },
+  modalMobile: {
+    backgroundColor: '#fff',
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    position: 'relative',
+    borderRadius: 0,
+    maxWidth: 'none',
+    maxHeight: 'none',
   },
   header: {
     padding: '16px 20px',

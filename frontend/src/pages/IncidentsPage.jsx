@@ -61,6 +61,7 @@ function IncidentsPage({ userSession }) {
   const [showForm, setShowForm] = useState(false);
   const [editingIncident, setEditingIncident] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [showFilters, setShowFilters] = useState(false);
   
   // DetailForm state (for roll call attendance records)
   const [showDetailForm, setShowDetailForm] = useState(false);
@@ -756,24 +757,65 @@ function IncidentsPage({ userSession }) {
         </div>
       </div>
 
-      <div className="filter-bar" data-help-id="filter_bar" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
-          {availableYears.map(y => (
-            <option key={y} value={y}>{y}</option>
-          ))}
-        </select>
-        
-        <div style={{ display: 'flex', gap: '0.25rem' }} data-help-id="category_filters">
-          <button className={`btn btn-sm ${categoryFilter === 'ALL' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('ALL')} style={{ minWidth: '60px' }}>Fire/EMS</button>
-          <button className={`btn btn-sm ${categoryFilter === 'FIRE' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('FIRE')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined, borderColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined }}>Fire</button>
-          <button className={`btn btn-sm ${categoryFilter === 'EMS' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('EMS')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'EMS' ? '#3498db' : undefined, borderColor: categoryFilter === 'EMS' ? '#3498db' : undefined }}>EMS</button>
-          <button className={`btn btn-sm ${categoryFilter === 'DETAIL' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('DETAIL')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'DETAIL' ? '#6b7280' : undefined, borderColor: categoryFilter === 'DETAIL' ? '#6b7280' : undefined }} title="Detail = Any dispatched or assigned activity that is operationally valid but excluded from federal response reporting, tracked locally for hours, attendance, incentives, or training credit.">Detail</button>
+      {isMobile ? (
+        /* Mobile: collapsible filter drawer */
+        <div style={{ marginBottom: '8px' }}>
+          <button
+            onClick={() => setShowFilters(prev => !prev)}
+            className="btn btn-secondary btn-sm"
+            style={{ 
+              width: '100%', 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              minHeight: '38px',
+            }}
+          >
+            <span>
+              {year} · {categoryFilter === 'ALL' ? 'All' : categoryFilter} · {incidents.length} incidents
+            </span>
+            <span style={{ transform: showFilters ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>▾</span>
+          </button>
+          {showFilters && (
+            <div className="filter-bar" data-help-id="filter_bar" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+              <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} style={{ width: '100%' }}>
+                {availableYears.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: '4px' }} data-help-id="category_filters">
+                <button className={`btn btn-sm ${categoryFilter === 'ALL' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('ALL')} style={{ flex: 1 }}>All</button>
+                <button className={`btn btn-sm ${categoryFilter === 'FIRE' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('FIRE')} style={{ flex: 1, backgroundColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined, borderColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined }}>Fire</button>
+                <button className={`btn btn-sm ${categoryFilter === 'EMS' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('EMS')} style={{ flex: 1, backgroundColor: categoryFilter === 'EMS' ? '#3498db' : undefined, borderColor: categoryFilter === 'EMS' ? '#3498db' : undefined }}>EMS</button>
+                <button className={`btn btn-sm ${categoryFilter === 'DETAIL' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('DETAIL')} style={{ flex: 1, backgroundColor: categoryFilter === 'DETAIL' ? '#6b7280' : undefined, borderColor: categoryFilter === 'DETAIL' ? '#6b7280' : undefined }}>Detail</button>
+              </div>
+              <span style={{ color: '#888', fontSize: '0.8rem' }}>
+                {incidents.length} incidents{categoryFilter === 'ALL' && ` (${fireCounts} Fire, ${emsCounts} EMS${detailCounts > 0 ? `, ${detailCounts} Detail` : ''})`}
+              </span>
+            </div>
+          )}
         </div>
-        
-        <span style={{ color: '#888', fontSize: '0.85rem' }}>
-          {incidents.length} incidents{categoryFilter === 'ALL' && ` (${fireCounts} Fire, ${emsCounts} EMS${detailCounts > 0 ? `, ${detailCounts} Detail` : ''})`}
-        </span>
-      </div>
+      ) : (
+        /* Desktop: original filter bar */
+        <div className="filter-bar" data-help-id="filter_bar" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <select value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
+            {availableYears.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+          
+          <div style={{ display: 'flex', gap: '0.25rem' }} data-help-id="category_filters">
+            <button className={`btn btn-sm ${categoryFilter === 'ALL' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('ALL')} style={{ minWidth: '60px' }}>Fire/EMS</button>
+            <button className={`btn btn-sm ${categoryFilter === 'FIRE' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('FIRE')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined, borderColor: categoryFilter === 'FIRE' ? '#e74c3c' : undefined }}>Fire</button>
+            <button className={`btn btn-sm ${categoryFilter === 'EMS' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('EMS')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'EMS' ? '#3498db' : undefined, borderColor: categoryFilter === 'EMS' ? '#3498db' : undefined }}>EMS</button>
+            <button className={`btn btn-sm ${categoryFilter === 'DETAIL' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleCategoryChange('DETAIL')} style={{ minWidth: '60px', backgroundColor: categoryFilter === 'DETAIL' ? '#6b7280' : undefined, borderColor: categoryFilter === 'DETAIL' ? '#6b7280' : undefined }} title="Detail = Any dispatched or assigned activity that is operationally valid but excluded from federal response reporting, tracked locally for hours, attendance, incentives, or training credit.">Detail</button>
+          </div>
+          
+          <span style={{ color: '#888', fontSize: '0.85rem' }}>
+            {incidents.length} incidents{categoryFilter === 'ALL' && ` (${fireCounts} Fire, ${emsCounts} EMS${detailCounts > 0 ? `, ${detailCounts} Detail` : ''})`}
+          </span>
+        </div>
+      )}
 
       {loading ? (
         <div className="loading">Loading...</div>
