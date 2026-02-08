@@ -306,6 +306,7 @@ export default function ActionBar() {
             type="button" 
             className="btn btn-secondary"
             onClick={handlePrint}
+            data-help-id="btn_print"
           >
             Print
           </button>
@@ -319,6 +320,7 @@ export default function ActionBar() {
               className="btn btn-secondary"
               onClick={() => setShowCadModal(true)}
               title="View raw CAD data"
+              data-help-id="btn_view_cad"
             >
               View CAD
             </button>
@@ -328,6 +330,7 @@ export default function ActionBar() {
                 className="btn btn-secondary"
                 onClick={() => setShowComCatModal(true)}
                 title="Review and categorize event comments"
+                data-help-id="btn_comments"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -344,6 +347,7 @@ export default function ActionBar() {
               onClick={handleRestorePreview}
               disabled={restoreLoading || !userSession}
               title={!userSession ? 'Please log in first' : 'Reparse incident from stored CAD data'}
+              data-help-id="btn_reparse"
             >
               {restoreLoading ? 'Loading...' : 'Reparse'}
             </button>
@@ -369,6 +373,7 @@ export default function ActionBar() {
           onClick={handleSave} 
           disabled={saving || !userSession}
           title={!userSession ? 'Please log in first' : ''}
+          data-help-id="btn_save"
         >
           {saving ? 'Saving...' : 'Save'}
         </button>
