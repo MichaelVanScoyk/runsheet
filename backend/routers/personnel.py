@@ -1480,8 +1480,8 @@ async def accept_invite(
                 db=db,
                 personnel_id=person.id,
                 task_type='pending_member_approval',
-                title=f'Approve member: {person.first_name} {person.last_name}',
-                description=f'{person.first_name} {person.last_name} self-activated their account and needs approval to access full editing.',
+                title=f'Approve {person.first_name} {person.last_name} for basic access',
+                description=f'{person.first_name} {person.last_name} self-activated their account and needs approval for basic access to the software.',
                 metadata={
                     'personnel_name': f'{person.last_name}, {person.first_name}',
                     'email': person.email,

@@ -645,7 +645,7 @@ async def update_incident(
             if saved_count >= 1 and already_edited_this == 0:
                 raise HTTPException(
                     status_code=403,
-                    detail="Edit limit reached - your account is pending approval. Please contact an officer or admin."
+                    detail="Your account is awaiting approval. Please contact an officer or admin."
                 )
     
     update_data = data.model_dump(exclude_unset=True)
@@ -1077,7 +1077,7 @@ async def save_assignments(
             if saved_count >= 1 and already_edited_this == 0:
                 raise HTTPException(
                     status_code=403,
-                    detail="Edit limit reached - your account is pending approval. Please contact an officer or admin."
+                    detail="Your account is awaiting approval. Please contact an officer or admin."
                 )
     
     # Clear existing

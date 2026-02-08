@@ -649,7 +649,7 @@ function PersonnelPage({ embedded = false }) {
                 <>Send a password reset email to <strong>{authTarget.first_name} {authTarget.last_name}</strong> at {authTarget.email}.</>
               )}
               {authAction === 'approve' && (
-                <>Approve <strong>{authTarget.first_name} {authTarget.last_name}</strong> for full access. They will be able to complete unlimited run sheets.</>
+                <>You are approving <strong>{authTarget.first_name} {authTarget.last_name}</strong> for basic access to the software.</>
               )}
             </p>
 
