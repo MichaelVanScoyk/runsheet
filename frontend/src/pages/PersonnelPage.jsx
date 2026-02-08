@@ -373,7 +373,7 @@ function PersonnelPage({ embedded = false }) {
                     </span>
                   </td>
                   <td>
-                    <div className="action-buttons" style={{ flexWrap: 'wrap', gap: '4px' }}>
+                    <div className="action-buttons" style={{ flexWrap: 'nowrap', gap: '4px' }}>
                       <button 
                         className="btn btn-secondary btn-sm"
                         onClick={() => handleEdit(p)}
