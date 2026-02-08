@@ -613,7 +613,7 @@ function IncidentsPage({ userSession }) {
       )}
 
       <div className="page-header" data-help-id="incidents_header">
-        <h2>{branding.stationShortName || branding.stationName || 'Incidents'} — Incidents - {year}</h2>
+        <h2>{branding.stationName || branding.stationShortName || 'Incidents'} — Incidents - {year}</h2>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           {activeCount > 0 && (
             <button

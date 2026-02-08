@@ -1822,10 +1822,10 @@ function BrandingTab({ onRefresh }) {
 
         {/* Station Identity */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <h4 style={{ marginBottom: '0.75rem', color: '#333' }}>Station Identity</h4>
+          <h4 style={{ marginBottom: '0.75rem', color: '#333' }}>Identity</h4>
           
           <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-            <label style={{ display: 'block', fontWeight: '500', color: '#555', marginBottom: '0.25rem' }}>Department Name</label>
+            <label style={{ display: 'block', fontWeight: '500', color: '#555', marginBottom: '0.25rem' }}>Organization Name</label>
             <input
               type="text"
               value={stationName}
@@ -1837,7 +1837,7 @@ function BrandingTab({ onRefresh }) {
           
           <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
             <div className="form-group" style={{ flex: 1 }}>
-              <label style={{ display: 'block', fontWeight: '500', color: '#555', marginBottom: '0.25rem' }}>Station Number</label>
+              <label style={{ display: 'block', fontWeight: '500', color: '#555', marginBottom: '0.25rem' }}>Station / Unit Number</label>
               <input
                 type="text"
                 value={stationNumber}
@@ -1848,7 +1848,7 @@ function BrandingTab({ onRefresh }) {
             </div>
             
             <div className="form-group" style={{ flex: 2 }}>
-              <label style={{ display: 'block', fontWeight: '500', color: '#555', marginBottom: '0.25rem' }}>Short Name</label>
+              <label style={{ display: 'block', fontWeight: '500', color: '#555', marginBottom: '0.25rem' }}>Short Name / Abbreviation</label>
               <input
                 type="text"
                 value={stationShortName}
