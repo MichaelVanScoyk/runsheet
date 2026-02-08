@@ -114,9 +114,11 @@ export default function HelpPanel() {
         />
       )}
 
+      {/* Tour controls - sticky above scroll */}
+      <HelpTourControls />
+
       {/* Entries */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem' }}>
-        <HelpTourControls />
         {loading ? (
           <div style={{ textAlign: 'center', color: '#9ca3af', padding: '2rem', fontSize: '0.85rem' }}>
             Loading...

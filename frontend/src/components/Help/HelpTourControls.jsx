@@ -14,7 +14,7 @@ export default function HelpTourControls() {
   const isLast = tourIndex === entries.length - 1;
 
   return (
-    <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '6px', padding: '0.5rem 0.75rem', marginBottom: '0.75rem' }}>
+    <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '6px', padding: '0.5rem 0.75rem', margin: '0.75rem 0.75rem 0' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
         <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#92400e' }}>🎯 Tour: {tourIndex + 1} of {entries.length}</span>
         <button onClick={tourExit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400e', fontSize: '0.75rem', fontWeight: 600 }}>✕ Exit Tour</button>
