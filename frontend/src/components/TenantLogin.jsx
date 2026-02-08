@@ -1,21 +1,49 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { tenantLogin } from '../api';
+
+// Default branding if fetch fails
+const DEFAULT_BRANDING = {
+  stationName: 'Fire Department',
+  logoUrl: null,
+  primaryColor: '#dc2626',
+};
 
 /**
  * Tenant Login Form
  * 
  * Shown on subdomain (e.g., glenmoorefc.cadreport.com) when not logged in.
- * NO master admin link here - that's on the main landing page.
+ * Light theme matching AcceptInvitePage design with department branding.
  */
 function TenantLogin({ onLogin }) {
   const [slug, setSlug] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [branding, setBranding] = useState(DEFAULT_BRANDING);
 
   // Pre-fill slug from subdomain
   const subdomain = window.location.hostname.split('.')[0];
   const isSubdomain = subdomain && subdomain !== 'cadreport' && subdomain !== 'www';
+
+  // Fetch branding on mount (public endpoint - no auth required)
+  useEffect(() => {
+    fetch('/api/branding/theme')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) {
+          setBranding({
+            stationName: data.station_name || DEFAULT_BRANDING.stationName,
+            logoUrl: data.logo_url || null,
+            primaryColor: data.primary_color || DEFAULT_BRANDING.primaryColor,
+          });
+          // Set browser tab title
+          if (data.station_name) {
+            document.title = `${data.station_name} — CADReport`;
+          }
+        }
+      })
+      .catch(err => console.error('Failed to load branding:', err));
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -35,191 +63,227 @@ function TenantLogin({ onLogin }) {
   };
 
   return (
-    <div className="tenant-login-container">
-      <div className="tenant-login-box">
-        <div className="tenant-login-header">
-          <h1>🚒 CADReport</h1>
-          <p>Fire Department Incident Management</p>
+    <div style={styles.container}>
+      <div style={styles.card}>
+        {/* Header - department logo + name */}
+        <div style={styles.header}>
+          {branding.logoUrl && (
+            <img 
+              src={branding.logoUrl} 
+              alt="Department Logo" 
+              style={styles.logo}
+            />
+          )}
+          <h1 style={styles.stationName}>{branding.stationName}</h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="tenant-login-form">
+        {/* Subdomain indicator */}
+        {isSubdomain && (
+          <div style={{
+            ...styles.subdomainInfo,
+            background: `${branding.primaryColor}10`,
+            borderColor: `${branding.primaryColor}40`,
+            color: branding.primaryColor,
+          }}>
+            Logging in to <strong>{subdomain}</strong>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
           {!isSubdomain && (
-            <div className="form-group">
-              <label htmlFor="slug">Department Code</label>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Department Code</label>
               <input
                 type="text"
-                id="slug"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                placeholder="e.g., glenmoorefc"
                 required
                 autoFocus
                 autoComplete="username"
+                style={styles.input}
               />
             </div>
           )}
 
-          {isSubdomain && (
-            <div className="subdomain-info">
-              Logging in to <strong>{subdomain}</strong>
-            </div>
-          )}
-
-          <div className="form-group">
-            <label htmlFor="password">Password</label>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Password</label>
             <input
               type="password"
-              id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Department password"
               required
               autoFocus={isSubdomain}
               autoComplete="current-password"
+              style={styles.input}
             />
           </div>
 
-          {error && <div className="login-error">{error}</div>}
+          {error && <p style={styles.error}>{error}</p>}
 
-          <button type="submit" disabled={loading} className="login-button">
+          <button 
+            type="submit" 
+            disabled={loading}
+            style={{
+              ...styles.button,
+              background: branding.primaryColor,
+              opacity: loading ? 0.6 : 1,
+              cursor: loading ? 'not-allowed' : 'pointer',
+            }}
+          >
             {loading ? 'Logging in...' : 'Log In'}
           </button>
         </form>
 
-        <div className="tenant-login-footer">
-          <p>Don't have access? Contact your fire company officer.</p>
+        <div style={styles.footerInfo}>
+          Don't have access? Contact your fire company officer.
+        </div>
+
+        {/* Powered by CADReport footer */}
+        <div style={styles.footer}>
+          Powered by <strong>CADReport</strong>
+          <span style={styles.footerDot}>·</span>
+          <a href="https://cadreport.com" target="_blank" rel="noopener noreferrer" style={styles.footerLink}>
+            Support
+          </a>
         </div>
       </div>
 
-      <style>{`
-        .tenant-login-container {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-          padding: 20px;
-        }
-
-        .tenant-login-box {
-          background: #1e1e1e;
-          border-radius: 12px;
-          padding: 40px;
-          width: 100%;
-          max-width: 400px;
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-        }
-
-        .tenant-login-header {
-          text-align: center;
-          margin-bottom: 30px;
-        }
-
-        .tenant-login-header h1 {
-          font-size: 2rem;
-          margin: 0 0 10px 0;
-          color: #fff;
-        }
-
-        .tenant-login-header p {
-          color: #888;
-          margin: 0;
-          font-size: 0.95rem;
-        }
-
-        .subdomain-info {
-          text-align: center;
-          padding: 12px;
-          background: #2a3a2a;
-          border-radius: 6px;
-          color: #4a9;
-          margin-bottom: 10px;
-        }
-
-        .subdomain-info strong {
-          color: #6c6;
-        }
-
-        .tenant-login-form {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-
-        .tenant-login-form .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .tenant-login-form label {
-          color: #aaa;
-          font-size: 0.9rem;
-          font-weight: 500;
-        }
-
-        .tenant-login-form input {
-          padding: 12px 16px;
-          border: 1px solid #333;
-          border-radius: 6px;
-          background: #2a2a2a;
-          color: #fff;
-          font-size: 1rem;
-          transition: border-color 0.2s;
-        }
-
-        .tenant-login-form input:focus {
-          outline: none;
-          border-color: #4a9eff;
-        }
-
-        .tenant-login-form input::placeholder {
-          color: #666;
-        }
-
-        .login-error {
-          background: rgba(255, 77, 77, 0.1);
-          border: 1px solid rgba(255, 77, 77, 0.3);
-          color: #ff6b6b;
-          padding: 10px 14px;
-          border-radius: 6px;
-          font-size: 0.9rem;
-        }
-
-        .login-button {
-          padding: 14px;
-          background: #4a9eff;
-          border: none;
-          border-radius: 6px;
-          color: #fff;
-          font-size: 1rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background 0.2s;
-        }
-
-        .login-button:hover:not(:disabled) {
-          background: #3a8eef;
-        }
-
-        .login-button:disabled {
-          background: #555;
-          cursor: not-allowed;
-        }
-
-        .tenant-login-footer {
-          margin-top: 24px;
-          text-align: center;
-        }
-
-        .tenant-login-footer p {
-          color: #666;
-          font-size: 0.85rem;
-          margin: 0;
-        }
-      `}</style>
+      {/* CADReport logo - bottom right corner */}
+      <div style={styles.cornerBadge}>
+        <img 
+          src="/cadreportlogo.png" 
+          alt="CADReport" 
+          style={styles.cornerLogo}
+        />
+      </div>
     </div>
   );
 }
+
+const styles = {
+  container: {
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#f3f4f6',
+    padding: '1rem',
+    position: 'relative',
+  },
+  card: {
+    background: '#ffffff',
+    borderRadius: '12px',
+    padding: '1.5rem',
+    maxWidth: '400px',
+    width: '100%',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+    border: '1px solid #e5e7eb',
+  },
+  header: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    marginBottom: '1rem',
+    paddingBottom: '0.75rem',
+    borderBottom: '1px solid #e5e7eb',
+  },
+  logo: {
+    maxWidth: '80px',
+    maxHeight: '80px',
+    width: 'auto',
+    height: 'auto',
+    objectFit: 'contain',
+    marginBottom: '0.5rem',
+  },
+  stationName: {
+    margin: 0,
+    fontSize: '1rem',
+    fontWeight: '600',
+    color: '#374151',
+    textAlign: 'center',
+  },
+  subdomainInfo: {
+    textAlign: 'center',
+    padding: '10px',
+    borderRadius: '6px',
+    border: '1px solid',
+    marginBottom: '1rem',
+    fontSize: '0.9rem',
+  },
+  formGroup: {
+    marginBottom: '0.75rem',
+  },
+  label: {
+    display: 'block',
+    color: '#374151',
+    marginBottom: '0.2rem',
+    fontSize: '0.85rem',
+    fontWeight: '500',
+  },
+  input: {
+    width: '100%',
+    padding: '0.6rem',
+    borderRadius: '6px',
+    border: '1px solid #d1d5db',
+    background: '#ffffff',
+    color: '#1f2937',
+    fontSize: '0.95rem',
+    boxSizing: 'border-box',
+  },
+  error: {
+    color: '#dc2626',
+    fontSize: '0.85rem',
+    marginBottom: '0.75rem',
+    textAlign: 'center',
+  },
+  button: {
+    width: '100%',
+    padding: '0.65rem',
+    borderRadius: '6px',
+    border: 'none',
+    color: '#fff',
+    fontSize: '0.95rem',
+    fontWeight: '600',
+    marginTop: '0.5rem',
+  },
+  footerInfo: {
+    textAlign: 'center',
+    marginTop: '1rem',
+    color: '#9ca3af',
+    fontSize: '0.8rem',
+  },
+  footer: {
+    textAlign: 'center',
+    marginTop: '0.75rem',
+    paddingTop: '0.75rem',
+    borderTop: '1px solid #e5e7eb',
+    color: '#9ca3af',
+    fontSize: '0.8rem',
+  },
+  footerDot: {
+    margin: '0 6px',
+    color: '#d1d5db',
+  },
+  footerLink: {
+    color: '#6b7280',
+    textDecoration: 'none',
+    fontWeight: '500',
+  },
+  cornerBadge: {
+    position: 'fixed',
+    bottom: '16px',
+    right: '16px',
+    background: '#ffffff',
+    borderRadius: '10px',
+    padding: '8px 12px',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+    border: '1px solid #e5e7eb',
+  },
+  cornerLogo: {
+    height: '28px',
+    width: 'auto',
+    display: 'block',
+  },
+};
 
 export default TenantLogin;
