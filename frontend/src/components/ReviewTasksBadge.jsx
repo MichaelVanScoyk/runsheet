@@ -105,9 +105,25 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
 
   useEffect(() => {
     if (!showDropdown || !dropdownRef.current) return;
-    const rect = dropdownRef.current.getBoundingClientRect();
-    const available = window.innerHeight - rect.bottom - 12;
-    setDropdownMaxHeight(Math.max(150, available));
+
+    const recalc = () => {
+      const rect = dropdownRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const available = window.innerHeight - rect.bottom - 12;
+      setDropdownMaxHeight(Math.max(150, available));
+    };
+
+    recalc();
+    window.addEventListener('resize', recalc);
+
+    // Prevent sidebar from scrolling when dropdown is open
+    const sidebar = dropdownRef.current?.closest('.sidebar');
+    if (sidebar) sidebar.style.overflowY = 'hidden';
+
+    return () => {
+      window.removeEventListener('resize', recalc);
+      if (sidebar) sidebar.style.overflowY = '';
+    };
   }, [showDropdown]);
 
   // Handle task group click - navigate to appropriate page
