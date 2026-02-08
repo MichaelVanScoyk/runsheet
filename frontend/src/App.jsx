@@ -37,8 +37,6 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import TenantLogin from './components/TenantLogin';
 import LandingPage from './components/LandingPage';
 import { 
-  isAdminAuthenticated, 
-  setAdminAuthenticated, 
   getUserSession, 
   setUserSession,
   clearUserSession, 
@@ -86,7 +84,6 @@ function PrintPage() {
 function AppContent({ tenant, onTenantLogout }) {
   const branding = useBranding();
   const navigate = useNavigate();
-  const [adminAuth, setAdminAuth] = useState(isAdminAuthenticated());
   const [userSession, setUserSessionState] = useState(getUserSession());
   const [personnel, setPersonnel] = useState([]);
   const [personnelLoaded, setPersonnelLoaded] = useState(false);
@@ -247,15 +244,6 @@ function AppContent({ tenant, onTenantLogout }) {
     return () => clearInterval(interval);
   }, []);
 
-  const handleAdminLogin = () => {
-    setAdminAuth(true);
-  };
-
-  const handleAdminLogout = () => {
-    setAdminAuthenticated(false);
-    setAdminAuth(false);
-  };
-
   /**
    * Handle explicit user logout (clicking Logout button)
    * Clears session and navigates to incidents page
@@ -408,9 +396,6 @@ function AppContent({ tenant, onTenantLogout }) {
         authError={authError}
         avAlertsEnabled={avAlertsEnabled}
         handleToggleAVAlerts={handleToggleAVAlerts}
-        adminAuth={adminAuth}
-        handleAdminLogin={handleAdminLogin}
-        handleAdminLogout={handleAdminLogout}
       />
     </HelpProvider>
   );
@@ -425,7 +410,6 @@ function AppContentInner({
   registerEmail, setRegisterEmail, handleRegisterSubmitEmail,
   registerLoading, handleCancelRegister, authError,
   avAlertsEnabled, handleToggleAVAlerts,
-  adminAuth, handleAdminLogin, handleAdminLogout,
 }) {
   // Initialize help hover detection
   useHelpHover();
@@ -713,7 +697,11 @@ function AppContentInner({
           <Route path="/personnel" element={<PersonnelPage />} />
           <Route path="/apparatus" element={<ApparatusPage />} />
           <Route path="/municipalities" element={<MunicipalitiesPage />} />
-          <Route path="/admin" element={<AdminPage isAuthenticated={adminAuth} onLogin={handleAdminLogin} onLogout={handleAdminLogout} />} />
+          <Route path="/admin" element={
+            userSession && (userSession.role === 'OFFICER' || userSession.role === 'ADMIN')
+              ? <AdminPage userSession={userSession} />
+              : <div style={{ padding: '2rem', color: '#666' }}>Access restricted to Officers and Admins. Please log in with an authorized account.</div>
+          } />
         </Routes>
       </main>
       <HelpPanel />

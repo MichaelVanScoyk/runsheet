@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { verifyAdminPassword, setAdminAuthenticated, changeAdminPassword, getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings, getPrintLayout, updatePrintLayout, resetPrintLayout, getIncidentYears, getFeatures, updateFeatures, getCadSettings, updateCadSettings } from '../api';
+import { getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings, getPrintLayout, updatePrintLayout, resetPrintLayout, getIncidentYears, getFeatures, updateFeatures, getCadSettings, updateCadSettings } from '../api';
 import { useBranding } from '../contexts/BrandingContext';
 import { formatDateTimeLocal } from '../utils/timeUtils';
 import './AdminPage.css';
@@ -1224,87 +1224,9 @@ function RanksTab() {
 }
 
 
-// ============================================================================
-// PASSWORD TAB COMPONENT
-// ============================================================================
-
-function PasswordTab() {
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState(null);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setMessage(null);
-
-    if (newPassword !== confirmPassword) {
-      setMessage({ type: 'error', text: 'New passwords do not match' });
-      return;
-    }
-
-    if (newPassword.length < 8) {
-      setMessage({ type: 'error', text: 'Password must be at least 8 characters' });
-      return;
-    }
-
-    setSaving(true);
-    try {
-      await changeAdminPassword(currentPassword, newPassword);
-      setMessage({ type: 'success', text: 'Password changed successfully' });
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-    } catch (err) {
-      setMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to change password' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="password-tab">
-      <h3>Change Admin Password</h3>
-      <form onSubmit={handleSubmit} className="password-form">
-        {message && (
-          <div className={`message ${message.type}`}>{message.text}</div>
-        )}
-        <div className="form-group">
-          <label>Current Password</label>
-          <input
-            type="password"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label>New Password</label>
-          <input
-            type="password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            required
-            minLength={8}
-          />
-        </div>
-        <div className="form-group">
-          <label>Confirm New Password</label>
-          <input
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-          />
-        </div>
-        <button type="submit" disabled={saving}>
-          {saving ? 'Changing...' : 'Change Password'}
-        </button>
-      </form>
-    </div>
-  );
-}
+// PasswordTab REMOVED - shared admin password eliminated
+// Admin page access is now gated by personnel role (OFFICER/ADMIN)
+// Users change their own password via Profile > Change Password
 
 
 // ============================================================================
@@ -2538,60 +2460,14 @@ function FeaturesTab() {
 }
 
 
-// ============================================================================
-// ADMIN LOGIN FORM
-// ============================================================================
-
-function AdminLoginForm({ onLogin }) {
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      await verifyAdminPassword(password);
-      setAdminAuthenticated(true);
-      onLogin();
-    } catch (err) {
-      setError('Invalid password');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="admin-login">
-      <div className="login-box">
-        <h2>Admin Access</h2>
-        <p>Enter password to access admin settings</p>
-        <form onSubmit={handleSubmit}>
-          {error && <div className="login-error">{error}</div>}
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            autoFocus
-          />
-          <button type="submit" disabled={loading}>
-            {loading ? 'Verifying...' : 'Enter'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
+// AdminLoginForm REMOVED - admin access now gated by personnel role
 
 
 // ============================================================================
 // MAIN ADMIN PAGE COMPONENT
 // ============================================================================
 
-function AdminPage({ isAuthenticated, onLogin, onLogout }) {
+function AdminPage({ userSession }) {
   const { refreshBranding } = useBranding();
   const [activeTab, setActiveTab] = useState('settings');
 
@@ -2601,20 +2477,11 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
     setAdminTab(activeTab);
   }, [activeTab, setAdminTab]);
 
-  if (!isAuthenticated) {
-    return (
-      <div className="admin-page">
-        <h2>Admin</h2>
-        <AdminLoginForm onLogin={onLogin} />
-      </div>
-    );
-  }
-
   return (
     <div className="admin-page">
       <div className="admin-header">
         <h2>Admin</h2>
-        <button className="btn-logout" onClick={onLogout}>Logout</button>
+        <span style={{ fontSize: '0.85rem', color: '#666' }}>Logged in as {userSession?.display_name} ({userSession?.role})</span>
       </div>
       
       <div className="admin-tabs">
@@ -2671,12 +2538,6 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
           onClick={() => setActiveTab('audit')}
         >
           📝 Audit Log
-        </button>
-        <button 
-          className={activeTab === 'password' ? 'active' : ''} 
-          onClick={() => setActiveTab('password')}
-        >
-          🔑 Password
         </button>
         <button 
           className={activeTab === 'export' ? 'active' : ''} 
@@ -2738,7 +2599,6 @@ function AdminPage({ isAuthenticated, onLogin, onLogout }) {
         {activeTab === 'apparatus' && <ApparatusPage embedded />}
         {activeTab === 'municipalities' && <MunicipalitiesPage embedded />}
         {activeTab === 'audit' && <AuditLogTab />}
-        {activeTab === 'password' && <PasswordTab />}
         {activeTab === 'export' && <DataExportTab />}
         {activeTab === 'print' && <PrintLayoutTab />}
         {activeTab === 'branding' && <BrandingTab onRefresh={refreshBranding} />}

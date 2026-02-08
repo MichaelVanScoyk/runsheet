@@ -76,6 +76,8 @@ class TenantCreateRequest(BaseModel):
     contact_email: Optional[str] = None
     county: Optional[str] = 'Chester'
     state: Optional[str] = 'PA'
+    initial_admin_name: Optional[str] = None
+    initial_admin_email: Optional[str] = None
 
 
 class TenantPasswordResetRequest(BaseModel):
@@ -398,7 +400,7 @@ async def approve_tenant(
         # 1. createdb runsheet_{slug}
         # 2. Run schema migrations
         # 3. Seed NERIS codes and default settings
-        # 4. Create initial admin user
+        # 4. Create initial admin user (handled by provision_tenant_database)
         
         return {
             'status': 'ok',
@@ -653,7 +655,10 @@ async def create_tenant(
         new_id = db.fetchone("SELECT id FROM tenants WHERE slug = %s", (slug,))[0]
     
     # Provision the database (outside the master db context)
-    provision_result = provision_tenant_database(slug, db_name)
+    # Pass contact info so initial admin is created as part of provisioning
+    initial_admin_name = data.initial_admin_name or data.contact_name
+    initial_admin_email = data.initial_admin_email or data.contact_email
+    provision_result = provision_tenant_database(slug, db_name, initial_admin_name, initial_admin_email)
     
     if not provision_result['success']:
         # Database provisioning failed - log but keep tenant record
@@ -680,7 +685,8 @@ async def create_tenant(
         log_audit(
             db, admin['id'], admin['email'], 'CREATE_TENANT',
             'TENANT', new_id, data.name,
-            {'slug': slug, 'cad_port': cad_port, 'database': db_name},
+            {'slug': slug, 'cad_port': cad_port, 'database': db_name,
+             'admin': provision_result.get('admin')},
             get_client_ip(request)
         )
     
@@ -906,7 +912,7 @@ def run_pg_command(cmd: list, check_success: bool = True) -> subprocess.Complete
     return result
 
 
-def provision_tenant_database(slug: str, db_name: str) -> dict:
+def provision_tenant_database(slug: str, db_name: str, admin_name: str = None, admin_email: str = None) -> dict:
     """
     Provision a new tenant database by copying schema from template.
     
@@ -917,6 +923,7 @@ def provision_tenant_database(slug: str, db_name: str) -> dict:
     4. Apply schema
     5. Apply reference data
     6. Clear any incident/personnel data (safety)
+    7. Create initial admin user (if admin_name and admin_email provided)
     
     Returns dict with success status and any error message.
     """
@@ -1020,7 +1027,57 @@ def provision_tenant_database(slug: str, db_name: str) -> dict:
         if cleanup_result.returncode != 0:
             logger.warning(f'Cleanup warning (non-fatal): {cleanup_result.stderr}')
         
-        return {'success': True, 'database': db_name}
+        # Step 7: Create initial admin user
+        admin_result = None
+        if admin_name and admin_email:
+            try:
+                from datetime import timedelta
+                
+                name_parts = admin_name.strip().split(' ', 1)
+                first_name = name_parts[0]
+                last_name = name_parts[1] if len(name_parts) > 1 else ''
+                
+                invite_token = secrets.token_urlsafe(32)
+                expires_at = datetime.now(timezone.utc) + timedelta(hours=72)
+                
+                conn = psycopg2.connect(f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{db_name}')
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO personnel (
+                        first_name, last_name, email, role, active,
+                        invite_token, invite_token_expires_at,
+                        approved_at, created_at, updated_at
+                    ) VALUES (%s, %s, %s, 'ADMIN', TRUE, %s, %s, NOW(), NOW(), NOW())
+                    RETURNING id
+                """, (first_name, last_name, admin_email, invite_token, expires_at))
+                personnel_id = cur.fetchone()[0]
+                conn.commit()
+                conn.close()
+                
+                # Send invitation email
+                try:
+                    from email_service import send_invitation
+                    send_invitation(
+                        to_email=admin_email,
+                        invite_token=invite_token,
+                        tenant_slug=slug,
+                        tenant_name=slug,
+                        user_name=first_name,
+                        inviter_name='CADReport System',
+                        primary_color='#1e5631',
+                        logo_url=None
+                    )
+                except Exception as e:
+                    logger.warning(f'Admin invite email failed (non-fatal): {e}')
+                
+                admin_result = {'personnel_id': personnel_id, 'email': admin_email}
+                logger.info(f'Created initial admin {admin_name} for {slug}')
+                
+            except Exception as e:
+                logger.error(f'Failed to create initial admin for {slug}: {e}')
+                admin_result = {'error': str(e)}
+        
+        return {'success': True, 'database': db_name, 'admin': admin_result}
         
     except Exception as e:
         logger.exception(f'Provision failed for {slug}')

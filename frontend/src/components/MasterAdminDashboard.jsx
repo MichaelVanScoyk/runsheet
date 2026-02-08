@@ -314,7 +314,10 @@ function MasterAdminDashboard({ onExit }) {
                     <div
                       key={t.id}
                       className={`tenant-card ${selectedTenant?.id === t.id ? 'selected' : ''} status-${t.status?.toLowerCase()}`}
-                      onClick={() => setSelectedTenant(t)}
+                      onClick={() => {
+                        setSelectedTenant(t);
+                        setActionError('');
+                      }}
                     >
                       <div className="tenant-name">{t.name}</div>
                       <div className="tenant-slug">{t.slug}.cadreport.com</div>
@@ -916,6 +919,7 @@ const styles = `
     overflow: hidden;
     text-overflow: ellipsis;
   }
+
 `;
 
 export default MasterAdminDashboard;

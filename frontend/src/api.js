@@ -307,24 +307,8 @@ export const updateCadSettings = (settings) => api.put('/settings/cad', settings
 // ADMIN
 // ============================================================================
 
-export const verifyAdminPassword = (password) => 
-  api.post('/admin/verify', { password });
-
-export const setAdminAuthenticated = (value) => {
-  // Client-side only - store in sessionStorage
-  if (value) {
-    sessionStorage.setItem('adminAuthenticated', 'true');
-  } else {
-    sessionStorage.removeItem('adminAuthenticated');
-  }
-};
-
-export const isAdminAuthenticated = () => {
-  return sessionStorage.getItem('adminAuthenticated') === 'true';
-};
-
-export const changeAdminPassword = (currentPassword, newPassword) => 
-  api.post('/admin/change-password', { current_password: currentPassword, new_password: newPassword });
+// Shared admin password removed - admin access now gated by personnel role (OFFICER/ADMIN)
+// verifyAdminPassword, setAdminAuthenticated, isAdminAuthenticated, changeAdminPassword - REMOVED
 
 export const getAuditLog = (limit = 100, entityType = null) => {
   const params = { limit };
