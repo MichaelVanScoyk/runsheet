@@ -100,18 +100,14 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
     fetchGrouped();
   }, [showDropdown, canView]);
 
-  // Close dropdown on outside click
+  // Calculate available space for dropdown
+  const [dropdownMaxHeight, setDropdownMaxHeight] = useState(300);
+
   useEffect(() => {
-    if (!showDropdown) return;
-
-    const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setShowDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    if (!showDropdown || !dropdownRef.current) return;
+    const rect = dropdownRef.current.getBoundingClientRect();
+    const available = window.innerHeight - rect.bottom - 12;
+    setDropdownMaxHeight(Math.max(150, available));
   }, [showDropdown]);
 
   // Handle task group click - navigate to appropriate page
@@ -184,7 +180,7 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
       {showDropdown && (
         <>
         <div className="review-dropdown-backdrop" onClick={() => setShowDropdown(false)} />
-        <div className="review-dropdown">
+        <div className="review-dropdown" style={{ maxHeight: `${dropdownMaxHeight}px` }}>
           {loading ? (
             <div className="review-loading">Loading...</div>
           ) : groupedTasks.length === 0 ? (
@@ -295,7 +291,6 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
           border-radius: 6px;
           box-shadow: 0 4px 12px rgba(0,0,0,0.15);
           z-index: 1000;
-          max-height: calc(100vh - 100% - 20px);
           overflow-y: auto;
         }
 
