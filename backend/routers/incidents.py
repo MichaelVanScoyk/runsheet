@@ -656,6 +656,10 @@ async def update_incident(
     for field in IMMUTABLE_FIELDS:
         update_data.pop(field, None)
     
+    # Don't allow blanking out cad_event_number - it's set during creation
+    if 'cad_event_number' in update_data and not update_data['cad_event_number'] and incident.cad_event_number:
+        del update_data['cad_event_number']
+    
     # Handle internal_incident_number change - update year_prefix to match
     if 'internal_incident_number' in update_data:
         new_number = update_data['internal_incident_number']

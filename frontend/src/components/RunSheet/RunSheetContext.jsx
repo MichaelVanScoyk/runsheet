@@ -497,6 +497,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
         setFormData(prev => ({
           ...prev,
           internal_incident_number: suggestedNumberRes.data.suggested_number,
+          cad_event_number: `MANUAL-${Date.now()}`,
         }));
         setAssignments(emptyAssignments);
       }
