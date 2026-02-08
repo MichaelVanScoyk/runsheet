@@ -87,6 +87,22 @@ function SettingsTab() {
   const renderSetting = (setting) => {
     const isSaving = saving === `${setting.category}.${setting.key}`;
     
+    // Hide station identity fields - now managed in Admin > Branding
+    const brandingManagedKeys = ['name', 'number', 'short_name', 'tagline'];
+    if (setting.category === 'station' && brandingManagedKeys.includes(setting.key)) {
+      return (
+        <div key={setting.key} className="setting-item" style={{ opacity: 0.5 }}>
+          <div className="setting-header">
+            <label>{formatLabel(setting.key)}</label>
+            <span className="setting-desc" style={{ color: '#f59e0b' }}>
+              ⚠️ Now managed in Admin → Branding tab
+            </span>
+          </div>
+          <input type="text" value={setting.raw_value || ''} disabled style={{ color: '#888' }} />
+        </div>
+      );
+    }
+    
     // Hide station_units - now managed in Admin > Units
     if (setting.key === 'station_units') {
       return (
@@ -1479,6 +1495,14 @@ function BrandingTab({ onRefresh }) {
   const [savingColors, setSavingColors] = useState(false);
   const [pickingFor, setPickingFor] = useState(null); // 'primary' or 'secondary'
   
+  // Station identity state
+  const [stationName, setStationName] = useState('');
+  const [stationNumber, setStationNumber] = useState('');
+  const [stationShortName, setStationShortName] = useState('');
+  const [stationTagline, setStationTagline] = useState('');
+  const [savedIdentity, setSavedIdentity] = useState({ name: '', number: '', short_name: '', tagline: '' });
+  const [savingIdentity, setSavingIdentity] = useState(false);
+  
   // Color state - local until saved
   const [primaryColor, setPrimaryColor] = useState('#016a2b');
   const [secondaryColor, setSecondaryColor] = useState('#eeee01');
@@ -1496,14 +1520,30 @@ function BrandingTab({ onRefresh }) {
   const loadBranding = async () => {
     try {
       // Load logo
-      console.log('Fetching logo...');
       const logoRes = await fetch(`${API_BASE}/api/settings/branding/logo`);
       const logoData = await logoRes.json();
-      console.log('Logo response:', logoData);
-      console.log('has_logo:', logoData?.has_logo);
-      console.log('mime_type:', logoData?.mime_type);
-      console.log('data length:', logoData?.data?.length);
       setLogo(logoData);
+      
+      // Load station identity fields
+      const identityKeys = [
+        { key: 'name', setter: setStationName },
+        { key: 'number', setter: setStationNumber },
+        { key: 'short_name', setter: setStationShortName },
+        { key: 'tagline', setter: setStationTagline },
+      ];
+      const identityValues = {};
+      for (const { key, setter } of identityKeys) {
+        try {
+          const res = await fetch(`${API_BASE}/api/settings/station/${key}`);
+          if (res.ok) {
+            const data = await res.json();
+            const val = data.raw_value || '';
+            setter(val);
+            identityValues[key] = val;
+          }
+        } catch (e) { /* use default */ }
+      }
+      setSavedIdentity(identityValues);
       
       // Load colors (404 is OK - means not set yet)
       try {
@@ -1532,6 +1572,42 @@ function BrandingTab({ onRefresh }) {
       console.error('Failed to load branding:', err);
     } finally {
       setLoading(false);
+    }
+  };
+  
+  const hasIdentityChanges = stationName !== (savedIdentity.name || '') 
+    || stationNumber !== (savedIdentity.number || '') 
+    || stationShortName !== (savedIdentity.short_name || '') 
+    || stationTagline !== (savedIdentity.tagline || '');
+
+  const saveIdentity = async () => {
+    setSavingIdentity(true);
+    setMessage(null);
+    
+    try {
+      const fields = [
+        { key: 'name', value: stationName },
+        { key: 'number', value: stationNumber },
+        { key: 'short_name', value: stationShortName },
+        { key: 'tagline', value: stationTagline },
+      ];
+      
+      for (const { key, value } of fields) {
+        await fetch(`${API_BASE}/api/settings/station/${key}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value }),
+        });
+      }
+      
+      setSavedIdentity({ name: stationName, number: stationNumber, short_name: stationShortName, tagline: stationTagline });
+      setMessage({ type: 'success', text: 'Station identity saved' });
+      
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to save station identity' });
+    } finally {
+      setSavingIdentity(false);
     }
   };
 
@@ -1733,7 +1809,7 @@ function BrandingTab({ onRefresh }) {
     <div className="branding-tab">
       <h3 style={{ color: 'var(--primary-color)' }}>Department Branding</h3>
       <p className="tab-intro">
-        Upload your department's logo and set brand colors for reports.
+        Set your department's identity, logo, and brand colors. These appear throughout the UI and PDF reports.
       </p>
 
       {message && (
@@ -1743,6 +1819,74 @@ function BrandingTab({ onRefresh }) {
       )}
 
       <div className="branding-content" style={{ maxWidth: '500px' }}>
+
+        {/* Station Identity */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h4 style={{ marginBottom: '0.75rem', color: '#333' }}>Station Identity</h4>
+          
+          <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+            <label style={{ display: 'block', fontWeight: '500', color: '#555', marginBottom: '0.25rem' }}>Department Name</label>
+            <input
+              type="text"
+              value={stationName}
+              onChange={(e) => setStationName(e.target.value)}
+              style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+            <small style={{ color: '#888' }}>Sidebar, browser tab, PDF reports</small>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontWeight: '500', color: '#555', marginBottom: '0.25rem' }}>Station Number</label>
+              <input
+                type="text"
+                value={stationNumber}
+                onChange={(e) => setStationNumber(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
+              />
+              <small style={{ color: '#888' }}>Browser tab favicon, PDF header</small>
+            </div>
+            
+            <div className="form-group" style={{ flex: 2 }}>
+              <label style={{ display: 'block', fontWeight: '500', color: '#555', marginBottom: '0.25rem' }}>Short Name</label>
+              <input
+                type="text"
+                value={stationShortName}
+                onChange={(e) => setStationShortName(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
+              />
+              <small style={{ color: '#888' }}>Incidents page header, PDF footer</small>
+            </div>
+          </div>
+          
+          <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+            <label style={{ display: 'block', fontWeight: '500', color: '#555', marginBottom: '0.25rem' }}>Tagline</label>
+            <input
+              type="text"
+              value={stationTagline}
+              onChange={(e) => setStationTagline(e.target.value)}
+              style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+            <small style={{ color: '#888' }}>Optional — displayed on PDF reports</small>
+          </div>
+          
+          <button
+            className="btn btn-primary"
+            onClick={saveIdentity}
+            disabled={savingIdentity || !hasIdentityChanges}
+          >
+            {savingIdentity ? 'Saving...' : 'Save Identity'}
+          </button>
+          {hasIdentityChanges && (
+            <span style={{ marginLeft: '1rem', color: '#f39c12', fontSize: '0.85rem' }}>
+              Unsaved changes
+            </span>
+          )}
+        </div>
+
+        <div style={{ borderTop: '1px solid #ddd', paddingTop: '1.5rem' }}>
+        <h4 style={{ marginBottom: '0.75rem', color: '#333' }}>Logo</h4>
+        </div>
         
         {/* Logo Preview - clickable for eyedropper */}
         <div 
@@ -1930,20 +2074,7 @@ function BrandingTab({ onRefresh }) {
           </ul>
         </div>
 
-        {/* Debug info */}
-        <div style={{ marginTop: '1rem', padding: '0.5rem', background: '#f5f5f5', borderRadius: '4px', fontSize: '0.75rem', color: '#888', border: '1px solid #e0e0e0' }}>
-          <details>
-            <summary style={{ cursor: 'pointer' }}>Debug Info</summary>
-            <pre style={{ margin: '0.5rem 0 0 0', whiteSpace: 'pre-wrap' }}>
-              {JSON.stringify({
-                has_logo: logo?.has_logo,
-                mime_type: logo?.mime_type,
-                data_length: logo?.data?.length,
-                logoSrc_length: logoSrc?.length
-              }, null, 2)}
-            </pre>
-          </details>
-        </div>
+
       </div>
     </div>
   );
