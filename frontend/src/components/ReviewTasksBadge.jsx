@@ -182,12 +182,21 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
       </button>
 
       {showDropdown && (
+        <>
+        <div className="review-dropdown-backdrop" onClick={() => setShowDropdown(false)} />
         <div className="review-dropdown">
           <div className="review-dropdown-header">
             <span className="review-dropdown-title">Pending Review</span>
             <span className="review-dropdown-count">
               {pendingCount} task{pendingCount !== 1 ? 's' : ''}
             </span>
+            <button
+              className="review-dropdown-close"
+              onClick={() => setShowDropdown(false)}
+              title="Close"
+            >
+              ✕
+            </button>
           </div>
 
           {loading ? (
@@ -225,6 +234,7 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
             </div>
           )}
         </div>
+        </>
       )}
 
       <style>{`
@@ -281,6 +291,12 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
           text-align: center;
         }
 
+        .review-dropdown-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 999;
+        }
+
         .review-dropdown {
           position: fixed;
           left: 8px;
@@ -315,6 +331,26 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
         .review-dropdown-count {
           font-size: 0.75rem;
           color: var(--text-muted);
+          flex: 1;
+          text-align: right;
+        }
+
+        .review-dropdown-close {
+          background: none;
+          border: 1px solid var(--border-color);
+          color: var(--text-muted);
+          font-size: 1.1rem;
+          cursor: pointer;
+          padding: 0.15rem 0.5rem;
+          line-height: 1;
+          border-radius: 4px;
+          margin-left: 0.5rem;
+        }
+
+        .review-dropdown-close:hover {
+          background: #fee;
+          color: #c00;
+          border-color: #c00;
         }
 
         .review-loading,
