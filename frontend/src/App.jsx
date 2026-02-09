@@ -15,6 +15,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useNavigate, useParams } from 'react-router-dom';
 import { BrandingProvider, useBranding } from './contexts/BrandingContext';
 import { HelpProvider, useHelp } from './contexts/HelpContext';
+import { ToastProvider } from './contexts/ToastContext';
+import { ConfirmProvider } from './contexts/ConfirmContext';
 import { useHelpHover } from './hooks/useHelpHover';
 import HelpPanel from './components/Help/HelpPanel';
 import HelpHighlight from './components/Help/HelpHighlight';
@@ -896,19 +898,23 @@ function App() {
   // SplashGate holds the splash until branding loads + 1 second
   return (
     <BrandingProvider>
-      <SplashGate>
-        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <Routes>
-            {/* Standalone auth pages - no app shell needed */}
-            <Route path="/accept-invite" element={<AcceptInvitePage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            {/* Print route - standalone, no app shell */}
-            <Route path="/print/:id" element={<PrintPage />} />
-            {/* All other routes use the app shell */}
-            <Route path="/*" element={<AppContent tenant={tenantSession} onTenantLogout={handleTenantLogout} />} />
-          </Routes>
-        </BrowserRouter>
-      </SplashGate>
+      <ToastProvider>
+        <ConfirmProvider>
+          <SplashGate>
+            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <Routes>
+                {/* Standalone auth pages - no app shell needed */}
+                <Route path="/accept-invite" element={<AcceptInvitePage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+                {/* Print route - standalone, no app shell */}
+                <Route path="/print/:id" element={<PrintPage />} />
+                {/* All other routes use the app shell */}
+                <Route path="/*" element={<AppContent tenant={tenantSession} onTenantLogout={handleTenantLogout} />} />
+              </Routes>
+            </BrowserRouter>
+          </SplashGate>
+        </ConfirmProvider>
+      </ToastProvider>
     </BrandingProvider>
   );
 }

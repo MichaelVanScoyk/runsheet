@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { getPersonnel, getRanks, createPersonnel, updatePersonnel, deletePersonnel, sendInvite, resendInvite, sendPasswordReset, approveMember, getUserSession } from '../api';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 const API_BASE = '';
 
 function PersonnelPage({ embedded = false }) {
+  const toast = useToast();
+  const confirmAction = useConfirm();
   const [personnel, setPersonnel] = useState([]);
   const [ranks, setRanks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +79,8 @@ function PersonnelPage({ embedded = false }) {
   };
 
   const handleDelete = async (person) => {
-    if (!confirm(`Deactivate ${person.first_name} ${person.last_name}?`)) return;
+    const ok = await confirmAction(`Deactivate ${person.first_name} ${person.last_name}?`, { confirmText: 'Deactivate', danger: true });
+    if (!ok) return;
     
     try {
       await deletePersonnel(person.id);
@@ -83,7 +88,7 @@ function PersonnelPage({ embedded = false }) {
       window.dispatchEvent(new CustomEvent('personnel-changed'));
     } catch (err) {
       console.error('Failed to delete:', err);
-      alert('Failed to deactivate personnel');
+      toast.error('Failed to deactivate personnel');
     }
   };
 
@@ -106,7 +111,7 @@ function PersonnelPage({ embedded = false }) {
       window.dispatchEvent(new CustomEvent('personnel-changed'));
     } catch (err) {
       console.error('Failed to save:', err);
-      alert('Failed to save personnel');
+      toast.error('Failed to save personnel');
     }
   };
 
@@ -146,7 +151,7 @@ function PersonnelPage({ embedded = false }) {
       setShowImportModal(true);
     } catch (err) {
       console.error('Preview failed:', err);
-      alert('Failed to preview CSV: ' + err.message);
+      toast.error('Failed to preview CSV: ' + err.message);
     } finally {
       setImportLoading(false);
     }
@@ -173,7 +178,7 @@ function PersonnelPage({ embedded = false }) {
         throw new Error(data.detail || 'Import failed');
       }
       
-      alert(`Imported ${data.imported_count} personnel. ${data.skipped_count} skipped.`);
+      toast.success(`Imported ${data.imported_count} personnel. ${data.skipped_count} skipped.`);
       setShowImportModal(false);
       setImportPreview(null);
       setImportFile(null);
@@ -183,7 +188,7 @@ function PersonnelPage({ embedded = false }) {
       window.dispatchEvent(new CustomEvent('personnel-changed'));
     } catch (err) {
       console.error('Import failed:', err);
-      alert('Failed to import: ' + err.message);
+      toast.error('Failed to import: ' + err.message);
     } finally {
       setImportLoading(false);
     }

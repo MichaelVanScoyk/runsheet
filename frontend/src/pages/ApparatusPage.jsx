@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getApparatus, createApparatus, updateApparatus, deleteApparatus, reactivateApparatus, hardDeleteApparatus } from '../api';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 const API_BASE = '';
 
@@ -26,6 +28,8 @@ const UNIT_CATEGORIES = {
 };
 
 function ApparatusPage({ embedded = false }) {
+  const toast = useToast();
+  const confirmAction = useConfirm();
   const [units, setUnits] = useState([]);
   const [apparatusTypes, setApparatusTypes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -125,15 +129,18 @@ function ApparatusPage({ embedded = false }) {
   };
 
   const handleDeactivate = async (item) => {
-    const msg = `Deactivate ${item.unit_designator}? It will be hidden but can be reactivated.`;
-    if (!confirm(msg)) return;
+    const ok = await confirmAction(`Deactivate ${item.unit_designator}?`, {
+      confirmText: 'Deactivate',
+      details: 'It will be hidden but can be reactivated.',
+    });
+    if (!ok) return;
     
     try {
       await deleteApparatus(item.id);
       loadData();
     } catch (err) {
       console.error('Failed to deactivate:', err);
-      alert('Failed to deactivate');
+      toast.error('Failed to deactivate');
     }
   };
 
@@ -143,20 +150,24 @@ function ApparatusPage({ embedded = false }) {
       loadData();
     } catch (err) {
       console.error('Failed to reactivate:', err);
-      alert('Failed to reactivate');
+      toast.error('Failed to reactivate');
     }
   };
 
   const handlePermanentDelete = async (item) => {
-    const msg = `PERMANENTLY DELETE ${item.unit_designator}?\n\nThis cannot be undone. The unit will be removed from the database.`;
-    if (!confirm(msg)) return;
+    const ok = await confirmAction(`Permanently delete ${item.unit_designator}?`, {
+      confirmText: 'Delete Permanently',
+      danger: true,
+      details: 'This cannot be undone. The unit will be removed from the database.',
+    });
+    if (!ok) return;
     
     try {
       await hardDeleteApparatus(item.id);
       loadData();
     } catch (err) {
       console.error('Failed to delete:', err);
-      alert('Failed to delete permanently');
+      toast.error('Failed to delete permanently');
     }
   };
 
@@ -189,7 +200,7 @@ function ApparatusPage({ embedded = false }) {
       loadData();
     } catch (err) {
       console.error('Failed to save:', err);
-      alert('Failed to save');
+      toast.error('Failed to save');
     }
   };
 

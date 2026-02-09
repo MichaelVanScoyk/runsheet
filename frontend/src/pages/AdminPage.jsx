@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { getAuditLog, getRanks, createRank, updateRank, deleteRank, getPrintSettings, updatePrintSettings, getPrintLayout, updatePrintLayout, resetPrintLayout, getIncidentYears, getFeatures, updateFeatures, getCadSettings, updateCadSettings } from '../api';
 import { useBranding } from '../contexts/BrandingContext';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import { formatDateTimeLocal } from '../utils/timeUtils';
 import './AdminPage.css';
 import PersonnelPage from './PersonnelPage';
@@ -30,6 +32,7 @@ const US_TIMEZONES = [
 // ============================================================================
 
 function SettingsTab() {
+  const toast = useToast();
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
@@ -76,7 +79,7 @@ function SettingsTab() {
       await loadSettings();
     } catch (err) {
       console.error('Failed to update setting:', err);
-      alert('Failed to save setting');
+      toast.error('Failed to save setting');
     } finally {
       setSaving(null);
     }
@@ -1045,6 +1048,8 @@ function NerisCodesTab() {
 // ============================================================================
 
 function RanksTab() {
+  const toast = useToast();
+  const confirmAction = useConfirm();
   const [ranks, setRanks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -1090,13 +1095,14 @@ function RanksTab() {
   };
 
   const handleDelete = async (rank) => {
-    if (!confirm(`Deactivate rank "${rank.rank_name}"?`)) return;
+    const ok = await confirmAction(`Deactivate rank "${rank.rank_name}"?`, { confirmText: 'Deactivate', danger: true });
+    if (!ok) return;
     
     try {
       await deleteRank(rank.id);
       loadRanks();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to delete rank');
+      toast.error(err.response?.data?.detail || 'Failed to delete rank');
     }
   };
 
@@ -1325,6 +1331,7 @@ function AuditLogTab() {
 // ============================================================================
 
 function DataExportTab() {
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [year, setYear] = useState(new Date().getFullYear());
   const [includeCAD, setIncludeCAD] = useState(true);
@@ -1367,7 +1374,7 @@ function DataExportTab() {
       
     } catch (err) {
       console.error('Export failed:', err);
-      alert('Failed to export data: ' + err.message);
+      toast.error('Failed to export data: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -1410,7 +1417,7 @@ function DataExportTab() {
       
     } catch (err) {
       console.error('Export failed:', err);
-      alert('Failed to export data: ' + err.message);
+      toast.error('Failed to export data: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -1488,6 +1495,7 @@ function DataExportTab() {
 // ============================================================================
 
 function BrandingTab({ onRefresh }) {
+  const confirmAction = useConfirm();
   const [logo, setLogo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -1688,7 +1696,8 @@ function BrandingTab({ onRefresh }) {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Remove the department logo?')) return;
+    const ok = await confirmAction('Remove the department logo?', { confirmText: 'Remove', danger: true });
+    if (!ok) return;
 
     try {
       const res = await fetch(`${API_BASE}/api/settings/branding/logo`, {
@@ -2086,6 +2095,7 @@ function BrandingTab({ onRefresh }) {
 // ============================================================================
 
 function ComCatTab() {
+  const confirmAction = useConfirm();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [retraining, setRetraining] = useState(false);
@@ -2109,9 +2119,11 @@ function ComCatTab() {
   };
 
   const handleRetrain = async () => {
-    if (!confirm('Retrain the ML model with all current training data?\n\nThis includes seed examples plus all officer corrections.')) {
-      return;
-    }
+    const ok = await confirmAction('Retrain the ML model with all current training data?', {
+      confirmText: 'Retrain',
+      details: 'This includes seed examples plus all officer corrections.',
+    });
+    if (!ok) return;
     
     setRetraining(true);
     setMessage(null);

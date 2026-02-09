@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
 import { getMunicipalities, createMunicipality, updateMunicipality, deleteMunicipality } from '../api';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 function MunicipalitiesPage() {
+  const toast = useToast();
+  const confirmAction = useConfirm();
   const [municipalities, setMunicipalities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -62,14 +66,19 @@ function MunicipalitiesPage() {
   };
 
   const handleDelete = async (item) => {
-    if (!confirm(`Remove "${item.display_name || item.code}"? This will deactivate it.`)) return;
+    const ok = await confirmAction(`Remove "${item.display_name || item.code}"?`, {
+      confirmText: 'Remove',
+      danger: true,
+      details: 'This will deactivate it.',
+    });
+    if (!ok) return;
     
     try {
       await deleteMunicipality(item.id);
       loadData();
     } catch (err) {
       console.error('Failed to delete:', err);
-      alert('Failed to remove');
+      toast.error('Failed to remove');
     }
   };
 
@@ -93,7 +102,7 @@ function MunicipalitiesPage() {
       loadData();
     } catch (err) {
       console.error('Failed to save:', err);
-      alert('Failed to save: ' + (err.response?.data?.detail || err.message));
+      toast.error('Failed to save: ' + (err.response?.data?.detail || err.message));
     }
   };
 

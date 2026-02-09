@@ -27,6 +27,8 @@ import {
   deleteIncident
 } from '../../api';
 import { useBranding } from '../../contexts/BrandingContext';
+import { useToast } from '../../contexts/ToastContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
 import { formatDateTimeLocal } from '../../utils/timeUtils';
 import DetailHeader from './DetailHeader';
 import AttendanceGrid from './AttendanceGrid';
@@ -35,6 +37,8 @@ import OfficerFields from './OfficerFields';
 
 export default function DetailForm({ incidentId, onClose, onSaved }) {
   const branding = useBranding();
+  const toast = useToast();
+  const confirmAction = useConfirm();
   
   // Track if this is a new record (no incidentId provided)
   const [isNew, setIsNew] = useState(!incidentId);
@@ -337,7 +341,7 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
       if (onClose) onClose();
     } catch (err) {
       console.error('Failed to delete:', err);
-      alert('Failed to delete: ' + (err.response?.data?.detail || err.message));
+      toast.error('Failed to delete: ' + (err.response?.data?.detail || err.message));
     } finally {
       setDeleting(false);
     }
@@ -352,11 +356,10 @@ export default function DetailForm({ incidentId, onClose, onSaved }) {
   };
 
   // Handle close with unsaved changes warning
-  const handleClose = () => {
+  const handleClose = async () => {
     if (hasChanges) {
-      if (window.confirm('You have unsaved changes. Discard them?')) {
-        onClose();
-      }
+      const ok = await confirmAction('You have unsaved changes. Discard them?', { confirmText: 'Discard', danger: true });
+      if (ok) onClose();
     } else {
       onClose();
     }

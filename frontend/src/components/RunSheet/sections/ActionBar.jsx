@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRunSheet } from '../RunSheetContext';
 import { getAdjacentIncidents, deleteIncident, checkDuplicateStatus, duplicateIncident } from '../../../api';
+import { useToast } from '../../../contexts/ToastContext';
 
 export default function ActionBar() {
+  const toast = useToast();
   const { 
     incident, 
     formData, 
@@ -196,7 +198,7 @@ export default function ActionBar() {
       if (onClose) onClose();
     } catch (err) {
       console.error('Failed to delete incident:', err);
-      alert('Failed to delete incident: ' + (err.response?.data?.detail || err.message));
+      toast.error('Failed to delete: ' + (err.response?.data?.detail || err.message));
     } finally {
       setDeleting(false);
     }
@@ -224,7 +226,7 @@ export default function ActionBar() {
       setDuplicateResult(res.data);
     } catch (err) {
       console.error('Failed to duplicate incident:', err);
-      alert('Failed to duplicate incident: ' + (err.response?.data?.detail || err.message));
+      toast.error('Failed to duplicate: ' + (err.response?.data?.detail || err.message));
     } finally {
       setDuplicating(false);
     }

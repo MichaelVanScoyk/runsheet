@@ -1,4 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { useToast } from '../../contexts/ToastContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
 import { 
   getApparatus, 
   getPersonnel, 
@@ -188,6 +190,8 @@ const initialFormData = {
 };
 
 export function RunSheetProvider({ incident, onSave, onClose, onNavigate, children }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -565,7 +569,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
       
     } catch (err) {
       console.error('Failed to change category:', err);
-      alert('Failed to change category: ' + (err.message || 'Unknown error'));
+      toast.error('Failed to change category: ' + (err.message || 'Unknown error'));
       // Revert the dropdown to the original value
       setFormData(prev => ({ ...prev, call_category: formData.call_category }));
     } finally {
@@ -684,7 +688,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
       const response = await fetch(`/api/backup/preview-restore/${incident.id}`);
       const data = await response.json();
       if (data.error) {
-        alert(data.error);
+        toast.error(data.error);
         return;
       }
       
@@ -705,7 +709,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
       setShowRestoreModal(true);
     } catch (err) {
       console.error('Failed to preview restore:', err);
-      alert('Failed to preview restore from CAD');
+      toast.error('Failed to preview restore from CAD');
     } finally {
       setRestoreLoading(false);
     }
@@ -722,7 +726,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
       });
       const data = await response.json();
       if (data.error) {
-        alert(data.error);
+        toast.error(data.error);
         return;
       }
       
@@ -733,7 +737,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
       await loadData();
     } catch (err) {
       console.error('Failed to restore from CAD:', err);
-      alert('Failed to restore from CAD');
+      toast.error('Failed to restore from CAD');
     } finally {
       setRestoreLoading(false);
     }
@@ -794,7 +798,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
       // Don't call onClose - stay on form after save
     } catch (err) {
       console.error('Failed to save:', err);
-      alert('Failed to save incident: ' + (err.message || 'Unknown error'));
+      toast.error('Failed to save: ' + (err.message || 'Unknown error'));
     } finally {
       setSaving(false);
     }
@@ -802,18 +806,19 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
 
   const handleCloseIncident = async () => {
     if (!incident?.id) return;
-    if (!confirm('Close this incident?')) return;
+    const ok = await confirm('Close this incident?', { confirmText: 'Close', danger: true });
+    if (!ok) return;
     
     try {
       const editedBy = userSession?.personnel_id || null;
       await closeIncident(incident.id, editedBy);
       setFormData(prev => ({ ...prev, status: 'CLOSED' }));
-      alert('Incident closed');
+      toast.success('Incident closed');
       if (onSave) onSave(incident.id);
       if (onClose) onClose();
     } catch (err) {
       console.error('Failed to close:', err);
-      alert('Failed to close incident');
+      toast.error('Failed to close incident');
     }
   };
 

@@ -7,8 +7,12 @@
 
 import { useState, useEffect } from 'react';
 import { getDetailTypes, createDetailType, updateDetailType, deleteDetailType } from '../api';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 export default function DetailTypesTab() {
+  const toast = useToast();
+  const confirmAction = useConfirm();
   const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -55,15 +59,18 @@ export default function DetailTypesTab() {
   };
 
   const handleDelete = async (type) => {
-    if (!confirm(`Deactivate "${type.display_name}"?\n\nThis won't delete existing records using this type.`)) {
-      return;
-    }
+    const ok = await confirmAction(`Deactivate "${type.display_name}"?`, {
+      confirmText: 'Deactivate',
+      danger: true,
+      details: "This won't delete existing records using this type.",
+    });
+    if (!ok) return;
     
     try {
       await deleteDetailType(type.id);
       loadTypes();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to deactivate type');
+      toast.error(err.response?.data?.detail || 'Failed to deactivate type');
     }
   };
 
@@ -72,7 +79,7 @@ export default function DetailTypesTab() {
       await updateDetailType(type.id, { active: true });
       loadTypes();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to reactivate type');
+      toast.error(err.response?.data?.detail || 'Failed to reactivate type');
     }
   };
 
