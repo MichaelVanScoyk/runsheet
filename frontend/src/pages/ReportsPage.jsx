@@ -549,8 +549,9 @@ function MonthlyReportView({ report, category, s, colors }) {
               <div style={s.statSub}>vs. last year: {cs.change >= 0 ? '+' : ''}{cs.change || 0}</div>
             </div>
             <div style={s.statBox}>
-              <div style={s.statValue}>{cs.responded || 0} ({cs.responded_pct?.toFixed(1) || '0.0'}%)</div>
+              <div style={s.statValue}>{cs.responded || 0}</div>
               <div style={s.statLabel}>Responded</div>
+              <div style={s.statSub}>{cs.responded_pct?.toFixed(1) || '0.0'}% of calls</div>
             </div>
             <div style={s.statBox}>
               <div style={s.statValue}>{cs.unique_responders || 0}</div>

@@ -204,20 +204,25 @@ async def get_monthly_chiefs_report(year: int = Query(...), month: int = Query(.
         """), {"start_date": start_date, "end_date": end_date})
         mutual_aid = [{"station": row[0], "count": row[1]} for row in ma_result]
     
-    # EMS: Units assisted — other departments' units on EMS calls that arrived on scene
+    # EMS: Units assisted — mutual aid units that arrived on EMS calls where our units went enroute
     units_assisted = []
     if category and category.upper() == 'EMS':
         ua_result = db.execute(text(f"""
             SELECT 
-                unit_elem->>'unit_id' AS unit_id,
+                ma_unit->>'unit_id' AS unit_id,
                 COUNT(DISTINCT i.id) AS assist_count
             FROM incidents i,
-                 jsonb_array_elements(i.cad_units) AS unit_elem
+                 jsonb_array_elements(i.cad_units) AS ma_unit
             WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
               AND i.deleted_at IS NULL {prefix_filter}
-              AND unit_elem->>'time_arrived' IS NOT NULL
-              AND (unit_elem->>'is_mutual_aid')::boolean IS TRUE
-            GROUP BY unit_elem->>'unit_id'
+              AND ma_unit->>'time_arrived' IS NOT NULL
+              AND (ma_unit->>'is_mutual_aid')::boolean IS TRUE
+              AND EXISTS (
+                  SELECT 1 FROM jsonb_array_elements(i.cad_units) AS our_unit
+                  WHERE our_unit->>'time_enroute' IS NOT NULL
+                    AND (our_unit->>'is_mutual_aid')::boolean IS NOT TRUE
+              )
+            GROUP BY ma_unit->>'unit_id'
             ORDER BY assist_count DESC
         """), {"start_date": start_date, "end_date": end_date})
         units_assisted = [{"unit": row[0], "count": row[1]} for row in ua_result]
@@ -274,7 +279,7 @@ async def get_monthly_html_report(year: int = Query(...), month: int = Query(...
 </head>
 <body>
 <div class="header"><div class="header-logo"><img src="{logo_data_url}" alt="Logo"></div><div class="header-text"><h1>{station_name.upper()}</h1><div class="subtitle">Monthly Activity Report — {report['month_name']} {report['year']}</div></div></div>
-<div class="section"><div class="section-title">Call Summary</div><div class="stats-row"><div class="stat-box"><div class="stat-value highlight">{cs['number_of_calls']}</div><div class="stat-label">Total Calls</div><div class="stat-compare">vs. last year: {'+' if cs['change'] >= 0 else ''}{cs['change']}</div></div><div class="stat-box"><div class="stat-value">{cs['responded']} ({cs['responded_pct']:.1f}%)</div><div class="stat-label">Responded</div></div><div class="stat-box"><div class="stat-value">{cs['unique_responders']}</div><div class="stat-label">Responders</div></div><div class="stat-box"><div class="stat-value">{cs['hours']:.1f}</div><div class="stat-label">Total Hours</div></div><div class="stat-box"><div class="stat-value">{cs['man_hours']:.1f}</div><div class="stat-label">Man Hours</div></div></div></div>
+<div class="section"><div class="section-title">Call Summary</div><div class="stats-row"><div class="stat-box"><div class="stat-value highlight">{cs['number_of_calls']}</div><div class="stat-label">Total Calls</div><div class="stat-compare">vs. last year: {'+' if cs['change'] >= 0 else ''}{cs['change']}</div></div><div class="stat-box"><div class="stat-value">{cs['responded']}</div><div class="stat-label">Responded</div><div class="stat-compare">{cs['responded_pct']:.1f}% of calls</div></div><div class="stat-box"><div class="stat-value">{cs['unique_responders']}</div><div class="stat-label">Responders</div></div><div class="stat-box"><div class="stat-value">{cs['hours']:.1f}</div><div class="stat-label">Total Hours</div></div><div class="stat-box"><div class="stat-value">{cs['man_hours']:.1f}</div><div class="stat-label">Man Hours</div></div></div></div>
 <div class="section"><div class="section-title">Response Times</div><div class="times-row"><div class="time-box"><div class="time-value">{rt.get('avg_turnout_minutes', 0) or 0:.1f}</div><div class="time-label">Avg Turnout (min)</div></div><div class="time-box"><div class="time-value">{rt.get('avg_response_minutes', 0) or 0:.1f}</div><div class="time-label">Avg Response (min)</div></div><div class="time-box"><div class="time-value">{rt.get('avg_on_scene_minutes', 0) or 0:.1f}</div><div class="time-label">Avg On Scene (min)</div></div></div></div>
 <div class="row"><div class="col col-half"><div class="section"><div class="section-title">Response by Municipality</div><table><thead><tr><th>Municipality</th><th class="text-center">Calls</th><th class="text-right">Man Hrs</th></tr></thead><tbody>{muni_rows}</tbody></table></div></div><div class="col col-half"><div class="section"><div class="section-title">Responses by Unit</div>{unit_rows}</div></div></div>
 <div class="row"><div class="col col-half"><div class="section"><div class="section-title">Incident Types</div>{incident_groups}</div></div><div class="col col-half">{mutual_aid_section}</div></div>
