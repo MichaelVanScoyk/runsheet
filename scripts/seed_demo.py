@@ -839,7 +839,55 @@ def create_test_user(conn):
 
 
 # ---------------------------------------------------------------------------
-# Step 9: Clean up misc data
+# Step 9: Anonymize TTS unit mappings
+# ---------------------------------------------------------------------------
+
+def anonymize_tts_unit_mappings(conn, ma_map):
+    """Remap TTS unit pronunciation mappings to match anonymized unit IDs.
+    
+    - Station units (apparatus_id IS NOT NULL): remap 48->99, update spoken_as
+    - MA units: remap via ma_map, clear spoken_as, set needs_review=true
+    """
+    log.info("Anonymizing TTS unit mappings...")
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
+    cur.execute("SELECT id, cad_unit_id, spoken_as, apparatus_id FROM tts_unit_mappings")
+    rows = cur.fetchall()
+    
+    station_count = 0
+    ma_count = 0
+    
+    for row in rows:
+        old_id = row["cad_unit_id"]
+        spoken = row["spoken_as"]
+        is_ours = row["apparatus_id"] is not None
+        
+        if is_ours:
+            # Station unit: remap 48->99 in cad_unit_id and spoken_as
+            new_id = remap_unit_id(old_id)
+            new_spoken = spoken.replace("forty-eight", "ninety-nine") if spoken else spoken
+            cur.execute("""
+                UPDATE tts_unit_mappings
+                SET cad_unit_id = %s, spoken_as = %s, needs_review = false
+                WHERE id = %s
+            """, (new_id, new_spoken, row["id"]))
+            station_count += 1
+        else:
+            # MA unit: use ma_map, clear spoken_as
+            new_id = ma_map.get(old_id, old_id)
+            cur.execute("""
+                UPDATE tts_unit_mappings
+                SET cad_unit_id = %s, spoken_as = NULL, needs_review = true
+                WHERE id = %s
+            """, (new_id, row["id"]))
+            ma_count += 1
+    
+    conn.commit()
+    log.info(f"Remapped {station_count} station unit pronunciations, {ma_count} MA units cleared")
+
+
+# ---------------------------------------------------------------------------
+# Step 10: Clean up misc data
 # ---------------------------------------------------------------------------
 
 def cleanup_misc(conn):
@@ -904,6 +952,7 @@ def main():
             update_branding(conn)
             restore_demo_branding(conn)
             create_test_user(conn)
+            anonymize_tts_unit_mappings(conn, ma_map)
             cleanup_misc(conn)
 
             # Drop and recreate audit log LAST - anonymization steps above
