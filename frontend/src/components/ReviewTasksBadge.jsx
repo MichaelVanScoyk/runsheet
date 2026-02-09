@@ -216,13 +216,14 @@ export default function ReviewTasksBadge({ userSession, primaryColor }) {
                         <span className="review-incident-number">
                           {incident.entity_type === 'personnel' ? '👤 ' : ''}{incident.incident_number}
                         </span>
-                        <button
+                        <span
                           className="review-task-dismiss"
                           onClick={(e) => handleDismiss(e, task.id)}
                           title="Dismiss"
+                          role="button"
                         >
                           ×
-                        </button>
+                        </span>
                       </div>
                       <div className="review-task-line2">{task.title}</div>
                     </button>
