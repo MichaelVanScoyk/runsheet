@@ -345,7 +345,7 @@ function ReportsPage() {
       background: colors.statBg, borderRadius: '4px', padding: '1rem', textAlign: 'center',
       border: `1px solid ${colors.border}`
     },
-    statValue: { fontSize: '1.75rem', fontWeight: '700', color: colors.text, lineHeight: 1.2 },
+    statValue: { fontSize: '1.5rem', fontWeight: '700', color: colors.text, lineHeight: 1.2 },
     statLabel: { fontSize: '0.7rem', color: colors.grayDark, textTransform: 'uppercase', marginTop: '0.25rem', letterSpacing: '0.3px' },
     statSub: { fontSize: '0.75rem', color: colors.green },
     
@@ -542,15 +542,19 @@ function MonthlyReportView({ report, category, s, colors }) {
       <div style={s.card}>
         <div style={s.cardHeader}>Call Summary</div>
         <div style={s.cardBody}>
-          <div style={s.statGrid}>
+          <div style={{ ...s.statGrid, gridTemplateColumns: 'repeat(5, 1fr)' }}>
             <div style={s.statBox}>
               <div style={{ ...s.statValue, color: colors.green }}>{cs.number_of_calls || 0}</div>
               <div style={s.statLabel}>Total Calls</div>
               <div style={s.statSub}>vs. last year: {cs.change >= 0 ? '+' : ''}{cs.change || 0}</div>
             </div>
             <div style={s.statBox}>
-              <div style={s.statValue}>{cs.number_of_men || 0}</div>
-              <div style={s.statLabel}>Personnel</div>
+              <div style={s.statValue}>{cs.responded || 0} ({cs.responded_pct?.toFixed(1) || '0.0'}%)</div>
+              <div style={s.statLabel}>Responded</div>
+            </div>
+            <div style={s.statBox}>
+              <div style={s.statValue}>{cs.unique_responders || 0}</div>
+              <div style={s.statLabel}>Responders</div>
             </div>
             <div style={s.statBox}>
               <div style={s.statValue}>{(cs.hours || 0).toFixed(1)}</div>
@@ -651,26 +655,48 @@ function MonthlyReportView({ report, category, s, colors }) {
           </div>
         </div>
 
-        {/* Mutual Aid */}
-        <div style={s.card}>
-          <div style={s.cardHeader}>Mutual Aid Given</div>
-          <div style={{ padding: 0 }}>
-            <table style={s.table}>
-              <thead>
-                <tr><th style={s.th}>Station</th><th style={{ ...s.th, textAlign: 'right' }}>Count</th></tr>
-              </thead>
-              <tbody>
-                {(report.mutual_aid || []).map((ma, i) => (
-                  <tr key={i}>
-                    <td style={s.td}>{ma.station}</td>
-                    <td style={{ ...s.td, ...s.tdRight }}>{ma.count}</td>
-                  </tr>
-                ))}
-                {(!report.mutual_aid?.length) && <tr><td colSpan="2" style={{ ...s.td, textAlign: 'center', color: colors.grayDark }}>None</td></tr>}
-              </tbody>
-            </table>
+        {/* Mutual Aid (Fire) / Units Assisted (EMS) */}
+        {isFireReport ? (
+          <div style={s.card}>
+            <div style={s.cardHeader}>Mutual Aid Given</div>
+            <div style={{ padding: 0 }}>
+              <table style={s.table}>
+                <thead>
+                  <tr><th style={s.th}>Station</th><th style={{ ...s.th, textAlign: 'right' }}>Count</th></tr>
+                </thead>
+                <tbody>
+                  {(report.mutual_aid || []).map((ma, i) => (
+                    <tr key={i}>
+                      <td style={s.td}>{ma.station}</td>
+                      <td style={{ ...s.td, ...s.tdRight }}>{ma.count}</td>
+                    </tr>
+                  ))}
+                  {(!report.mutual_aid?.length) && <tr><td colSpan="2" style={{ ...s.td, textAlign: 'center', color: colors.grayDark }}>None</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={s.card}>
+            <div style={s.cardHeader}>Units Assisted</div>
+            <div style={{ padding: 0 }}>
+              <table style={s.table}>
+                <thead>
+                  <tr><th style={s.th}>Unit</th><th style={{ ...s.th, textAlign: 'right' }}>Count</th></tr>
+                </thead>
+                <tbody>
+                  {(report.units_assisted || []).map((ua, i) => (
+                    <tr key={i}>
+                      <td style={s.td}>{ua.unit}</td>
+                      <td style={{ ...s.td, ...s.tdRight }}>{ua.count}</td>
+                    </tr>
+                  ))}
+                  {(!report.units_assisted?.length) && <tr><td colSpan="2" style={{ ...s.td, textAlign: 'center', color: colors.grayDark }}>None</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Property & Safety - Fire only */}
