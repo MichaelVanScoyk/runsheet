@@ -22,6 +22,9 @@
               if (res.ok && serverWasDown) {
                 // Server is back — reload
                 window.location.reload();
+              } else if (!res.ok) {
+                // Cloudflare 502/503 or server error
+                serverWasDown = true;
               }
             })
             .catch(function() {
