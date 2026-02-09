@@ -17,7 +17,7 @@
         var serverWasDown = false;
 
         function checkServer() {
-          fetch('/api/settings/station/timezone', { method: 'HEAD', cache: 'no-store' })
+          fetch('/api/settings/station/timezone', { method: 'GET', cache: 'no-store' })
             .then(function(res) {
               if (res.ok && serverWasDown) {
                 // Server is back — reload

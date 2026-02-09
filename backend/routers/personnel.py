@@ -241,6 +241,120 @@ async def delete_rank(
     return {"id": rank_id, "status": "ok"}
 
 
+# =============================================================================
+# PROFILE REVIEW (for manually-added personnel)
+# NOTE: These must be ABOVE /{id} to avoid FastAPI matching "needs-review" as an id
+# =============================================================================
+
+@router.get("/needs-review")
+async def get_personnel_needing_review(db: Session = Depends(get_db)):
+    """
+    Get list of personnel who were manually added and need profile review.
+    These are typically added during roll call attendance entry.
+    """
+    personnel = db.query(Personnel).filter(
+        Personnel.needs_profile_review == True,
+        Personnel.active == True
+    ).order_by(Personnel.created_at.desc()).all()
+    
+    return {
+        "count": len(personnel),
+        "personnel": [
+            {
+                "id": p.id,
+                "first_name": p.first_name,
+                "last_name": p.last_name,
+                "display_name": p.display_name,
+                "rank_id": p.rank_id,
+                "email": p.email,
+                "role": p.role,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in personnel
+        ]
+    }
+
+
+@router.post("/needs-review/{personnel_id}/complete")
+async def complete_profile_review(
+    personnel_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Mark a personnel record as reviewed (clears needs_profile_review flag).
+    Called after admin completes filling in the profile details.
+    """
+    person = db.query(Personnel).filter(Personnel.id == personnel_id).first()
+    
+    if not person:
+        raise HTTPException(status_code=404, detail="Personnel not found")
+    
+    person.needs_profile_review = False
+    person.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    
+    return {
+        "status": "ok",
+        "personnel_id": personnel_id,
+        "message": f"Profile review completed for {person.display_name}"
+    }
+
+
+@router.post("/quick-add")
+async def quick_add_personnel(
+    first_name: str,
+    last_name: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Quick add a new personnel record during roll call.
+    Creates with minimal info and flags for profile review.
+    """
+    # Check for existing
+    existing = db.query(Personnel).filter(
+        Personnel.first_name.ilike(first_name.strip()),
+        Personnel.last_name.ilike(last_name.strip())
+    ).first()
+    
+    if existing:
+        return {
+            "status": "exists",
+            "personnel_id": existing.id,
+            "message": f"{existing.display_name} already exists",
+            "personnel": {
+                "id": existing.id,
+                "first_name": existing.first_name,
+                "last_name": existing.last_name,
+                "display_name": existing.display_name,
+            }
+        }
+    
+    person = Personnel(
+        first_name=first_name.strip(),
+        last_name=last_name.strip(),
+        active=True,
+        needs_profile_review=True,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    
+    db.add(person)
+    db.commit()
+    db.refresh(person)
+    
+    return {
+        "status": "created",
+        "personnel_id": person.id,
+        "message": f"Created {person.display_name} (needs profile review)",
+        "personnel": {
+            "id": person.id,
+            "first_name": person.first_name,
+            "last_name": person.last_name,
+            "display_name": person.display_name,
+        }
+    }
+
+
 @router.get("/{id}")
 async def get_personnel(id: int, db: Session = Depends(get_db)):
     """Get single personnel"""
@@ -1892,114 +2006,4 @@ async def sync_from_dashboard(db: Session = Depends(get_db)):
     return {"status": "not_implemented", "message": "Dashboard sync not yet configured"}
 
 
-# =============================================================================
-# PROFILE REVIEW (for manually-added personnel)
-# =============================================================================
 
-@router.get("/needs-review")
-async def get_personnel_needing_review(db: Session = Depends(get_db)):
-    """
-    Get list of personnel who were manually added and need profile review.
-    These are typically added during roll call attendance entry.
-    """
-    personnel = db.query(Personnel).filter(
-        Personnel.needs_profile_review == True,
-        Personnel.active == True
-    ).order_by(Personnel.created_at.desc()).all()
-    
-    return {
-        "count": len(personnel),
-        "personnel": [
-            {
-                "id": p.id,
-                "first_name": p.first_name,
-                "last_name": p.last_name,
-                "display_name": p.display_name,
-                "rank_id": p.rank_id,
-                "email": p.email,
-                "role": p.role,
-                "created_at": p.created_at.isoformat() if p.created_at else None,
-            }
-            for p in personnel
-        ]
-    }
-
-
-@router.post("/needs-review/{personnel_id}/complete")
-async def complete_profile_review(
-    personnel_id: int,
-    db: Session = Depends(get_db)
-):
-    """
-    Mark a personnel record as reviewed (clears needs_profile_review flag).
-    Called after admin completes filling in the profile details.
-    """
-    person = db.query(Personnel).filter(Personnel.id == personnel_id).first()
-    
-    if not person:
-        raise HTTPException(status_code=404, detail="Personnel not found")
-    
-    person.needs_profile_review = False
-    person.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    
-    return {
-        "status": "ok",
-        "personnel_id": personnel_id,
-        "message": f"Profile review completed for {person.display_name}"
-    }
-
-
-@router.post("/quick-add")
-async def quick_add_personnel(
-    first_name: str,
-    last_name: str,
-    db: Session = Depends(get_db)
-):
-    """
-    Quick add a new personnel record during roll call.
-    Creates with minimal info and flags for profile review.
-    """
-    # Check for existing
-    existing = db.query(Personnel).filter(
-        Personnel.first_name.ilike(first_name.strip()),
-        Personnel.last_name.ilike(last_name.strip())
-    ).first()
-    
-    if existing:
-        return {
-            "status": "exists",
-            "personnel_id": existing.id,
-            "message": f"{existing.display_name} already exists",
-            "personnel": {
-                "id": existing.id,
-                "first_name": existing.first_name,
-                "last_name": existing.last_name,
-                "display_name": existing.display_name,
-            }
-        }
-    
-    person = Personnel(
-        first_name=first_name.strip(),
-        last_name=last_name.strip(),
-        active=True,
-        needs_profile_review=True,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    
-    db.add(person)
-    db.commit()
-    db.refresh(person)
-    
-    return {
-        "status": "created",
-        "personnel_id": person.id,
-        "message": f"Created {person.display_name} (needs profile review)",
-        "personnel": {
-            "id": person.id,
-            "first_name": person.first_name,
-            "last_name": person.last_name,
-            "display_name": person.display_name,
-        }
-    }
