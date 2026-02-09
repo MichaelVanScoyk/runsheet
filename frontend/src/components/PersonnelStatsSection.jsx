@@ -84,9 +84,10 @@ const PersonnelStatsSection = ({ userSession }) => {
 
   return (
     <div className="bg-white rounded-lg border overflow-hidden">
-      <button
+      <div
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+        role="button"
+        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
       >
         <div className="flex items-center gap-3">
           <User className="w-5 h-5 text-gray-600" />
@@ -124,7 +125,7 @@ const PersonnelStatsSection = ({ userSession }) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div className="p-4">
