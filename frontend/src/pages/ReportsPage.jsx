@@ -555,7 +555,7 @@ function MonthlyReportView({ report, category, s, colors }) {
             </div>
             <div style={s.statBox}>
               <div style={s.statValue}>{cs.unique_responders || 0}</div>
-              <div style={s.statLabel}>Responders</div>
+              <div style={s.statLabel}>Unique Responders</div>
             </div>
             <div style={s.statBox}>
               <div style={s.statValue}>{(cs.hours || 0).toFixed(1)}</div>
