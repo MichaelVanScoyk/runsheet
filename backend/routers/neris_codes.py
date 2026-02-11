@@ -48,11 +48,11 @@ def parse_csv_row(row: Dict[str, str], is_hierarchical: bool) -> Dict[str, Any]:
         v2 = row_lower.get('value_2', '').strip()
         v3 = row_lower.get('value_3', '').strip()
         
-        # Build composite value
+        # Build composite value using || separator (matches NERIS API format)
         if v3:
-            value = f"{v1}: {v2}: {v3}"
+            value = f"{v1}||{v2}||{v3}"
         elif v2:
-            value = f"{v1}: {v2}"
+            value = f"{v1}||{v2}"
         else:
             value = v1
         
