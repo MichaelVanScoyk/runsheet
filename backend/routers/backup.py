@@ -280,6 +280,10 @@ def full_reparse_incident(incident_id: int, db: Session, edited_by: Optional[int
         update_fields['address'] = report_dict['address']
         restored_fields.append('address')
     
+    # location_name may be None (single-line address) - always set it to sync with address
+    update_fields['location_name'] = report_dict.get('location_name')
+    restored_fields.append('location_name')
+    
     if report_dict.get('municipality'):
         update_fields['municipality_code'] = report_dict['municipality']
         restored_fields.append('municipality_code')
@@ -889,7 +893,8 @@ async def preview_restore_from_cad(
             id, internal_incident_number, incident_date,
             cad_raw_dispatch, cad_raw_clear, cad_units,
             address, municipality_code, cross_streets, cad_event_type, cad_event_subtype,
-            time_dispatched, time_first_enroute, time_first_on_scene, time_last_cleared
+            time_dispatched, time_first_enroute, time_first_on_scene, time_last_cleared,
+            location_name
         FROM incidents 
         WHERE id = :id AND deleted_at IS NULL
     """), {"id": incident_id}).fetchone()
@@ -914,6 +919,7 @@ async def preview_restore_from_cad(
         'time_first_enroute': result[12],
         'time_first_on_scene': result[13],
         'time_last_cleared': result[14],
+        'location_name': result[15],
     }
     
     raw_html = raw_clear or raw_dispatch
@@ -935,6 +941,7 @@ async def preview_restore_from_cad(
     
     new_values = {
         'address': report_dict.get('address'),
+        'location_name': report_dict.get('location_name'),
         'municipality_code': report_dict.get('municipality'),
         'cross_streets': report_dict.get('cross_streets'),
         'cad_event_type': report_dict.get('event_type'),
@@ -1075,6 +1082,15 @@ async def preview_restore_from_cad(
                 'will_be': new,
                 'display': f"{field}: '{current}' → '{new}'"
             })
+    
+    # location_name: also show when changing TO None (address was split)
+    if current_values.get('location_name') != new_values.get('location_name'):
+        field_changes.append({
+            'field': 'location_name',
+            'current': current_values.get('location_name'),
+            'will_be': new_values.get('location_name'),
+            'display': f"location_name: '{current_values.get('location_name')}' → '{new_values.get('location_name')}'"
+        })
     
     # ==========================================================================
     # CHECK UNIT CONFIG CHANGES

@@ -41,6 +41,7 @@ class ParsedCADReport:
     
     # Location
     address: Optional[str] = None
+    location_name: Optional[str] = None      # Business/place name from CAD (separate line above address)
     location_info: Optional[str] = None
     cross_streets: Optional[str] = None
     municipality: Optional[str] = None       # WALLAC, WNANT
@@ -270,6 +271,77 @@ def _parse_clear_report(soup: BeautifulSoup, report: ParsedCADReport):
                     report.unit_times.append(unit_times)
 
 
+# Road suffixes for detecting which line of a two-line CAD address is the street address.
+# The line containing a recognized suffix is the address; the other is the location/place name.
+ROAD_SUFFIXES = {
+    'RD', 'ST', 'DR', 'LN', 'CT', 'AVE', 'BLVD', 'PL', 'WAY', 'CIR', 'TRL',
+    'PIKE', 'HWY', 'RT', 'ROUTE', 'TURNPIKE', 'PKWY', 'TERR', 'SQ', 'LOOP',
+    'PATH', 'RUN', 'PASS', 'ALY', 'XING', 'BND', 'CRES', 'HOLW',
+}
+
+
+def _has_road_suffix(text: str) -> bool:
+    """
+    Check if text contains a recognized road suffix as a whole word.
+    Handles intersections (MAIN ST / ELM RD) and bare roads (CREEK RD).
+    """
+    if not text:
+        return False
+    words = text.upper().split()
+    return any(w in ROAD_SUFFIXES for w in words)
+
+
+def _split_address_location(cell) -> tuple:
+    """
+    Split a CAD address cell into (address, location_name).
+    
+    CAD sends multi-line addresses as:
+        BUSINESS NAME<br>123 MAIN ST
+    or sometimes:
+        123 MAIN ST<br>BUSINESS NAME
+    
+    Logic:
+    - Single line from CAD -> all goes to address, location_name is None
+    - Two lines -> line with a recognized road suffix = address, other = location_name
+    - If both or neither have a suffix -> first line = location_name, second = address
+      (matches the most common CAD pattern: name on top, address on bottom)
+    
+    Returns (address, location_name) tuple.
+    """
+    if not cell:
+        return (None, None)
+    
+    # Get raw lines split by <br> tags
+    # Replace <br> with a unique delimiter, then split
+    for br in cell.find_all('br'):
+        br.replace_with('|||BR|||')
+    raw_text = cell.get_text()
+    lines = [l.strip() for l in raw_text.split('|||BR|||') if l.strip()]
+    
+    if not lines:
+        return (None, None)
+    
+    if len(lines) == 1:
+        # Single line - all address, no location name
+        return (lines[0], None)
+    
+    # Two or more lines - detect which is the street address
+    line1, line2 = lines[0], lines[1]
+    line1_has_road = _has_road_suffix(line1)
+    line2_has_road = _has_road_suffix(line2)
+    
+    if line2_has_road and not line1_has_road:
+        # Most common: NAME<br>ADDRESS
+        return (line2, line1)
+    elif line1_has_road and not line2_has_road:
+        # Reversed: ADDRESS<br>NAME
+        return (line1, line2)
+    else:
+        # Both have suffix or neither does - default: first=name, second=address
+        # This matches the most common CAD convention
+        return (line2, line1)
+
+
 def _parse_location_section(soup: BeautifulSoup, report: ParsedCADReport):
     """Parse the Location section - finds header then parses next table"""
     
@@ -287,9 +359,9 @@ def _parse_location_section(soup: BeautifulSoup, report: ParsedCADReport):
         if not label:
             continue
         
-        # Get value - use get_cell_text for address to handle <br> line breaks
+        # Get value - split address/location_name for two-line CAD addresses
         if label == 'Address:':
-            report.address = get_cell_text(cells[1])
+            report.address, report.location_name = _split_address_location(cells[1])
         elif 'Location Info' in label:
             report.location_info = clean_text(cells[1].get_text())
         elif 'Cross Street' in label:
@@ -371,6 +443,7 @@ def report_to_dict(report: ParsedCADReport) -> Dict[str, Any]:
         'dispatch_group': report.dispatch_group,
         'agency': report.agency,
         'address': report.address,
+        'location_name': report.location_name,
         'location_info': report.location_info,
         'cross_streets': report.cross_streets,
         'municipality': report.municipality,
@@ -434,6 +507,7 @@ if __name__ == '__main__':
             print(f"Type: {d['report_type']}")
             print(f"Event: {d['event_number']}")
             print(f"CAD Type: {d['event_type']} / {d['event_subtype']}")
+            print(f"Location Name: {d['location_name']}")
             print(f"Address: {d['address']}")
             print(f"Municipality: {d['municipality']}")
             print(f"Caller Address: {d['caller_address']}")

@@ -289,6 +289,7 @@ class Incident(Base):
     # LOCATION - Display Fields
     # =========================================================================
     address = Column(String(200))              # 123 Main St (display)
+    location_name = Column(String(200))         # Business/place name (COLONIAL WOODS CARE CENTER)
     municipality_id = Column(Integer, ForeignKey("municipalities.id"))
     municipality_code = Column(String(10))     # CAD code: WALLAC
     cross_streets = Column(String(200))        # Oak Ave / Elm St

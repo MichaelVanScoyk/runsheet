@@ -66,6 +66,7 @@ class IncidentCreate(BaseModel):
     cad_event_subtype: Optional[str] = None
     cad_raw_dispatch: Optional[str] = None
     address: Optional[str] = None
+    location_name: Optional[str] = None
     municipality_code: Optional[str] = None
     internal_incident_number: Optional[str] = None  # F250001, E250001
     call_category: Optional[str] = 'FIRE'           # FIRE or EMS
@@ -92,6 +93,7 @@ class IncidentUpdate(BaseModel):
     
     # Location - display
     address: Optional[str] = None
+    location_name: Optional[str] = None
     municipality_code: Optional[str] = None
     cross_streets: Optional[str] = None
     esz_box: Optional[str] = None

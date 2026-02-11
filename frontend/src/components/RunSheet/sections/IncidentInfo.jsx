@@ -170,6 +170,18 @@ export default function IncidentInfo() {
         />
       </div>
       
+      {/* Location Name (business/place name from CAD) */}
+      {formData.location_name && (
+        <div className="flex flex-col gap-0.5" data-help-id="location_name">
+          <label className="text-gray-400 text-xs">Location Name</label>
+          <input 
+            type="text" 
+            value={formData.location_name} 
+            onChange={(e) => handleChange('location_name', e.target.value)} 
+          />
+        </div>
+      )}
+      
       {/* Address */}
       <div className="flex flex-col gap-0.5" data-help-id="address">
         <label className="text-gray-400 text-xs">Address</label>

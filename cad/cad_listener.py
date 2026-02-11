@@ -462,6 +462,7 @@ class CADListener:
                 'cad_event_type': event_type,
                 'cad_event_subtype': event_subtype,
                 'address': report.get('address'),
+                'location_name': report.get('location_name'),
                 'municipality_code': municipality_code,
                 'cross_streets': report.get('cross_streets'),
                 'esz_box': report.get('esz'),
@@ -495,6 +496,7 @@ class CADListener:
                 'cad_event_subtype': event_subtype,
                 'call_category': call_category,
                 'address': report.get('address'),
+                'location_name': report.get('location_name'),
                 'municipality_code': municipality_code,
                 'cad_raw_dispatch': raw_html,
             }
@@ -645,6 +647,8 @@ class CADListener:
         # Update fields from clear report
         if report.get('address'):
             update_data['address'] = report['address']
+        if report.get('location_name'):
+            update_data['location_name'] = report['location_name']
         if report.get('municipality'):
             try:
                 requests.post(
@@ -815,6 +819,7 @@ class CADListener:
             'cad_event_subtype': event_subtype,
             'call_category': call_category,
             'address': report.get('address'),
+            'location_name': report.get('location_name'),
             'municipality_code': report.get('municipality'),
             'incident_date': incident_date,
             'cad_raw_clear': raw_html,
