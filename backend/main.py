@@ -1,6 +1,48 @@
 """
-RunSheet - Fire Incident Reporting System
+RunSheet / CADReport - Fire Incident Reporting System
 Station 48 - Glen Moore Fire Company
+
+ARCHITECTURE NOTE — MONOLITH TODAY, SPLIT LATER
+=================================================
+This main.py currently runs EVERYTHING in one FastAPI process:
+  - Master admin routes (/api/master/*) → cadreport_master database
+  - Tenant routes (/api/incidents/*, etc.) → per-tenant databases
+  - CAD infrastructure routes (/api/master/cad/*) → cadreport_master database
+
+This works fine on the geekom (single server, all tenants local). But when
+we move to a VPS for production, this file needs to SPLIT:
+
+  Server A (VPS - production master):
+    - main.py includes master routes AND tenant routes
+    - Hosts cadreport_master DB + tenant DBs
+    - First migration: geekom → VPS (everything moves here)
+
+  Server B (future expansion):
+    - main_tenant_only.py — NO master routes, only tenant routes
+    - Hosts only its local tenant DBs
+    - Connects to Server A's cadreport_master for tenant lookup on startup
+    - nginx routes tenant subdomains to the correct server
+
+  Geekom (after migration):
+    - Becomes dev/backup server
+    - May keep a replica of cadreport_master for disaster recovery
+    - Glen Moore can fall back to geekom if VPS goes down
+
+SPLIT CHECKLIST (when the time comes):
+  1. Extract master routes into a conditional import:
+     if os.environ.get('CADREPORT_ROLE') == 'master':
+         from routers import master_admin, master_admin_cad, master_admin_cad_migrate
+         app.include_router(...)
+  2. Tenant auth middleware needs to handle remote master DB lookup
+     (cache tenant→database mapping locally, refresh periodically)
+  3. Create main_tenant_only.py that skips all /api/master/* routes
+  4. CAD listener bootstrap script queries master DB for what to start
+     (already designed for this — see master_admin_cad.py bootstrap endpoint)
+  5. Update nginx to route subdomains to correct server
+
+The cad_server_nodes / cad_listeners / cad_migrations tables in cadreport_master
+are specifically designed to orchestrate this multi-server architecture.
+See master_models_cad.py for the full schema.
 """
 
 from fastapi import FastAPI, Request
