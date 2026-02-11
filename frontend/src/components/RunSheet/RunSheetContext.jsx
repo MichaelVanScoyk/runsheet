@@ -735,8 +735,33 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
       // Show completion in modal instead of alert
       setRestoreComplete(true);
       
-      // Reload data in background
-      await loadData();
+      // Re-fetch incident from API to get updated fields (loadData uses stale prop)
+      try {
+        const refreshRes = await fetch(`/api/incidents/${incident.id}`);
+        const refreshed = await refreshRes.json();
+        setFormData(prev => ({
+          ...prev,
+          address: refreshed.address || '',
+          location_name: refreshed.location_name || '',
+          municipality_code: refreshed.municipality_code || '',
+          cross_streets: refreshed.cross_streets || '',
+          esz_box: refreshed.esz_box || '',
+          cad_event_type: refreshed.cad_event_type || '',
+          cad_event_subtype: refreshed.cad_event_subtype || '',
+          caller_name: refreshed.caller_name || '',
+          caller_phone: refreshed.caller_phone || '',
+          time_dispatched: refreshed.time_dispatched || '',
+          time_first_enroute: refreshed.time_first_enroute || '',
+          time_first_on_scene: refreshed.time_first_on_scene || '',
+          time_last_cleared: refreshed.time_last_cleared || '',
+          cad_units: refreshed.cad_units || [],
+        }));
+        // Refresh audit log
+        const auditRes = await getIncidentAuditLog(incident.id);
+        setAuditLog(auditRes.data.entries || []);
+      } catch (err) {
+        console.error('Failed to refresh after reparse:', err);
+      }
     } catch (err) {
       console.error('Failed to restore from CAD:', err);
       toast.error('Failed to restore from CAD');
