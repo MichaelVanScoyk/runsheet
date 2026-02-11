@@ -29,20 +29,36 @@ export default function AuditTrail() {
     const entries = Object.entries(fieldsChanged);
     if (entries.length === 0) return null;
     
-    return entries.map(([field, change]) => {
-      const oldVal = change?.old || '(empty)';
-      const newVal = change?.new || '(empty)';
-      // Truncate long values
-      const truncate = (val, max = 30) => {
-        const str = String(val);
-        return str.length > max ? str.substring(0, max) + '...' : str;
-      };
-      return {
-        field,
-        old: truncate(oldVal),
-        new: truncate(newVal)
-      };
-    });
+    // Truncate long values
+    const truncate = (val, max = 50) => {
+      const str = String(val);
+      return str.length > max ? str.substring(0, max) + '...' : str;
+    };
+    
+    return entries
+      .filter(([, change]) => {
+        // Must be {old, new} format - skip anything else
+        if (!change || typeof change !== 'object') return false;
+        if (!('old' in change) && !('new' in change)) return false;
+        // Skip if both are empty
+        if (!change.old && !change.new) return false;
+        return true;
+      })
+      .map(([field, change]) => {
+        const oldVal = change.old;
+        const newVal = change.new;
+        const hasOld = oldVal !== null && oldVal !== undefined && oldVal !== '';
+        const hasNew = newVal !== null && newVal !== undefined && newVal !== '';
+        
+        return {
+          field,
+          old: hasOld ? truncate(oldVal) : null,
+          new: hasNew ? truncate(newVal) : null,
+          // "set to" when old was empty, "cleared" when new is empty
+          isSet: !hasOld && hasNew,
+          isCleared: hasOld && !hasNew,
+        };
+      });
   };
   
   return (
@@ -100,9 +116,23 @@ export default function AuditTrail() {
                     {fieldChanges.map((fc, fcIdx) => (
                       <div key={fcIdx} className="text-[11px] py-0.5">
                         <span className="text-theme-hint">{fc.field}:</span>
-                        <span className="text-red-600 ml-1">{fc.old}</span>
-                        <span className="text-theme-hint mx-1">→</span>
-                        <span className="text-green-600">{fc.new}</span>
+                        {fc.isSet ? (
+                          /* Value was empty, now set */
+                          <span className="text-green-600 ml-1">{fc.new}</span>
+                        ) : fc.isCleared ? (
+                          /* Value was set, now cleared */
+                          <>
+                            <span className="text-red-600 ml-1 line-through">{fc.old}</span>
+                            <span className="text-theme-hint ml-1">(cleared)</span>
+                          </>
+                        ) : (
+                          /* Changed from one value to another */
+                          <>
+                            <span className="text-red-600 ml-1">{fc.old}</span>
+                            <span className="text-theme-hint mx-1">→</span>
+                            <span className="text-green-600">{fc.new}</span>
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>

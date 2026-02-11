@@ -371,7 +371,20 @@ def full_reparse_incident(incident_id: int, db: Session, edited_by: Optional[int
     
     audit_summary = f"Reparsed from {report_source}"
     if units_changed:
+        unit_change_descs = []
+        for uc in units_changed:
+            unit_change_descs.append(f"{uc['unit_id']} {uc['field']}: {uc['old']} → {uc['new']}")
         audit_summary += f" ({len(units_changed)} unit config changes)"
+    
+    # Build fields_changed in {old, new} format for frontend display
+    audit_fields = {}
+    for uc in units_changed:
+        label = f"{uc['unit_id']} {uc['field'].replace('_', ' ')}"
+        audit_fields[label] = {"old": str(uc['old']), "new": str(uc['new'])}
+    if excluded_units:
+        audit_fields["Excluded from metrics"] = {"old": None, "new": ', '.join(excluded_units)}
+    if included_units:
+        audit_fields["Included in metrics"] = {"old": None, "new": ', '.join(included_units)}
     
     db.execute(text("""
         INSERT INTO audit_log (
@@ -387,12 +400,7 @@ def full_reparse_incident(incident_id: int, db: Session, edited_by: Optional[int
         "incident_id": incident_id,
         "entity_display": f"Incident {incident_number}",
         "summary": audit_summary,
-        "fields_changed": json.dumps({
-            "restored_fields": restored_fields,
-            "unit_changes": units_changed,
-            "included_units": included_units,
-            "excluded_units": excluded_units,
-        })
+        "fields_changed": json.dumps(audit_fields) if audit_fields else None,
     })
     
     db.commit()

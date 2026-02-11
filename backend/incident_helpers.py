@@ -126,6 +126,176 @@ def get_comments_validation_status(cad_event_comments: dict, model_trained_at: s
 # AUDIT LOGGING HELPER
 # =============================================================================
 
+# Human-readable field labels for audit trail display
+FIELD_LABELS = {
+    'officer_in_charge': 'Officer in charge',
+    'completed_by': 'Completed by',
+    'reviewed_by': 'Reviewed by',
+    'call_category': 'Category',
+    'internal_incident_number': 'Incident #',
+    'cad_event_number': 'CAD #',
+    'incident_date': 'Incident date',
+    'address': 'Address',
+    'location_name': 'Location name',
+    'municipality_code': 'Municipality',
+    'cross_streets': 'Cross streets',
+    'esz_box': 'ESZ/Box',
+    'cad_event_type': 'Event type',
+    'cad_event_subtype': 'Event subtype',
+    'narrative': 'Narrative',
+    'situation_found': 'Situation found',
+    'extent_of_damage': 'Extent of damage',
+    'services_provided': 'Services provided',
+    'companies_called': 'Companies called',
+    'equipment_used': 'Equipment used',
+    'problems_issues': 'Problems/issues',
+    'caller_name': 'Caller name',
+    'caller_phone': 'Caller phone',
+    'weather_conditions': 'Weather',
+    'status': 'Status',
+    'time_dispatched': 'Dispatched',
+    'time_first_enroute': 'First enroute',
+    'time_first_on_scene': 'First on scene',
+    'time_last_cleared': 'Last cleared',
+    'time_fire_under_control': 'Fire under control',
+    'time_in_service': 'In service',
+    'time_extrication_complete': 'Extrication complete',
+    'time_event_start': 'Event start',
+    'time_event_end': 'Event end',
+    'time_command_established': 'Command established',
+    'time_sizeup_completed': 'Size-up completed',
+    'time_primary_search_begin': 'Primary search begin',
+    'time_primary_search_complete': 'Primary search complete',
+    'time_water_on_fire': 'Water on fire',
+    'time_fire_knocked_down': 'Fire knocked down',
+    'time_suppression_complete': 'Suppression complete',
+    'detail_type': 'Detail type',
+    'year_prefix': 'Year',
+    'property_value_at_risk': 'Property value at risk',
+    'fire_damages_estimate': 'Fire damages estimate',
+    'ff_injuries_count': 'FF injuries',
+    'civilian_injuries_count': 'Civilian injuries',
+    'review_status': 'Review status',
+}
+
+# Fields that store personnel IDs and need name resolution
+PERSONNEL_ID_FIELDS = {'officer_in_charge', 'completed_by', 'reviewed_by'}
+
+# Fields we skip in audit detail (auto-set, internal, or too noisy)
+SKIP_AUDIT_FIELDS = {
+    'weather_api_data', 'weather_fetched_at', 'cad_raw_dispatch',
+    'cad_raw_clear', 'cad_raw_updates', 'cad_event_comments',
+    'neris_location', 'latitude', 'longitude',
+}
+
+
+def _resolve_personnel_name(db: Session, personnel_id) -> Optional[str]:
+    """Look up personnel name from ID. Returns 'Last, First' or None."""
+    if not personnel_id:
+        return None
+    try:
+        pid = int(personnel_id)
+    except (ValueError, TypeError):
+        return None
+    person = db.query(Personnel).filter(Personnel.id == pid).first()
+    if person:
+        return f"{person.last_name}, {person.first_name}"
+    return None
+
+
+def format_audit_changes(db: Session, changes: dict) -> dict:
+    """
+    Format raw field changes into human-readable audit entries.
+    
+    - Resolves personnel IDs to names
+    - Uses human-readable field labels
+    - Skips noisy/internal fields
+    - Keeps old=null when value was empty (frontend handles display)
+    """
+    formatted = {}
+    
+    for field, change in changes.items():
+        # Skip internal fields
+        if field in SKIP_AUDIT_FIELDS:
+            continue
+        
+        # Skip most NERIS fields (too technical for audit display)
+        if field.startswith('neris_') and field not in (
+            'neris_incident_type_codes', 'neris_action_codes',
+        ):
+            continue
+        
+        # Must be {old, new} format
+        if not isinstance(change, dict) or 'new' not in change:
+            continue
+        
+        label = FIELD_LABELS.get(field, field.replace('_', ' ').title())
+        old_val = change.get('old')
+        new_val = change.get('new')
+        
+        # Resolve personnel IDs to names
+        if field in PERSONNEL_ID_FIELDS:
+            old_val = _resolve_personnel_name(db, old_val) if old_val else None
+            new_val = _resolve_personnel_name(db, new_val) if new_val else None
+        
+        formatted[label] = {"old": old_val, "new": new_val}
+    
+    return formatted
+
+
+def build_audit_summary(db: Session, changes: dict, category_changed=False, old_category=None, new_category=None) -> str:
+    """
+    Build a plain-English summary from changes dict.
+    
+    Examples:
+    - "Set officer in charge to VanScoyk, Michael"
+    - "Updated narrative, situation found"
+    - "Changed category from FIRE to EMS"
+    - "Updated 5 fields"
+    """
+    parts = []
+    
+    if category_changed:
+        parts.append(f"Changed category from {old_category} to {new_category}")
+    
+    # Collect meaningful field changes (excluding category which is handled above)
+    field_labels = []
+    set_fields = []  # Fields that went from empty to a value
+    
+    for field, change in changes.items():
+        if field in SKIP_AUDIT_FIELDS:
+            continue
+        if field.startswith('neris_') and field not in ('neris_incident_type_codes', 'neris_action_codes'):
+            continue
+        if not isinstance(change, dict):
+            continue
+        if field in ('call_category', 'internal_incident_number') and category_changed:
+            continue  # Already in summary
+        
+        label = FIELD_LABELS.get(field, field.replace('_', ' '))
+        old_val = change.get('old')
+        new_val = change.get('new')
+        
+        # "Set X to Y" for personnel fields going from empty
+        if field in PERSONNEL_ID_FIELDS and not old_val and new_val:
+            name = _resolve_personnel_name(db, new_val)
+            if name:
+                set_fields.append(f"Set {label.lower()} to {name}")
+                continue
+        
+        field_labels.append(label.lower())
+    
+    parts.extend(set_fields)
+    
+    if field_labels:
+        if len(field_labels) <= 3:
+            parts.append(f"Updated {', '.join(field_labels)}")
+        else:
+            parts.append(f"Updated {len(field_labels)} fields")
+    
+    return '; '.join(parts) if parts else "Updated"
+
+
 def log_incident_audit(
     db: Session,
     action: str,

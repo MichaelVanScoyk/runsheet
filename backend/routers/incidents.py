@@ -25,6 +25,8 @@ from incident_helpers import (
     emit_incident_event,
     get_comments_validation_status,
     log_incident_audit,
+    format_audit_changes,
+    build_audit_summary,
     reconcile_personnel_on_close,
     generate_neris_id,
     maybe_generate_neris_id,
@@ -781,26 +783,22 @@ async def update_incident(
     
     # Audit log (only if actual changes)
     if changes or category_changed or detail_date_changed:
-        # Summarize what changed
-        change_keys = list(changes.keys())
-        
         if category_changed:
             changes['call_category'] = {"old": old_category, "new": new_category}
             changes['internal_incident_number'] = {"old": old_number, "new": new_number}
-            change_keys.extend(['call_category', 'internal_incident_number'])
         
         if detail_date_changed:
             changes['year_prefix'] = {"old": str(old_year), "new": str(new_year)}
             changes['internal_incident_number'] = {"old": old_number, "new": new_number}
-            if 'year_prefix' not in change_keys:
-                change_keys.append('year_prefix')
-            if 'internal_incident_number' not in change_keys:
-                change_keys.append('internal_incident_number')
         
-        if len(change_keys) <= 3:
-            summary = f"Updated: {', '.join(change_keys)}"
-        else:
-            summary = f"Updated {len(change_keys)} fields"
+        # Build human-readable summary and format changes with names
+        summary = build_audit_summary(
+            db, changes,
+            category_changed=category_changed,
+            old_category=old_category,
+            new_category=new_category if category_changed else None,
+        )
+        formatted_changes = format_audit_changes(db, changes)
         
         log_incident_audit(
             db=db,
@@ -808,7 +806,7 @@ async def update_incident(
             incident=incident,
             completed_by_id=audit_user_id,
             summary=summary,
-            fields_changed=changes
+            fields_changed=formatted_changes
         )
     
     db.commit()
@@ -1091,6 +1089,16 @@ async def save_assignments(
                     detail="Your account is awaiting approval. Please contact an officer or admin."
                 )
     
+    # Snapshot current assignments BEFORE clearing (for audit diff)
+    old_assignments = {}  # {unit_designator: set of personnel_ids}
+    existing_units = db.query(IncidentUnit).filter(IncidentUnit.incident_id == incident_id).all()
+    for unit in existing_units:
+        app = db.query(Apparatus).filter(Apparatus.id == unit.apparatus_id).first()
+        if app:
+            pids = {p.personnel_id for p in unit.personnel if p.personnel_id}
+            if pids:
+                old_assignments[app.unit_designator] = pids
+    
     # Clear existing
     db.query(IncidentPersonnel).filter(IncidentPersonnel.incident_id == incident_id).delete()
     db.query(IncidentUnit).filter(IncidentUnit.incident_id == incident_id).delete()
@@ -1140,15 +1148,93 @@ async def save_assignments(
             )
             db.add(assignment)
     
-    # Audit log - use edited_by (logged-in user) or fall back to completed_by
-    unit_count = len([u for u, slots in data.assignments.items() if any(p for p in slots if p)])
+    # Build new assignments snapshot for diff
+    new_assignments = {}  # {unit_designator: set of personnel_ids}
+    for unit_designator, slots in data.assignments.items():
+        pids = {int(pid) for pid in slots if pid is not None}
+        if pids:
+            new_assignments[unit_designator] = pids
+    
+    # Diff old vs new assignments
+    all_units = set(list(old_assignments.keys()) + list(new_assignments.keys()))
+    assignment_changes = {}
+    
+    for unit_des in sorted(all_units):
+        old_pids = old_assignments.get(unit_des, set())
+        new_pids = new_assignments.get(unit_des, set())
+        
+        if old_pids == new_pids:
+            continue
+        
+        added_ids = new_pids - old_pids
+        removed_ids = old_pids - new_pids
+        
+        # Resolve names
+        added_names = []
+        for pid in added_ids:
+            person = db.query(Personnel).filter(Personnel.id == pid).first()
+            if person:
+                added_names.append(f"{person.last_name}, {person.first_name}")
+        
+        removed_names = []
+        for pid in removed_ids:
+            person = db.query(Personnel).filter(Personnel.id == pid).first()
+            if person:
+                removed_names.append(f"{person.last_name}, {person.first_name}")
+        
+        change = {}
+        if added_names:
+            change['added'] = ', '.join(sorted(added_names))
+        if removed_names:
+            change['removed'] = ', '.join(sorted(removed_names))
+        if change:
+            assignment_changes[unit_des] = change
+    
+    # Build summary and fields_changed
     audit_user_id = edited_by or incident.completed_by
+    
+    if assignment_changes:
+        # Build plain English summary
+        summary_parts = []
+        for unit_des, change in assignment_changes.items():
+            if 'added' in change and 'removed' not in change:
+                summary_parts.append(f"Added {change['added']} to {unit_des}")
+            elif 'removed' in change and 'added' not in change:
+                summary_parts.append(f"Removed {change['removed']} from {unit_des}")
+            else:
+                parts = []
+                if 'added' in change:
+                    parts.append(f"added {change['added']}")
+                if 'removed' in change:
+                    parts.append(f"removed {change['removed']}")
+                summary_parts.append(f"{unit_des}: {', '.join(parts)}")
+        
+        if len(summary_parts) <= 2:
+            summary = '; '.join(summary_parts)
+        else:
+            summary = f"Updated assignments on {len(assignment_changes)} units"
+        
+        # Format fields_changed: each unit is a key with {old, new} showing names
+        fields_changed = {}
+        for unit_des, change in assignment_changes.items():
+            old_display = None
+            new_display = None
+            if 'removed' in change:
+                old_display = change['removed']
+            if 'added' in change:
+                new_display = change['added']
+            fields_changed[unit_des] = {"old": old_display, "new": new_display}
+    else:
+        summary = "Saved assignments (no changes)"
+        fields_changed = None
+    
     log_incident_audit(
         db=db,
         action="UPDATE",
         incident=incident,
         completed_by_id=audit_user_id,
-        summary=f"Updated assignments ({unit_count} units)"
+        summary=summary,
+        fields_changed=fields_changed
     )
     
     incident.updated_at = datetime.now(timezone.utc)

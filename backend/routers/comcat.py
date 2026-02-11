@@ -364,13 +364,22 @@ def update_comment_categories(
         incident.updated_at = datetime.now(timezone.utc)
         
         # Audit log is the authoritative record
+        # Format changes in {old, new} format for frontend display
+        audit_fields = {}
+        for ch in changes:
+            text_preview = ch.get('text', '')[:40]
+            label = f"Comment #{ch['index']+1}"
+            if text_preview:
+                label = f'"{text_preview}"' if len(text_preview) < 40 else f'"{text_preview}..."'
+            audit_fields[label] = {"old": ch['old'], "new": ch['new']}
+        
         log_comcat_audit(
             db=db,
             action="COMCAT_CORRECTION",
             incident=incident,
             edited_by_id=request.edited_by,
             summary=f"Corrected {updated_count} comment categories",
-            details={"changes": changes}
+            details=audit_fields if audit_fields else None
         )
         
         db.commit()
