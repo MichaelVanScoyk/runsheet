@@ -1075,7 +1075,10 @@ async def preview_restore_from_cad(
     for field in text_fields:
         current = current_values[field]
         new = new_values[field]
-        if current != new and new is not None:  # Only show if CAD has a value
+        # Normalize whitespace before comparing to avoid false positives
+        current_norm = ' '.join((current or '').split())
+        new_norm = ' '.join((new or '').split())
+        if current_norm != new_norm and new is not None:  # Only show if CAD has a value
             field_changes.append({
                 'field': field,
                 'current': current,
