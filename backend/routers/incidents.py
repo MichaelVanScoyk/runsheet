@@ -736,8 +736,12 @@ async def update_incident(
     for field, new_value in update_data.items():
         if hasattr(incident, field):
             old_value = getattr(incident, field)
-            if old_value != new_value:
-                changes[field] = {"old": str(old_value) if old_value else None, "new": str(new_value) if new_value else None}
+            # Normalize both to strings for comparison to avoid type mismatches
+            # (e.g. date object vs "2026-02-09" string, int vs "84")
+            old_str = str(old_value) if old_value is not None else None
+            new_str = str(new_value) if new_value is not None else None
+            if old_str != new_str:
+                changes[field] = {"old": old_str, "new": new_str}
     
     # Auto-fetch weather if enabled
     weather_auto_fetch = True
