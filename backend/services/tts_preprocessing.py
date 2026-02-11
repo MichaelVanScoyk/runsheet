@@ -258,6 +258,81 @@ def spell_out_mixed(text: str) -> str:
     return ' '.join(result)
 
 
+# =============================================================================
+# ADDRESS NUMBER PRONUNCIATION
+# =============================================================================
+
+def address_number_to_words(n: int) -> str:
+    """
+    Convert a street address number to spoken words using fire/dispatch convention.
+    
+    Address numbers are spoken differently than regular numbers:
+    - 1-9: spoken normally ("five")
+    - 10-99: spoken normally ("forty-two")
+    - 100-999: hundred style ("one twenty-three", "nine fifty", "three hundred")
+    - 1000-9999: split into two pairs ("eleven forty-six", "twenty-three hundred",
+                 "fifteen oh-two")
+    - 10000+: first digit(s) then last group ("one oh three fifty")
+    
+    Examples:
+        5 -> "five"
+        42 -> "forty-two"
+        123 -> "one twenty-three"
+        300 -> "three hundred"
+        950 -> "nine fifty"
+        1146 -> "eleven forty-six"
+        2300 -> "twenty-three hundred"
+        1502 -> "fifteen oh-two"
+        1000 -> "ten hundred"
+        2001 -> "twenty oh-one"
+        10350 -> "one oh three fifty"
+    """
+    if n <= 0:
+        return str(n)
+    if n < 100:
+        return number_to_words(n)
+    
+    # 100-999: "[hundreds digit] [remainder as two-digit]"
+    # e.g., 123 -> "one twenty-three", 300 -> "three hundred", 950 -> "nine fifty"
+    if n < 1000:
+        hundreds = n // 100
+        remainder = n % 100
+        if remainder == 0:
+            return f"{ONES[hundreds]} hundred"
+        else:
+            return f"{ONES[hundreds]} {number_to_words(remainder)}"
+    
+    # 1000-9999: split into top two digits and bottom two digits
+    # e.g., 1146 -> top=11, bottom=46 -> "eleven forty-six"
+    #        2300 -> top=23, bottom=00 -> "twenty-three hundred"
+    #        1502 -> top=15, bottom=02 -> "fifteen oh-two"
+    #        2001 -> top=20, bottom=01 -> "twenty oh-one"
+    if n < 10000:
+        top = n // 100
+        bottom = n % 100
+        top_words = number_to_words(top)
+        if bottom == 0:
+            return f"{top_words} hundred"
+        elif bottom < 10:
+            return f"{top_words} oh-{ONES[bottom]}"
+        else:
+            return f"{top_words} {number_to_words(bottom)}"
+    
+    # 10000+: split into leading digits and last two pairs
+    # e.g., 10350 -> "one oh three fifty"
+    #        12000 -> "one twenty hundred"
+    # Treat as: first digit(s) + remaining 4 digits using the 1000-9999 rule
+    s = str(n)
+    # Split: everything except last 4 digits, then last 4 digits
+    leading = s[:-4]
+    trailing_4 = int(s[-4:])
+    
+    leading_words = ' '.join(ONES[int(d)] if int(d) > 0 else 'zero' for d in leading)
+    trailing_words = address_number_to_words(trailing_4)
+    
+    return f"{leading_words} {trailing_words}"
+
+
 # Direction expansions - hardcoded because they need positional context
 DIRECTIONS = {
     'N': 'North',
@@ -274,23 +349,51 @@ DIRECTIONS = {
 def expand_address_with_street_types(address: str, street_types: Dict[str, str]) -> str:
     """
     Expand abbreviations in an address for TTS.
+    Converts address numbers to dispatch-style pronunciation.
     
     Args:
         address: The address string
         street_types: Dict mapping abbreviation -> expansion (from DB)
     
     Examples:
-        "123 Main St" -> "123 Main Street"
-        "456 N Oak Ave" -> "456 North Oak Avenue"
+        "123 Main St" -> "one twenty-three Main Street"
+        "456 N Oak Ave" -> "four fifty-six North Oak Avenue"
+        "1146 Valley Rd" -> "eleven forty-six Valley Road"
+        "2300 W Chester Pike" -> "twenty-three hundred West Chester Pike"
     """
     if not address:
         return ""
     
     words = address.split()
     result = []
+    address_number_done = False
     
     for i, word in enumerate(words):
         upper = word.upper().rstrip('.,')
+        
+        # Convert leading address number(s) to spoken words
+        # Address numbers are typically the first token(s), possibly hyphenated (e.g., "123-A")
+        if not address_number_done and i == 0:
+            # Handle hyphenated address numbers like "123-A" or "1146-B"
+            if '-' in word:
+                parts = word.split('-', 1)
+                if parts[0].isdigit():
+                    num = int(parts[0])
+                    spoken_num = address_number_to_words(num)
+                    # Suffix after hyphen (e.g., "A", "B", "1/2")
+                    suffix = parts[1]
+                    if suffix.isalpha() and len(suffix) <= 2:
+                        suffix = ' '.join(suffix.upper())  # "A" -> "A", "AB" -> "A B"
+                    result.append(f"{spoken_num} {suffix}")
+                    address_number_done = True
+                    continue
+            elif word.isdigit():
+                num = int(word)
+                result.append(address_number_to_words(num))
+                address_number_done = True
+                continue
+            # Not a number, skip address number conversion
+            address_number_done = True
         
         # Check if it's a direction (usually at start or after number)
         if upper in DIRECTIONS and (i == 0 or i == 1 or (i > 0 and words[i-1].isdigit())):
