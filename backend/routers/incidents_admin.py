@@ -224,23 +224,44 @@ async def fix_incident_sequence(
         
         # Temporary string numbers to avoid unique constraint
         for change in changes:
-            db.execute(text("""
-                UPDATE incidents 
-                SET internal_incident_number = :temp_num 
-                WHERE id = :id
-            """), {"temp_num": f"TEMP-{change['id']}", "id": change["id"]})
+            if cat == 'DETAIL' and change['cad'] and change['cad'].startswith('D'):
+                # Also temp the cad_event_number to avoid unique constraint on it
+                db.execute(text("""
+                    UPDATE incidents 
+                    SET internal_incident_number = :temp_num,
+                        cad_event_number = :temp_cad
+                    WHERE id = :id
+                """), {"temp_num": f"TEMP-{change['id']}", "temp_cad": f"TEMPCAD-{change['id']}", "id": change["id"]})
+            else:
+                db.execute(text("""
+                    UPDATE incidents 
+                    SET internal_incident_number = :temp_num 
+                    WHERE id = :id
+                """), {"temp_num": f"TEMP-{change['id']}", "id": change["id"]})
         
         db.flush()
         
         # Final numbers
         for change in changes:
-            db.execute(text("""
-                UPDATE incidents 
-                SET internal_incident_number = :new_num,
-                    out_of_sequence = FALSE,
-                    updated_at = NOW()
-                WHERE id = :id
-            """), {"new_num": change["new_number"], "id": change["id"]})
+            # For DETAIL records with manufactured CAD numbers (D%), sync cad_event_number too
+            # Real CAD numbers (e.g., F26001437 from dispatch) are never touched
+            if cat == 'DETAIL' and change['cad'] and change['cad'].startswith('D'):
+                db.execute(text("""
+                    UPDATE incidents 
+                    SET internal_incident_number = :new_num,
+                        cad_event_number = :new_num,
+                        out_of_sequence = FALSE,
+                        updated_at = NOW()
+                    WHERE id = :id
+                """), {"new_num": change["new_number"], "id": change["id"]})
+            else:
+                db.execute(text("""
+                    UPDATE incidents 
+                    SET internal_incident_number = :new_num,
+                        out_of_sequence = FALSE,
+                        updated_at = NOW()
+                    WHERE id = :id
+                """), {"new_num": change["new_number"], "id": change["id"]})
         
         all_changes.extend(changes)
     
