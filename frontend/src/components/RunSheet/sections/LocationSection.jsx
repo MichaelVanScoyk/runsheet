@@ -26,12 +26,15 @@ export default function LocationSection() {
       .catch(() => {});
   }, []);
 
-  // Sync coords from incident prop
+  // Sync coords from incident prop, or auto-geocode if missing
   useEffect(() => {
     if (incident?.latitude && incident?.longitude) {
       setIncidentCoords({ lat: incident.latitude, lng: incident.longitude });
+    } else if (incident?.id && formData.address && locationConfig?.enabled && !geocoding) {
+      // Auto-geocode on mount when incident has address but no coords
+      handleGeocode();
     }
-  }, [incident?.latitude, incident?.longitude]);
+  }, [incident?.latitude, incident?.longitude, incident?.id, locationConfig?.enabled]);
 
   const handleGeocode = async () => {
     if (!incident?.id) return;
