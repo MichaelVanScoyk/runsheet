@@ -79,6 +79,17 @@ def _get_station_coords(db: Session) -> tuple:
     return lat, lng
 
 
+def _get_google_key(db: Session) -> Optional[str]:
+    """Get Google Geocoding API key from settings, if configured."""
+    result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'location' AND key = 'google_api_key'")
+    ).fetchone()
+    
+    if result and result[0] and result[0].strip():
+        return result[0].strip()
+    return None
+
+
 def _get_geocodio_key(db: Session) -> Optional[str]:
     """Get Geocodio API key from settings, if configured."""
     result = db.execute(
@@ -121,6 +132,7 @@ async def geocode_address_endpoint(
     from services.location.geocoding import geocode_address
     
     station_lat, station_lng = _get_station_coords(db)
+    google_key = _get_google_key(db)
     geocodio_key = _get_geocodio_key(db)
     state = request.state or _get_state(db)
     
@@ -129,6 +141,7 @@ async def geocode_address_endpoint(
         station_lat=station_lat,
         station_lng=station_lng,
         state=state,
+        google_api_key=google_key,
         geocodio_api_key=geocodio_key,
     )
     
@@ -176,6 +189,7 @@ async def geocode_incident_endpoint(
     from services.location.geocoding import geocode_address
     
     station_lat, station_lng = _get_station_coords(db)
+    google_key = _get_google_key(db)
     geocodio_key = _get_geocodio_key(db)
     state = _get_state(db)
     
@@ -184,6 +198,7 @@ async def geocode_incident_endpoint(
         station_lat=station_lat,
         station_lng=station_lng,
         state=state,
+        google_api_key=google_key,
         geocodio_api_key=geocodio_key,
     )
     
@@ -240,12 +255,14 @@ async def get_location_config(db: Session = Depends(get_db)):
     """
     enabled = _get_feature_enabled(db)
     station_lat, station_lng = _get_station_coords(db)
+    has_google = bool(_get_google_key(db))
     has_geocodio = bool(_get_geocodio_key(db))
     
     return {
         "enabled": enabled,
         "station_latitude": station_lat,
         "station_longitude": station_lng,
-        "has_geocodio_fallback": has_geocodio,
+        "has_google": has_google,
+        "has_geocodio": has_geocodio,
         "default_state": _get_state(db),
     }

@@ -1,16 +1,17 @@
 """
 Geocoding Service for Location Services
 
-Primary:  Geocodio (free tier 2500/day, better accuracy, requires API key)
+Primary:  Google Geocoding API (best accuracy, rooftop precision, requires API key)
 Fallback: US Census Geocoder (free, no API key, government authoritative)
+Last:     Geocodio (free tier 2500/day, requires API key)
 
 Strategy:
-    1. If Geocodio key configured -> try Geocodio first
-    2. If Geocodio fails/unavailable -> fall back to Census
-    3. Pick the match closest to the station's stored coordinates
-    4. If both fail -> return None (incident flagged "needs review")
+    1. If Google key configured -> try Google first
+    2. If Google fails/unavailable -> fall back to Census
+    3. If Census fails -> try Geocodio if key configured
+    4. Pick the match closest to the station's stored coordinates
+    5. If all fail -> return None (incident flagged "needs review")
 
-Census returns lat/lng + FIPS codes + address components.
 All results are normalized to a common format for storage.
 """
 
@@ -20,6 +21,10 @@ from typing import Optional
 from .distance import closest_match
 
 logger = logging.getLogger(__name__)
+
+# Google Geocoding API
+GOOGLE_BASE = "https://maps.googleapis.com/maps/api/geocode/json"
+GOOGLE_TIMEOUT = 10
 
 # Census Geocoder API
 CENSUS_BASE = "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress"
@@ -35,10 +40,11 @@ def geocode_address(
     station_lat: float,
     station_lng: float,
     state: str = "PA",
+    google_api_key: Optional[str] = None,
     geocodio_api_key: Optional[str] = None,
 ) -> Optional[dict]:
     """
-    Geocode an address using Geocodio (primary) then Census (fallback).
+    Geocode an address using Google (primary), Census (fallback), Geocodio (last).
     Returns the best match closest to station, or None.
     
     Returns dict with:
@@ -46,7 +52,7 @@ def geocode_address(
         street_number, street_name, street_suffix, street_prefix,
         city, state, zip_code, county, county_fips,
         census_tract, census_block, state_fips,
-        provider (str: 'census' or 'geocodio'),
+        provider (str: 'google', 'census', or 'geocodio'),
         confidence (float: 0-1),
         distance_km (float: distance from station),
         all_matches (int: total matches before filtering)
@@ -54,9 +60,9 @@ def geocode_address(
     if not address or not address.strip():
         return None
     
-    # Try Geocodio first if API key configured (better accuracy)
-    if geocodio_api_key:
-        result = _geocode_geocodio(address, station_lat, station_lng, state, geocodio_api_key)
+    # Try Google first if API key configured (best accuracy)
+    if google_api_key:
+        result = _geocode_google(address, station_lat, station_lng, state, google_api_key)
         if result:
             return result
     
@@ -65,8 +71,112 @@ def geocode_address(
     if result:
         return result
     
+    # Last resort: Geocodio if API key configured
+    if geocodio_api_key:
+        result = _geocode_geocodio(address, station_lat, station_lng, state, geocodio_api_key)
+        if result:
+            return result
+    
     logger.warning(f"Geocoding failed for: {address}")
     return None
+
+
+def _geocode_google(
+    address: str,
+    station_lat: float,
+    station_lng: float,
+    state: str,
+    api_key: str,
+) -> Optional[dict]:
+    """
+    Query Google Geocoding API and return best match closest to station.
+    """
+    query_address = address.strip()
+    if not any(s in query_address.upper() for s in [f', {state}', f',{state}', f' {state} ']):
+        query_address = f"{query_address}, {state}"
+    
+    params = {
+        "address": query_address,
+        "key": api_key,
+    }
+    
+    try:
+        with httpx.Client(timeout=GOOGLE_TIMEOUT) as client:
+            response = client.get(GOOGLE_BASE, params=params)
+            response.raise_for_status()
+            data = response.json()
+    except httpx.TimeoutException:
+        logger.warning(f"Google geocoder timeout for: {address}")
+        return None
+    except Exception as e:
+        logger.error(f"Google geocoder error for '{address}': {e}")
+        return None
+    
+    status = data.get("status", "")
+    if status != "OK":
+        logger.info(f"Google: status '{status}' for '{query_address}'")
+        return None
+    
+    results = data.get("results", [])
+    if not results:
+        logger.info(f"Google: no results for '{query_address}'")
+        return None
+    
+    # Normalize all matches
+    matches = []
+    for r in results:
+        geo = r.get("geometry", {})
+        loc = geo.get("location", {})
+        location_type = geo.get("location_type", "")
+        
+        # Parse address components
+        components = {}
+        for comp in r.get("address_components", []):
+            types = comp.get("types", [])
+            for t in types:
+                components[t] = comp
+        
+        # Map Google confidence from location_type
+        confidence_map = {
+            "ROOFTOP": 1.0,
+            "RANGE_INTERPOLATED": 0.8,
+            "GEOMETRIC_CENTER": 0.6,
+            "APPROXIMATE": 0.4,
+        }
+        
+        matches.append({
+            "latitude": loc.get("lat"),
+            "longitude": loc.get("lng"),
+            "matched_address": r.get("formatted_address", ""),
+            "street_number": components.get("street_number", {}).get("long_name", ""),
+            "street_name": components.get("route", {}).get("long_name", ""),
+            "street_suffix": "",
+            "street_prefix": "",
+            "city": components.get("locality", {}).get("long_name", ""),
+            "state": components.get("administrative_area_level_1", {}).get("short_name", ""),
+            "zip_code": components.get("postal_code", {}).get("long_name", ""),
+            "county": components.get("administrative_area_level_2", {}).get("long_name", "").replace(" County", ""),
+            "county_fips": "",
+            "county_subdivision": components.get("administrative_area_level_3", {}).get("long_name", ""),
+            "state_fips": "",
+            "census_tract": "",
+            "census_block": "",
+            "provider": "google",
+            "confidence": confidence_map.get(location_type, 0.5),
+            "location_type": location_type,
+        })
+    
+    # Pick closest to station
+    best = closest_match(matches, station_lat, station_lng)
+    if best:
+        best["all_matches"] = len(matches)
+        logger.info(
+            f"Google: {len(matches)} results for '{query_address}', "
+            f"selected '{best.get('matched_address')}' ({best.get('location_type', '')}) "
+            f"at {best.get('distance_km')}km"
+        )
+    
+    return best
 
 
 def _geocode_census(
@@ -160,7 +270,7 @@ def _geocode_geocodio(
     api_key: str,
 ) -> Optional[dict]:
     """
-    Query Geocodio API as fallback and return best match closest to station.
+    Query Geocodio API as last resort and return best match closest to station.
     """
     query_address = address.strip()
     if not any(s in query_address.upper() for s in [f', {state}', f',{state}', f' {state} ']):
@@ -234,6 +344,7 @@ def geocode_incident(
     station_lat: float,
     station_lng: float,
     state: str = "PA",
+    google_api_key: Optional[str] = None,
     geocodio_api_key: Optional[str] = None,
 ) -> dict:
     """
@@ -248,6 +359,7 @@ def geocode_incident(
         station_lat=station_lat,
         station_lng=station_lng,
         state=state,
+        google_api_key=google_api_key,
         geocodio_api_key=geocodio_api_key,
     )
     

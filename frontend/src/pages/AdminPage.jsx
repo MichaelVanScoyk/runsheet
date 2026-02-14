@@ -2523,7 +2523,12 @@ function FeaturesTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value: String(value) }),
       });
-      setLocationConfig(prev => ({ ...prev, [key === 'geocodio_api_key' ? 'has_geocodio_fallback' : key]: key === 'geocodio_api_key' ? !!value : value }));
+      setLocationConfig(prev => ({
+        ...prev,
+        ...(key === 'google_api_key' ? { has_google: !!value } : {}),
+        ...(key === 'geocodio_api_key' ? { has_geocodio: !!value } : {}),
+        ...(key !== 'google_api_key' && key !== 'geocodio_api_key' ? { [key]: value } : {}),
+      }));
       setMessage({ type: 'success', text: 'Setting saved' });
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to save' });
@@ -2557,7 +2562,7 @@ function FeaturesTab() {
     },
     enable_location_services: {
       label: 'Location Services',
-      description: 'Geocode incident addresses to coordinates using US Census (primary) and Geocodio (fallback). Enables maps on run sheets, analytics heatmaps, and NERIS location data.',
+      description: 'Geocode incident addresses to coordinates using Google (primary), Census (fallback), and Geocodio (last resort). Enables maps on run sheets, analytics heatmaps, and routing.',
       icon: '📍',
       hasConfig: true,
     }
@@ -2637,13 +2642,38 @@ function FeaturesTab() {
 
                   <div style={{ marginBottom: '0.75rem' }}>
                     <label style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginBottom: '0.25rem' }}>
-                      Geocodio API Key (optional fallback)
+                      Google Geocoding API Key (primary)
                     </label>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                       <input
                         type="password"
                         defaultValue=""
-                        placeholder={locationConfig.has_geocodio_fallback ? '••••••• (configured)' : ''}
+                        placeholder={locationConfig.has_google ? '••••••• (configured)' : ''}
+                        onBlur={(e) => {
+                          if (e.target.value) saveLocationSetting('google_api_key', e.target.value);
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                        disabled={savingConfig}
+                        style={{ flex: 1, padding: '0.4rem 0.6rem', border: '1px solid #ddd', borderRadius: '4px', fontSize: '0.85rem' }}
+                      />
+                      {locationConfig.has_google && (
+                        <span style={{ color: '#22c55e', fontSize: '0.8rem' }}>✓ Active</span>
+                      )}
+                    </div>
+                    <small style={{ color: '#888', fontSize: '0.75rem' }}>
+                      Best accuracy (rooftop precision). 200 free/month per key. Get key at console.cloud.google.com → Geocoding API.
+                    </small>
+                  </div>
+
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginBottom: '0.25rem' }}>
+                      Geocodio API Key (last resort fallback)
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <input
+                        type="password"
+                        defaultValue=""
+                        placeholder={locationConfig.has_geocodio ? '••••••• (configured)' : ''}
                         onBlur={(e) => {
                           if (e.target.value) saveLocationSetting('geocodio_api_key', e.target.value);
                         }}
@@ -2651,12 +2681,12 @@ function FeaturesTab() {
                         disabled={savingConfig}
                         style={{ flex: 1, padding: '0.4rem 0.6rem', border: '1px solid #ddd', borderRadius: '4px', fontSize: '0.85rem' }}
                       />
-                      {locationConfig.has_geocodio_fallback && (
+                      {locationConfig.has_geocodio && (
                         <span style={{ color: '#22c55e', fontSize: '0.8rem' }}>✓ Active</span>
                       )}
                     </div>
                     <small style={{ color: '#888', fontSize: '0.75rem' }}>
-                      Free tier: 2,500 lookups/day. Get key at geocod.io. Census is used first — this is only a fallback.
+                      Free tier: 2,500 lookups/day. Only used if Google and Census both fail.
                     </small>
                   </div>
 
