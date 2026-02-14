@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRunSheet } from '../RunSheetContext';
 import { formatDateTimeLocal, parseLocalToUtc, calculateDuration } from '../../../utils/timeUtils';
+import LocationMap from '../../shared/LocationMap';
 
 const FIELD_KEYS = [
   'time_dispatched',
@@ -20,7 +21,50 @@ const FIELD_LABELS = {
 
 // Per context doc: labels inline LEFT of field, not above
 export default function TimeFields() {
-  const { formData, handleChange } = useRunSheet();
+  const { formData, handleChange, incident } = useRunSheet();
+  
+  // Location services state
+  const [locationConfig, setLocationConfig] = useState(null);
+  const [geocoding, setGeocoding] = useState(false);
+  const [incidentCoords, setIncidentCoords] = useState({ lat: null, lng: null });
+  const [geocodeResult, setGeocodeResult] = useState(null);
+  
+  // Load location config (feature flag) once
+  useEffect(() => {
+    fetch('/api/location/config')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setLocationConfig(data))
+      .catch(() => {});
+  }, []);
+  
+  // Sync coords from incident prop
+  useEffect(() => {
+    if (incident?.latitude && incident?.longitude) {
+      setIncidentCoords({ lat: incident.latitude, lng: incident.longitude });
+    }
+  }, [incident?.latitude, incident?.longitude]);
+  
+  const handleGeocode = async () => {
+    if (!incident?.id) return;
+    setGeocoding(true);
+    setGeocodeResult(null);
+    try {
+      const res = await fetch(`/api/location/geocode/${incident.id}`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setIncidentCoords({ lat: data.latitude, lng: data.longitude });
+        setGeocodeResult({ success: true, address: data.matched_address, distance: data.distance_km });
+      } else {
+        setGeocodeResult({ success: false });
+      }
+    } catch {
+      setGeocodeResult({ success: false });
+    } finally {
+      setGeocoding(false);
+    }
+  };
+  
+  const locationEnabled = locationConfig?.enabled;
   
   // Track display values separately from stored UTC values
   // This allows typing without conversion until blur
@@ -102,6 +146,57 @@ export default function TimeFields() {
           className="flex-1 font-mono text-sm cursor-default"
         />
       </div>
+      
+      {/* Location Map - only when feature enabled */}
+      {locationEnabled && (
+        <div className="mt-3">
+          {incidentCoords.lat && incidentCoords.lng ? (
+            <LocationMap
+              latitude={incidentCoords.lat}
+              longitude={incidentCoords.lng}
+              markerLabel={formData.address || ''}
+              height="200px"
+              zoom={15}
+              interactive={true}
+            />
+          ) : incident?.id && formData.address ? (
+            <div style={{
+              height: '80px',
+              background: '#1a1a2e',
+              border: '1px dashed #333',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+            }}>
+              <button
+                onClick={handleGeocode}
+                disabled={geocoding}
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  background: geocoding ? '#333' : '#2563eb',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '0.8rem',
+                  cursor: geocoding ? 'wait' : 'pointer',
+                }}
+              >
+                {geocoding ? 'Geocoding...' : '📍 Geocode Address'}
+              </button>
+            </div>
+          ) : null}
+          {geocodeResult && (
+            <div style={{ fontSize: '0.75rem', color: geocodeResult.success ? '#22c55e' : '#ef4444', marginTop: '0.25rem' }}>
+              {geocodeResult.success 
+                ? `✓ ${geocodeResult.address} (${geocodeResult.distance}km from station)`
+                : '✗ Could not geocode address'
+              }
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
