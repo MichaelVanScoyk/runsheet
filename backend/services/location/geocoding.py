@@ -1,13 +1,13 @@
 """
 Geocoding Service for Location Services
 
-Primary:  US Census Geocoder (free, no API key, government authoritative)
-Fallback: Geocodio (free tier 2500/day, requires API key in settings)
+Primary:  Geocodio (free tier 2500/day, better accuracy, requires API key)
+Fallback: US Census Geocoder (free, no API key, government authoritative)
 
 Strategy:
-    1. Send "[address], PA" to Census -> get multiple matches
-    2. Pick the match closest to the station's stored coordinates
-    3. If Census fails/returns nothing -> try Geocodio
+    1. If Geocodio key configured -> try Geocodio first
+    2. If Geocodio fails/unavailable -> fall back to Census
+    3. Pick the match closest to the station's stored coordinates
     4. If both fail -> return None (incident flagged "needs review")
 
 Census returns lat/lng + FIPS codes + address components.
@@ -38,7 +38,7 @@ def geocode_address(
     geocodio_api_key: Optional[str] = None,
 ) -> Optional[dict]:
     """
-    Geocode an address using Census (primary) then Geocodio (fallback).
+    Geocode an address using Geocodio (primary) then Census (fallback).
     Returns the best match closest to station, or None.
     
     Returns dict with:
@@ -54,16 +54,16 @@ def geocode_address(
     if not address or not address.strip():
         return None
     
-    # Try Census first
-    result = _geocode_census(address, station_lat, station_lng, state)
-    if result:
-        return result
-    
-    # Fallback to Geocodio if API key configured
+    # Try Geocodio first if API key configured (better accuracy)
     if geocodio_api_key:
         result = _geocode_geocodio(address, station_lat, station_lng, state, geocodio_api_key)
         if result:
             return result
+    
+    # Fallback to Census (free, no key needed)
+    result = _geocode_census(address, station_lat, station_lng, state)
+    if result:
+        return result
     
     logger.warning(f"Geocoding failed for: {address}")
     return None
