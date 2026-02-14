@@ -9,6 +9,7 @@ import {
   IncidentInfo,
   TimeFields,
   CallerInfo,
+  LocationSection,
   NarrativeSection,
   DamageAssessment,
   MutualAidSection,
@@ -87,9 +88,7 @@ function RunSheetContent() {
           <TimeFields />
         </div>
         
-        <div className="mb-4">
-          <CallerInfo />
-        </div>
+        <LocationSection />
         
         <NarrativeSection />
         
@@ -128,8 +127,8 @@ function RunSheetContent() {
         <TimeFields />
       </AccordionSection>
 
-      <AccordionSection title="Caller" summary={summaries.caller}>
-        <CallerInfo />
+      <AccordionSection title="Location & Caller" summary={summaries.caller}>
+        <LocationSection />
       </AccordionSection>
 
       <AccordionSection title="Narrative" summary={summaries.narrative}>

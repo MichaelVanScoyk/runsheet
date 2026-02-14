@@ -11,3 +11,4 @@ export { default as CADUnitsTable } from './CADUnitsTable';
 export { default as PersonnelGrid } from './PersonnelGrid';
 export { default as VirtualUnits } from './VirtualUnits';
 export { default as OfficerSection } from './OfficerSection';
+export { default as LocationSection } from './LocationSection';
