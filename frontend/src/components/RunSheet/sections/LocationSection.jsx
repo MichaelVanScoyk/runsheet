@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useRunSheet } from '../RunSheetContext';
-import LocationMap from '../../shared/LocationMap';
+
+// Lazy load LocationMap so leaflet import failure doesn't crash the page
+const LocationMap = lazy(() => import('../../shared/LocationMap'));
 
 export default function LocationSection() {
   const { 
@@ -159,15 +161,17 @@ export default function LocationSection() {
     <div className="flex flex-col h-full">
       {incidentCoords.lat && incidentCoords.lng ? (
         <>
-          <LocationMap
-            latitude={incidentCoords.lat}
-            longitude={incidentCoords.lng}
-            markerLabel={formData.address || ''}
-            height="100%"
-            zoom={15}
-            interactive={true}
-            style={{ flex: 1, minHeight: '300px' }}
-          />
+          <Suspense fallback={<div style={{ flex: 1, minHeight: '300px', background: '#f5f5f5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', fontSize: '0.85rem' }}>Loading map...</div>}>
+            <LocationMap
+              latitude={incidentCoords.lat}
+              longitude={incidentCoords.lng}
+              markerLabel={formData.address || ''}
+              height="100%"
+              zoom={15}
+              interactive={true}
+              style={{ flex: 1, minHeight: '300px' }}
+            />
+          </Suspense>
           {geocodeResult && (
             <div style={{ fontSize: '0.75rem', color: geocodeResult.success ? '#22c55e' : '#ef4444', marginTop: '0.25rem' }}>
               {geocodeResult.success 
