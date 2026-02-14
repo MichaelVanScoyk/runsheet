@@ -2492,6 +2492,8 @@ function FeaturesTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
   const [message, setMessage] = useState(null);
+  const [locationConfig, setLocationConfig] = useState({});
+  const [savingConfig, setSavingConfig] = useState(false);
 
   useEffect(() => {
     loadFeatures();
@@ -2501,10 +2503,32 @@ function FeaturesTab() {
     try {
       const res = await getFeatures();
       setFeatures(res.data);
+      // Load location config if location services exist
+      try {
+        const configRes = await fetch('/api/location/config');
+        if (configRes.ok) setLocationConfig(await configRes.json());
+      } catch (e) { /* ok if not available yet */ }
     } catch (err) {
       console.error('Failed to load features:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveLocationSetting = async (key, value) => {
+    setSavingConfig(true);
+    try {
+      await fetch(`/api/settings/location/${key}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: String(value) }),
+      });
+      setLocationConfig(prev => ({ ...prev, [key === 'geocodio_api_key' ? 'has_geocodio_fallback' : key]: key === 'geocodio_api_key' ? !!value : value }));
+      setMessage({ type: 'success', text: 'Setting saved' });
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to save' });
+    } finally {
+      setSavingConfig(false);
     }
   };
 
@@ -2530,6 +2554,12 @@ function FeaturesTab() {
       label: 'Incident Duplication',
       description: 'Allow admins to duplicate incidents to different categories (FIRE/EMS/DETAIL). Useful for dual-crediting stats when fire units assist on EMS calls.',
       icon: '📋'
+    },
+    enable_location_services: {
+      label: 'Location Services',
+      description: 'Geocode incident addresses to coordinates using US Census (primary) and Geocodio (fallback). Enables maps on run sheets, analytics heatmaps, and NERIS location data.',
+      icon: '📍',
+      hasConfig: true,
     }
   };
 
@@ -2552,44 +2582,110 @@ function FeaturesTab() {
           const isSaving = saving === key;
           
           return (
-            <div 
-              key={key}
-              style={{
-                background: '#f5f5f5',
-                borderRadius: '8px',
-                padding: '1rem',
-                border: '1px solid #e0e0e0',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: '1rem'
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                  <span style={{ fontSize: '1.25rem' }}>{info.icon}</span>
-                  <strong style={{ color: '#333' }}>{info.label}</strong>
-                </div>
-                <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>
-                  {info.description}
-                </p>
-              </div>
-              <button
-                onClick={() => handleToggle(key, value)}
-                disabled={isSaving}
+            <div key={key}>
+              <div
                 style={{
-                  padding: '0.5rem 1rem',
-                  borderRadius: '4px',
-                  border: 'none',
-                  cursor: isSaving ? 'wait' : 'pointer',
-                  fontWeight: 'bold',
-                  minWidth: '80px',
-                  background: value ? '#22c55e' : '#e5e7eb',
-                  color: value ? '#fff' : '#666'
+                  background: '#f5f5f5',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  border: '1px solid #e0e0e0',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '1rem'
                 }}
               >
-                {isSaving ? '...' : (value ? 'ON' : 'OFF')}
-              </button>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <span style={{ fontSize: '1.25rem' }}>{info.icon}</span>
+                    <strong style={{ color: '#333' }}>{info.label}</strong>
+                  </div>
+                  <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>
+                    {info.description}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleToggle(key, value)}
+                  disabled={isSaving}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    borderRadius: '4px',
+                    border: 'none',
+                    cursor: isSaving ? 'wait' : 'pointer',
+                    fontWeight: 'bold',
+                    minWidth: '80px',
+                    background: value ? '#22c55e' : '#e5e7eb',
+                    color: value ? '#fff' : '#666'
+                  }}
+                >
+                  {isSaving ? '...' : (value ? 'ON' : 'OFF')}
+                </button>
+              </div>
+
+              {/* Nested config for location services */}
+              {key === 'enable_location_services' && value && (
+                <div style={{
+                  marginTop: '0.75rem',
+                  padding: '1rem',
+                  background: '#fff',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                }}>
+                  <div style={{ fontSize: '0.85rem', color: '#555', marginBottom: '0.75rem', fontWeight: '500' }}>
+                    Configuration
+                  </div>
+
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginBottom: '0.25rem' }}>
+                      Geocodio API Key (optional fallback)
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <input
+                        type="password"
+                        defaultValue=""
+                        placeholder={locationConfig.has_geocodio_fallback ? '••••••• (configured)' : ''}
+                        onBlur={(e) => {
+                          if (e.target.value) saveLocationSetting('geocodio_api_key', e.target.value);
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                        disabled={savingConfig}
+                        style={{ flex: 1, padding: '0.4rem 0.6rem', border: '1px solid #ddd', borderRadius: '4px', fontSize: '0.85rem' }}
+                      />
+                      {locationConfig.has_geocodio_fallback && (
+                        <span style={{ color: '#22c55e', fontSize: '0.8rem' }}>✓ Active</span>
+                      )}
+                    </div>
+                    <small style={{ color: '#888', fontSize: '0.75rem' }}>
+                      Free tier: 2,500 lookups/day. Get key at geocod.io. Census is used first — this is only a fallback.
+                    </small>
+                  </div>
+
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginBottom: '0.25rem' }}>
+                      Default State
+                    </label>
+                    <input
+                      type="text"
+                      defaultValue={locationConfig.default_state || 'PA'}
+                      onBlur={(e) => {
+                        if (e.target.value !== (locationConfig.default_state || 'PA')) {
+                          saveLocationSetting('default_state', e.target.value);
+                        }
+                      }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                      maxLength={2}
+                      style={{ width: '60px', padding: '0.4rem 0.6rem', border: '1px solid #ddd', borderRadius: '4px', fontSize: '0.85rem', textTransform: 'uppercase' }}
+                    />
+                    <small style={{ color: '#888', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                      Appended to addresses for geocoding (e.g., "1710 Creek Rd, PA")
+                    </small>
+                  </div>
+
+                  <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.75rem', padding: '0.5rem', background: '#f8f8f8', borderRadius: '4px' }}>
+                    Station coordinates: {locationConfig.station_latitude?.toFixed(4)}, {locationConfig.station_longitude?.toFixed(4)} (configured in Settings → Station)
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

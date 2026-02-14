@@ -965,6 +965,7 @@ async def update_cad_settings(
 # Default feature flag settings
 DEFAULT_FEATURES = {
     'allow_incident_duplication': False,  # Admin-only incident duplication feature
+    'enable_location_services': False,    # Geocoding, maps, and location data for incidents
 }
 
 

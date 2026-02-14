@@ -54,6 +54,7 @@ from routers import incidents, incidents_admin, incidents_attendance, incidents_
 from routers import branding, print_layout, comcat, websocket, analytics, review_tasks, analytics_v2, detail_types, test_alerts
 from routers import analytics_personnel, alert_audio, tts, devices
 from routers import help as help_router
+from routers import location as location_router
 from routers.reports import router as reports_router
 from database import engine, Base
 from master_database import MasterSessionLocal
@@ -339,6 +340,7 @@ app.include_router(alert_audio.router, tags=["Alert Audio"])  # TTS audio files:
 app.include_router(tts.router, prefix="/api/tts", tags=["TTS"])  # TTS unit mappings: /api/tts
 app.include_router(devices.router, prefix="/api/av-alerts", tags=["Devices"])  # Device management: /api/av-alerts/devices
 app.include_router(help_router.router, prefix="/api/help", tags=["Help"])  # Help system: /api/help
+app.include_router(location_router.router, prefix="/api/location", tags=["Location"])  # Location services: /api/location
 
 @app.get("/")
 async def root():
