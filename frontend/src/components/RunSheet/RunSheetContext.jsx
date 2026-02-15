@@ -523,6 +523,8 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
    * When category changes (FIRE ↔ EMS ↔ DETAIL), immediately save to backend
    * which assigns a new incident number from the target category's sequence.
    * The form then updates to show the new number.
+   * 
+   * REQUIRES: User must be logged in as OFFICER or ADMIN to change category.
    */
   const handleCategoryChange = async (newCategory) => {
     // For new incidents (not yet saved), just update the local state
@@ -538,9 +540,21 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
     // Validate category
     if (!['FIRE', 'EMS', 'DETAIL'].includes(newCategory)) return;
     
+    // Check authentication before making API call
+    if (!userSession?.personnel_id) {
+      toast.error('Please log in to change incident category');
+      return;
+    }
+    
+    // Check role before making API call (frontend validation - backend also enforces)
+    if (!['OFFICER', 'ADMIN'].includes(userSession?.role)) {
+      toast.error('Only officers and admins can change incident category');
+      return;
+    }
+    
     setCategoryChanging(true);
     try {
-      const editedBy = userSession?.personnel_id || null;
+      const editedBy = userSession.personnel_id;
       
       // Send only the category change to the backend
       // Backend will assign new number and return it
@@ -571,7 +585,9 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
       
     } catch (err) {
       console.error('Failed to change category:', err);
-      toast.error('Failed to change category: ' + (err.message || 'Unknown error'));
+      // Parse error message from API response if available
+      const errorMsg = err.response?.data?.detail || err.message || 'Unknown error';
+      toast.error(errorMsg);
       // Revert the dropdown to the original value
       setFormData(prev => ({ ...prev, call_category: formData.call_category }));
     } finally {

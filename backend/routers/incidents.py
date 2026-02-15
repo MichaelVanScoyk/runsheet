@@ -677,6 +677,7 @@ async def update_incident(
                 incident.year_prefix = parsed_year
     
     # Handle category change (special case - assigns new number)
+    # REQUIRES AUTHENTICATION - category changes affect incident numbering and audit trail
     category_changed = False
     old_number = None
     new_number = None
@@ -684,6 +685,28 @@ async def update_incident(
     if 'call_category' in update_data:
         new_category = update_data['call_category']
         if new_category and new_category != incident.call_category and new_category in CATEGORY_PREFIXES:
+            # Require authentication for category changes
+            if not edited_by:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Authentication required to change incident category. Please log in."
+                )
+            
+            # Verify the user exists and has appropriate role
+            editor = db.query(Personnel).filter(Personnel.id == edited_by).first()
+            if not editor:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid user. Please log in again."
+                )
+            
+            # Only OFFICER and ADMIN roles can change category
+            if editor.role not in ('OFFICER', 'ADMIN'):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Only officers and admins can change incident category."
+                )
+            
             category_changed = True
             old_category = incident.call_category
             old_number = incident.internal_incident_number
@@ -693,7 +716,7 @@ async def update_incident(
             incident.internal_incident_number = new_number
             incident.call_category = new_category
             
-            logger.info(f"Category changed: {old_category} → {new_category}, number {old_number} → {new_number}")
+            logger.info(f"Category changed: {old_category} → {new_category}, number {old_number} → {new_number} (by personnel {edited_by})")
             
             # Remove from update_data since we handled it manually
             del update_data['call_category']
