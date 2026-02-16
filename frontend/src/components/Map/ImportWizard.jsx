@@ -144,94 +144,115 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     padding: '20px', fontSize: '0.85rem',
   };
 
-  // STEP 0: Saved configs — show URL, date, count, everything visible
-  if (step === 0) {
-    return (
-      <div style={panelStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ margin: 0, color: '#333', fontSize: '1.05rem' }}>GIS Import</h3>
+  // Normalize URL for comparison (strip trailing slash, query params)
+  const normalizeUrl = (u) => (u || '').trim().split('?')[0].replace(/\/+$/, '').toLowerCase();
+
+  // Check if entered URL matches an existing config
+  const duplicateConfig = url.trim()
+    ? configs.find(c => normalizeUrl(c.source_url) === normalizeUrl(url))
+    : null;
+
+  // --- CONFIGS LIST (always visible) ---
+  const configsList = (
+    <div style={{ marginBottom: step > 0 ? '16px' : 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h3 style={{ margin: 0, color: '#333', fontSize: '1.05rem' }}>GIS Import</h3>
+        {step === 0 && (
           <button onClick={() => setStep(1)}
             style={{ padding: '8px 16px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
             + New Import
           </button>
-        </div>
-        {configsLoading ? (
-          <div style={{ color: '#888' }}>Loading...</div>
-        ) : configs.length === 0 ? (
-          <div style={{ color: '#888' }}>No saved imports.</div>
-        ) : (
-          <div>
-            {configs.map(c => (
-              <div key={c.id} style={{
-                border: '1px solid #eee', borderRadius: '6px', padding: '12px',
-                marginBottom: '8px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '1.2rem' }}>{c.layer_icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '600', color: '#333' }}>{c.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#888' }}>
-                    {c.layer_name} · {c.last_refresh_count || 0} features synced
-                    </div>
-                  </div>
-                  <button onClick={() => handleRefresh(c.id)} disabled={refreshingId === c.id}
-                    style={{ padding: '6px 12px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: refreshingId === c.id ? 'wait' : 'pointer', fontSize: '0.8rem' }}>
-                    {refreshingId === c.id ? 'Refreshing...' : 'Refresh'}
-                  </button>
-                  {isAdmin && (
-                  <button onClick={() => handleDeleteConfig(c.id, c.name)}
-                    style={{ padding: '6px 10px', background: 'none', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', color: '#888' }}>
-                      ✕
-                  </button>
-                )}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#666', background: '#f9fafb', borderRadius: '4px', padding: '6px 8px' }}>
-                  <div style={{ marginBottom: '2px' }}>
-                    <span style={{ color: '#888' }}>Source: </span>
-                    <span style={{ wordBreak: 'break-all' }}>{c.source_url}</span>
-                  </div>
-                  <div>
-                    <span style={{ color: '#888' }}>Last imported: </span>
-                    {c.last_refresh_at
-                      ? new Date(c.last_refresh_at).toLocaleString()
-                      : 'Never'}
-                    {c.last_refresh_status === 'failed' && <span style={{ color: '#dc2626' }}> (Failed)</span>}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
         )}
       </div>
-    );
+      {configsLoading ? (
+        <div style={{ color: '#888' }}>Loading...</div>
+      ) : configs.length === 0 ? (
+        step === 0 ? <div style={{ color: '#888' }}>No saved imports.</div> : null
+      ) : (
+        <div>
+          {configs.map(c => (
+            <div key={c.id} style={{
+              border: '1px solid #eee', borderRadius: '6px', padding: '12px',
+              marginBottom: '8px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
+                <span style={{ fontSize: '1.2rem' }}>{c.layer_icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: '600', color: '#333' }}>{c.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#888' }}>
+                    {c.layer_name} · {c.last_refresh_count || 0} features synced
+                  </div>
+                </div>
+                <button onClick={() => handleRefresh(c.id)} disabled={refreshingId === c.id}
+                  style={{ padding: '6px 12px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: refreshingId === c.id ? 'wait' : 'pointer', fontSize: '0.8rem' }}>
+                  {refreshingId === c.id ? 'Refreshing...' : 'Refresh'}
+                </button>
+                {isAdmin && (
+                  <button onClick={() => handleDeleteConfig(c.id, c.name)}
+                    style={{ padding: '6px 10px', background: 'none', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', color: '#888' }}>
+                    ✕
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#666', background: '#f9fafb', borderRadius: '4px', padding: '6px 8px' }}>
+                <div style={{ marginBottom: '2px' }}>
+                  <span style={{ color: '#888' }}>Source: </span>
+                  <span style={{ wordBreak: 'break-all' }}>{c.source_url}</span>
+                </div>
+                <div>
+                  <span style={{ color: '#888' }}>Last imported: </span>
+                  {c.last_refresh_at
+                    ? new Date(c.last_refresh_at).toLocaleString()
+                    : 'Never'}
+                  {c.last_refresh_status === 'failed' && <span style={{ color: '#dc2626' }}> (Failed)</span>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // STEP 0: Just the configs list
+  if (step === 0) {
+    return <div style={panelStyle}>{configsList}</div>;
   }
 
-  // STEP 1: Enter URL
+  // STEP 1: Enter URL (configs visible above)
   if (step === 1) {
     return (
       <div style={panelStyle}>
-        <h3 style={{ margin: '0 0 12px', color: '#333', fontSize: '1.05rem' }}>Import from ArcGIS</h3>
-        <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '4px' }}>
-            ArcGIS REST Endpoint URL
-          </label>
-          <input type="text" value={url} onChange={(e) => setUrl(e.target.value)}
-            style={{ width: '100%', padding: '8px', fontSize: '0.85rem', boxSizing: 'border-box' }}
-            onKeyDown={(e) => e.key === 'Enter' && handlePreview()} />
-          <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '4px' }}>
-            Example: https://services.arcgis.com/.../FeatureServer/0
+        {configsList}
+        <div style={{ borderTop: '1px solid #eee', paddingTop: '16px' }}>
+          <h3 style={{ margin: '0 0 12px', color: '#333', fontSize: '1.05rem' }}>Import from ArcGIS</h3>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '4px' }}>
+              ArcGIS REST Endpoint URL
+            </label>
+            <input type="text" value={url} onChange={(e) => setUrl(e.target.value)}
+              style={{ width: '100%', padding: '8px', fontSize: '0.85rem', boxSizing: 'border-box' }}
+              onKeyDown={(e) => e.key === 'Enter' && !duplicateConfig && handlePreview()} />
+            <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '4px' }}>
+              Example: https://services.arcgis.com/.../FeatureServer/0
+            </div>
           </div>
-        </div>
-        {previewError && <div style={{ color: '#dc2626', marginBottom: '12px' }}>{previewError}</div>}
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={handlePreview} disabled={previewLoading || !url.trim()}
-            style={{ flex: 1, padding: '8px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: '4px', cursor: previewLoading ? 'wait' : 'pointer', fontSize: '0.85rem' }}>
-            {previewLoading ? 'Fetching...' : 'Preview'}
-          </button>
-          <button onClick={resetWizard}
-            style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
-            Cancel
-          </button>
+          {duplicateConfig && (
+            <div style={{ padding: '8px 12px', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: '4px', marginBottom: '12px', fontSize: '0.8rem', color: '#92400E' }}>
+              This source is already imported as <strong>"{duplicateConfig.name}"</strong>. Use its Refresh button to check for new data.
+            </div>
+          )}
+          {previewError && <div style={{ color: '#dc2626', marginBottom: '12px' }}>{previewError}</div>}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={handlePreview} disabled={previewLoading || !url.trim() || !!duplicateConfig}
+              style={{ flex: 1, padding: '8px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: '4px', cursor: (previewLoading || !url.trim() || duplicateConfig) ? 'not-allowed' : 'pointer', fontSize: '0.85rem', opacity: duplicateConfig ? 0.5 : 1 }}>
+              {previewLoading ? 'Fetching...' : 'Preview'}
+            </button>
+            <button onClick={resetWizard}
+              style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     );
