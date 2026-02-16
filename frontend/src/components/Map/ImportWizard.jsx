@@ -296,6 +296,10 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
 
   const isAdmin = userRole === 'ADMIN';
 
+  // Edit layer name/icon state
+  const [editLayerName, setEditLayerName] = useState('');
+  const [editLayerIcon, setEditLayerIcon] = useState('');
+
   const handleEditConfig = (config) => {
     // Load the layer's current style into the editor
     const layer = layers.find(l => l.id === config.layer_id);
@@ -307,6 +311,8 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
         strokeOpacity: layer.stroke_opacity != null ? layer.stroke_opacity : 0.9,
         strokeWeight: layer.stroke_weight || 2,
       });
+      setEditLayerName(layer.name || '');
+      setEditLayerIcon(layer.icon || '');
     }
     setEditingConfig(config);
     setStep(5);
@@ -320,6 +326,8 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          name: editLayerName || undefined,
+          icon: editLayerIcon || undefined,
           color: layerStyle.fillColor,
           opacity: layerStyle.fillOpacity,
           stroke_color: layerStyle.strokeColor,
@@ -330,6 +338,7 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
       if (!res.ok) throw new Error('Failed to save style');
       setEditingConfig(null);
       setStep(0);
+      loadConfigs(); // refresh config list to show updated names
       onImportComplete?.(); // refresh map to show new style
     } catch (e) {
       alert(`Save failed: ${e.message}`);
@@ -893,9 +902,23 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
 
     return (
       <div style={panelStyle}>
-        <h3 style={{ margin: '0 0 4px', color: '#333', fontSize: '1.05rem' }}>Edit: {editingConfig.name}</h3>
+        <h3 style={{ margin: '0 0 4px', color: '#333', fontSize: '1.05rem' }}>Edit Layer</h3>
         <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '12px' }}>
-          {layer?.icon} {layer?.name} · {editingConfig.last_refresh_count || 0} features
+          {editingConfig.last_refresh_count || 0} features
+        </div>
+
+        {/* Layer name and icon */}
+        <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+          <div style={{ width: '60px' }}>
+            <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Icon</label>
+            <input type="text" value={editLayerIcon} onChange={(e) => setEditLayerIcon(e.target.value)}
+              style={{ width: '100%', padding: '6px', fontSize: '1.1rem', textAlign: 'center', boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Layer Name</label>
+            <input type="text" value={editLayerName} onChange={(e) => setEditLayerName(e.target.value)}
+              style={{ width: '100%', padding: '6px', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+          </div>
         </div>
 
         {/* Layer style controls */}
@@ -964,20 +987,15 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
           </div>
         )}
 
-        {!isPolygon && (
-          <div style={{ color: '#888', marginBottom: '12px' }}>Style editing is available for polygon layers.</div>
-        )}
-
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={handleSaveStyle} disabled={editSaving || !isPolygon}
+          <button onClick={handleSaveStyle} disabled={editSaving}
             style={{
               flex: 1, padding: '8px', background: '#059669', color: '#fff',
               border: 'none', borderRadius: '4px',
-              cursor: (editSaving || !isPolygon) ? 'not-allowed' : 'pointer',
+              cursor: editSaving ? 'not-allowed' : 'pointer',
               fontSize: '0.85rem', fontWeight: '500',
-              opacity: isPolygon ? 1 : 0.5,
             }}>
-            {editSaving ? 'Saving...' : 'Save Style'}
+            {editSaving ? 'Saving...' : 'Save'}
           </button>
           <button onClick={() => { setEditingConfig(null); setStep(0); }}
             style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>

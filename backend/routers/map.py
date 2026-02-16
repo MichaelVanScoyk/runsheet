@@ -351,6 +351,8 @@ async def list_layers(
 # =============================================================================
 
 class LayerStyleUpdate(BaseModel):
+    name: Optional[str] = None
+    icon: Optional[str] = None
     color: Optional[str] = None          # fill color
     opacity: Optional[float] = None      # fill opacity
     stroke_color: Optional[str] = None
@@ -379,6 +381,12 @@ async def update_layer_style(
     set_clauses = ["updated_at = NOW()"]
     params = {"id": layer_id}
 
+    if style.name is not None:
+        set_clauses.append("name = :name")
+        params["name"] = style.name.strip()
+    if style.icon is not None:
+        set_clauses.append("icon = :icon")
+        params["icon"] = style.icon.strip()
     if style.color is not None:
         set_clauses.append("color = :color")
         params["color"] = style.color
