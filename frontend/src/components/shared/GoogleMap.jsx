@@ -371,12 +371,13 @@ export default function GoogleMap({
         if (!data?.items) return;
 
         const color = data.layer_color || '#DC2626';
+        const style = data.layer_style || {};
 
         // Check if any items have polygon geometry (polygon layers)
         const hasPolygons = data.items.some(item => item.geometry);
 
         if (hasPolygons) {
-          // Polygon layer — use Data Layer
+          // Polygon layer — use Data Layer with per-layer style
           const geojson = {
             type: 'FeatureCollection',
             features: data.items.filter(i => i.geometry).map(item => ({
@@ -390,11 +391,11 @@ export default function GoogleMap({
             const dataLayer = new window.google.maps.Data();
             dataLayer.addGeoJson(geojson);
             dataLayer.setStyle(() => ({
-              fillColor: color,
-              fillOpacity: 0.2,
-              strokeColor: color,
-              strokeWeight: 2,
-              strokeOpacity: 0.8,
+              fillColor: style.fill_color || color,
+              fillOpacity: style.fill_opacity != null ? style.fill_opacity : 0.2,
+              strokeColor: style.stroke_color || color,
+              strokeWeight: style.stroke_weight || 2,
+              strokeOpacity: style.stroke_opacity != null ? style.stroke_opacity : 0.8,
             }));
             dataLayer.addListener('click', (event) => {
               if (onFeatureClickRef.current) {

@@ -239,7 +239,8 @@ async def get_map_config(db: Session = Depends(get_db)):
             SELECT ml.id, ml.layer_type, ml.name, ml.description, ml.icon, ml.color,
                    ml.opacity, ml.geometry_type, ml.property_schema, ml.is_system,
                    ml.route_check, ml.sort_order, ml.is_active,
-                   COALESCE(fc.cnt, 0) as feature_count
+                   COALESCE(fc.cnt, 0) as feature_count,
+                   ml.stroke_color, ml.stroke_opacity, ml.stroke_weight
             FROM map_layers ml
             LEFT JOIN (
                 SELECT layer_id, COUNT(*) as cnt
@@ -266,6 +267,9 @@ async def get_map_config(db: Session = Depends(get_db)):
                 "sort_order": row[11],
                 "is_active": row[12],
                 "feature_count": row[13],
+                "stroke_color": row[14] or '#333333',
+                "stroke_opacity": float(row[15]) if row[15] is not None else 0.8,
+                "stroke_weight": row[16] or 2,
             })
     except Exception as e:
         logger.error(f"Failed to load map layers: {e}")
@@ -300,7 +304,8 @@ async def list_layers(
                    ml.opacity, ml.geometry_type, ml.property_schema, ml.is_system,
                    ml.route_check, ml.sort_order, ml.is_active,
                    ml.created_at, ml.updated_at,
-                   COALESCE(fc.cnt, 0) as feature_count
+                   COALESCE(fc.cnt, 0) as feature_count,
+                   ml.stroke_color, ml.stroke_opacity, ml.stroke_weight
             FROM map_layers ml
             LEFT JOIN (
                 SELECT layer_id, COUNT(*) as cnt
@@ -330,12 +335,78 @@ async def list_layers(
                 "created_at": row[13].isoformat() if row[13] else None,
                 "updated_at": row[14].isoformat() if row[14] else None,
                 "feature_count": row[15],
+                "stroke_color": row[16] or '#333333',
+                "stroke_opacity": float(row[17]) if row[17] is not None else 0.8,
+                "stroke_weight": row[18] or 2,
             })
 
         return {"layers": layers}
     except Exception as e:
         logger.error(f"Failed to list layers: {e}")
         raise HTTPException(status_code=500, detail="Failed to load layers")
+
+
+# =============================================================================
+# LAYER STYLE UPDATE
+# =============================================================================
+
+class LayerStyleUpdate(BaseModel):
+    color: Optional[str] = None          # fill color
+    opacity: Optional[float] = None      # fill opacity
+    stroke_color: Optional[str] = None
+    stroke_opacity: Optional[float] = None
+    stroke_weight: Optional[int] = None
+
+
+@router.put("/layers/{layer_id}/style")
+async def update_layer_style(
+    layer_id: int,
+    style: LayerStyleUpdate,
+    db: Session = Depends(get_db),
+):
+    """
+    Update a layer's rendering style (fill color/opacity, stroke color/opacity/weight).
+    Admin only — frontend enforces role check.
+    """
+    existing = db.execute(
+        text("SELECT id FROM map_layers WHERE id = :id"),
+        {"id": layer_id}
+    ).fetchone()
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="Layer not found")
+
+    set_clauses = ["updated_at = NOW()"]
+    params = {"id": layer_id}
+
+    if style.color is not None:
+        set_clauses.append("color = :color")
+        params["color"] = style.color
+    if style.opacity is not None:
+        set_clauses.append("opacity = :opacity")
+        params["opacity"] = max(0, min(1, style.opacity))
+    if style.stroke_color is not None:
+        set_clauses.append("stroke_color = :stroke_color")
+        params["stroke_color"] = style.stroke_color
+    if style.stroke_opacity is not None:
+        set_clauses.append("stroke_opacity = :stroke_opacity")
+        params["stroke_opacity"] = max(0, min(1, style.stroke_opacity))
+    if style.stroke_weight is not None:
+        set_clauses.append("stroke_weight = :stroke_weight")
+        params["stroke_weight"] = max(0, min(10, style.stroke_weight))
+
+    try:
+        db.execute(
+            text(f"UPDATE map_layers SET {', '.join(set_clauses)} WHERE id = :id"),
+            params
+        )
+        db.commit()
+        logger.info(f"Updated style for layer {layer_id}")
+        return {"updated": True, "layer_id": layer_id}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to update layer style {layer_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update layer style")
 
 
 # =============================================================================
@@ -554,12 +625,20 @@ async def get_clustered_features(
     """
     # Verify layer
     layer = db.execute(
-        text("SELECT id, layer_type, name, icon, color, geometry_type FROM map_layers WHERE id = :id AND is_active = true"),
+        text("SELECT id, layer_type, name, icon, color, geometry_type, opacity, stroke_color, stroke_opacity, stroke_weight FROM map_layers WHERE id = :id AND is_active = true"),
         {"id": layer_id}
     ).fetchone()
 
     if not layer:
         raise HTTPException(status_code=404, detail="Layer not found")
+
+    layer_style = {
+        "fill_color": layer[4],
+        "fill_opacity": float(layer[6]) if layer[6] is not None else 0.3,
+        "stroke_color": layer[7] or '#333333',
+        "stroke_opacity": float(layer[8]) if layer[8] is not None else 0.8,
+        "stroke_weight": layer[9] or 2,
+    }
 
     try:
         west, south, east, north = [float(x) for x in bbox.split(",")]
@@ -637,6 +716,7 @@ async def get_clustered_features(
                 "layer_type": layer[1],
                 "layer_color": layer[4],
                 "layer_icon": layer[3],
+                "layer_style": layer_style,
                 "zoom": zoom,
                 "clustered": True,
                 "items": items,
@@ -690,6 +770,7 @@ async def get_clustered_features(
                 "layer_type": layer[1],
                 "layer_color": layer[4],
                 "layer_icon": layer[3],
+                "layer_style": layer_style,
                 "zoom": zoom,
                 "clustered": False,
                 "items": items,

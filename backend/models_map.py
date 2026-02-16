@@ -52,8 +52,11 @@ class MapLayer(Base):
     name = Column(Text, nullable=False)                 # "Fire Hydrants", "Hazards"
     description = Column(Text)
     icon = Column(Text, nullable=False, default='ℹ️')   # Emoji for map markers
-    color = Column(Text, nullable=False, default='#3B82F6')  # Hex color
+    color = Column(Text, nullable=False, default='#3B82F6')  # Fill color (hex)
     opacity = Column(Numeric, default=0.3)              # Fill opacity for polygons/radius circles
+    stroke_color = Column(Text, default='#333333')      # Stroke/outline color (hex)
+    stroke_opacity = Column(Numeric, default=0.8)       # Stroke opacity
+    stroke_weight = Column(Integer, default=2)           # Stroke width in pixels
     geometry_type = Column(Text, nullable=False, default='point')  # 'point', 'polygon', 'point_radius'
     property_schema = Column(JSONB, default={})         # Dynamic field definitions
     is_system = Column(Boolean, default=False)          # System-seeded vs tenant-created

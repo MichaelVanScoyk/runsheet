@@ -77,6 +77,10 @@ export default function MapPage({ userSession }) {
         color: layer.color,
         icon: layer.icon,
         geometryType: layer.geometry_type,
+        opacity: layer.opacity,
+        strokeColor: layer.stroke_color,
+        strokeOpacity: layer.stroke_opacity,
+        strokeWeight: layer.stroke_weight,
       });
     });
     return result;

@@ -31,6 +31,14 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
   // File upload state
   const [tempId, setTempId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  // Layer style state for polygon imports
+  const [layerStyle, setLayerStyle] = useState({
+    fillColor: '#DC2626',
+    fillOpacity: 0,
+    strokeColor: '#DC2626',
+    strokeOpacity: 0.9,
+    strokeWeight: 2,
+  });
 
   const loadConfigs = useCallback(() => {
     setConfigsLoading(true);
@@ -67,7 +75,19 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
         if (data.geometry_type === 'polygon') return ['boundary', 'flood_zone', 'wildfire_risk'].includes(l.layer_type);
         return false;
       });
-      if (match) setTargetLayerId(String(match.id));
+      if (match) {
+        setTargetLayerId(String(match.id));
+        // Load existing style from layer for polygon types
+        if (match.geometry_type === 'polygon') {
+          setLayerStyle({
+            fillColor: match.color || '#DC2626',
+            fillOpacity: match.opacity != null ? match.opacity : 0,
+            strokeColor: match.stroke_color || '#DC2626',
+            strokeOpacity: match.stroke_opacity != null ? match.stroke_opacity : 0.9,
+            strokeWeight: match.stroke_weight || 2,
+          });
+        }
+      }
       setStep(2);
     } catch (e) {
       setPreviewError(e.message);
@@ -102,7 +122,18 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
         if (data.geometry_type === 'polygon') return ['boundary', 'flood_zone', 'wildfire_risk'].includes(l.layer_type);
         return false;
       });
-      if (match) setTargetLayerId(String(match.id));
+      if (match) {
+        setTargetLayerId(String(match.id));
+        if (match.geometry_type === 'polygon') {
+          setLayerStyle({
+            fillColor: match.color || '#DC2626',
+            fillOpacity: match.opacity != null ? match.opacity : 0,
+            strokeColor: match.stroke_color || '#DC2626',
+            strokeOpacity: match.stroke_opacity != null ? match.stroke_opacity : 0.9,
+            strokeWeight: match.stroke_weight || 2,
+          });
+        }
+      }
       setStep(2);
     } catch (e) {
       setPreviewError(e.message);
@@ -125,6 +156,21 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     setImportResult(null);
     setStep(3);
     try {
+      // Save layer style if polygon import
+      const targetLayer = layers.find(l => String(l.id) === String(targetLayerId));
+      if (targetLayer && (targetLayer.geometry_type === 'polygon' || preview.geometry_type === 'polygon')) {
+        await fetch(`/api/map/layers/${targetLayerId}/style`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            color: layerStyle.fillColor,
+            opacity: layerStyle.fillOpacity,
+            stroke_color: layerStyle.strokeColor,
+            stroke_opacity: layerStyle.strokeOpacity,
+            stroke_weight: layerStyle.strokeWeight,
+          }),
+        });
+      }
       let res;
       if (sourceType === 'file' && tempId) {
         // File upload import
@@ -414,6 +460,80 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
             ))}
           </select>
         </div>
+
+        {/* Layer style controls — polygon imports only */}
+        {preview.geometry_type === 'polygon' && (
+          <div style={{ marginBottom: '12px', border: '1px solid #eee', borderRadius: '6px', padding: '12px' }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#555', marginBottom: '8px' }}>
+              Layer Style
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {/* Fill color */}
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Fill Color</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="color" value={layerStyle.fillColor}
+                    onChange={(e) => setLayerStyle(s => ({ ...s, fillColor: e.target.value }))}
+                    style={{ width: '32px', height: '28px', padding: '1px', border: '1px solid #ccc', borderRadius: '3px', cursor: 'pointer' }} />
+                  <span style={{ fontSize: '0.75rem', color: '#888' }}>{layerStyle.fillColor}</span>
+                </div>
+              </div>
+              {/* Fill opacity */}
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Fill Opacity</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="range" min="0" max="1" step="0.05" value={layerStyle.fillOpacity}
+                    onChange={(e) => setLayerStyle(s => ({ ...s, fillOpacity: parseFloat(e.target.value) }))}
+                    style={{ flex: 1, cursor: 'pointer' }} />
+                  <span style={{ fontSize: '0.75rem', color: '#888', minWidth: '28px' }}>{Math.round(layerStyle.fillOpacity * 100)}%</span>
+                </div>
+              </div>
+              {/* Stroke color */}
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Border Color</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="color" value={layerStyle.strokeColor}
+                    onChange={(e) => setLayerStyle(s => ({ ...s, strokeColor: e.target.value }))}
+                    style={{ width: '32px', height: '28px', padding: '1px', border: '1px solid #ccc', borderRadius: '3px', cursor: 'pointer' }} />
+                  <span style={{ fontSize: '0.75rem', color: '#888' }}>{layerStyle.strokeColor}</span>
+                </div>
+              </div>
+              {/* Stroke opacity */}
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Border Opacity</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="range" min="0" max="1" step="0.05" value={layerStyle.strokeOpacity}
+                    onChange={(e) => setLayerStyle(s => ({ ...s, strokeOpacity: parseFloat(e.target.value) }))}
+                    style={{ flex: 1, cursor: 'pointer' }} />
+                  <span style={{ fontSize: '0.75rem', color: '#888', minWidth: '28px' }}>{Math.round(layerStyle.strokeOpacity * 100)}%</span>
+                </div>
+              </div>
+              {/* Stroke weight */}
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Border Width</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="range" min="0" max="6" step="1" value={layerStyle.strokeWeight}
+                    onChange={(e) => setLayerStyle(s => ({ ...s, strokeWeight: parseInt(e.target.value) }))}
+                    style={{ flex: 1, cursor: 'pointer' }} />
+                  <span style={{ fontSize: '0.75rem', color: '#888', minWidth: '28px' }}>{layerStyle.strokeWeight}px</span>
+                </div>
+              </div>
+              {/* Preview swatch */}
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Preview</label>
+                <div style={{
+                  width: '60px', height: '36px', borderRadius: '4px',
+                  backgroundColor: layerStyle.fillColor,
+                  opacity: layerStyle.fillOpacity > 0 ? 1 : undefined,
+                  background: layerStyle.fillOpacity > 0
+                    ? `${layerStyle.fillColor}${Math.round(layerStyle.fillOpacity * 255).toString(16).padStart(2, '0')}`
+                    : 'transparent',
+                  border: `${layerStyle.strokeWeight}px solid ${layerStyle.strokeColor}${Math.round(layerStyle.strokeOpacity * 255).toString(16).padStart(2, '0')}`,
+                }} />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Show exactly what fields will be imported — read only, no choices */}
         <div style={{ marginBottom: '12px' }}>
