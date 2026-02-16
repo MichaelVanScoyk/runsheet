@@ -50,6 +50,9 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
   const [pickerField, setPickerField] = useState(''); // which field to show in picker
   const [pickerLoading, setPickerLoading] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
+  // Edit mode state
+  const [editingConfig, setEditingConfig] = useState(null); // config object being edited
+  const [editSaving, setEditSaving] = useState(false);
 
   const loadConfigs = useCallback(() => {
     setConfigsLoading(true);
@@ -293,6 +296,48 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
 
   const isAdmin = userRole === 'ADMIN';
 
+  const handleEditConfig = (config) => {
+    // Load the layer's current style into the editor
+    const layer = layers.find(l => l.id === config.layer_id);
+    if (layer) {
+      setLayerStyle({
+        fillColor: layer.color || '#DC2626',
+        fillOpacity: layer.opacity != null ? layer.opacity : 0,
+        strokeColor: layer.stroke_color || '#DC2626',
+        strokeOpacity: layer.stroke_opacity != null ? layer.stroke_opacity : 0.9,
+        strokeWeight: layer.stroke_weight || 2,
+      });
+    }
+    setEditingConfig(config);
+    setStep(5);
+  };
+
+  const handleSaveStyle = async () => {
+    if (!editingConfig) return;
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/map/layers/${editingConfig.layer_id}/style`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          color: layerStyle.fillColor,
+          opacity: layerStyle.fillOpacity,
+          stroke_color: layerStyle.strokeColor,
+          stroke_opacity: layerStyle.strokeOpacity,
+          stroke_weight: layerStyle.strokeWeight,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to save style');
+      setEditingConfig(null);
+      setStep(0);
+      onImportComplete?.(); // refresh map to show new style
+    } catch (e) {
+      alert(`Save failed: ${e.message}`);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const handleDeleteConfig = async (configId, name) => {
     if (!window.confirm(`To check for new data, use Refresh.\n\nTo delete all features of this import AS WELL AS any edits your department has created, click OK to confirm.`)) return;
     try {
@@ -309,6 +354,7 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     setImportResult(null); setImportError('');
     setTempId(null); setDragOver(false);
     setFeatureRecords([]); setSelectedFeatures(new Set()); setPickerField(''); setPickerSearch('');
+    setEditingConfig(null);
   };
 
   const panelStyle = {
@@ -358,6 +404,12 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
                   style={{ padding: '6px 12px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: refreshingId === c.id ? 'wait' : 'pointer', fontSize: '0.8rem' }}>
                   {refreshingId === c.id ? 'Refreshing...' : 'Refresh'}
                 </button>
+                {isAdmin && (
+                  <button onClick={() => handleEditConfig(c)}
+                    style={{ padding: '6px 10px', background: 'none', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', color: '#3B82F6' }}>
+                    Edit
+                  </button>
+                )}
                 {isAdmin && (
                   <button onClick={() => handleDeleteConfig(c.id, c.name)}
                     style={{ padding: '6px 10px', background: 'none', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', color: '#888' }}>
@@ -830,6 +882,108 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
           style={{ width: '100%', padding: '8px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
           Done
         </button>
+      </div>
+    );
+  }
+
+  // STEP 5: Edit existing import — layer style
+  if (step === 5 && editingConfig) {
+    const layer = layers.find(l => l.id === editingConfig.layer_id);
+    const isPolygon = layer?.geometry_type === 'polygon';
+
+    return (
+      <div style={panelStyle}>
+        <h3 style={{ margin: '0 0 4px', color: '#333', fontSize: '1.05rem' }}>Edit: {editingConfig.name}</h3>
+        <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '12px' }}>
+          {layer?.icon} {layer?.name} · {editingConfig.last_refresh_count || 0} features
+        </div>
+
+        {/* Layer style controls */}
+        {isPolygon && (
+          <div style={{ marginBottom: '12px', border: '1px solid #eee', borderRadius: '6px', padding: '12px' }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#555', marginBottom: '8px' }}>
+              Layer Style
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Fill Color</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="color" value={layerStyle.fillColor}
+                    onChange={(e) => setLayerStyle(s => ({ ...s, fillColor: e.target.value }))}
+                    style={{ width: '32px', height: '28px', padding: '1px', border: '1px solid #ccc', borderRadius: '3px', cursor: 'pointer' }} />
+                  <span style={{ fontSize: '0.75rem', color: '#888' }}>{layerStyle.fillColor}</span>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Fill Opacity</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="range" min="0" max="1" step="0.05" value={layerStyle.fillOpacity}
+                    onChange={(e) => setLayerStyle(s => ({ ...s, fillOpacity: parseFloat(e.target.value) }))}
+                    style={{ flex: 1, cursor: 'pointer' }} />
+                  <span style={{ fontSize: '0.75rem', color: '#888', minWidth: '28px' }}>{Math.round(layerStyle.fillOpacity * 100)}%</span>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Border Color</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="color" value={layerStyle.strokeColor}
+                    onChange={(e) => setLayerStyle(s => ({ ...s, strokeColor: e.target.value }))}
+                    style={{ width: '32px', height: '28px', padding: '1px', border: '1px solid #ccc', borderRadius: '3px', cursor: 'pointer' }} />
+                  <span style={{ fontSize: '0.75rem', color: '#888' }}>{layerStyle.strokeColor}</span>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Border Opacity</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="range" min="0" max="1" step="0.05" value={layerStyle.strokeOpacity}
+                    onChange={(e) => setLayerStyle(s => ({ ...s, strokeOpacity: parseFloat(e.target.value) }))}
+                    style={{ flex: 1, cursor: 'pointer' }} />
+                  <span style={{ fontSize: '0.75rem', color: '#888', minWidth: '28px' }}>{Math.round(layerStyle.strokeOpacity * 100)}%</span>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Border Width</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="range" min="0" max="6" step="1" value={layerStyle.strokeWeight}
+                    onChange={(e) => setLayerStyle(s => ({ ...s, strokeWeight: parseInt(e.target.value) }))}
+                    style={{ flex: 1, cursor: 'pointer' }} />
+                  <span style={{ fontSize: '0.75rem', color: '#888', minWidth: '28px' }}>{layerStyle.strokeWeight}px</span>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Preview</label>
+                <div style={{
+                  width: '60px', height: '36px', borderRadius: '4px',
+                  background: layerStyle.fillOpacity > 0
+                    ? `${layerStyle.fillColor}${Math.round(layerStyle.fillOpacity * 255).toString(16).padStart(2, '0')}`
+                    : 'transparent',
+                  border: `${layerStyle.strokeWeight}px solid ${layerStyle.strokeColor}${Math.round(layerStyle.strokeOpacity * 255).toString(16).padStart(2, '0')}`,
+                }} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!isPolygon && (
+          <div style={{ color: '#888', marginBottom: '12px' }}>Style editing is available for polygon layers.</div>
+        )}
+
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={handleSaveStyle} disabled={editSaving || !isPolygon}
+            style={{
+              flex: 1, padding: '8px', background: '#059669', color: '#fff',
+              border: 'none', borderRadius: '4px',
+              cursor: (editSaving || !isPolygon) ? 'not-allowed' : 'pointer',
+              fontSize: '0.85rem', fontWeight: '500',
+              opacity: isPolygon ? 1 : 0.5,
+            }}>
+            {editSaving ? 'Saving...' : 'Save Style'}
+          </button>
+          <button onClick={() => { setEditingConfig(null); setStep(0); }}
+            style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
+            Cancel
+          </button>
+        </div>
       </div>
     );
   }
