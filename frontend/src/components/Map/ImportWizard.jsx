@@ -1,14 +1,19 @@
 /**
- * ImportWizard.jsx — GIS Import
+ * ImportWizard.jsx — GIS Import (Phase 5a + 5b)
+ *
+ * Two import sources:
+ *   - ArcGIS REST URL (Phase 5a) — paginated fetch from public endpoints
+ *   - File Upload (Phase 5b) — GeoJSON, KML, KMZ, Shapefile (.zip), CSV
  *
  * Zero-config: ALL source fields stored as-is. No mapping screen.
- * URL, import date, feature count all visible on saved configs.
+ * Both sources funnel through the same import pipeline + confirm UI.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 
 export default function ImportWizard({ layers = [], onImportComplete, userRole }) {
   const [step, setStep] = useState(0);
+  const [sourceType, setSourceType] = useState('arcgis'); // 'arcgis' | 'file'
   const [url, setUrl] = useState('');
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -23,6 +28,9 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
   const [configs, setConfigs] = useState([]);
   const [configsLoading, setConfigsLoading] = useState(false);
   const [refreshingId, setRefreshingId] = useState(null);
+  // File upload state
+  const [tempId, setTempId] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const loadConfigs = useCallback(() => {
     setConfigsLoading(true);
@@ -68,6 +76,48 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     }
   };
 
+  const handleFileUpload = async (file) => {
+    if (!file) return;
+    setPreviewLoading(true);
+    setPreviewError('');
+    setPreview(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/map/gis/file/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'File parse failed');
+      }
+      const data = await res.json();
+      setPreview(data);
+      setTempId(data.temp_id);
+      setConfigName(data.filename?.replace(/\.[^.]+$/, '') || '');
+      // Auto-detect target layer
+      const match = layers.find(l => {
+        if (data.geometry_type === 'point') return ['hydrant', 'dry_hydrant', 'draft_point', 'hazard', 'closure', 'preplan', 'railroad_crossing', 'informational'].includes(l.layer_type);
+        if (data.geometry_type === 'polygon') return ['boundary', 'flood_zone', 'wildfire_risk'].includes(l.layer_type);
+        return false;
+      });
+      if (match) setTargetLayerId(String(match.id));
+      setStep(2);
+    } catch (e) {
+      setPreviewError(e.message);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleFileDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleFileUpload(file);
+  };
+
   const handleImport = async () => {
     if (!targetLayerId || !preview) return;
     setImporting(true);
@@ -75,18 +125,35 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     setImportResult(null);
     setStep(3);
     try {
-      const res = await fetch('/api/map/gis/arcgis/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: preview.url,
-          layer_id: parseInt(targetLayerId),
-          field_mapping: { OBJECTID: '__external_id' },
-          filter_expression: filterExpression || null,
-          save_config: saveConfig,
-          config_name: configName || preview.name,
-        }),
-      });
+      let res;
+      if (sourceType === 'file' && tempId) {
+        // File upload import
+        res = await fetch('/api/map/gis/file/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            temp_id: tempId,
+            layer_id: parseInt(targetLayerId),
+            field_mapping: {},
+            save_config: saveConfig,
+            config_name: configName || preview.filename,
+          }),
+        });
+      } else {
+        // ArcGIS REST import
+        res = await fetch('/api/map/gis/arcgis/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: preview.url,
+            layer_id: parseInt(targetLayerId),
+            field_mapping: { OBJECTID: '__external_id' },
+            filter_expression: filterExpression || null,
+            save_config: saveConfig,
+            config_name: configName || preview.name,
+          }),
+        });
+      }
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.detail || 'Import failed');
@@ -134,9 +201,10 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
   };
 
   const resetWizard = () => {
-    setStep(0); setUrl(''); setPreview(null); setPreviewError('');
+    setStep(0); setSourceType('arcgis'); setUrl(''); setPreview(null); setPreviewError('');
     setTargetLayerId(''); setFilterExpression(''); setConfigName('');
     setImportResult(null); setImportError('');
+    setTempId(null); setDragOver(false);
   };
 
   const panelStyle = {
@@ -219,40 +287,99 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     return <div style={panelStyle}>{configsList}</div>;
   }
 
-  // STEP 1: Enter URL (configs visible above)
+  // STEP 1: Source selection — ArcGIS URL or File Upload (configs visible above)
   if (step === 1) {
+    const tabStyle = (active) => ({
+      flex: 1, padding: '8px', textAlign: 'center', fontSize: '0.85rem',
+      cursor: 'pointer', border: 'none', borderBottom: active ? '2px solid #3B82F6' : '2px solid transparent',
+      background: 'none', color: active ? '#3B82F6' : '#888', fontWeight: active ? '600' : '400',
+    });
+
     return (
       <div style={panelStyle}>
         {configsList}
         <div style={{ borderTop: '1px solid #eee', paddingTop: '16px' }}>
-          <h3 style={{ margin: '0 0 12px', color: '#333', fontSize: '1.05rem' }}>Import from ArcGIS</h3>
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '4px' }}>
-              ArcGIS REST Endpoint URL
-            </label>
-            <input type="text" value={url} onChange={(e) => setUrl(e.target.value)}
-              style={{ width: '100%', padding: '8px', fontSize: '0.85rem', boxSizing: 'border-box' }}
-              onKeyDown={(e) => e.key === 'Enter' && !duplicateConfig && handlePreview()} />
-            <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '4px' }}>
-              Example: https://services.arcgis.com/.../FeatureServer/0
-            </div>
+          <h3 style={{ margin: '0 0 12px', color: '#333', fontSize: '1.05rem' }}>New Import</h3>
+
+          {/* Source type tabs */}
+          <div style={{ display: 'flex', borderBottom: '1px solid #eee', marginBottom: '16px' }}>
+            <button style={tabStyle(sourceType === 'arcgis')} onClick={() => { setSourceType('arcgis'); setPreviewError(''); }}>
+              ArcGIS URL
+            </button>
+            <button style={tabStyle(sourceType === 'file')} onClick={() => { setSourceType('file'); setPreviewError(''); }}>
+              Upload File
+            </button>
           </div>
-          {duplicateConfig && (
-            <div style={{ padding: '8px 12px', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: '4px', marginBottom: '12px', fontSize: '0.8rem', color: '#92400E' }}>
-              This source is already imported as <strong>"{duplicateConfig.name}"</strong>. Use its Refresh button to check for new data.
-            </div>
+
+          {sourceType === 'arcgis' ? (
+            /* --- ArcGIS URL tab --- */
+            <>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '4px' }}>
+                  ArcGIS REST Endpoint URL
+                </label>
+                <input type="text" value={url} onChange={(e) => setUrl(e.target.value)}
+                  style={{ width: '100%', padding: '8px', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                  onKeyDown={(e) => e.key === 'Enter' && !duplicateConfig && handlePreview()} />
+                <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '4px' }}>
+                  Example: https://services.arcgis.com/.../FeatureServer/0
+                </div>
+              </div>
+              {duplicateConfig && (
+                <div style={{ padding: '8px 12px', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: '4px', marginBottom: '12px', fontSize: '0.8rem', color: '#92400E' }}>
+                  This source is already imported as <strong>"{duplicateConfig.name}"</strong>. Use its Refresh button to check for new data.
+                </div>
+              )}
+              {previewError && <div style={{ color: '#dc2626', marginBottom: '12px' }}>{previewError}</div>}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={handlePreview} disabled={previewLoading || !url.trim() || !!duplicateConfig}
+                  style={{ flex: 1, padding: '8px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: '4px', cursor: (previewLoading || !url.trim() || duplicateConfig) ? 'not-allowed' : 'pointer', fontSize: '0.85rem', opacity: duplicateConfig ? 0.5 : 1 }}>
+                  {previewLoading ? 'Fetching...' : 'Preview'}
+                </button>
+                <button onClick={resetWizard}
+                  style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            /* --- File Upload tab --- */
+            <>
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleFileDrop}
+                onClick={() => document.getElementById('gis-file-input')?.click()}
+                style={{
+                  border: `2px dashed ${dragOver ? '#3B82F6' : '#ddd'}`,
+                  borderRadius: '8px', padding: '32px 16px', textAlign: 'center',
+                  cursor: previewLoading ? 'wait' : 'pointer',
+                  background: dragOver ? '#EFF6FF' : '#f9fafb',
+                  marginBottom: '12px', transition: 'all 0.15s',
+                }}
+              >
+                <input id="gis-file-input" type="file" hidden
+                  accept=".geojson,.json,.kml,.kmz,.zip,.csv,.tsv"
+                  onChange={(e) => handleFileUpload(e.target.files?.[0])} />
+                {previewLoading ? (
+                  <div style={{ color: '#3B82F6' }}>Parsing file...</div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '1.5rem', marginBottom: '8px' }}>📂</div>
+                    <div style={{ fontWeight: '500', color: '#333', marginBottom: '4px' }}>Drop a file here or click to browse</div>
+                    <div style={{ fontSize: '0.75rem', color: '#888' }}>GeoJSON, KML, KMZ, Shapefile (.zip), or CSV with lat/lng</div>
+                  </>
+                )}
+              </div>
+              {previewError && <div style={{ color: '#dc2626', marginBottom: '12px', fontSize: '0.85rem' }}>{previewError}</div>}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={resetWizard}
+                  style={{ flex: 1, padding: '8px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  Cancel
+                </button>
+              </div>
+            </>
           )}
-          {previewError && <div style={{ color: '#dc2626', marginBottom: '12px' }}>{previewError}</div>}
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={handlePreview} disabled={previewLoading || !url.trim() || !!duplicateConfig}
-              style={{ flex: 1, padding: '8px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: '4px', cursor: (previewLoading || !url.trim() || duplicateConfig) ? 'not-allowed' : 'pointer', fontSize: '0.85rem', opacity: duplicateConfig ? 0.5 : 1 }}>
-              {previewLoading ? 'Fetching...' : 'Preview'}
-            </button>
-            <button onClick={resetWizard}
-              style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
-              Cancel
-            </button>
-          </div>
         </div>
       </div>
     );
@@ -260,16 +387,18 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
 
   // STEP 2: Confirm — show what will be imported, no mapping
   if (step === 2 && preview) {
-    const dataFields = preview.fields?.filter(f =>
-      f.name !== 'OBJECTID' && f.name !== 'SHAPE' && f.name !== 'Shape' &&
-      f.name !== 'GlobalID' && f.name !== 'Shape__Area' && f.name !== 'Shape__Length'
-    ) || [];
+    const skipFields = new Set(['OBJECTID', 'SHAPE', 'Shape', 'GlobalID', 'Shape__Area', 'Shape__Length']);
+    const dataFields = preview.fields?.filter(f => !skipFields.has(f.name)) || [];
+    const displayName = sourceType === 'file' ? (preview.filename || 'Uploaded File') : preview.name;
+    const displayMeta = sourceType === 'file'
+      ? `${preview.format} · ${preview.geometry_type} · ${preview.feature_count} features`
+      : `${preview.geometry_type} · ${preview.feature_count != null ? `${preview.feature_count} features` : 'unknown count'}`;
 
     return (
       <div style={{ ...panelStyle, maxHeight: 'calc(100vh - 100px)', overflow: 'auto' }}>
-        <h3 style={{ margin: '0 0 4px', color: '#333', fontSize: '1.05rem' }}>{preview.name}</h3>
+        <h3 style={{ margin: '0 0 4px', color: '#333', fontSize: '1.05rem' }}>{displayName}</h3>
         <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '12px' }}>
-          {preview.geometry_type} · {preview.feature_count != null ? `${preview.feature_count} features` : 'unknown count'}
+          {displayMeta}
         </div>
 
         {/* Target layer */}
@@ -323,17 +452,19 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
           </div>
         </div>
 
-        {/* Filter expression */}
-        <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '4px' }}>
-            Filter Expression (optional)
-          </label>
-          <input type="text" value={filterExpression} onChange={(e) => setFilterExpression(e.target.value)}
-            style={{ width: '100%', padding: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }} />
-          <div style={{ fontSize: '0.7rem', color: '#999', marginTop: '2px' }}>
-            ArcGIS SQL WHERE clause. Example: MUNI_NUM=60
+        {/* Filter expression — ArcGIS only */}
+        {sourceType === 'arcgis' && (
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '4px' }}>
+              Filter Expression (optional)
+            </label>
+            <input type="text" value={filterExpression} onChange={(e) => setFilterExpression(e.target.value)}
+              style={{ width: '100%', padding: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+            <div style={{ fontSize: '0.7rem', color: '#999', marginTop: '2px' }}>
+              ArcGIS SQL WHERE clause. Example: MUNI_NUM=60
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Save config */}
         <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -355,7 +486,7 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
               cursor: !targetLayerId ? 'not-allowed' : 'pointer',
               fontSize: '0.85rem', fontWeight: '500', opacity: targetLayerId ? 1 : 0.5,
             }}>
-            Import {preview.feature_count != null ? `${preview.feature_count} Features` : 'Features'}
+            Import {preview.feature_count != null ? `${preview.feature_count.toLocaleString()} Features` : 'Features'}
           </button>
           <button onClick={() => setStep(1)}
             style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>

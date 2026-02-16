@@ -20,12 +20,23 @@ Phase 4 - Feature CRUD & Address Notes:
     POST   /api/map/address-notes        - Create address note
     PUT    /api/map/address-notes/{id}   - Update address note
     DELETE /api/map/address-notes/{id}   - Delete address note
+
+Phase 5a - GIS Import (ArcGIS REST):
+    POST /api/map/gis/arcgis/preview     - Preview ArcGIS endpoint metadata
+    POST /api/map/gis/arcgis/import      - Import features from ArcGIS
+    GET  /api/map/gis/configs            - List saved import configs
+    POST /api/map/gis/configs/{id}/refresh - Re-run saved import
+    DELETE /api/map/gis/configs/{id}      - Delete saved config
+
+Phase 5b - GIS Import (File Upload):
+    POST /api/map/gis/file/upload        - Upload + parse file for preview
+    POST /api/map/gis/file/import        - Import parsed file into layer
 """
 
 import json
 import logging
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -1217,7 +1228,8 @@ async def arcgis_import(
     Uses external_id for upsert (update existing, insert new).
     """
     import httpx as httpx_lib
-    from services.location.gis_import import fetch_arcgis_features, import_features_to_layer
+    from services.location.gis_import import fetch_arcgis_features
+    from services.location.import_pipeline import import_features_to_layer
 
     # Verify layer exists
     layer = db.execute(
@@ -1353,7 +1365,8 @@ async def refresh_import_config(
     Fetches fresh data from the source and upserts into the target layer.
     """
     import httpx as httpx_lib
-    from services.location.gis_import import fetch_arcgis_features, import_features_to_layer
+    from services.location.gis_import import fetch_arcgis_features
+    from services.location.import_pipeline import import_features_to_layer
 
     config = db.execute(
         text("SELECT id, layer_id, source_type, source_url, field_mapping, import_options FROM gis_import_configs WHERE id = :id"),
@@ -1443,3 +1456,238 @@ async def delete_import_config(
     db.commit()
 
     return {"deleted": True, "id": config_id, "name": existing[1]}
+
+
+# =============================================================================
+# GIS IMPORT — FILE UPLOAD (Phase 5b)
+# Two-step: upload+parse → preview → confirm import
+# =============================================================================
+
+# Temp file storage for parsed uploads awaiting confirmation
+_pending_uploads = {}  # temp_id → {filepath, parsed_result, created_at}
+
+
+@router.post("/gis/file/upload")
+async def file_upload_preview(
+    file: UploadFile = File(...),
+):
+    """
+    Upload a GIS file and parse it for preview.
+    Returns field metadata + sample features + a temp_id for the import step.
+
+    Supported formats: GeoJSON, KML, KMZ, Shapefile (.zip), CSV/TSV
+    Max size: 50MB
+    """
+    import os
+    import uuid
+    import tempfile
+    from services.location.file_parser import parse_gis_file, SUPPORTED_EXTENSIONS
+    from pathlib import Path
+
+    # Validate extension
+    ext = Path(file.filename or '').suffix.lower()
+    if ext not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format: {ext}. Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
+        )
+
+    # Save to temp file
+    upload_dir = os.path.join(tempfile.gettempdir(), 'cadreport_uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+
+    temp_id = str(uuid.uuid4())
+    temp_path = os.path.join(upload_dir, f"{temp_id}{ext}")
+
+    try:
+        contents = await file.read()
+        if len(contents) > 50 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File too large. Maximum is 50MB.")
+
+        with open(temp_path, 'wb') as f:
+            f.write(contents)
+
+        # Parse the file
+        result = parse_gis_file(temp_path, file.filename or 'unknown')
+
+        # Store for import step
+        from datetime import datetime, timezone
+        _pending_uploads[temp_id] = {
+            "filepath": temp_path,
+            "parsed_result": result,
+            "created_at": datetime.now(timezone.utc),
+        }
+
+        # Build sample values (same format as ArcGIS preview)
+        sample_values = {}
+        for feature in result["features"][:5]:
+            props = feature.get("properties", {})
+            for key, val in props.items():
+                if key not in sample_values:
+                    sample_values[key] = []
+                if val is not None and len(sample_values[key]) < 3:
+                    sample_values[key].append(str(val)[:100])
+
+        return {
+            "temp_id": temp_id,
+            "filename": file.filename,
+            "format": result["format"],
+            "geometry_type": result["geometry_type"],
+            "feature_count": result["feature_count"],
+            "fields": result["fields"],
+            "sample_values": sample_values,
+            "sample_features": result["features"][:5],
+        }
+
+    except ValueError as e:
+        # Clean up temp file on parse error
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        logger.error(f"File upload parse failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to parse file: {str(e)}")
+
+
+class FileImportRequest(BaseModel):
+    temp_id: str
+    layer_id: int
+    field_mapping: dict = {}
+    save_config: bool = False
+    config_name: Optional[str] = None
+
+
+@router.post("/gis/file/import")
+async def file_import(
+    request: FileImportRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Import previously uploaded+parsed file into a layer.
+    Uses the temp_id from the upload/preview step.
+    """
+    import os
+    from services.location.import_pipeline import import_features_to_layer
+
+    # Look up pending upload
+    pending = _pending_uploads.get(request.temp_id)
+    if not pending:
+        raise HTTPException(
+            status_code=404,
+            detail="Upload not found. It may have expired. Please re-upload the file."
+        )
+
+    parsed = pending["parsed_result"]
+
+    # Verify layer exists
+    layer = db.execute(
+        text("SELECT id, layer_type, name FROM map_layers WHERE id = :id"),
+        {"id": request.layer_id}
+    ).fetchone()
+
+    if not layer:
+        raise HTTPException(status_code=404, detail="Target layer not found")
+
+    try:
+        # Build external_id from filename + index if no field mapped to __external_id
+        has_ext_id = '__external_id' in (request.field_mapping or {}).values()
+        features = parsed["features"]
+
+        if not has_ext_id:
+            # Auto-assign external_id: filename_NNNN
+            from pathlib import Path
+            base = Path(parsed.get("source_filename", "upload")).stem
+            for i, feat in enumerate(features):
+                feat["properties"]["__auto_external_id"] = f"{base}_{i:05d}"
+            # Add to field mapping
+            field_mapping = dict(request.field_mapping or {})
+            field_mapping["__auto_external_id"] = "__external_id"
+        else:
+            field_mapping = request.field_mapping or {}
+
+        stats = import_features_to_layer(
+            db=db,
+            layer_id=request.layer_id,
+            features=features,
+            field_mapping=field_mapping,
+            import_source=f"file_upload:{parsed.get('format', 'unknown')}",
+            upsert=True,
+            source_fields=parsed.get("fields", []),
+        )
+
+        # Optionally save config
+        if request.save_config and request.config_name:
+            total_features = db.execute(
+                text("SELECT COUNT(*) FROM map_features WHERE layer_id = :lid"),
+                {"lid": request.layer_id}
+            ).scalar() or 0
+
+            db.execute(
+                text("""
+                    INSERT INTO gis_import_configs
+                        (layer_id, name, source_type, source_url, field_mapping,
+                         import_options, last_refresh_at, last_refresh_status, last_refresh_count)
+                    VALUES
+                        (:layer_id, :name, :source_type, :source_url, :mapping,
+                         :options, NOW(), 'success', :count)
+                    ON CONFLICT DO NOTHING
+                """),
+                {
+                    "layer_id": request.layer_id,
+                    "name": request.config_name,
+                    "source_type": f"file_upload:{parsed.get('format', 'unknown')}",
+                    "source_url": parsed.get("source_filename", ""),
+                    "mapping": json.dumps(field_mapping),
+                    "options": json.dumps({"original_filename": parsed.get("source_filename")}),
+                    "count": total_features,
+                },
+            )
+            db.commit()
+
+        # Clean up temp file and pending entry
+        _cleanup_pending(request.temp_id)
+
+        return {
+            "success": True,
+            "layer_id": request.layer_id,
+            "layer_name": layer[2],
+            "stats": stats,
+            "source": parsed.get("source_filename"),
+            "format": parsed.get("format"),
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"File import failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+
+def _cleanup_pending(temp_id: str):
+    """Remove a pending upload and its temp file."""
+    import os
+    pending = _pending_uploads.pop(temp_id, None)
+    if pending and os.path.exists(pending.get("filepath", "")):
+        try:
+            os.remove(pending["filepath"])
+        except OSError:
+            pass
+
+
+def cleanup_expired_uploads(max_age_hours: int = 1):
+    """Remove pending uploads older than max_age_hours. Call periodically."""
+    import os
+    from datetime import datetime, timezone, timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+    expired = [
+        tid for tid, data in _pending_uploads.items()
+        if data.get("created_at", cutoff) < cutoff
+    ]
+    for tid in expired:
+        _cleanup_pending(tid)
+    if expired:
+        logger.info(f"Cleaned up {len(expired)} expired file uploads")
