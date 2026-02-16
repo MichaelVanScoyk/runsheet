@@ -346,7 +346,7 @@ export default function GoogleMap({
           const clusterer = new MarkerClusterer({
             map: mapInstanceRef.current,
             markers: layerMarkers,
-            algorithm: new SuperClusterAlgorithm({ radius: 80, maxZoom: 17 }),
+            algorithm: new SuperClusterAlgorithm({ radius: 150, maxZoom: 15 }),
             renderer: createClusterRenderer(color),
           });
 

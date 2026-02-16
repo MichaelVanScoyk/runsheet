@@ -9,7 +9,7 @@
  *   - Closure management (place pin, "Reopened" quick-delete)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import GoogleMap from '../components/shared/GoogleMap';
 import LayerToggle from '../components/Map/LayerToggle';
 import FeatureDetail from '../components/Map/FeatureDetail';
@@ -156,15 +156,18 @@ export default function MapPage({ userSession }) {
     setSelectedFeature(null);
   }, [visibleLayers, loadLayerGeojson, loadLayers]);
 
-  // Build geojsonLayers prop
-  const geojsonLayers = [];
-  visibleLayers.forEach(layerId => {
-    const geojson = geojsonCache[layerId];
-    if (!geojson || !geojson.features?.length) return;
-    const layer = layers.find(l => l.id === layerId);
-    if (!layer) return;
-    geojsonLayers.push({ layerId, geojson, color: layer.color, opacity: layer.opacity, icon: layer.icon });
-  });
+  // Build geojsonLayers prop — memoized to prevent re-render flicker
+  const geojsonLayers = useMemo(() => {
+    const result = [];
+    visibleLayers.forEach(layerId => {
+      const geojson = geojsonCache[layerId];
+      if (!geojson || !geojson.features?.length) return;
+      const layer = layers.find(l => l.id === layerId);
+      if (!layer) return;
+      result.push({ layerId, geojson, color: layer.color, opacity: layer.opacity, icon: layer.icon });
+    });
+    return result;
+  }, [visibleLayers, geojsonCache, layers]);
 
   const stationCenter = config?.station_lat && config?.station_lng
     ? { lat: config.station_lat, lng: config.station_lng }
