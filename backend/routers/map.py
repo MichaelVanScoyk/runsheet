@@ -581,7 +581,8 @@ async def get_clustered_features(
                     CASE WHEN COUNT(*) = 1 THEN MIN(description) ELSE NULL END as single_description,
                     CASE WHEN COUNT(*) = 1 THEN MIN(properties::text)::jsonb ELSE NULL END as single_properties,
                     CASE WHEN COUNT(*) = 1 THEN MIN(address) ELSE NULL END as single_address,
-                    CASE WHEN COUNT(*) = 1 THEN MIN(radius_meters) ELSE NULL END as single_radius
+                    CASE WHEN COUNT(*) = 1 THEN MIN(radius_meters) ELSE NULL END as single_radius,
+                    CASE WHEN COUNT(*) = 1 THEN MIN(notes) ELSE NULL END as single_notes
                 FROM map_features
                 WHERE layer_id = :layer_id
                   AND ST_Intersects(
@@ -609,6 +610,7 @@ async def get_clustered_features(
                         "properties": row[6] or {},
                         "address": row[7],
                         "radius_meters": row[8],
+                        "notes": row[9],
                     })
                 else:
                     # Cluster
@@ -634,7 +636,7 @@ async def get_clustered_features(
             # --- INDIVIDUAL FEATURES (high zoom or polygon layers) ---
             result = db.execute(text("""
                 SELECT mf.id, mf.title, mf.description, mf.properties,
-                       mf.radius_meters, mf.address,
+                       mf.radius_meters, mf.address, mf.notes,
                        ST_Y(ST_Centroid(mf.geometry)) as lat,
                        ST_X(ST_Centroid(mf.geometry)) as lng,
                        ST_AsGeoJSON(mf.geometry) as geojson
@@ -657,16 +659,17 @@ async def get_clustered_features(
                     "properties": row[3] or {},
                     "radius_meters": row[4],
                     "address": row[5],
-                    "lat": float(row[6]) if row[6] else None,
-                    "lng": float(row[7]) if row[7] else None,
+                    "notes": row[6],
+                    "lat": float(row[7]) if row[7] else None,
+                    "lng": float(row[8]) if row[8] else None,
                     "layer_type": layer[1],
                     "layer_icon": layer[3],
                     "layer_color": layer[4],
                 }
                 # Include full geometry for polygon layers
-                if layer[5] == 'polygon' and row[8]:
+                if layer[5] == 'polygon' and row[9]:
                     try:
-                        item["geometry"] = json.loads(row[8])
+                        item["geometry"] = json.loads(row[9])
                     except (json.JSONDecodeError, TypeError):
                         pass
                 items.append(item)
@@ -763,6 +766,7 @@ class FeatureUpdate(BaseModel):
     longitude: Optional[float] = None
     radius_meters: Optional[int] = None
     address: Optional[str] = None
+    notes: Optional[str] = None
     properties: Optional[dict] = None
     geometry_geojson: Optional[dict] = None
 
@@ -877,6 +881,10 @@ async def update_feature(
         set_clauses.append("address = :address")
         params["address"] = update.address
 
+    if update.notes is not None:
+        set_clauses.append("notes = :notes")
+        params["notes"] = update.notes
+
     if update.properties is not None:
         set_clauses.append("properties = :properties")
         params["properties"] = json.dumps(update.properties)
@@ -905,7 +913,7 @@ async def update_feature(
         updated = db.execute(
             text("""
                 SELECT mf.id, mf.title, mf.description, mf.radius_meters, mf.address,
-                       mf.properties, mf.layer_id,
+                       mf.properties, mf.layer_id, mf.notes,
                        ST_Y(ST_Centroid(mf.geometry)) as lat,
                        ST_X(ST_Centroid(mf.geometry)) as lng,
                        ml.name as layer_name, ml.layer_type
@@ -926,10 +934,11 @@ async def update_feature(
             "address": updated[4],
             "properties": updated[5] or {},
             "layer_id": updated[6],
-            "latitude": updated[7],
-            "longitude": updated[8],
-            "layer_name": updated[9],
-            "layer_type": updated[10],
+            "notes": updated[7],
+            "latitude": updated[8],
+            "longitude": updated[9],
+            "layer_name": updated[10],
+            "layer_type": updated[11],
         }
     except Exception as e:
         db.rollback()
@@ -1220,6 +1229,11 @@ async def arcgis_import(
         raise HTTPException(status_code=404, detail="Target layer not found")
 
     try:
+        # Fetch metadata for field schema auto-generation
+        from services.location.gis_import import fetch_arcgis_metadata
+        metadata = await fetch_arcgis_metadata(request.url)
+        source_fields = metadata.get("fields", [])
+
         # Fetch features from ArcGIS
         where = request.filter_expression or "1=1"
         features = await fetch_arcgis_features(request.url, where=where)
@@ -1227,7 +1241,7 @@ async def arcgis_import(
         if not features:
             return {"success": True, "message": "No features found at source", "stats": {"imported": 0}}
 
-        # Import into layer
+        # Import into layer — stores ALL fields, auto-generates property_schema
         stats = import_features_to_layer(
             db=db,
             layer_id=request.layer_id,
@@ -1235,6 +1249,7 @@ async def arcgis_import(
             field_mapping=request.field_mapping,
             import_source="arcgis_rest",
             upsert=True,
+            source_fields=source_fields,
         )
 
         # Optionally save import config for re-import
@@ -1349,6 +1364,11 @@ async def refresh_import_config(
         options = config[5] or {}
         where = options.get("filter_expression", "1=1")
 
+        # Fetch metadata for field schema auto-generation
+        from services.location.gis_import import fetch_arcgis_metadata
+        metadata = await fetch_arcgis_metadata(config[3])
+        source_fields = metadata.get("fields", [])
+
         features = await fetch_arcgis_features(config[3], where=where)
 
         stats = import_features_to_layer(
@@ -1358,6 +1378,7 @@ async def refresh_import_config(
             field_mapping=config[4] or {},
             import_source="arcgis_rest",
             upsert=True,
+            source_fields=source_fields,
         )
 
         # Update config with refresh status

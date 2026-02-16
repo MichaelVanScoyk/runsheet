@@ -413,6 +413,7 @@ export default function GoogleMap({
                   properties: item.properties || {},
                   radius_meters: item.radius_meters,
                   address: item.address,
+                  notes: item.notes,
                   lat: item.lat,
                   lng: item.lng,
                   layer_type: data.layer_type,

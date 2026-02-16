@@ -1,16 +1,21 @@
 /**
- * FeatureDetail.jsx — Feature detail popup (read-only view mode)
+ * FeatureDetail.jsx — Feature detail popup with inline editing
  *
  * Shows when a user clicks a feature on the map.
  * Displays ALL fields from the layer's property_schema (even if null),
  * plus any extra fields from the actual properties data.
+ * OFFICER/ADMIN can edit all fields inline and save.
  *
  * Props:
- *   feature    - Object with title, description, properties, property_schema, lat, lng, etc.
- *   onClose    - () => void
+ *   feature         - Object with id, title, properties, property_schema, notes, etc.
+ *   onClose         - () => void
+ *   canEdit         - boolean — true for OFFICER/ADMIN
+ *   onFeatureUpdated - (updatedFeature) => void — called after save
  */
 
-export default function FeatureDetail({ feature, onClose }) {
+import { useState, useEffect } from 'react';
+
+export default function FeatureDetail({ feature, onClose, canEdit = false, onFeatureUpdated }) {
   if (!feature) return null;
 
   const props = feature.properties || {};
@@ -18,17 +23,63 @@ export default function FeatureDetail({ feature, onClose }) {
   const layerIcon = feature.layer_icon || props.layer_icon || '';
   const layerType = feature.layer_type || props.layer_type || '';
 
-  // Build merged field list: all schema fields + any extra data fields
-  // Schema fields come first with proper labels, then any extras from data
+  // Schema fields first, then extras from data
   const schemaKeys = Object.keys(schema);
   const dataKeys = Object.keys(props);
-  const extraKeys = dataKeys.filter(k => !schemaKeys.includes(k));
+  const skipKeys = new Set(['id', 'title', 'description', 'layer_icon', 'layer_color', 'layer_type', 'radius_meters', 'address']);
+  const extraKeys = dataKeys.filter(k => !schemaKeys.includes(k) && !skipKeys.has(k));
 
-  // Internal keys to skip in the extras (already shown elsewhere)
-  const skipKeys = new Set([
-    'id', 'title', 'description', 'layer_icon', 'layer_color', 'layer_type',
-    'radius_meters', 'address',
-  ]);
+  // Editing state
+  const [editing, setEditing] = useState(false);
+  const [editProps, setEditProps] = useState({});
+  const [editNotes, setEditNotes] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+    setEditProps({ ...props });
+    setEditNotes(feature.notes || '');
+    setEditTitle(feature.title || '');
+  }, [feature?.id]);
+
+  function startEdit() {
+    setEditProps({ ...props });
+    setEditNotes(feature.notes || '');
+    setEditTitle(feature.title || '');
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+  }
+
+  async function saveEdit() {
+    setSaving(true);
+    try {
+      const resp = await fetch(`/api/map/features/${feature.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editTitle,
+          notes: editNotes,
+          properties: editProps,
+        }),
+      });
+      if (resp.ok) {
+        const updated = await resp.json();
+        setEditing(false);
+        if (onFeatureUpdated) onFeatureUpdated(updated);
+      }
+    } catch (e) {
+      console.error('Failed to save feature:', e);
+    }
+    setSaving(false);
+  }
+
+  function updateProp(key, value) {
+    setEditProps(prev => ({ ...prev, [key]: value }));
+  }
 
   function formatValue(value) {
     if (value === null || value === undefined) return '—';
@@ -42,70 +93,114 @@ export default function FeatureDetail({ feature, onClose }) {
     return value === null || value === undefined;
   }
 
+  function renderField(key, label, value, fieldDef) {
+    if (editing) {
+      const type = fieldDef?.type || 'text';
+      if (type === 'select' && fieldDef?.options) {
+        return (
+          <select
+            value={editProps[key] ?? ''}
+            onChange={e => updateProp(key, e.target.value || null)}
+            style={{ ...inputStyle, padding: '2px 4px' }}
+          >
+            <option value="">—</option>
+            {fieldDef.options.map(opt => (
+              <option key={opt} value={opt}>{opt.replace(/_/g, ' ')}</option>
+            ))}
+          </select>
+        );
+      }
+      return (
+        <input
+          type={type === 'number' ? 'number' : type === 'date' ? 'date' : 'text'}
+          value={editProps[key] ?? ''}
+          onChange={e => updateProp(key, type === 'number' ? (e.target.value ? Number(e.target.value) : null) : (e.target.value || null))}
+          style={inputStyle}
+        />
+      );
+    }
+    return (
+      <span style={{
+        color: isNull(value) ? '#ccc' : '#333',
+        fontSize: '0.8rem', fontWeight: '500', textAlign: 'right',
+        maxWidth: '65%', wordBreak: 'break-word',
+        fontStyle: isNull(value) ? 'italic' : 'normal',
+      }}>
+        {formatValue(value)}
+      </span>
+    );
+  }
+
+  const inputStyle = {
+    fontSize: '0.8rem', border: '1px solid #ddd', borderRadius: '3px',
+    padding: '2px 6px', width: '60%', textAlign: 'right',
+    background: '#fff',
+  };
+
   return (
     <div style={{
-      background: '#fff',
-      border: '1px solid #ddd',
-      borderRadius: '8px',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-      padding: '16px',
-      maxWidth: '400px',
-      fontSize: '0.85rem',
-      position: 'relative',
+      background: '#fff', border: '1px solid #ddd', borderRadius: '8px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.15)', padding: '16px',
+      maxWidth: '400px', fontSize: '0.85rem', position: 'relative',
     }}>
-      {/* Close button */}
-      <button
-        onClick={onClose}
-        style={{
-          position: 'absolute', top: '8px', right: '8px',
-          background: 'none', border: 'none', cursor: 'pointer',
-          fontSize: '1.1rem', color: '#888', padding: '2px 6px', lineHeight: 1,
-        }}
-        title="Close"
-      >✕</button>
+      {/* Close */}
+      <button onClick={onClose} style={{
+        position: 'absolute', top: '8px', right: '8px', background: 'none',
+        border: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#888',
+        padding: '2px 6px', lineHeight: 1,
+      }} title="Close">✕</button>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', paddingRight: '24px' }}>
         <span style={{ fontSize: '1.3rem' }}>{layerIcon}</span>
-        <div>
-          <div style={{ fontWeight: '600', color: '#111', fontSize: '0.95rem' }}>
-            {feature.title || props.title || 'Untitled'}
-          </div>
+        <div style={{ flex: 1 }}>
+          {editing ? (
+            <input
+              value={editTitle}
+              onChange={e => setEditTitle(e.target.value)}
+              style={{ ...inputStyle, width: '100%', textAlign: 'left', fontWeight: '600', fontSize: '0.95rem' }}
+            />
+          ) : (
+            <div style={{ fontWeight: '600', color: '#111', fontSize: '0.95rem' }}>
+              {feature.title || 'Untitled'}
+            </div>
+          )}
           <div style={{ fontSize: '0.75rem', color: '#888' }}>
             {layerType.replace(/_/g, ' ')}
           </div>
         </div>
       </div>
 
-      {/* Core fields */}
-      <div style={{
-        background: '#f9fafb', border: '1px solid #eee',
-        borderRadius: '4px', padding: '8px', marginBottom: '8px',
-      }}>
-        {[
-          ['ID', feature.id],
-          ['Address', feature.address || props.address],
-          ['Description', feature.description || props.description],
-          ['Radius (m)', feature.radius_meters],
-        ].map(([label, value]) => (
-          <div key={label} style={{
-            display: 'flex', justifyContent: 'space-between',
-            padding: '2px 0', borderBottom: '1px solid #f0f0f0',
+      {/* Notes — always visible, prominent */}
+      <div style={{ marginBottom: '8px' }}>
+        <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#888', textTransform: 'uppercase', marginBottom: '2px' }}>
+          Notes
+        </div>
+        {editing ? (
+          <textarea
+            value={editNotes}
+            onChange={e => setEditNotes(e.target.value)}
+            placeholder="Add notes..."
+            rows={2}
+            style={{
+              width: '100%', fontSize: '0.8rem', border: '1px solid #ddd',
+              borderRadius: '4px', padding: '6px', resize: 'vertical',
+              fontFamily: 'inherit',
+            }}
+          />
+        ) : (
+          <div style={{
+            background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '4px',
+            padding: '6px 8px', fontSize: '0.8rem', minHeight: '24px',
+            color: feature.notes ? '#333' : '#ccc',
+            fontStyle: feature.notes ? 'normal' : 'italic',
           }}>
-            <span style={{ color: '#666', fontSize: '0.8rem' }}>{label}</span>
-            <span style={{
-              color: isNull(value) ? '#ccc' : '#333',
-              fontSize: '0.8rem', fontWeight: '500', textAlign: 'right',
-              maxWidth: '65%', wordBreak: 'break-word',
-              fontStyle: isNull(value) ? 'italic' : 'normal',
-            }}>
-              {formatValue(value)}
-            </span>
+            {feature.notes || '—'}
           </div>
-        ))}
+        )}
       </div>
 
-      {/* Schema-defined fields — every field from the layer definition */}
+      {/* Schema-defined fields */}
       {schemaKeys.length > 0 && (
         <div style={{ marginBottom: '8px' }}>
           <div style={{
@@ -122,21 +217,14 @@ export default function FeatureDetail({ feature, onClose }) {
             {schemaKeys.map(key => {
               const fieldDef = schema[key] || {};
               const label = fieldDef.label || key.replace(/_/g, ' ');
-              const value = props[key];
+              const value = editing ? editProps[key] : props[key];
               return (
                 <div key={key} style={{
-                  display: 'flex', justifyContent: 'space-between',
-                  padding: '2px 0', borderBottom: '1px solid #f0f0f0',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '3px 0', borderBottom: '1px solid #f0f0f0',
                 }}>
-                  <span style={{ color: '#666', fontSize: '0.8rem' }}>{label}</span>
-                  <span style={{
-                    color: isNull(value) ? '#ccc' : '#333',
-                    fontSize: '0.8rem', fontWeight: '500', textAlign: 'right',
-                    maxWidth: '65%', wordBreak: 'break-word',
-                    fontStyle: isNull(value) ? 'italic' : 'normal',
-                  }}>
-                    {formatValue(value)}
-                  </span>
+                  <span style={{ color: '#666', fontSize: '0.8rem', minWidth: '35%' }}>{label}</span>
+                  {renderField(key, label, value, fieldDef)}
                 </div>
               );
             })}
@@ -145,42 +233,36 @@ export default function FeatureDetail({ feature, onClose }) {
       )}
 
       {/* Extra properties from data not in schema */}
-      {extraKeys.filter(k => !skipKeys.has(k)).length > 0 && (
+      {extraKeys.length > 0 && (
         <div style={{ marginBottom: '8px' }}>
           <div style={{
             fontSize: '0.75rem', fontWeight: '600', color: '#888',
             textTransform: 'uppercase', marginBottom: '4px',
           }}>
-            Additional Data ({extraKeys.filter(k => !skipKeys.has(k)).length})
+            Additional Data ({extraKeys.length})
           </div>
           <div style={{
             background: '#f9fafb', border: '1px solid #eee',
             borderRadius: '4px', padding: '8px',
             maxHeight: '200px', overflowY: 'auto',
           }}>
-            {extraKeys.filter(k => !skipKeys.has(k)).map(key => (
-              <div key={key} style={{
-                display: 'flex', justifyContent: 'space-between',
-                padding: '2px 0', borderBottom: '1px solid #f0f0f0',
-              }}>
-                <span style={{ color: '#666', fontSize: '0.8rem' }}>
-                  {key.replace(/_/g, ' ')}
-                </span>
-                <span style={{
-                  color: isNull(props[key]) ? '#ccc' : '#333',
-                  fontSize: '0.8rem', fontWeight: '500', textAlign: 'right',
-                  maxWidth: '65%', wordBreak: 'break-word',
-                  fontStyle: isNull(props[key]) ? 'italic' : 'normal',
+            {extraKeys.map(key => {
+              const value = editing ? editProps[key] : props[key];
+              return (
+                <div key={key} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '3px 0', borderBottom: '1px solid #f0f0f0',
                 }}>
-                  {formatValue(props[key])}
-                </span>
-              </div>
-            ))}
+                  <span style={{ color: '#666', fontSize: '0.8rem' }}>{key.replace(/_/g, ' ')}</span>
+                  {renderField(key, key, value, null)}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* GPS Coordinates */}
+      {/* GPS */}
       {feature.lat != null && feature.lng != null && (
         <div style={{
           fontSize: '0.75rem', color: '#999',
@@ -190,6 +272,32 @@ export default function FeatureDetail({ feature, onClose }) {
           {parseFloat(feature.lat).toFixed(6)}, {parseFloat(feature.lng).toFixed(6)}
         </div>
       )}
+
+      {/* Edit / Save / Cancel buttons */}
+      {canEdit && feature.id && (
+        <div style={{
+          borderTop: '1px solid #eee', paddingTop: '8px', marginTop: '8px',
+          display: 'flex', gap: '8px', justifyContent: 'flex-end',
+        }}>
+          {editing ? (
+            <>
+              <button onClick={cancelEdit} style={btnStyle}>Cancel</button>
+              <button onClick={saveEdit} disabled={saving} style={{ ...btnStyle, background: '#2563EB', color: '#fff' }}>
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+            </>
+          ) : (
+            <button onClick={startEdit} style={{ ...btnStyle, background: '#f3f4f6' }}>
+              ✏️ Edit
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
+
+const btnStyle = {
+  padding: '4px 12px', fontSize: '0.8rem', border: '1px solid #ddd',
+  borderRadius: '4px', cursor: 'pointer', background: '#fff',
+};

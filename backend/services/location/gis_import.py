@@ -221,17 +221,23 @@ def import_features_to_layer(
     field_mapping: dict,
     import_source: str = "arcgis_rest",
     upsert: bool = True,
+    source_fields: list = None,
 ) -> dict:
     """
     Bulk import GeoJSON features into a map_features layer.
 
-    field_mapping: {
-        "SOURCE_FIELD": "target_property",   -- maps to properties JSONB
-        "OBJECTID": "__external_id",         -- special: maps to external_id column
-        "HYDRANT_NAME": "__title",           -- special: maps to title column
-        "NOTES": "__description",            -- special: maps to description column
-        "STREET_ADDRESS": "__address",       -- special: maps to address column
-    }
+    ALL source fields are stored in properties JSONB. Nothing is dropped.
+
+    field_mapping controls special column assignments:
+        "OBJECTID": "__external_id"   -- maps to external_id column
+        "HYDRANT_NAME": "__title"     -- maps to title column
+        "NOTES": "__description"      -- maps to description column
+        "STREET_ADDRESS": "__address" -- maps to address column
+        "FIELD": "renamed_field"      -- renames in properties
+    Fields NOT in field_mapping are kept as-is in properties.
+
+    source_fields: ArcGIS field metadata [{name, alias, type, esri_type}]
+        If provided, auto-generates property_schema on the layer.
 
     Returns: { imported, updated, skipped, errors }
     """
@@ -239,6 +245,13 @@ def import_features_to_layer(
     import json as json_module
 
     stats = {"imported": 0, "updated": 0, "skipped": 0, "errors": 0, "error_details": []}
+
+    # Skip fields that are just geometry metadata or system IDs
+    skip_fields = {'OBJECTID', 'SHAPE', 'GlobalID', 'Shape__Area', 'Shape__Length'}
+
+    # Auto-generate property_schema from source field metadata
+    if source_fields:
+        _auto_generate_schema(db, layer_id, source_fields, skip_fields)
 
     for i, feature in enumerate(features):
         try:
@@ -249,43 +262,55 @@ def import_features_to_layer(
                 stats["skipped"] += 1
                 continue
 
-            # Apply field mapping
+            # Start with ALL source fields in properties
+            all_properties = {}
             title = None
             description = None
             address = None
             external_id = None
-            mapped_properties = {}
 
-            for source_field, target in field_mapping.items():
-                value = props.get(source_field)
-                if value is None:
-                    continue
+            for source_field, value in props.items():
+                # Skip system/geometry fields
+                if source_field in skip_fields:
+                    # But check if mapped to a special column first
+                    pass
+
+                target = field_mapping.get(source_field)
 
                 if target == "__title":
-                    title = str(value).strip()
+                    title = str(value).strip() if value is not None else None
                 elif target == "__description":
-                    description = str(value).strip()
+                    description = str(value).strip() if value is not None else None
                 elif target == "__address":
-                    address = str(value).strip()
+                    address = str(value).strip() if value is not None else None
                 elif target == "__external_id":
-                    external_id = str(value).strip()
+                    external_id = str(value).strip() if value is not None else None
+                elif target == "__skip":
+                    continue
+                elif source_field in skip_fields:
+                    # Use OBJECTID as external_id fallback if not explicitly mapped
+                    if source_field == 'OBJECTID' and not external_id and '__external_id' not in field_mapping.values():
+                        external_id = str(value).strip() if value is not None else None
+                    continue
+                elif target:
+                    # Renamed field
+                    all_properties[target] = value
                 else:
-                    mapped_properties[target] = value
+                    # Unmapped — keep with original name
+                    all_properties[source_field] = value
 
             # Fallback title from first non-null string property
             if not title:
                 for key, val in props.items():
-                    if val and isinstance(val, str) and len(val) > 1:
+                    if key not in skip_fields and val and isinstance(val, str) and len(val) > 1:
                         title = val[:100]
                         break
                 if not title:
                     title = f"Feature {i + 1}"
 
-            # Build geometry SQL
             geojson_str = json_module.dumps(geom)
 
             if upsert and external_id:
-                # Upsert: update if external_id already exists in this layer
                 result = db.execute(
                     text("""
                         INSERT INTO map_features
@@ -313,7 +338,7 @@ def import_features_to_layer(
                         "description": description,
                         "geojson": geojson_str,
                         "address": address,
-                        "properties": json_module.dumps(mapped_properties),
+                        "properties": json_module.dumps(all_properties),
                         "external_id": external_id,
                         "import_source": import_source,
                     },
@@ -324,7 +349,6 @@ def import_features_to_layer(
                 else:
                     stats["updated"] += 1
             else:
-                # Simple insert (no dedup)
                 db.execute(
                     text("""
                         INSERT INTO map_features
@@ -341,7 +365,7 @@ def import_features_to_layer(
                         "description": description,
                         "geojson": geojson_str,
                         "address": address,
-                        "properties": json_module.dumps(mapped_properties),
+                        "properties": json_module.dumps(all_properties),
                         "external_id": external_id,
                         "import_source": import_source,
                     },
@@ -366,6 +390,40 @@ def import_features_to_layer(
         f"{stats['skipped']} skipped, {stats['errors']} errors"
     )
     return stats
+
+
+def _auto_generate_schema(db, layer_id: int, source_fields: list, skip_fields: set):
+    """
+    Auto-generate property_schema on the layer from ArcGIS field metadata.
+    Overwrites the existing schema so it matches what was actually imported.
+    Adds a 'notes' field at the end for officer/admin free-text.
+    """
+    from sqlalchemy import text
+    import json as json_module
+
+    schema = {}
+    for field in source_fields:
+        name = field.get("name", "")
+        if name in skip_fields:
+            continue
+
+        alias = field.get("alias", name)
+        field_type = field.get("type", "text")  # already simplified
+
+        schema[name] = {
+            "type": field_type,
+            "label": alias,
+        }
+
+    try:
+        db.execute(
+            text("UPDATE map_layers SET property_schema = :schema, updated_at = NOW() WHERE id = :id"),
+            {"schema": json_module.dumps(schema), "id": layer_id},
+        )
+        db.commit()
+        logger.info(f"Auto-generated property_schema for layer {layer_id} with {len(schema)} fields")
+    except Exception as e:
+        logger.error(f"Failed to update property_schema for layer {layer_id}: {e}")
 
 
 # =============================================================================

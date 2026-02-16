@@ -236,34 +236,31 @@ export default function MapPage({ userSession }) {
           onMapClick={handleMapClick}
         />
 
-        {/* Feature detail popup (view mode — non-officer) */}
-        {selectedFeature && !isOfficerOrAdmin && (
-          <div style={{
-            position: 'absolute', top: '10px', right: '10px', zIndex: 10,
-            maxHeight: 'calc(100vh - 40px)', overflow: 'auto',
-          }}>
-            <FeatureDetail feature={selectedFeature} onClose={() => setSelectedFeature(null)} />
-          </div>
-        )}
-
-        {/* Officer/Admin: Feature detail + edit/delete buttons */}
-        {selectedFeature && isOfficerOrAdmin && (
+        {/* Feature detail popup — editable for OFFICER/ADMIN */}
+        {selectedFeature && (
           <div style={{
             position: 'absolute', top: '10px', right: '10px', zIndex: 10,
             maxHeight: 'calc(100vh - 40px)', overflow: 'auto',
             display: 'flex', flexDirection: 'column', gap: '8px',
           }}>
-            <FeatureDetail feature={selectedFeature} onClose={() => setSelectedFeature(null)} />
-            <FeatureEditor
-              layers={layers}
-              selectedFeature={selectedFeature}
-              onClearSelection={() => setSelectedFeature(null)}
+            <FeatureDetail
+              feature={selectedFeature}
+              onClose={() => setSelectedFeature(null)}
+              canEdit={isOfficerOrAdmin}
               onFeatureUpdated={handleFeatureUpdated}
-              onFeatureDeleted={handleFeatureDeleted}
-              isPlacing={false}
-              placingLayerId={null}
-              placementCoords={null}
             />
+            {isOfficerOrAdmin && (
+              <FeatureEditor
+                layers={layers}
+                selectedFeature={selectedFeature}
+                onClearSelection={() => setSelectedFeature(null)}
+                onFeatureUpdated={handleFeatureUpdated}
+                onFeatureDeleted={handleFeatureDeleted}
+                isPlacing={false}
+                placingLayerId={null}
+                placementCoords={null}
+              />
+            )}
           </div>
         )}
 
