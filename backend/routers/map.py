@@ -1254,6 +1254,12 @@ async def arcgis_import(
 
         # Optionally save import config for re-import
         if request.save_config and request.config_name:
+            # Count actual features in layer
+            total_features = db.execute(
+                text("SELECT COUNT(*) FROM map_features WHERE layer_id = :lid"),
+                {"lid": request.layer_id}
+            ).scalar() or 0
+
             db.execute(
                 text("""
                     INSERT INTO gis_import_configs
@@ -1270,7 +1276,7 @@ async def arcgis_import(
                     "url": request.url,
                     "mapping": json.dumps(request.field_mapping),
                     "options": json.dumps({"filter_expression": request.filter_expression}),
-                    "count": stats["imported"] + stats["updated"],
+                    "count": total_features,
                 },
             )
             db.commit()
@@ -1381,7 +1387,15 @@ async def refresh_import_config(
             source_fields=source_fields,
         )
 
-        # Update config with refresh status
+        # Update config with refresh status — use actual feature count from DB
+        # Force fresh transaction to see committed data from import
+        db.commit()
+        total_features = db.execute(
+            text("SELECT COUNT(*) FROM map_features WHERE layer_id = :lid"),
+            {"lid": config[1]}
+        ).scalar() or 0
+        logger.info(f"Config {config_id} refresh complete: COUNT={total_features}, stats={stats}")
+
         db.execute(
             text("""
                 UPDATE gis_import_configs
@@ -1391,7 +1405,7 @@ async def refresh_import_config(
                     updated_at = NOW()
                 WHERE id = :id
             """),
-            {"count": stats["imported"] + stats["updated"], "id": config_id},
+            {"count": total_features, "id": config_id},
         )
         db.commit()
 
