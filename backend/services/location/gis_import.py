@@ -326,7 +326,7 @@ def import_features_to_layer(
                             description = EXCLUDED.description,
                             geometry = EXCLUDED.geometry,
                             address = EXCLUDED.address,
-                            properties = EXCLUDED.properties,
+                            properties = EXCLUDED.properties || map_features.properties,
                             import_source = EXCLUDED.import_source,
                             imported_at = NOW(),
                             updated_at = NOW()

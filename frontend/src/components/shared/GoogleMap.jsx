@@ -265,17 +265,44 @@ export default function GoogleMap({
 
     // Build SVG icon cache per color
     const iconCache = {};
-    function getMarkerIcon(color) {
-      if (iconCache[color]) return iconCache[color];
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
-        <circle cx="7" cy="7" r="6" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
-      </svg>`;
-      iconCache[color] = {
-        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-        scaledSize: new window.google.maps.Size(14, 14),
-        anchor: new window.google.maps.Point(7, 7),
+    function getMarkerIcon(color, innerColor) {
+      const key = color + (innerColor || '');
+      if (iconCache[key]) return iconCache[key];
+      let svg;
+      if (innerColor) {
+        // Hydrant-style: outer ring + inner fill showing NFPA color
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+          <circle cx="8" cy="8" r="7" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
+          <circle cx="8" cy="8" r="4" fill="${innerColor}" stroke="#fff" stroke-width="0.5"/>
+        </svg>`;
+        iconCache[key] = {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+          scaledSize: new window.google.maps.Size(16, 16),
+          anchor: new window.google.maps.Point(8, 8),
+        };
+      } else {
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
+          <circle cx="7" cy="7" r="6" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
+        </svg>`;
+        iconCache[key] = {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+          scaledSize: new window.google.maps.Size(14, 14),
+          anchor: new window.google.maps.Point(7, 7),
+        };
+      }
+      return iconCache[key];
+    }
+
+    // Resolve a color name from hydrant data to a CSS color
+    function resolveHydrantColor(props) {
+      const raw = (props?.CAP_COLOR || props?.BODY_COLOR || '').toString().toLowerCase().trim();
+      if (!raw) return null;
+      const colorMap = {
+        'red': '#DC2626', 'blue': '#2563EB', 'green': '#16A34A', 'orange': '#EA580C',
+        'yellow': '#EAB308', 'white': '#e5e5e5', 'black': '#333', 'silver': '#999',
+        'purple': '#9333EA', 'chrome': '#aaa',
       };
-      return iconCache[color];
+      return colorMap[raw] || null;
     }
 
     function getClusterIcon(color, count) {
@@ -395,10 +422,12 @@ export default function GoogleMap({
               clickable: false,
             });
           } else {
+            // For hydrants, show NFPA color as inner circle
+            const innerColor = (data.layer_type === 'hydrant') ? resolveHydrantColor(item.properties) : null;
             marker = new window.google.maps.Marker({
               position: { lat: item.lat, lng: item.lng },
               map,
-              icon: getMarkerIcon(color),
+              icon: getMarkerIcon(color, innerColor),
               title: item.title || '',
               zIndex: 10,
             });
