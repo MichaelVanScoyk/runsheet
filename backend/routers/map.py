@@ -522,6 +522,164 @@ async def get_layer_features_geojson(
 
 
 # =============================================================================
+# VIEWPORT CLUSTERED FEATURES (server-side clustering for large datasets)
+# =============================================================================
+
+@router.get("/layers/{layer_id}/features/clustered")
+async def get_clustered_features(
+    layer_id: int,
+    bbox: str = Query(..., description="Bounding box: west,south,east,north"),
+    zoom: int = Query(14, ge=0, le=22),
+    db: Session = Depends(get_db),
+):
+    """
+    Server-side clustered features for viewport-based map rendering.
+    
+    At low zoom (0-15): Returns grid-based clusters with count + centroid.
+    At high zoom (16+): Returns individual features.
+    
+    Grid cell size scales with zoom level so clusters look natural.
+    PostGIS does the heavy lifting — frontend only receives ~50-200 items.
+    """
+    # Verify layer
+    layer = db.execute(
+        text("SELECT id, layer_type, name, icon, color, geometry_type FROM map_layers WHERE id = :id AND is_active = true"),
+        {"id": layer_id}
+    ).fetchone()
+
+    if not layer:
+        raise HTTPException(status_code=404, detail="Layer not found")
+
+    try:
+        west, south, east, north = [float(x) for x in bbox.split(",")]
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail="Invalid bbox format. Use: west,south,east,north")
+
+    params = {
+        "layer_id": layer_id,
+        "west": west, "south": south, "east": east, "north": north,
+    }
+
+    is_point_layer = layer[5] in ('point', 'point_radius')
+    CLUSTER_THRESHOLD_ZOOM = 16
+
+    try:
+        if is_point_layer and zoom < CLUSTER_THRESHOLD_ZOOM:
+            # --- SERVER-SIDE GRID CLUSTERING ---
+            # Grid cell size in degrees — smaller cells at higher zoom
+            # Approximate: zoom 10 ~ 0.1 deg, zoom 14 ~ 0.005 deg, zoom 15 ~ 0.003 deg
+            cell_size = 360.0 / (2 ** zoom) / 4
+            params["cell_size"] = cell_size
+
+            result = db.execute(text("""
+                SELECT
+                    COUNT(*) as point_count,
+                    AVG(ST_Y(geometry)) as center_lat,
+                    AVG(ST_X(geometry)) as center_lng,
+                    MIN(id) as sample_id,
+                    MIN(title) as sample_title
+                FROM map_features
+                WHERE layer_id = :layer_id
+                  AND ST_Intersects(
+                      geometry,
+                      ST_MakeEnvelope(:west, :south, :east, :north, 4326)
+                  )
+                GROUP BY
+                    FLOOR(ST_X(geometry) / :cell_size),
+                    FLOOR(ST_Y(geometry) / :cell_size)
+                ORDER BY point_count DESC
+            """), params)
+
+            items = []
+            for row in result:
+                count = row[0]
+                if count == 1:
+                    # Single feature — return as individual
+                    items.append({
+                        "type": "feature",
+                        "id": row[3],
+                        "lat": float(row[1]),
+                        "lng": float(row[2]),
+                        "title": row[4],
+                    })
+                else:
+                    # Cluster
+                    items.append({
+                        "type": "cluster",
+                        "count": count,
+                        "lat": float(row[1]),
+                        "lng": float(row[2]),
+                    })
+
+            return {
+                "layer_id": layer_id,
+                "layer_type": layer[1],
+                "layer_color": layer[4],
+                "layer_icon": layer[3],
+                "zoom": zoom,
+                "clustered": True,
+                "items": items,
+                "total_items": len(items),
+            }
+
+        else:
+            # --- INDIVIDUAL FEATURES (high zoom or polygon layers) ---
+            result = db.execute(text("""
+                SELECT mf.id, mf.title, mf.description, mf.properties,
+                       mf.radius_meters, mf.address,
+                       ST_Y(ST_Centroid(mf.geometry)) as lat,
+                       ST_X(ST_Centroid(mf.geometry)) as lng,
+                       ST_AsGeoJSON(mf.geometry) as geojson
+                FROM map_features mf
+                WHERE mf.layer_id = :layer_id
+                  AND ST_Intersects(
+                      mf.geometry,
+                      ST_MakeEnvelope(:west, :south, :east, :north, 4326)
+                  )
+                LIMIT 2000
+            """), params)
+
+            items = []
+            for row in result:
+                item = {
+                    "type": "feature",
+                    "id": row[0],
+                    "title": row[1],
+                    "description": row[2],
+                    "properties": row[3] or {},
+                    "radius_meters": row[4],
+                    "address": row[5],
+                    "lat": float(row[6]) if row[6] else None,
+                    "lng": float(row[7]) if row[7] else None,
+                    "layer_type": layer[1],
+                    "layer_icon": layer[3],
+                    "layer_color": layer[4],
+                }
+                # Include full geometry for polygon layers
+                if layer[5] == 'polygon' and row[8]:
+                    try:
+                        item["geometry"] = json.loads(row[8])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                items.append(item)
+
+            return {
+                "layer_id": layer_id,
+                "layer_type": layer[1],
+                "layer_color": layer[4],
+                "layer_icon": layer[3],
+                "zoom": zoom,
+                "clustered": False,
+                "items": items,
+                "total_items": len(items),
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get clustered features for layer {layer_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load clustered features")
+
+
+# =============================================================================
 # MUTUAL AID STATIONS — READ ONLY (Phase 3, display on map)
 # Full CRUD in Phase 6
 # =============================================================================

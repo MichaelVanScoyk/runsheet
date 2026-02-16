@@ -1,19 +1,11 @@
 /**
  * GoogleMap.jsx — Shared Google Maps component
  *
- * Replaces LocationMap.jsx (Leaflet) with Google Maps JS API.
- * Uses the same Google API key already stored in settings (location.google_api_key).
- *
- * Features:
- *   - Point layers rendered as clustered Markers (@googlemaps/markerclusterer)
- *   - Polygon/line layers rendered as GeoJSON Data Layers
- *   - Singleton script loader, ref-based callbacks to avoid stale closures
- *
- * Surfaces:
- *   - MapPage (full map with layers, Phase 3)
- *   - RunSheet LocationSection (single incident pin)
- *   - IncidentHubModal (future)
- *   - Mobile app (future)
+ * Rendering modes:
+ *   1. Simple markers/circles/polygons — for RunSheet, small datasets
+ *   2. Viewport-loaded layers — for MapPage with server-side clustering
+ *      Frontend sends bbox + zoom → backend returns clusters or features
+ *      Only ~50-200 markers exist at any time regardless of dataset size
  *
  * Props:
  *   center        - { lat, lng } — map center
@@ -21,9 +13,10 @@
  *   markers       - [{ lat, lng, title, icon, color }] — simple markers
  *   circles       - [{ lat, lng, radius, color, opacity }] — radius circles
  *   polygons      - [{ paths: [{lat,lng}], color, opacity }] — boundary polygons
- *   geojsonLayers - [{ layerId, geojson, color, opacity, icon }] — GeoJSON data layers
+ *   viewportLayers - [{ layerId, color, icon, geometryType }] — layers loaded on viewport change
+ *   geojsonLayers - [{ layerId, geojson, color, opacity, icon }] — static GeoJSON (legacy/small)
  *   onMapClick    - (lat, lng) => void
- *   onFeatureClick - (feature) => void — clicked GeoJSON feature
+ *   onFeatureClick - (feature) => void — clicked feature
  *   height        - CSS height string (default '400px')
  *   interactive   - boolean (default true)
  *   showStation   - boolean — show station marker
@@ -31,8 +24,7 @@
  *   style         - additional CSS
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { MarkerClusterer, SuperClusterAlgorithm } from '@googlemaps/markerclusterer';
+import { useEffect, useRef, useState } from 'react';
 
 // Google Maps script loader — singleton
 let googleMapsPromise = null;
@@ -64,36 +56,13 @@ function loadGoogleMaps(apiKey) {
   return googleMapsPromise;
 }
 
-// Custom cluster renderer — colored circle with count
-function createClusterRenderer(color) {
-  return {
-    render: ({ count, position }) => {
-      const size = count < 50 ? 36 : count < 200 ? 42 : count < 1000 ? 48 : 54;
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${color}" fill-opacity="0.85" stroke="#fff" stroke-width="2"/>
-        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="${size < 42 ? 12 : 13}" font-weight="600" font-family="Arial,sans-serif">${count}</text>
-      </svg>`;
-
-      return new window.google.maps.Marker({
-        position,
-        icon: {
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-          scaledSize: new window.google.maps.Size(size, size),
-          anchor: new window.google.maps.Point(size / 2, size / 2),
-        },
-        label: { text: ' ', color: 'transparent' }, // suppress default label
-        zIndex: Number(window.google.maps.Marker.MAX_ZINDEX) + count,
-      });
-    },
-  };
-}
-
 export default function GoogleMap({
   center,
   zoom = 15,
   markers = [],
   circles = [],
   polygons = [],
+  viewportLayers = [],
   geojsonLayers = [],
   onMapClick,
   onFeatureClick,
@@ -109,9 +78,11 @@ export default function GoogleMap({
   const markersRef = useRef([]);
   const circlesRef = useRef([]);
   const polygonsRef = useRef([]);
-  const dataLayersRef = useRef([]);       // polygon/line GeoJSON
-  const clusterGroupsRef = useRef([]);    // { clusterer, markers } per point layer
+  const dataLayersRef = useRef([]);
+  const viewportMarkersRef = useRef([]); // markers from viewport loading
   const stationMarkerRef = useRef(null);
+  const idleListenerRef = useRef(null);
+  const fetchControllerRef = useRef(null); // AbortController for in-flight fetches
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -122,7 +93,11 @@ export default function GoogleMap({
   const onFeatureClickRef = useRef(onFeatureClick);
   useEffect(() => { onFeatureClickRef.current = onFeatureClick; }, [onFeatureClick]);
 
-  // Fetch API key from config if not provided as prop
+  // Ref for viewportLayers so idle listener always has current list
+  const viewportLayersRef = useRef(viewportLayers);
+  useEffect(() => { viewportLayersRef.current = viewportLayers; }, [viewportLayers]);
+
+  // Fetch API key
   const [resolvedKey, setResolvedKey] = useState(apiKey || null);
   useEffect(() => {
     if (apiKey) { setResolvedKey(apiKey); return; }
@@ -168,7 +143,6 @@ export default function GoogleMap({
           ],
         });
 
-        // Always register click listener — use ref so callback stays current
         map.addListener('click', (e) => {
           if (onMapClickRef.current) {
             onMapClickRef.current(e.latLng.lat(), e.latLng.lng());
@@ -188,26 +162,23 @@ export default function GoogleMap({
       circlesRef.current.forEach(c => c.setMap(null));
       polygonsRef.current.forEach(p => p.setMap(null));
       dataLayersRef.current.forEach(dl => dl.setMap(null));
-      clusterGroupsRef.current.forEach(cg => {
-        cg.clusterer.clearMarkers();
-        cg.markers.forEach(m => m.setMap(null));
-      });
+      viewportMarkersRef.current.forEach(m => m.setMap(null));
       if (stationMarkerRef.current) stationMarkerRef.current.setMap(null);
+      if (idleListenerRef.current) window.google?.maps?.event?.removeListener(idleListenerRef.current);
       mapInstanceRef.current = null;
     };
   }, [resolvedKey, center?.lat, center?.lng]);
 
-  // Update center/zoom when props change
+  // Update center/zoom
   useEffect(() => {
     if (!mapInstanceRef.current || !center?.lat || !center?.lng) return;
     mapInstanceRef.current.setCenter({ lat: parseFloat(center.lat), lng: parseFloat(center.lng) });
     mapInstanceRef.current.setZoom(zoom);
   }, [center?.lat, center?.lng, zoom]);
 
-  // Render simple markers (for non-GeoJSON use cases like RunSheet)
+  // Render simple markers
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
-
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
 
@@ -216,17 +187,12 @@ export default function GoogleMap({
         position: { lat: parseFloat(m.lat), lng: parseFloat(m.lng) },
         map: mapInstanceRef.current,
         title: m.title || '',
-        icon: m.icon ? {
-          url: m.icon,
-          scaledSize: new window.google.maps.Size(32, 32),
-        } : undefined,
+        icon: m.icon ? { url: m.icon, scaledSize: new window.google.maps.Size(32, 32) } : undefined,
       });
-
       if (m.title) {
-        const infoWindow = new window.google.maps.InfoWindow({ content: m.title });
-        marker.addListener('click', () => infoWindow.open(mapInstanceRef.current, marker));
+        const iw = new window.google.maps.InfoWindow({ content: m.title });
+        marker.addListener('click', () => iw.open(mapInstanceRef.current, marker));
       }
-
       markersRef.current.push(marker);
     });
   }, [markers]);
@@ -234,7 +200,6 @@ export default function GoogleMap({
   // Render circles
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
-
     circlesRef.current.forEach(c => c.setMap(null));
     circlesRef.current = [];
 
@@ -257,7 +222,6 @@ export default function GoogleMap({
   // Render polygons
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
-
     polygonsRef.current.forEach(p => p.setMap(null));
     polygonsRef.current = [];
 
@@ -277,124 +241,260 @@ export default function GoogleMap({
   }, [polygons]);
 
   // ==========================================================================
-  // Render GeoJSON layers — POINT layers use clustered markers,
-  // POLYGON/LINE layers use Data Layers
+  // VIEWPORT-BASED LOADING — server-side clustering
   // ==========================================================================
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google) return;
+    const map = mapInstanceRef.current;
+    if (!map || !window.google) return;
 
-    // Clear old data layers
-    dataLayersRef.current.forEach(dl => dl.setMap(null));
-    dataLayersRef.current = [];
+    // Remove old idle listener
+    if (idleListenerRef.current) {
+      window.google.maps.event.removeListener(idleListenerRef.current);
+      idleListenerRef.current = null;
+    }
 
-    // Clear old clustered marker groups
-    clusterGroupsRef.current.forEach(cg => {
-      cg.clusterer.clearMarkers();
-      cg.markers.forEach(m => m.setMap(null));
-    });
-    clusterGroupsRef.current = [];
+    // If no viewport layers, clean up and bail
+    if (!viewportLayers || viewportLayers.length === 0) {
+      viewportMarkersRef.current.forEach(m => m.setMap(null));
+      viewportMarkersRef.current = [];
+      dataLayersRef.current.forEach(dl => dl.setMap(null));
+      dataLayersRef.current = [];
+      return;
+    }
+
+    // Build SVG icon cache per color
+    const iconCache = {};
+    function getMarkerIcon(color) {
+      if (iconCache[color]) return iconCache[color];
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
+        <circle cx="7" cy="7" r="6" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
+      </svg>`;
+      iconCache[color] = {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+        scaledSize: new window.google.maps.Size(14, 14),
+        anchor: new window.google.maps.Point(7, 7),
+      };
+      return iconCache[color];
+    }
+
+    function getClusterIcon(color, count) {
+      const size = count < 50 ? 36 : count < 200 ? 42 : count < 1000 ? 48 : 54;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${color}" fill-opacity="0.85" stroke="#fff" stroke-width="2"/>
+        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="${size < 42 ? 12 : 13}" font-weight="600" font-family="Arial,sans-serif">${count}</text>
+      </svg>`;
+      return {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+        scaledSize: new window.google.maps.Size(size, size),
+        anchor: new window.google.maps.Point(size / 2, size / 2),
+      };
+    }
+
+    async function loadViewportData() {
+      const bounds = map.getBounds();
+      if (!bounds) return;
+
+      const currentLayers = viewportLayersRef.current;
+      if (!currentLayers || currentLayers.length === 0) return;
+
+      // Cancel any in-flight fetches
+      if (fetchControllerRef.current) {
+        fetchControllerRef.current.abort();
+      }
+      fetchControllerRef.current = new AbortController();
+      const signal = fetchControllerRef.current.signal;
+
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+      const bbox = `${sw.lng()},${sw.lat()},${ne.lng()},${ne.lat()}`;
+      const zoom = map.getZoom();
+
+      // Fetch all visible layers in parallel
+      const fetches = currentLayers.map(layer =>
+        fetch(`/api/map/layers/${layer.layerId}/features/clustered?bbox=${bbox}&zoom=${zoom}`, { signal })
+          .then(r => r.ok ? r.json() : null)
+          .catch(e => {
+            if (e.name !== 'AbortError') console.warn(`Failed to fetch layer ${layer.layerId}:`, e);
+            return null;
+          })
+      );
+
+      let results;
+      try {
+        results = await Promise.all(fetches);
+      } catch (e) {
+        if (e.name !== 'AbortError') console.warn('Viewport fetch failed:', e);
+        return;
+      }
+
+      // Check if we were aborted while awaiting
+      if (signal.aborted) return;
+
+      // Clear old viewport markers
+      viewportMarkersRef.current.forEach(m => m.setMap(null));
+      viewportMarkersRef.current = [];
+
+      // Clear old data layers (for polygon viewport layers)
+      dataLayersRef.current.forEach(dl => dl.setMap(null));
+      dataLayersRef.current = [];
+
+      // Render results
+      results.forEach(data => {
+        if (!data?.items) return;
+
+        const color = data.layer_color || '#DC2626';
+
+        // Check if any items have polygon geometry (polygon layers)
+        const hasPolygons = data.items.some(item => item.geometry);
+
+        if (hasPolygons) {
+          // Polygon layer — use Data Layer
+          const geojson = {
+            type: 'FeatureCollection',
+            features: data.items.filter(i => i.geometry).map(item => ({
+              type: 'Feature',
+              geometry: item.geometry,
+              properties: { ...item.properties, id: item.id, title: item.title, layer_type: data.layer_type, layer_icon: data.layer_icon, layer_color: data.layer_color },
+            })),
+          };
+
+          if (geojson.features.length > 0) {
+            const dataLayer = new window.google.maps.Data();
+            dataLayer.addGeoJson(geojson);
+            dataLayer.setStyle(() => ({
+              fillColor: color,
+              fillOpacity: 0.2,
+              strokeColor: color,
+              strokeWeight: 2,
+              strokeOpacity: 0.8,
+            }));
+            dataLayer.addListener('click', (event) => {
+              if (onFeatureClickRef.current) {
+                const props = {};
+                event.feature.forEachProperty((val, key) => { props[key] = val; });
+                onFeatureClickRef.current({ ...props, lat: event.latLng?.lat(), lng: event.latLng?.lng() });
+              }
+            });
+            dataLayer.setMap(map);
+            dataLayersRef.current.push(dataLayer);
+          }
+        }
+
+        // Point items (clusters + individual features)
+        data.items.forEach(item => {
+          if (item.geometry) return; // already handled as polygon above
+
+          let marker;
+          if (item.type === 'cluster') {
+            marker = new window.google.maps.Marker({
+              position: { lat: item.lat, lng: item.lng },
+              map,
+              icon: getClusterIcon(color, item.count),
+              zIndex: 100 + item.count,
+              clickable: false,
+            });
+          } else {
+            marker = new window.google.maps.Marker({
+              position: { lat: item.lat, lng: item.lng },
+              map,
+              icon: getMarkerIcon(color),
+              title: item.title || '',
+              zIndex: 10,
+            });
+
+            // Click handler for individual features
+            marker.addListener('click', () => {
+              if (onFeatureClickRef.current) {
+                onFeatureClickRef.current({
+                  id: item.id,
+                  title: item.title,
+                  description: item.description,
+                  properties: item.properties || {},
+                  radius_meters: item.radius_meters,
+                  address: item.address,
+                  lat: item.lat,
+                  lng: item.lng,
+                  layer_type: data.layer_type,
+                  layer_icon: data.layer_icon,
+                  layer_color: data.layer_color,
+                });
+              }
+            });
+          }
+
+          viewportMarkersRef.current.push(marker);
+        });
+      });
+    }
+
+    // Initial load
+    loadViewportData();
+
+    // Re-load on pan/zoom
+    idleListenerRef.current = map.addListener('idle', loadViewportData);
+
+    return () => {
+      if (idleListenerRef.current) {
+        window.google.maps.event.removeListener(idleListenerRef.current);
+        idleListenerRef.current = null;
+      }
+    };
+  }, [viewportLayers]); // Re-setup when layers change
+
+  // ==========================================================================
+  // STATIC GEOJSON — legacy path for small datasets
+  // ==========================================================================
+  useEffect(() => {
+    if (!mapInstanceRef.current || !window.google || !geojsonLayers?.length) return;
 
     geojsonLayers.forEach(layer => {
       if (!layer.geojson?.features?.length) return;
 
-      // Determine if this is a point layer or polygon/line layer
-      const firstGeomType = layer.geojson.features[0]?.geometry?.type;
-      const isPointLayer = firstGeomType === 'Point' || firstGeomType === 'MultiPoint';
+      const dataLayer = new window.google.maps.Data();
+      try { dataLayer.addGeoJson(layer.geojson); }
+      catch (e) { console.warn('Failed to add GeoJSON:', e); return; }
 
-      if (isPointLayer) {
-        // ---- POINT LAYER: Create individual markers + cluster ----
-        const color = layer.color || '#DC2626';
-        const layerMarkers = [];
-
-        // Build SVG icon for individual markers
-        const markerSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
-          <circle cx="7" cy="7" r="6" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
-        </svg>`;
-        const markerIcon = {
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(markerSvg),
-          scaledSize: new window.google.maps.Size(14, 14),
-          anchor: new window.google.maps.Point(7, 7),
-        };
-
-        layer.geojson.features.forEach(feature => {
-          const geom = feature.geometry;
-          if (!geom || geom.type !== 'Point') return;
-
-          const [lng, lat] = geom.coordinates;
-          const marker = new window.google.maps.Marker({
-            position: { lat, lng },
-            icon: markerIcon,
-            title: feature.properties?.title || '',
-          });
-
-          // Click handler — use ref for current callback
-          marker.addListener('click', () => {
-            if (onFeatureClickRef.current) {
-              onFeatureClickRef.current({
-                ...feature.properties,
-                lat,
-                lng,
-              });
-            }
-          });
-
-          layerMarkers.push(marker);
-        });
-
-        // Create clusterer for this layer
-        if (layerMarkers.length > 0) {
-          const clusterer = new MarkerClusterer({
-            map: mapInstanceRef.current,
-            markers: layerMarkers,
-            algorithm: new SuperClusterAlgorithm({ radius: 150, maxZoom: 15 }),
-            renderer: createClusterRenderer(color),
-          });
-
-          clusterGroupsRef.current.push({ clusterer, markers: layerMarkers });
-        }
-      } else {
-        // ---- POLYGON/LINE LAYER: Use Data Layer (no clustering needed) ----
-        const dataLayer = new window.google.maps.Data();
-        try {
-          dataLayer.addGeoJson(layer.geojson);
-        } catch (e) {
-          console.warn('Failed to add GeoJSON:', e);
-          return;
-        }
-
-        dataLayer.setStyle((feature) => {
-          const color = feature.getProperty('layer_color') || layer.color || '#3B82F6';
+      dataLayer.setStyle((feature) => {
+        const color = feature.getProperty('layer_color') || layer.color || '#3B82F6';
+        const geomType = feature.getGeometry()?.getType();
+        if (geomType === 'Point') {
           return {
-            fillColor: color,
-            fillOpacity: layer.opacity || 0.2,
-            strokeColor: color,
-            strokeWeight: 2,
-            strokeOpacity: 0.8,
+            icon: {
+              path: window.google.maps.SymbolPath.CIRCLE,
+              scale: 7,
+              fillColor: color,
+              fillOpacity: 0.9,
+              strokeColor: '#fff',
+              strokeWeight: 2,
+            },
+            title: feature.getProperty('title') || '',
           };
-        });
+        }
+        return {
+          fillColor: color,
+          fillOpacity: layer.opacity || 0.2,
+          strokeColor: color,
+          strokeWeight: 2,
+          strokeOpacity: 0.8,
+        };
+      });
 
-        dataLayer.addListener('click', (event) => {
-          if (onFeatureClickRef.current) {
-            const props = {};
-            event.feature.forEachProperty((val, key) => { props[key] = val; });
-            onFeatureClickRef.current({
-              ...props,
-              lat: event.latLng?.lat(),
-              lng: event.latLng?.lng(),
-            });
-          }
-        });
+      dataLayer.addListener('click', (event) => {
+        if (onFeatureClickRef.current) {
+          const props = {};
+          event.feature.forEachProperty((val, key) => { props[key] = val; });
+          onFeatureClickRef.current({ ...props, lat: event.latLng?.lat(), lng: event.latLng?.lng() });
+        }
+      });
 
-        dataLayer.setMap(mapInstanceRef.current);
-        dataLayersRef.current.push(dataLayer);
-      }
+      dataLayer.setMap(mapInstanceRef.current);
+      dataLayersRef.current.push(dataLayer);
     });
   }, [geojsonLayers]);
 
   // Station marker
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google || !showStation || !stationCoords) return;
-
     if (stationMarkerRef.current) stationMarkerRef.current.setMap(null);
 
     stationMarkerRef.current = new window.google.maps.Marker({
@@ -416,16 +516,9 @@ export default function GoogleMap({
   if (error) {
     return (
       <div style={{
-        height,
-        background: '#f5f5f5',
-        border: '1px solid #e0e0e0',
-        borderRadius: '6px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#888',
-        fontSize: '0.85rem',
-        ...style,
+        height, background: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: '6px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#888', fontSize: '0.85rem', ...style,
       }}>
         {error}
       </div>
@@ -435,16 +528,9 @@ export default function GoogleMap({
   if (!center?.lat || !center?.lng) {
     return (
       <div style={{
-        height,
-        background: '#f5f5f5',
-        border: '1px dashed #ccc',
-        borderRadius: '6px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#888',
-        fontSize: '0.85rem',
-        ...style,
+        height, background: '#f5f5f5', border: '1px dashed #ccc', borderRadius: '6px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#888', fontSize: '0.85rem', ...style,
       }}>
         No coordinates available
       </div>
@@ -455,28 +541,14 @@ export default function GoogleMap({
     <div style={{ position: 'relative', height, ...style }}>
       {loading && (
         <div style={{
-          position: 'absolute',
-          inset: 0,
-          background: '#f5f5f5',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: '6px',
-          zIndex: 1,
-          color: '#888',
-          fontSize: '0.85rem',
+          position: 'absolute', inset: 0, background: '#f5f5f5',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: '6px', zIndex: 1, color: '#888', fontSize: '0.85rem',
         }}>
           Loading map...
         </div>
       )}
-      <div
-        ref={mapRef}
-        style={{
-          height: '100%',
-          borderRadius: '6px',
-          border: '1px solid #e0e0e0',
-        }}
-      />
+      <div ref={mapRef} style={{ height: '100%', borderRadius: '6px', border: '1px solid #e0e0e0' }} />
     </div>
   );
 }

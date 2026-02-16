@@ -7,6 +7,11 @@
  *   - FeatureEditor toolbar: add, edit, delete features
  *   - Click-to-place, dynamic property forms from layer schema
  *   - Closure management (place pin, "Reopened" quick-delete)
+ *
+ * Uses viewport-based server-side clustering:
+ *   - GoogleMap sends bbox + zoom to backend on pan/zoom
+ *   - Backend returns clusters at low zoom, individual features at high zoom
+ *   - Frontend only holds ~50-200 markers regardless of dataset size
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -15,23 +20,19 @@ import LayerToggle from '../components/Map/LayerToggle';
 import FeatureDetail from '../components/Map/FeatureDetail';
 import FeatureEditor from '../components/Map/FeatureEditor';
 
-
 export default function MapPage({ userSession }) {
   const [config, setConfig] = useState(null);
   const [layers, setLayers] = useState([]);
   const [layersLoading, setLayersLoading] = useState(true);
   const [visibleLayers, setVisibleLayers] = useState(new Set());
-  const [geojsonCache, setGeojsonCache] = useState({});
   const [selectedFeature, setSelectedFeature] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [loadingFeatures, setLoadingFeatures] = useState(new Set());
 
-  // Phase 4: Edit mode state — ALL placement state lives here in MapPage
+  // Phase 4: Edit mode state
   const isOfficerOrAdmin = userSession?.role === 'OFFICER' || userSession?.role === 'ADMIN';
   const [isPlacing, setIsPlacing] = useState(false);
   const [placingLayerId, setPlacingLayerId] = useState(null);
-  const [placementCoords, setPlacementCoords] = useState(null); // { lat, lng }
-
+  const [placementCoords, setPlacementCoords] = useState(null);
 
   // Load map config
   useEffect(() => {
@@ -65,34 +66,21 @@ export default function MapPage({ userSession }) {
 
   useEffect(() => { loadLayers(); }, [loadLayers]);
 
-  // Load GeoJSON for a layer
-  const loadLayerGeojson = useCallback(async (layerId, forceRefresh = false) => {
-    if (geojsonCache[layerId] && !forceRefresh) return;
-    if (loadingFeatures.has(layerId)) return;
-
-    setLoadingFeatures(prev => new Set(prev).add(layerId));
-    try {
-      const res = await fetch(`/api/map/layers/${layerId}/features/geojson`);
-      if (res.ok) {
-        const data = await res.json();
-        setGeojsonCache(prev => ({ ...prev, [layerId]: data }));
-      }
-    } catch (e) {
-      console.warn(`Failed to load features for layer ${layerId}:`, e);
-    } finally {
-      setLoadingFeatures(prev => {
-        const next = new Set(prev);
-        next.delete(layerId);
-        return next;
-      });
-    }
-  }, [geojsonCache, loadingFeatures]);
-
-  useEffect(() => {
+  // Build viewportLayers — tells GoogleMap which layers to fetch via viewport API
+  const viewportLayers = useMemo(() => {
+    const result = [];
     visibleLayers.forEach(layerId => {
-      if (!geojsonCache[layerId]) loadLayerGeojson(layerId);
+      const layer = layers.find(l => l.id === layerId);
+      if (!layer) return;
+      result.push({
+        layerId: layer.id,
+        color: layer.color,
+        icon: layer.icon,
+        geometryType: layer.geometry_type,
+      });
     });
-  }, [visibleLayers]);
+    return result;
+  }, [visibleLayers, layers]);
 
   const handleToggleLayer = useCallback((layerId) => {
     setVisibleLayers(prev => {
@@ -109,7 +97,6 @@ export default function MapPage({ userSession }) {
     }
   }, [isPlacing]);
 
-  // Map click — placement or clear selection
   const handleMapClick = useCallback((lat, lng) => {
     if (isPlacing) {
       setPlacementCoords({ lat, lng });
@@ -118,7 +105,6 @@ export default function MapPage({ userSession }) {
     }
   }, [isPlacing]);
 
-  // Start/cancel placing
   const handleStartPlacing = useCallback((layerId) => {
     setIsPlacing(true);
     setPlacingLayerId(layerId);
@@ -132,42 +118,28 @@ export default function MapPage({ userSession }) {
     setPlacementCoords(null);
   }, []);
 
-  // After feature CRUD — refresh
-  const refreshLayerData = useCallback((layerId) => {
-    if (layerId) loadLayerGeojson(layerId, true);
-    loadLayers();
-  }, [loadLayerGeojson, loadLayers]);
-
+  // After feature CRUD — refresh layers (viewport will auto-reload)
   const handleFeatureCreated = useCallback((feature) => {
-    refreshLayerData(feature.layer_id);
+    loadLayers();
     setIsPlacing(false);
     setPlacingLayerId(null);
     setPlacementCoords(null);
-  }, [refreshLayerData]);
+    // Force viewport reload by toggling layer visibility briefly
+    setVisibleLayers(prev => {
+      const next = new Set(prev);
+      return next;
+    });
+  }, [loadLayers]);
 
   const handleFeatureUpdated = useCallback((feature) => {
-    refreshLayerData(feature.layer_id);
-    setSelectedFeature(null);
-  }, [refreshLayerData]);
-
-  const handleFeatureDeleted = useCallback((featureId) => {
-    visibleLayers.forEach(id => loadLayerGeojson(id, true));
     loadLayers();
     setSelectedFeature(null);
-  }, [visibleLayers, loadLayerGeojson, loadLayers]);
+  }, [loadLayers]);
 
-  // Build geojsonLayers prop — memoized to prevent re-render flicker
-  const geojsonLayers = useMemo(() => {
-    const result = [];
-    visibleLayers.forEach(layerId => {
-      const geojson = geojsonCache[layerId];
-      if (!geojson || !geojson.features?.length) return;
-      const layer = layers.find(l => l.id === layerId);
-      if (!layer) return;
-      result.push({ layerId, geojson, color: layer.color, opacity: layer.opacity, icon: layer.icon });
-    });
-    return result;
-  }, [visibleLayers, geojsonCache, layers]);
+  const handleFeatureDeleted = useCallback((featureId) => {
+    loadLayers();
+    setSelectedFeature(null);
+  }, [loadLayers]);
 
   const stationCenter = config?.station_lat && config?.station_lng
     ? { lat: config.station_lat, lng: config.station_lng }
@@ -254,7 +226,7 @@ export default function MapPage({ userSession }) {
           interactive={true}
           showStation={true}
           stationCoords={stationCenter}
-          geojsonLayers={geojsonLayers}
+          viewportLayers={viewportLayers}
           onFeatureClick={handleFeatureClick}
           onMapClick={handleMapClick}
         />
@@ -325,19 +297,6 @@ export default function MapPage({ userSession }) {
               background: 'none', border: 'none', cursor: 'pointer',
               fontSize: '1rem', color: '#888', padding: '0 4px',
             }}>✕</button>
-          </div>
-        )}
-
-        {/* Loading indicator */}
-        {loadingFeatures.size > 0 && (
-          <div style={{
-            position: 'absolute',
-            bottom: isOfficerOrAdmin ? '80px' : '10px',
-            left: '10px', background: '#fff', padding: '6px 12px',
-            borderRadius: '4px', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-            fontSize: '0.8rem', color: '#666', zIndex: 10,
-          }}>
-            Loading features...
           </div>
         )}
       </div>
