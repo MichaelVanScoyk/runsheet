@@ -23,10 +23,11 @@ export default function FeatureDetail({ feature, onClose, canEdit = false, onFea
   const layerIcon = feature.layer_icon || props.layer_icon || '';
   const layerType = feature.layer_type || props.layer_type || '';
 
-  // Schema fields first, then extras from data
-  const schemaKeys = Object.keys(schema);
+  // Schema fields first (excluding 'notes' which is handled by column-level Notes box),
+  // then extras from data
+  const schemaKeys = Object.keys(schema).filter(k => k !== 'notes');
   const dataKeys = Object.keys(props);
-  const skipKeys = new Set(['id', 'title', 'description', 'layer_icon', 'layer_color', 'layer_type', 'radius_meters', 'address']);
+  const skipKeys = new Set(['id', 'title', 'description', 'layer_icon', 'layer_color', 'layer_type', 'radius_meters', 'address', 'notes']);
   const extraKeys = dataKeys.filter(k => !schemaKeys.includes(k) && !skipKeys.has(k));
 
   // Editing state
@@ -34,19 +35,28 @@ export default function FeatureDetail({ feature, onClose, canEdit = false, onFea
   const [editProps, setEditProps] = useState({});
   const [editNotes, setEditNotes] = useState('');
   const [editTitle, setEditTitle] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editRadius, setEditRadius] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const showRadius = feature.layer_type === 'hazard' || feature.layer_type === 'informational' || feature.layer_type === 'tri_facility'
+    || (feature.property_schema && Object.keys(feature.property_schema || {}).length === 0 && feature.radius_meters);
 
   useEffect(() => {
     setEditing(false);
     setEditProps({ ...props });
     setEditNotes(feature.notes || '');
     setEditTitle(feature.title || '');
+    setEditAddress(feature.address || '');
+    setEditRadius(feature.radius_meters ? String(feature.radius_meters) : '');
   }, [feature?.id]);
 
   function startEdit() {
     setEditProps({ ...props });
     setEditNotes(feature.notes || '');
     setEditTitle(feature.title || '');
+    setEditAddress(feature.address || '');
+    setEditRadius(feature.radius_meters ? String(feature.radius_meters) : '');
     setEditing(true);
   }
 
@@ -57,14 +67,19 @@ export default function FeatureDetail({ feature, onClose, canEdit = false, onFea
   async function saveEdit() {
     setSaving(true);
     try {
+      const body = {
+        title: editTitle,
+        notes: editNotes,
+        address: editAddress || null,
+        properties: editProps,
+      };
+      if (showRadius) {
+        body.radius_meters = editRadius ? parseInt(editRadius) : null;
+      }
       const resp = await fetch(`/api/map/features/${feature.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: editTitle,
-          notes: editNotes,
-          properties: editProps,
-        }),
+        body: JSON.stringify(body),
       });
       if (resp.ok) {
         const updated = await resp.json();
@@ -199,6 +214,48 @@ export default function FeatureDetail({ feature, onClose, canEdit = false, onFea
           </div>
         )}
       </div>
+
+      {/* Address */}
+      {(feature.address || editing) && (
+        <div style={{ marginBottom: '8px' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#888', textTransform: 'uppercase', marginBottom: '2px' }}>
+            Address
+          </div>
+          {editing ? (
+            <input
+              type="text"
+              value={editAddress}
+              onChange={e => setEditAddress(e.target.value)}
+              style={{ ...inputStyle, width: '100%', textAlign: 'left' }}
+            />
+          ) : (
+            <div style={{ fontSize: '0.8rem', color: '#333' }}>
+              {feature.address}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Alert Radius — for point_radius layers */}
+      {(showRadius && (feature.radius_meters || editing)) && (
+        <div style={{ marginBottom: '8px' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#888', textTransform: 'uppercase', marginBottom: '2px' }}>
+            Alert Radius (meters)
+          </div>
+          {editing ? (
+            <input
+              type="number"
+              value={editRadius}
+              onChange={e => setEditRadius(e.target.value)}
+              style={{ ...inputStyle, width: '100%', textAlign: 'left' }}
+            />
+          ) : (
+            <div style={{ fontSize: '0.8rem', color: '#333' }}>
+              {feature.radius_meters}m
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Schema-defined fields */}
       {schemaKeys.length > 0 && (

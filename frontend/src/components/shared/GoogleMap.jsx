@@ -66,6 +66,7 @@ export default function GoogleMap({
   geojsonLayers = [],
   onMapClick,
   onFeatureClick,
+  isPlacing = false,
   height = '400px',
   interactive = true,
   showStation = false,
@@ -93,6 +94,9 @@ export default function GoogleMap({
 
   const onFeatureClickRef = useRef(onFeatureClick);
   useEffect(() => { onFeatureClickRef.current = onFeatureClick; }, [onFeatureClick]);
+
+  const isPlacingRef = useRef(isPlacing);
+  useEffect(() => { isPlacingRef.current = isPlacing; }, [isPlacing]);
 
   // Ref for viewportLayers so idle listener always has current list
   const viewportLayersRef = useRef(viewportLayers);
@@ -398,6 +402,11 @@ export default function GoogleMap({
               strokeOpacity: style.stroke_opacity != null ? style.stroke_opacity : 0.8,
             }));
             dataLayer.addListener('click', (event) => {
+              // During placement mode, forward click coords to map click handler
+              if (isPlacingRef.current && onMapClickRef.current) {
+                onMapClickRef.current(event.latLng?.lat(), event.latLng?.lng());
+                return;
+              }
               if (onFeatureClickRef.current) {
                 const props = {};
                 event.feature.forEachProperty((val, key) => { props[key] = val; });
@@ -524,6 +533,11 @@ export default function GoogleMap({
       });
 
       dataLayer.addListener('click', (event) => {
+        // During placement mode, forward click coords to map click handler
+        if (isPlacingRef.current && onMapClickRef.current) {
+          onMapClickRef.current(event.latLng?.lat(), event.latLng?.lng());
+          return;
+        }
         if (onFeatureClickRef.current) {
           const props = {};
           event.feature.forEachProperty((val, key) => { props[key] = val; });

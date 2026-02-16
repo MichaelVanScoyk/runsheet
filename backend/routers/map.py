@@ -850,6 +850,7 @@ class FeatureCreate(BaseModel):
     """Create a new feature in a layer."""
     title: str
     description: Optional[str] = None
+    notes: Optional[str] = None
     latitude: float
     longitude: float
     radius_meters: Optional[int] = None
@@ -909,14 +910,15 @@ async def create_feature(
     try:
         result = db.execute(
             text(f"""
-                INSERT INTO map_features (layer_id, title, description, geometry, radius_meters, address, properties, import_source)
-                VALUES (:layer_id, :title, :description, {geom_sql}, :radius_meters, :address, :properties, 'manual')
+                INSERT INTO map_features (layer_id, title, description, notes, geometry, radius_meters, address, properties, import_source)
+                VALUES (:layer_id, :title, :description, :notes, {geom_sql}, :radius_meters, :address, :properties, 'manual')
                 RETURNING id, ST_Y(ST_Centroid(geometry)) as lat, ST_X(ST_Centroid(geometry)) as lng
             """),
             {
                 "layer_id": layer_id,
                 "title": feature.title,
                 "description": feature.description,
+                "notes": feature.notes,
                 "radius_meters": feature.radius_meters,
                 "address": feature.address,
                 "properties": json.dumps(feature.properties or {}),

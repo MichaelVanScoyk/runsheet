@@ -238,6 +238,7 @@ export default function MapPage({ userSession }) {
           viewportLayers={viewportLayers}
           onFeatureClick={handleFeatureClick}
           onMapClick={handleMapClick}
+          isPlacing={isPlacing}
         />
 
         {/* Feature detail popup — editable for OFFICER/ADMIN */}

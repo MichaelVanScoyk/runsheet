@@ -34,7 +34,7 @@ export default function FeatureEditor({
   placementCoords,
 }) {
   const [formTitle, setFormTitle] = useState('');
-  const [formDescription, setFormDescription] = useState('');
+  const [formNotes, setFormNotes] = useState('');
   const [formAddress, setFormAddress] = useState('');
   const [formRadius, setFormRadius] = useState('');
   const [formProperties, setFormProperties] = useState({});
@@ -58,7 +58,7 @@ export default function FeatureEditor({
   useEffect(() => {
     if (selectedFeature && editing) {
       setFormTitle(selectedFeature.title || '');
-      setFormDescription(selectedFeature.description || '');
+      setFormNotes(selectedFeature.notes || '');
       setFormAddress(selectedFeature.address || '');
       setFormRadius(selectedFeature.radius_meters ? String(selectedFeature.radius_meters) : '');
       setFormProperties(selectedFeature.properties || {});
@@ -67,7 +67,7 @@ export default function FeatureEditor({
 
   const resetForm = useCallback(() => {
     setFormTitle('');
-    setFormDescription('');
+    setFormNotes('');
     setFormAddress('');
     setFormRadius('');
     setFormProperties({});
@@ -87,7 +87,7 @@ export default function FeatureEditor({
 
     const body = {
       title: formTitle.trim(),
-      description: formDescription.trim() || null,
+      notes: formNotes.trim() || null,
       address: formAddress.trim() || null,
       radius_meters: formRadius ? parseInt(formRadius) : null,
       properties: formProperties,
@@ -152,7 +152,8 @@ export default function FeatureEditor({
   // Dynamic property fields from layer schema
   const renderPropertyFields = () => {
     if (!activeLayer?.property_schema) return null;
-    const entries = Object.entries(activeLayer.property_schema);
+    // Filter out 'notes' key — handled by the column-level Notes textarea above
+    const entries = Object.entries(activeLayer.property_schema).filter(([key]) => key !== 'notes');
     if (entries.length === 0) return null;
 
     return (
@@ -264,8 +265,8 @@ export default function FeatureEditor({
         </div>
 
         <div style={{ marginBottom: '6px' }}>
-          <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>Description</label>
-          <textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)}
+          <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>Notes</label>
+          <textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)}
             rows={2} style={{ width: '100%', padding: '5px', fontSize: '0.85rem', resize: 'vertical', boxSizing: 'border-box' }} />
         </div>
 
