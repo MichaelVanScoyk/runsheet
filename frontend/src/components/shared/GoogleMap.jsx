@@ -427,9 +427,11 @@ export default function GoogleMap({
             const innerColor = isHydrant ? resolveHydrantColor(item.properties) : null;
             let hoverTitle = item.title || '';
             if (isHydrant) {
-              const hasGpm = item.properties?.GPM || item.properties?.FLOW_GPM || item.properties?.FLOW_RATE;
-              if (!hasGpm) {
-                hoverTitle = (hoverTitle ? hoverTitle + ' — ' : '') + 'Flow rate not verified';
+              const capColor = item.properties?.CAP_COLOR || item.properties?.BODY_COLOR;
+              if (capColor) {
+                hoverTitle = (hoverTitle ? hoverTitle + ' — ' : '') + capColor;
+              } else {
+                hoverTitle = (hoverTitle ? hoverTitle + ' — ' : '') + 'Color not supplied';
               }
             }
             marker = new window.google.maps.Marker({
