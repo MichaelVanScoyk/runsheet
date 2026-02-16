@@ -1,9 +1,14 @@
 /**
- * ImportWizard.jsx — GIS Import (Phase 5a + 5b)
+ * ImportWizard.jsx — GIS Import (Phase 5a + 5b + 5c Feature Picker)
  *
  * Two import sources:
  *   - ArcGIS REST URL (Phase 5a) — paginated fetch from public endpoints
  *   - File Upload (Phase 5b) — GeoJSON, KML, KMZ, Shapefile (.zip), CSV
+ *
+ * Phase 5c additions:
+ *   - Feature picker: for polygon imports, shows all features with checkboxes
+ *     so admin can select which polygons to import (e.g. pick your first due)
+ *   - Layer style controls: fill/stroke color/opacity/weight on confirm screen
  *
  * Zero-config: ALL source fields stored as-is. No mapping screen.
  * Both sources funnel through the same import pipeline + confirm UI.
@@ -39,6 +44,12 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     strokeOpacity: 0.9,
     strokeWeight: 2,
   });
+  // Feature picker state — for polygon ArcGIS imports
+  const [featureRecords, setFeatureRecords] = useState([]); // [{objectid, value}, ...]
+  const [selectedFeatures, setSelectedFeatures] = useState(new Set()); // set of objectids
+  const [pickerField, setPickerField] = useState(''); // which field to show in picker
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
 
   const loadConfigs = useCallback(() => {
     setConfigsLoading(true);
@@ -51,11 +62,36 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
 
   useEffect(() => { loadConfigs(); }, [loadConfigs]);
 
+  // Auto-load feature values when preview loads for polygon ArcGIS imports
+  const loadFeatureValues = useCallback(async (previewData, fieldName) => {
+    if (!previewData?.url || !fieldName) return;
+    setPickerLoading(true);
+    try {
+      const res = await fetch('/api/map/gis/arcgis/values', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: previewData.url, field: fieldName }),
+      });
+      if (!res.ok) throw new Error('Failed to fetch values');
+      const data = await res.json();
+      setFeatureRecords(data.records || []);
+      // Default: nothing selected — user picks what they want
+      setSelectedFeatures(new Set());
+    } catch (e) {
+      console.error('Feature value fetch failed:', e);
+      setFeatureRecords([]);
+    } finally {
+      setPickerLoading(false);
+    }
+  }, []);
+
   const handlePreview = async () => {
     if (!url.trim()) return;
     setPreviewLoading(true);
     setPreviewError('');
     setPreview(null);
+    setFeatureRecords([]);
+    setSelectedFeatures(new Set());
     try {
       const res = await fetch('/api/map/gis/arcgis/preview', {
         method: 'POST',
@@ -77,7 +113,6 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
       });
       if (match) {
         setTargetLayerId(String(match.id));
-        // Load existing style from layer for polygon types
         if (match.geometry_type === 'polygon') {
           setLayerStyle({
             fillColor: match.color || '#DC2626',
@@ -86,6 +121,18 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
             strokeOpacity: match.stroke_opacity != null ? match.stroke_opacity : 0.9,
             strokeWeight: match.stroke_weight || 2,
           });
+        }
+      }
+      // For polygon layers, auto-detect a good label field and load values
+      if (data.geometry_type === 'polygon') {
+        const skipFields = new Set(['OBJECTID', 'SHAPE', 'Shape', 'GlobalID', 'Shape__Area', 'Shape__Length']);
+        const textFields = (data.fields || []).filter(f =>
+          !skipFields.has(f.name) && (f.type === 'text' || f.esri_type === 'esriFieldTypeString')
+        );
+        const labelField = textFields[0]?.name || '';
+        if (labelField) {
+          setPickerField(labelField);
+          loadFeatureValues(data, labelField);
         }
       }
       setStep(2);
@@ -116,7 +163,6 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
       setPreview(data);
       setTempId(data.temp_id);
       setConfigName(data.filename?.replace(/\.[^.]+$/, '') || '');
-      // Auto-detect target layer
       const match = layers.find(l => {
         if (data.geometry_type === 'point') return ['hydrant', 'dry_hydrant', 'draft_point', 'hazard', 'closure', 'preplan', 'railroad_crossing', 'informational'].includes(l.layer_type);
         if (data.geometry_type === 'polygon') return ['boundary', 'flood_zone', 'wildfire_risk'].includes(l.layer_type);
@@ -149,6 +195,14 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     if (file) handleFileUpload(file);
   };
 
+  // Build filter expression from selected features
+  const buildFilterFromSelection = () => {
+    if (!featureRecords.length || selectedFeatures.size === 0) return null;
+    if (selectedFeatures.size === featureRecords.length) return null; // all selected = no filter
+    const ids = Array.from(selectedFeatures).join(',');
+    return `OBJECTID IN (${ids})`;
+  };
+
   const handleImport = async () => {
     if (!targetLayerId || !preview) return;
     setImporting(true);
@@ -171,9 +225,13 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
           }),
         });
       }
+
+      // Build filter: use feature picker selection if available, else manual filter
+      const pickerFilter = buildFilterFromSelection();
+      const effectiveFilter = pickerFilter || filterExpression || null;
+
       let res;
       if (sourceType === 'file' && tempId) {
-        // File upload import
         res = await fetch('/api/map/gis/file/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -186,7 +244,6 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
           }),
         });
       } else {
-        // ArcGIS REST import
         res = await fetch('/api/map/gis/arcgis/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -194,7 +251,7 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
             url: preview.url,
             layer_id: parseInt(targetLayerId),
             field_mapping: { OBJECTID: '__external_id' },
-            filter_expression: filterExpression || null,
+            filter_expression: effectiveFilter,
             save_config: saveConfig,
             config_name: configName || preview.name,
           }),
@@ -251,6 +308,7 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     setTargetLayerId(''); setFilterExpression(''); setConfigName('');
     setImportResult(null); setImportError('');
     setTempId(null); setDragOver(false);
+    setFeatureRecords([]); setSelectedFeatures(new Set()); setPickerField(''); setPickerSearch('');
   };
 
   const panelStyle = {
@@ -258,10 +316,8 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     padding: '20px', fontSize: '0.85rem',
   };
 
-  // Normalize URL for comparison (strip trailing slash, query params)
   const normalizeUrl = (u) => (u || '').trim().split('?')[0].replace(/\/+$/, '').toLowerCase();
 
-  // Check if entered URL matches an existing config
   const duplicateConfig = url.trim()
     ? configs.find(c => normalizeUrl(c.source_url) === normalizeUrl(url))
     : null;
@@ -333,7 +389,7 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     return <div style={panelStyle}>{configsList}</div>;
   }
 
-  // STEP 1: Source selection — ArcGIS URL or File Upload (configs visible above)
+  // STEP 1: Source selection — ArcGIS URL or File Upload
   if (step === 1) {
     const tabStyle = (active) => ({
       flex: 1, padding: '8px', textAlign: 'center', fontSize: '0.85rem',
@@ -346,8 +402,6 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
         {configsList}
         <div style={{ borderTop: '1px solid #eee', paddingTop: '16px' }}>
           <h3 style={{ margin: '0 0 12px', color: '#333', fontSize: '1.05rem' }}>New Import</h3>
-
-          {/* Source type tabs */}
           <div style={{ display: 'flex', borderBottom: '1px solid #eee', marginBottom: '16px' }}>
             <button style={tabStyle(sourceType === 'arcgis')} onClick={() => { setSourceType('arcgis'); setPreviewError(''); }}>
               ArcGIS URL
@@ -358,7 +412,6 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
           </div>
 
           {sourceType === 'arcgis' ? (
-            /* --- ArcGIS URL tab --- */
             <>
               <div style={{ marginBottom: '12px' }}>
                 <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '4px' }}>
@@ -389,7 +442,6 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
               </div>
             </>
           ) : (
-            /* --- File Upload tab --- */
             <>
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -431,14 +483,65 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     );
   }
 
-  // STEP 2: Confirm — show what will be imported, no mapping
+  // STEP 2: Confirm — feature picker + style + fields
   if (step === 2 && preview) {
     const skipFields = new Set(['OBJECTID', 'SHAPE', 'Shape', 'GlobalID', 'Shape__Area', 'Shape__Length']);
     const dataFields = preview.fields?.filter(f => !skipFields.has(f.name)) || [];
+    const textFields = dataFields.filter(f => f.type === 'text' || f.esri_type === 'esriFieldTypeString');
     const displayName = sourceType === 'file' ? (preview.filename || 'Uploaded File') : preview.name;
     const displayMeta = sourceType === 'file'
       ? `${preview.format} · ${preview.geometry_type} · ${preview.feature_count} features`
       : `${preview.geometry_type} · ${preview.feature_count != null ? `${preview.feature_count} features` : 'unknown count'}`;
+
+    const isPolygonArcgis = preview.geometry_type === 'polygon' && sourceType === 'arcgis';
+    const isPolygon = preview.geometry_type === 'polygon';
+
+    // Filter feature records by search
+    const filteredRecords = pickerSearch
+      ? featureRecords.filter(r => String(r.value || '').toLowerCase().includes(pickerSearch.toLowerCase()))
+      : featureRecords;
+
+    // Get unique values sorted
+    const uniqueValues = [...new Map(featureRecords.map(r => [r.value, r])).values()]
+      .sort((a, b) => String(a.value || '').localeCompare(String(b.value || '')));
+    const filteredUnique = pickerSearch
+      ? uniqueValues.filter(r => String(r.value || '').toLowerCase().includes(pickerSearch.toLowerCase()))
+      : uniqueValues;
+
+    // Group records by value for "select all with this name"
+    const recordsByValue = {};
+    featureRecords.forEach(r => {
+      const key = String(r.value || '');
+      if (!recordsByValue[key]) recordsByValue[key] = [];
+      recordsByValue[key].push(r.objectid);
+    });
+
+    const toggleValue = (value) => {
+      const ids = recordsByValue[String(value || '')] || [];
+      setSelectedFeatures(prev => {
+        const next = new Set(prev);
+        const allSelected = ids.every(id => next.has(id));
+        if (allSelected) {
+          ids.forEach(id => next.delete(id));
+        } else {
+          ids.forEach(id => next.add(id));
+        }
+        return next;
+      });
+    };
+
+    const selectAll = () => {
+      setSelectedFeatures(new Set(featureRecords.map(r => r.objectid)));
+    };
+
+    const selectNone = () => {
+      setSelectedFeatures(new Set());
+    };
+
+    // Import count
+    const importCount = isPolygonArcgis && featureRecords.length > 0
+      ? selectedFeatures.size
+      : preview.feature_count;
 
     return (
       <div style={{ ...panelStyle, maxHeight: 'calc(100vh - 100px)', overflow: 'auto' }}>
@@ -461,14 +564,84 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
           </select>
         </div>
 
+        {/* Feature Picker — polygon ArcGIS imports */}
+        {isPolygonArcgis && (
+          <div style={{ marginBottom: '12px', border: '1px solid #eee', borderRadius: '6px', padding: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#555' }}>
+                Select Features to Import
+              </div>
+              {textFields.length > 1 && (
+                <select value={pickerField} onChange={(e) => { setPickerField(e.target.value); loadFeatureValues(preview, e.target.value); }}
+                  style={{ padding: '3px 6px', fontSize: '0.75rem', border: '1px solid #ddd', borderRadius: '3px' }}>
+                  {textFields.map(f => (
+                    <option key={f.name} value={f.name}>{f.alias || f.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {pickerLoading ? (
+              <div style={{ color: '#888', padding: '12px', textAlign: 'center' }}>Loading features...</div>
+            ) : featureRecords.length > 0 ? (
+              <>
+                {/* Search + select all/none */}
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                  <input type="text" value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)}
+                    style={{ flex: 1, padding: '4px 8px', fontSize: '0.8rem', border: '1px solid #ddd', borderRadius: '3px', boxSizing: 'border-box' }} />
+                  <button onClick={selectAll}
+                    style={{ padding: '3px 8px', fontSize: '0.75rem', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '3px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    All
+                  </button>
+                  <button onClick={selectNone}
+                    style={{ padding: '3px 8px', fontSize: '0.75rem', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '3px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    None
+                  </button>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: '4px' }}>
+                  {selectedFeatures.size} of {featureRecords.length} selected
+                </div>
+                {/* Scrollable checkbox list */}
+                <div style={{ maxHeight: '200px', overflow: 'auto', border: '1px solid #eee', borderRadius: '4px' }}>
+                  {filteredUnique.map(r => {
+                    const ids = recordsByValue[String(r.value || '')] || [];
+                    const allChecked = ids.every(id => selectedFeatures.has(id));
+                    const someChecked = !allChecked && ids.some(id => selectedFeatures.has(id));
+                    return (
+                      <label key={r.value ?? '__null'}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '8px',
+                          padding: '4px 8px', cursor: 'pointer',
+                          borderBottom: '1px solid #f5f5f5',
+                          background: allChecked ? '#F0FDF4' : 'transparent',
+                        }}>
+                        <input type="checkbox" checked={allChecked} ref={el => { if (el) el.indeterminate = someChecked; }}
+                          onChange={() => toggleValue(r.value)}
+                          style={{ margin: 0 }} />
+                        <span style={{ fontSize: '0.8rem', color: '#333', flex: 1 }}>
+                          {r.value || '(empty)'}
+                        </span>
+                        {ids.length > 1 && (
+                          <span style={{ fontSize: '0.7rem', color: '#999' }}>×{ids.length}</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div style={{ color: '#999', fontSize: '0.8rem' }}>No features found</div>
+            )}
+          </div>
+        )}
+
         {/* Layer style controls — polygon imports only */}
-        {preview.geometry_type === 'polygon' && (
+        {isPolygon && (
           <div style={{ marginBottom: '12px', border: '1px solid #eee', borderRadius: '6px', padding: '12px' }}>
             <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#555', marginBottom: '8px' }}>
               Layer Style
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              {/* Fill color */}
               <div>
                 <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Fill Color</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -478,7 +651,6 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
                   <span style={{ fontSize: '0.75rem', color: '#888' }}>{layerStyle.fillColor}</span>
                 </div>
               </div>
-              {/* Fill opacity */}
               <div>
                 <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Fill Opacity</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -488,7 +660,6 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
                   <span style={{ fontSize: '0.75rem', color: '#888', minWidth: '28px' }}>{Math.round(layerStyle.fillOpacity * 100)}%</span>
                 </div>
               </div>
-              {/* Stroke color */}
               <div>
                 <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Border Color</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -498,7 +669,6 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
                   <span style={{ fontSize: '0.75rem', color: '#888' }}>{layerStyle.strokeColor}</span>
                 </div>
               </div>
-              {/* Stroke opacity */}
               <div>
                 <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Border Opacity</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -508,7 +678,6 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
                   <span style={{ fontSize: '0.75rem', color: '#888', minWidth: '28px' }}>{Math.round(layerStyle.strokeOpacity * 100)}%</span>
                 </div>
               </div>
-              {/* Stroke weight */}
               <div>
                 <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Border Width</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -518,13 +687,10 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
                   <span style={{ fontSize: '0.75rem', color: '#888', minWidth: '28px' }}>{layerStyle.strokeWeight}px</span>
                 </div>
               </div>
-              {/* Preview swatch */}
               <div>
                 <label style={{ fontSize: '0.75rem', color: '#666', display: 'block', marginBottom: '2px' }}>Preview</label>
                 <div style={{
                   width: '60px', height: '36px', borderRadius: '4px',
-                  backgroundColor: layerStyle.fillColor,
-                  opacity: layerStyle.fillOpacity > 0 ? 1 : undefined,
                   background: layerStyle.fillOpacity > 0
                     ? `${layerStyle.fillColor}${Math.round(layerStyle.fillOpacity * 255).toString(16).padStart(2, '0')}`
                     : 'transparent',
@@ -535,11 +701,11 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
           </div>
         )}
 
-        {/* Show exactly what fields will be imported — read only, no choices */}
-        <div style={{ marginBottom: '12px' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#555', marginBottom: '6px' }}>
+        {/* Fields — collapsed by default for polygon imports since picker is primary */}
+        <details style={{ marginBottom: '12px' }} open={!isPolygonArcgis}>
+          <summary style={{ fontSize: '0.8rem', fontWeight: '600', color: '#555', cursor: 'pointer', marginBottom: '6px' }}>
             Fields to Import ({dataFields.length})
-          </div>
+          </summary>
           <div style={{ border: '1px solid #eee', borderRadius: '4px', overflow: 'hidden' }}>
             <div style={{
               display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0',
@@ -570,10 +736,10 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
           <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '4px' }}>
             All fields stored exactly as shown. All editable after import.
           </div>
-        </div>
+        </details>
 
-        {/* Filter expression — ArcGIS only */}
-        {sourceType === 'arcgis' && (
+        {/* Manual filter expression — ArcGIS only, hidden when picker is active */}
+        {sourceType === 'arcgis' && !isPolygonArcgis && (
           <div style={{ marginBottom: '12px' }}>
             <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '4px' }}>
               Filter Expression (optional)
@@ -599,14 +765,16 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
         </div>
 
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={handleImport} disabled={!targetLayerId}
+          <button onClick={handleImport}
+            disabled={!targetLayerId || (isPolygonArcgis && featureRecords.length > 0 && selectedFeatures.size === 0)}
             style={{
               flex: 1, padding: '8px', background: '#059669', color: '#fff',
               border: 'none', borderRadius: '4px',
-              cursor: !targetLayerId ? 'not-allowed' : 'pointer',
-              fontSize: '0.85rem', fontWeight: '500', opacity: targetLayerId ? 1 : 0.5,
+              cursor: (!targetLayerId || (isPolygonArcgis && featureRecords.length > 0 && selectedFeatures.size === 0)) ? 'not-allowed' : 'pointer',
+              fontSize: '0.85rem', fontWeight: '500',
+              opacity: (!targetLayerId || (isPolygonArcgis && featureRecords.length > 0 && selectedFeatures.size === 0)) ? 0.5 : 1,
             }}>
-            Import {preview.feature_count != null ? `${preview.feature_count.toLocaleString()} Features` : 'Features'}
+            Import {importCount != null ? `${importCount.toLocaleString()} Feature${importCount !== 1 ? 's' : ''}` : 'Features'}
           </button>
           <button onClick={() => setStep(1)}
             style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>

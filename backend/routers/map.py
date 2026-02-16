@@ -1271,6 +1271,64 @@ async def delete_address_note(
 class ArcGISPreviewRequest(BaseModel):
     url: str
 
+class ArcGISFetchValuesRequest(BaseModel):
+    url: str
+    field: str  # Field name to fetch unique values for
+
+
+@router.post("/gis/arcgis/values")
+async def arcgis_fetch_values(request: ArcGISFetchValuesRequest):
+    """
+    Fetch all unique values for a specific field from an ArcGIS endpoint.
+    Used by the import wizard to show a feature picker (e.g. all station names).
+    Returns attributes only — no geometry — so it's fast.
+    """
+    from services.location.gis_import import _normalize_arcgis_url
+    rest_url = _normalize_arcgis_url(request.url)
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Fetch all features with just the requested field + OBJECTID
+            all_records = []
+            offset = 0
+            page_size = 1000
+            while True:
+                resp = await client.get(
+                    f"{rest_url}/query",
+                    params={
+                        "where": "1=1",
+                        "outFields": f"OBJECTID,{request.field}",
+                        "returnGeometry": "false",
+                        "f": "json",
+                        "resultOffset": str(offset),
+                        "resultRecordCount": str(page_size),
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                features = data.get("features", [])
+                if not features:
+                    break
+                for feat in features:
+                    attrs = feat.get("attributes", {})
+                    all_records.append({
+                        "objectid": attrs.get("OBJECTID"),
+                        "value": attrs.get(request.field),
+                    })
+                if len(features) < page_size:
+                    break
+                offset += len(features)
+
+        return {
+            "field": request.field,
+            "total": len(all_records),
+            "records": all_records,
+        }
+    except Exception as e:
+        logger.error(f"ArcGIS values fetch failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch values: {str(e)}")
+
+
 class ArcGISImportRequest(BaseModel):
     url: str
     layer_id: int
