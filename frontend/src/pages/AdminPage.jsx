@@ -12,6 +12,7 @@ import PrintLayoutTab from './PrintLayoutTab';
 import AVAlertsTab from './AVAlertsTab';
 import DetailTypesTab from './DetailTypesTab';
 import HelpAdminTab from './HelpAdminTab';
+import ImportWizard from '../components/Map/ImportWizard';
 import { useHelp } from '../contexts/HelpContext';
 
 const API_BASE = '';
@@ -2733,6 +2734,37 @@ function FeaturesTab() {
 
 
 // ============================================================================
+// GIS IMPORT TAB COMPONENT
+// ============================================================================
+
+function GISImportTab() {
+  const [layers, setLayers] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/map/layers')
+      .then(r => r.ok ? r.json() : { layers: [] })
+      .then(data => setLayers(data.layers || []))
+      .catch(() => setLayers([]));
+  }, []);
+
+  return (
+    <div style={{ maxWidth: '640px' }}>
+      <ImportWizard
+        layers={layers}
+        onImportComplete={() => {
+          // Reload layers to update feature counts
+          fetch('/api/map/layers')
+            .then(r => r.ok ? r.json() : { layers: [] })
+            .then(data => setLayers(data.layers || []))
+            .catch(() => {});
+        }}
+      />
+    </div>
+  );
+}
+
+
+// ============================================================================
 // MAIN ADMIN PAGE COMPONENT
 // ============================================================================
 
@@ -2851,6 +2883,12 @@ function AdminPage({ userSession }) {
           🚀 Features
         </button>
         <button 
+          className={activeTab === 'gis_import' ? 'active' : ''} 
+          onClick={() => setActiveTab('gis_import')}
+        >
+          🗺️ GIS Import
+        </button>
+        <button 
           className={activeTab === 'help' ? 'active' : ''} 
           onClick={() => setActiveTab('help')}
         >
@@ -2875,6 +2913,7 @@ function AdminPage({ userSession }) {
         {activeTab === 'avalerts' && <AVAlertsTab />}
         {activeTab === 'cad' && <CADSettingsTab />}
         {activeTab === 'features' && <FeaturesTab />}
+        {activeTab === 'gis_import' && <GISImportTab />}
         {activeTab === 'help' && <HelpAdminTab />}
       </div>
     </div>
