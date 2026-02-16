@@ -1,9 +1,10 @@
 /**
  * LayerToggle.jsx — Layer visibility checkbox panel
  *
- * Shows all active layers with icon, name, feature count.
+ * Shows active layers that have features with icon, name, feature count.
  * Checkboxes control which layers are rendered on the map.
  * Available to ALL authenticated users (view mode).
+ * Empty layers (no features) are hidden — admin manages them in the import panel.
  *
  * Props:
  *   layers          - Array from /api/map/layers
@@ -21,22 +22,25 @@ export default function LayerToggle({ layers = [], visibleLayers = new Set(), on
     );
   }
 
-  if (layers.length === 0) {
+  // Only show layers that have features
+  const populatedLayers = layers.filter(l => l.feature_count > 0);
+
+  if (populatedLayers.length === 0) {
     return (
       <div style={{ padding: '12px', color: '#888', fontSize: '0.85rem' }}>
-        No map layers configured
+        No map layers with data
       </div>
     );
   }
 
   // Group layers by category for visual organization
   const groups = {
-    'Water Sources': layers.filter(l => ['hydrant', 'dry_hydrant', 'draft_point'].includes(l.layer_type)),
-    'Hazards & Closures': layers.filter(l => ['hazard', 'closure', 'tri_facility', 'railroad_crossing'].includes(l.layer_type)),
-    'Boundaries': layers.filter(l => l.layer_type === 'boundary'),
-    'Preplans & Notes': layers.filter(l => ['preplan', 'informational'].includes(l.layer_type)),
-    'Environmental': layers.filter(l => ['flood_zone', 'wildfire_risk'].includes(l.layer_type)),
-    'Stations': layers.filter(l => l.layer_type === 'mutual_aid_station'),
+    'Water Sources': populatedLayers.filter(l => ['hydrant', 'dry_hydrant', 'draft_point'].includes(l.layer_type)),
+    'Hazards & Closures': populatedLayers.filter(l => ['hazard', 'closure', 'tri_facility', 'railroad_crossing'].includes(l.layer_type)),
+    'Boundaries': populatedLayers.filter(l => l.layer_type === 'boundary'),
+    'Preplans & Notes': populatedLayers.filter(l => ['preplan', 'informational'].includes(l.layer_type)),
+    'Environmental': populatedLayers.filter(l => ['flood_zone', 'wildfire_risk'].includes(l.layer_type)),
+    'Stations': populatedLayers.filter(l => l.layer_type === 'mutual_aid_station'),
   };
 
   // Filter out empty groups
@@ -84,7 +88,7 @@ export default function LayerToggle({ layers = [], visibleLayers = new Set(), on
                 minWidth: '24px',
                 textAlign: 'right',
               }}>
-                {layer.feature_count > 0 ? layer.feature_count : ''}
+                {layer.feature_count > 0 ? layer.feature_count.toLocaleString() : ''}
               </span>
             </label>
           ))}

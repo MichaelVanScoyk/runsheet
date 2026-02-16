@@ -446,9 +446,40 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
     </div>
   );
 
-  // STEP 0: Just the configs list
+  // Layer manager — show all layers with edit buttons (admin only)
+  const layerManager = isAdmin ? (
+    <div style={{ marginTop: '16px', borderTop: '1px solid #eee', paddingTop: '16px' }}>
+      <h3 style={{ margin: '0 0 12px', color: '#333', fontSize: '1.05rem' }}>Layers</h3>
+      {layers.length === 0 ? (
+        <div style={{ color: '#888' }}>No layers configured.</div>
+      ) : (
+        <div>
+          {layers.map(l => (
+            <div key={l.id} style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '6px 0', borderBottom: '1px solid #f5f5f5',
+            }}>
+              <span style={{ fontSize: '1rem', width: '24px', textAlign: 'center' }}>{l.icon}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.85rem', color: '#333' }}>{l.name}</div>
+                <div style={{ fontSize: '0.7rem', color: '#999' }}>
+                  {l.layer_type} · {l.geometry_type} · {l.feature_count || 0} features
+                </div>
+              </div>
+              <button onClick={() => handleEditConfig({ layer_id: l.id, name: l.name, last_refresh_count: l.feature_count })}
+                style={{ padding: '4px 10px', background: 'none', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', color: '#3B82F6' }}>
+                Edit
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  // STEP 0: Just the configs list + layer manager
   if (step === 0) {
-    return <div style={panelStyle}>{configsList}</div>;
+    return <div style={panelStyle}>{configsList}{layerManager}</div>;
   }
 
   // STEP 1: Source selection — ArcGIS URL or File Upload
