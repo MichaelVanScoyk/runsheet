@@ -577,7 +577,11 @@ async def get_clustered_features(
                     AVG(ST_Y(geometry)) as center_lat,
                     AVG(ST_X(geometry)) as center_lng,
                     MIN(id) as sample_id,
-                    MIN(title) as sample_title
+                    MIN(title) as sample_title,
+                    CASE WHEN COUNT(*) = 1 THEN MIN(description) ELSE NULL END as single_description,
+                    CASE WHEN COUNT(*) = 1 THEN MIN(properties::text)::jsonb ELSE NULL END as single_properties,
+                    CASE WHEN COUNT(*) = 1 THEN MIN(address) ELSE NULL END as single_address,
+                    CASE WHEN COUNT(*) = 1 THEN MIN(radius_meters) ELSE NULL END as single_radius
                 FROM map_features
                 WHERE layer_id = :layer_id
                   AND ST_Intersects(
@@ -594,13 +598,17 @@ async def get_clustered_features(
             for row in result:
                 count = row[0]
                 if count == 1:
-                    # Single feature — return as individual
+                    # Single feature — return with full details
                     items.append({
                         "type": "feature",
                         "id": row[3],
                         "lat": float(row[1]),
                         "lng": float(row[2]),
                         "title": row[4],
+                        "description": row[5],
+                        "properties": row[6] or {},
+                        "address": row[7],
+                        "radius_meters": row[8],
                     })
                 else:
                     # Cluster

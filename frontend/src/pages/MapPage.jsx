@@ -93,9 +93,14 @@ export default function MapPage({ userSession }) {
 
   const handleFeatureClick = useCallback((feature) => {
     if (!isPlacing) {
+      // Enrich with layer's property_schema so FeatureDetail shows all defined fields
+      const layer = layers.find(l => l.layer_type === feature.layer_type);
+      if (layer?.property_schema) {
+        feature.property_schema = layer.property_schema;
+      }
       setSelectedFeature(feature);
     }
-  }, [isPlacing]);
+  }, [isPlacing, layers]);
 
   const handleMapClick = useCallback((lat, lng) => {
     if (isPlacing) {
