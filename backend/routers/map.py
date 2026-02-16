@@ -24,6 +24,7 @@ Phase 4 - Feature CRUD & Address Notes:
 
 import json
 import logging
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -993,3 +994,251 @@ async def delete_address_note(
         db.rollback()
         logger.error(f"Failed to delete address note {note_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete address note")
+
+
+# =============================================================================
+# GIS IMPORT — ArcGIS REST (Phase 5a)
+# Admin only (frontend enforces role check)
+# =============================================================================
+
+class ArcGISPreviewRequest(BaseModel):
+    url: str
+
+class ArcGISImportRequest(BaseModel):
+    url: str
+    layer_id: int
+    field_mapping: dict  # {"SOURCE_FIELD": "target_property", ...}
+    filter_expression: Optional[str] = None
+    save_config: bool = False
+    config_name: Optional[str] = None
+
+
+@router.post("/gis/arcgis/preview")
+async def arcgis_preview(request: ArcGISPreviewRequest):
+    """
+    Fetch metadata + sample features from an ArcGIS REST endpoint.
+    Admin uses this to see available fields and map them.
+    """
+    from services.location.gis_import import fetch_arcgis_preview
+
+    try:
+        result = await fetch_arcgis_preview(request.url, sample_count=5)
+        return result
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"ArcGIS server returned {e.response.status_code}")
+    except Exception as e:
+        logger.error(f"ArcGIS preview failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch ArcGIS metadata: {str(e)}")
+
+
+@router.post("/gis/arcgis/import")
+async def arcgis_import(
+    request: ArcGISImportRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Import features from ArcGIS REST endpoint into a layer.
+    Fetches all features (paginated), applies field mapping, bulk inserts.
+    Uses external_id for upsert (update existing, insert new).
+    """
+    import httpx as httpx_lib
+    from services.location.gis_import import fetch_arcgis_features, import_features_to_layer
+
+    # Verify layer exists
+    layer = db.execute(
+        text("SELECT id, layer_type, name FROM map_layers WHERE id = :id"),
+        {"id": request.layer_id}
+    ).fetchone()
+
+    if not layer:
+        raise HTTPException(status_code=404, detail="Target layer not found")
+
+    try:
+        # Fetch features from ArcGIS
+        where = request.filter_expression or "1=1"
+        features = await fetch_arcgis_features(request.url, where=where)
+
+        if not features:
+            return {"success": True, "message": "No features found at source", "stats": {"imported": 0}}
+
+        # Import into layer
+        stats = import_features_to_layer(
+            db=db,
+            layer_id=request.layer_id,
+            features=features,
+            field_mapping=request.field_mapping,
+            import_source="arcgis_rest",
+            upsert=True,
+        )
+
+        # Optionally save import config for re-import
+        if request.save_config and request.config_name:
+            db.execute(
+                text("""
+                    INSERT INTO gis_import_configs
+                        (layer_id, name, source_type, source_url, field_mapping,
+                         import_options, last_refresh_at, last_refresh_status, last_refresh_count)
+                    VALUES
+                        (:layer_id, :name, 'arcgis_rest', :url, :mapping,
+                         :options, NOW(), 'success', :count)
+                    ON CONFLICT DO NOTHING
+                """),
+                {
+                    "layer_id": request.layer_id,
+                    "name": request.config_name,
+                    "url": request.url,
+                    "mapping": json.dumps(request.field_mapping),
+                    "options": json.dumps({"filter_expression": request.filter_expression}),
+                    "count": stats["imported"] + stats["updated"],
+                },
+            )
+            db.commit()
+
+        return {
+            "success": True,
+            "layer_id": request.layer_id,
+            "layer_name": layer[2],
+            "stats": stats,
+        }
+    except httpx_lib.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"ArcGIS server returned {e.response.status_code}")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"ArcGIS import failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+
+# =============================================================================
+# SAVED IMPORT CONFIGS (Phase 5a)
+# =============================================================================
+
+@router.get("/gis/configs")
+async def list_import_configs(db: Session = Depends(get_db)):
+    """List saved GIS import configurations."""
+    try:
+        result = db.execute(text("""
+            SELECT gc.id, gc.layer_id, gc.name, gc.source_type, gc.source_url,
+                   gc.field_mapping, gc.import_options, gc.auto_refresh,
+                   gc.refresh_interval_days, gc.last_refresh_at,
+                   gc.last_refresh_status, gc.last_refresh_count,
+                   gc.is_active, gc.created_at,
+                   ml.name as layer_name, ml.layer_type, ml.icon
+            FROM gis_import_configs gc
+            JOIN map_layers ml ON ml.id = gc.layer_id
+            ORDER BY gc.name
+        """))
+
+        configs = []
+        for row in result:
+            configs.append({
+                "id": row[0],
+                "layer_id": row[1],
+                "name": row[2],
+                "source_type": row[3],
+                "source_url": row[4],
+                "field_mapping": row[5] or {},
+                "import_options": row[6] or {},
+                "auto_refresh": row[7],
+                "refresh_interval_days": row[8],
+                "last_refresh_at": row[9].isoformat() if row[9] else None,
+                "last_refresh_status": row[10],
+                "last_refresh_count": row[11],
+                "is_active": row[12],
+                "created_at": row[13].isoformat() if row[13] else None,
+                "layer_name": row[14],
+                "layer_type": row[15],
+                "layer_icon": row[16],
+            })
+
+        return {"configs": configs}
+    except Exception as e:
+        logger.error(f"Failed to list import configs: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load import configs")
+
+
+@router.post("/gis/configs/{config_id}/refresh")
+async def refresh_import_config(
+    config_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Re-run a saved import configuration.
+    Fetches fresh data from the source and upserts into the target layer.
+    """
+    import httpx as httpx_lib
+    from services.location.gis_import import fetch_arcgis_features, import_features_to_layer
+
+    config = db.execute(
+        text("SELECT id, layer_id, source_type, source_url, field_mapping, import_options FROM gis_import_configs WHERE id = :id"),
+        {"id": config_id}
+    ).fetchone()
+
+    if not config:
+        raise HTTPException(status_code=404, detail="Import config not found")
+
+    if config[2] != "arcgis_rest":
+        raise HTTPException(status_code=400, detail=f"Refresh not supported for source type: {config[2]}")
+
+    try:
+        options = config[5] or {}
+        where = options.get("filter_expression", "1=1")
+
+        features = await fetch_arcgis_features(config[3], where=where)
+
+        stats = import_features_to_layer(
+            db=db,
+            layer_id=config[1],
+            features=features,
+            field_mapping=config[4] or {},
+            import_source="arcgis_rest",
+            upsert=True,
+        )
+
+        # Update config with refresh status
+        db.execute(
+            text("""
+                UPDATE gis_import_configs
+                SET last_refresh_at = NOW(),
+                    last_refresh_status = 'success',
+                    last_refresh_count = :count,
+                    updated_at = NOW()
+                WHERE id = :id
+            """),
+            {"count": stats["imported"] + stats["updated"], "id": config_id},
+        )
+        db.commit()
+
+        return {"success": True, "stats": stats}
+    except Exception as e:
+        # Record failure
+        db.execute(
+            text("""
+                UPDATE gis_import_configs
+                SET last_refresh_at = NOW(), last_refresh_status = 'failed', updated_at = NOW()
+                WHERE id = :id
+            """),
+            {"id": config_id},
+        )
+        db.commit()
+        logger.error(f"Config refresh failed for config {config_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Refresh failed: {str(e)}")
+
+
+@router.delete("/gis/configs/{config_id}")
+async def delete_import_config(
+    config_id: int,
+    db: Session = Depends(get_db),
+):
+    """Delete a saved import configuration (does NOT delete imported features)."""
+    existing = db.execute(
+        text("SELECT id, name FROM gis_import_configs WHERE id = :id"),
+        {"id": config_id},
+    ).fetchone()
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="Import config not found")
+
+    db.execute(text("DELETE FROM gis_import_configs WHERE id = :id"), {"id": config_id})
+    db.commit()
+
+    return {"deleted": True, "id": config_id, "name": existing[1]}

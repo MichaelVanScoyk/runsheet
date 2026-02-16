@@ -14,6 +14,7 @@ import GoogleMap from '../components/shared/GoogleMap';
 import LayerToggle from '../components/Map/LayerToggle';
 import FeatureDetail from '../components/Map/FeatureDetail';
 import FeatureEditor from '../components/Map/FeatureEditor';
+import ImportWizard from '../components/Map/ImportWizard';
 
 export default function MapPage({ userSession }) {
   const [config, setConfig] = useState(null);
@@ -30,6 +31,8 @@ export default function MapPage({ userSession }) {
   const [isPlacing, setIsPlacing] = useState(false);
   const [placingLayerId, setPlacingLayerId] = useState(null);
   const [placementCoords, setPlacementCoords] = useState(null); // { lat, lng }
+  const isAdmin = userSession?.role === 'ADMIN';
+  const [showImportWizard, setShowImportWizard] = useState(false);
 
   // Load map config
   useEffect(() => {
@@ -214,6 +217,20 @@ export default function MapPage({ userSession }) {
             loading={layersLoading}
           />
         </div>
+        {isAdmin && (
+          <div style={{ padding: '8px 12px', borderTop: '1px solid #eee' }}>
+            <button
+              onClick={() => setShowImportWizard(prev => !prev)}
+              style={{
+                width: '100%', padding: '8px', background: showImportWizard ? '#dbeafe' : '#f3f4f6',
+                border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer',
+                fontSize: '0.8rem', color: '#333', fontWeight: showImportWizard ? '600' : '400',
+              }}
+            >
+              {showImportWizard ? '✕ Close Import' : '📥 GIS Import'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Sidebar toggle */}
@@ -320,6 +337,22 @@ export default function MapPage({ userSession }) {
               background: 'none', border: 'none', cursor: 'pointer',
               fontSize: '1rem', color: '#888', padding: '0 4px',
             }}>✕</button>
+          </div>
+        )}
+
+        {/* Import Wizard overlay */}
+        {showImportWizard && (
+          <div style={{
+            position: 'absolute', top: '10px', left: '10px', zIndex: 15,
+            width: '480px', maxHeight: 'calc(100vh - 40px)', overflow: 'auto',
+          }}>
+            <ImportWizard
+              layers={layers}
+              onImportComplete={() => {
+                loadLayers();
+                visibleLayers.forEach(id => loadLayerGeojson(id, true));
+              }}
+            />
           </div>
         )}
 
