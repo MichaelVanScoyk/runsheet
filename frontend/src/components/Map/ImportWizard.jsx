@@ -318,6 +318,7 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
 
   const normalizeUrl = (u) => (u || '').trim().split('?')[0].replace(/\/+$/, '').toLowerCase();
 
+  // Check for duplicate — only block if targeting the same layer
   const duplicateConfig = url.trim()
     ? configs.find(c => normalizeUrl(c.source_url) === normalizeUrl(url))
     : null;
@@ -426,13 +427,13 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
               </div>
               {duplicateConfig && (
                 <div style={{ padding: '8px 12px', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: '4px', marginBottom: '12px', fontSize: '0.8rem', color: '#92400E' }}>
-                  This source is already imported as <strong>"{duplicateConfig.name}"</strong>. Use its Refresh button to check for new data.
+                  This source is already imported as <strong>"{duplicateConfig.name}"</strong> into {duplicateConfig.layer_name}. You can still import into a different layer, or use Refresh to update existing data.
                 </div>
               )}
               {previewError && <div style={{ color: '#dc2626', marginBottom: '12px' }}>{previewError}</div>}
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={handlePreview} disabled={previewLoading || !url.trim() || !!duplicateConfig}
-                  style={{ flex: 1, padding: '8px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: '4px', cursor: (previewLoading || !url.trim() || duplicateConfig) ? 'not-allowed' : 'pointer', fontSize: '0.85rem', opacity: duplicateConfig ? 0.5 : 1 }}>
+                <button onClick={handlePreview} disabled={previewLoading || !url.trim()}
+                  style={{ flex: 1, padding: '8px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: '4px', cursor: (previewLoading || !url.trim()) ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}>
                   {previewLoading ? 'Fetching...' : 'Preview'}
                 </button>
                 <button onClick={resetWizard}

@@ -1582,19 +1582,34 @@ async def delete_import_config(
     config_id: int,
     db: Session = Depends(get_db),
 ):
-    """Delete a saved import configuration (does NOT delete imported features)."""
+    """
+    Delete a saved import configuration AND all imported features in its layer.
+    This is a destructive operation — the confirmation dialog warns the user.
+    """
     existing = db.execute(
-        text("SELECT id, name FROM gis_import_configs WHERE id = :id"),
+        text("SELECT gc.id, gc.name, gc.layer_id, gc.source_url FROM gis_import_configs gc WHERE gc.id = :id"),
         {"id": config_id},
     ).fetchone()
 
     if not existing:
         raise HTTPException(status_code=404, detail="Import config not found")
 
+    layer_id = existing[2]
+
+    # Delete all features in the layer that were imported from this source
+    # Since one config = one layer, delete all features in the layer
+    deleted_count = db.execute(
+        text("DELETE FROM map_features WHERE layer_id = :layer_id"),
+        {"layer_id": layer_id}
+    ).rowcount
+
+    # Delete the config
     db.execute(text("DELETE FROM gis_import_configs WHERE id = :id"), {"id": config_id})
     db.commit()
 
-    return {"deleted": True, "id": config_id, "name": existing[1]}
+    logger.info(f"Deleted import config {config_id} ('{existing[1]}') and {deleted_count} features from layer {layer_id}")
+
+    return {"deleted": True, "id": config_id, "name": existing[1], "features_deleted": deleted_count}
 
 
 # =============================================================================
