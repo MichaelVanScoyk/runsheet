@@ -297,6 +297,8 @@ export default function GoogleMap({
       const currentLayers = viewportLayersRef.current;
       if (!currentLayers || currentLayers.length === 0) return;
 
+      console.log(`[Viewport] Loading ${currentLayers.length} layers at zoom ${map.getZoom()}`);
+
       // Cancel any in-flight fetches
       if (fetchControllerRef.current) {
         fetchControllerRef.current.abort();
@@ -329,6 +331,9 @@ export default function GoogleMap({
 
       // Check if we were aborted while awaiting
       if (signal.aborted) return;
+
+      const totalItems = results.reduce((sum, r) => sum + (r?.items?.length || 0), 0);
+      console.log(`[Viewport] Got ${totalItems} items from ${results.filter(Boolean).length} layers`);
 
       // Clear old viewport markers
       viewportMarkersRef.current.forEach(m => m.setMap(null));
@@ -427,13 +432,15 @@ export default function GoogleMap({
       });
     }
 
-    // Initial load
-    loadViewportData();
-
-    // Re-load on pan/zoom
+    // Re-load on pan/zoom (idle fires after every pan/zoom completes)
     idleListenerRef.current = map.addListener('idle', loadViewportData);
 
+    // Also load now if map is already idle (e.g. layers toggled without panning)
+    // Small delay to ensure map bounds are available
+    const initTimer = setTimeout(loadViewportData, 100);
+
     return () => {
+      clearTimeout(initTimer);
       if (idleListenerRef.current) {
         window.google.maps.event.removeListener(idleListenerRef.current);
         idleListenerRef.current = null;
