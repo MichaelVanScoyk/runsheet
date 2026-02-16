@@ -311,26 +311,9 @@ export default function FeatureEditor({
     );
   }
 
-  // STATE 3: Feature selected — only show Delete (editing is handled by FeatureDetail inline)
+  // STATE 3: Feature selected — delete/reopen is now inside FeatureDetail, nothing to render here
   if (selectedFeature) {
-    const isClosure = (selectedFeature.layer_type || selectedFeature.properties?.layer_type) === 'closure';
-    return (
-      <div style={{
-        background: '#fff', border: '1px solid #ddd', borderRadius: '8px',
-        padding: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', fontSize: '0.85rem',
-      }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={handleDelete}
-            style={{ flex: 1, padding: '7px 14px', background: isClosure ? '#059669' : '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
-            {isClosure ? 'Reopened' : 'Delete'}
-          </button>
-          <button onClick={onClearSelection}
-            style={{ padding: '7px 10px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
-            ✕
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   // STATE 4: Default — Add Feature toolbar

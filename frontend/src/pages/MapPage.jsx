@@ -148,6 +148,9 @@ export default function MapPage({ userSession }) {
   const handleFeatureDeleted = useCallback((featureId) => {
     loadLayers();
     setSelectedFeature(null);
+    // Brief cooldown to prevent click-through selecting the feature underneath
+    setIsPlacing(true);
+    setTimeout(() => setIsPlacing(false), 300);
   }, [loadLayers]);
 
   const stationCenter = config?.station_lat && config?.station_lng
@@ -253,19 +256,8 @@ export default function MapPage({ userSession }) {
               onClose={() => setSelectedFeature(null)}
               canEdit={isOfficerOrAdmin}
               onFeatureUpdated={handleFeatureUpdated}
+              onFeatureDeleted={handleFeatureDeleted}
             />
-            {isOfficerOrAdmin && (
-              <FeatureEditor
-                layers={layers}
-                selectedFeature={selectedFeature}
-                onClearSelection={() => setSelectedFeature(null)}
-                onFeatureUpdated={handleFeatureUpdated}
-                onFeatureDeleted={handleFeatureDeleted}
-                isPlacing={false}
-                placingLayerId={null}
-                placementCoords={null}
-              />
-            )}
           </div>
         )}
 

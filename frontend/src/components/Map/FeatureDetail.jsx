@@ -15,7 +15,10 @@
 
 import { useState, useEffect } from 'react';
 
-export default function FeatureDetail({ feature, onClose, canEdit = false, onFeatureUpdated }) {
+// Layer types that cannot be deleted from the map (system polygons, imports)
+const NON_DELETABLE_TYPES = new Set(['boundary', 'flood_zone', 'wildfire_risk', 'mutual_aid_station']);
+
+export default function FeatureDetail({ feature, onClose, canEdit = false, onFeatureUpdated, onFeatureDeleted }) {
   if (!feature) return null;
 
   const props = feature.properties || {};
@@ -62,6 +65,25 @@ export default function FeatureDetail({ feature, onClose, canEdit = false, onFea
 
   function cancelEdit() {
     setEditing(false);
+  }
+
+  const isClosure = layerType === 'closure';
+  const canDelete = canEdit && feature.id && !NON_DELETABLE_TYPES.has(layerType);
+
+  async function handleDelete() {
+    const msg = isClosure
+      ? `Mark "${feature.title}" as reopened?`
+      : `Delete "${feature.title}"? This cannot be undone.`;
+    if (!window.confirm(msg)) return;
+
+    try {
+      const res = await fetch(`/api/map/features/${feature.id}?hard_delete=true`, { method: 'DELETE' });
+      if (res.ok && onFeatureDeleted) {
+        onFeatureDeleted(feature.id);
+      }
+    } catch (e) {
+      console.error('Failed to delete feature:', e);
+    }
   }
 
   async function saveEdit() {
@@ -330,11 +352,11 @@ export default function FeatureDetail({ feature, onClose, canEdit = false, onFea
         </div>
       )}
 
-      {/* Edit / Save / Cancel buttons */}
+      {/* Edit / Save / Cancel / Delete buttons */}
       {canEdit && feature.id && (
         <div style={{
           borderTop: '1px solid #eee', paddingTop: '8px', marginTop: '8px',
-          display: 'flex', gap: '8px', justifyContent: 'flex-end',
+          display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center',
         }}>
           {editing ? (
             <>
@@ -344,9 +366,22 @@ export default function FeatureDetail({ feature, onClose, canEdit = false, onFea
               </button>
             </>
           ) : (
-            <button onClick={startEdit} style={{ ...btnStyle, background: '#f3f4f6' }}>
-              ✏️ Edit
-            </button>
+            <>
+              {canDelete && (
+                <button onClick={handleDelete} style={{
+                  ...btnStyle,
+                  color: isClosure ? '#059669' : '#dc2626',
+                  border: isClosure ? '1px solid #059669' : '1px solid #fca5a5',
+                  marginRight: 'auto',
+                  fontSize: '0.75rem',
+                }}>
+                  {isClosure ? 'Reopened' : 'Delete'}
+                </button>
+              )}
+              <button onClick={startEdit} style={{ ...btnStyle, background: '#f3f4f6' }}>
+                ✏️ Edit
+              </button>
+            </>
           )}
         </div>
       )}
