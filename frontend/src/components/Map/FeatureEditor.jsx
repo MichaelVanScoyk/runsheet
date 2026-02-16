@@ -2,23 +2,20 @@
  * FeatureEditor.jsx — Place, edit, and delete map features
  *
  * Phase 4: Edit mode for OFFICER / ADMIN users.
- * - Select a layer type, click the map to place a feature
- * - Dynamic property form based on layer's property_schema
- * - Edit existing features (click to select, modify properties)
- * - Delete features (with confirmation for non-closures)
- * - Closures get a "Road Reopened" quick-delete
+ * All placement state (coords, layer) is managed by MapPage and passed as props.
  *
  * Props:
  *   layers           - Array of layers from /api/map/layers
- *   onFeatureCreated - (feature) => void — refresh map data
+ *   onFeatureCreated - (feature) => void
  *   onFeatureUpdated - (feature) => void
  *   onFeatureDeleted - (featureId) => void
- *   selectedFeature  - Currently selected feature for editing (from map click)
+ *   selectedFeature  - Currently selected feature for editing
  *   onClearSelection - () => void
- *   isPlacing        - boolean — is user in "click to place" mode?
+ *   isPlacing        - boolean
  *   onStartPlacing   - (layerId) => void
  *   onCancelPlacing  - () => void
- *   placingLayerId   - number — which layer is being placed into
+ *   placingLayerId   - number
+ *   placementCoords  - { lat, lng } — set by MapPage when map is clicked during placement
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -34,9 +31,8 @@ export default function FeatureEditor({
   onStartPlacing,
   onCancelPlacing,
   placingLayerId,
+  placementCoords,
 }) {
-  // Placement form state
-  const [placementData, setPlacementData] = useState(null); // { lat, lng, layerId }
   const [formTitle, setFormTitle] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [formAddress, setFormAddress] = useState('');
@@ -44,28 +40,23 @@ export default function FeatureEditor({
   const [formProperties, setFormProperties] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  // Edit mode state
   const [editing, setEditing] = useState(false);
 
-  // Placeable layer types (the ones officers manually create)
+  // Placeable layer types
   const placeableLayers = layers.filter(l =>
     ['hydrant', 'dry_hydrant', 'draft_point', 'hazard', 'closure',
      'informational', 'preplan'].includes(l.layer_type)
   );
 
-  // Get the layer being placed or edited
   const activeLayer = placingLayerId
     ? layers.find(l => l.id === placingLayerId)
     : selectedFeature
       ? layers.find(l => l.id === selectedFeature.layer_id)
       : null;
 
-  // When user clicks the map during placement mode, parent calls this via ref or effect
-  // But we handle it through props — MapPage sets placementData when map is clicked
+  // Populate form when editing existing feature
   useEffect(() => {
     if (selectedFeature && editing) {
-      // Populate form from selected feature
       setFormTitle(selectedFeature.title || '');
       setFormDescription(selectedFeature.description || '');
       setFormAddress(selectedFeature.address || '');
@@ -74,7 +65,6 @@ export default function FeatureEditor({
     }
   }, [selectedFeature, editing]);
 
-  // Reset form
   const resetForm = useCallback(() => {
     setFormTitle('');
     setFormDescription('');
@@ -83,32 +73,14 @@ export default function FeatureEditor({
     setFormProperties({});
     setError('');
     setEditing(false);
-    setPlacementData(null);
   }, []);
 
-  // Called by MapPage when map is clicked in placement mode
-  // MapPage passes coords through a callback
-  const handleMapPlacement = useCallback((lat, lng) => {
-    setPlacementData({ lat, lng, layerId: placingLayerId });
-    setError('');
-  }, [placingLayerId]);
-
-  // Expose handleMapPlacement — parent accesses via this component
-  // We use window event for simplicity since refs across components are complex
-  useEffect(() => {
-    window.__featureEditorPlacement = handleMapPlacement;
-    return () => { delete window.__featureEditorPlacement; };
-  }, [handleMapPlacement]);
-
-  // Save new feature
+  // Save new or update existing
   const handleSave = async () => {
     if (!formTitle.trim()) {
       setError('Title is required');
       return;
     }
-
-    const layer = layers.find(l => l.id === (placementData?.layerId || selectedFeature?.layer_id));
-    if (!layer) return;
 
     setSaving(true);
     setError('');
@@ -123,7 +95,6 @@ export default function FeatureEditor({
 
     try {
       if (editing && selectedFeature) {
-        // Update existing
         body.latitude = selectedFeature.latitude || selectedFeature.lat;
         body.longitude = selectedFeature.longitude || selectedFeature.lng;
 
@@ -132,36 +103,25 @@ export default function FeatureEditor({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.detail || 'Update failed');
-        }
+        if (!res.ok) throw new Error((await res.json()).detail || 'Update failed');
 
         const updated = await res.json();
-        onFeatureUpdated?.(updated);
         resetForm();
-        onClearSelection?.();
-      } else if (placementData) {
-        // Create new
-        body.latitude = placementData.lat;
-        body.longitude = placementData.lng;
+        onFeatureUpdated?.(updated);
+      } else if (placementCoords) {
+        body.latitude = placementCoords.lat;
+        body.longitude = placementCoords.lng;
 
-        const res = await fetch(`/api/map/layers/${placementData.layerId}/features`, {
+        const res = await fetch(`/api/map/layers/${placingLayerId}/features`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.detail || 'Create failed');
-        }
+        if (!res.ok) throw new Error((await res.json()).detail || 'Create failed');
 
         const created = await res.json();
-        onFeatureCreated?.(created);
         resetForm();
-        onCancelPlacing?.();
+        onFeatureCreated?.(created);
       }
     } catch (e) {
       setError(e.message);
@@ -170,53 +130,34 @@ export default function FeatureEditor({
     }
   };
 
-  // Delete feature
+  // Delete
   const handleDelete = async () => {
     if (!selectedFeature) return;
-
-    const layerType = selectedFeature.layer_type;
-    const isClosure = layerType === 'closure';
-    const confirmMsg = isClosure
-      ? `Mark "${selectedFeature.title}" as reopened? This removes the closure.`
+    const isClosure = selectedFeature.layer_type === 'closure';
+    const msg = isClosure
+      ? `Mark "${selectedFeature.title}" as reopened?`
       : `Delete "${selectedFeature.title}"? This cannot be undone.`;
-
-    if (!window.confirm(confirmMsg)) return;
+    if (!window.confirm(msg)) return;
 
     try {
-      const res = await fetch(`/api/map/features/${selectedFeature.id}?hard_delete=true`, {
-        method: 'DELETE',
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Delete failed');
-      }
-
-      onFeatureDeleted?.(selectedFeature.id);
+      const res = await fetch(`/api/map/features/${selectedFeature.id}?hard_delete=true`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((await res.json()).detail || 'Delete failed');
       resetForm();
-      onClearSelection?.();
+      onFeatureDeleted?.(selectedFeature.id);
     } catch (e) {
       setError(e.message);
     }
   };
 
-  // Render property fields from layer's property_schema
+  // Dynamic property fields from layer schema
   const renderPropertyFields = () => {
     if (!activeLayer?.property_schema) return null;
-
-    const schema = activeLayer.property_schema;
-    const entries = Object.entries(schema);
+    const entries = Object.entries(activeLayer.property_schema);
     if (entries.length === 0) return null;
 
     return (
       <div style={{ marginTop: '8px' }}>
-        <div style={{
-          fontSize: '0.75rem',
-          fontWeight: '600',
-          color: '#888',
-          textTransform: 'uppercase',
-          marginBottom: '4px',
-        }}>
+        <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#888', textTransform: 'uppercase', marginBottom: '4px' }}>
           Properties
         </div>
         {entries.map(([key, fieldDef]) => {
@@ -226,9 +167,7 @@ export default function FeatureEditor({
           if (fieldDef.type === 'select' && fieldDef.options) {
             return (
               <div key={key} style={{ marginBottom: '6px' }}>
-                <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>
-                  {label}
-                </label>
+                <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>{label}</label>
                 <select
                   value={value}
                   onChange={(e) => setFormProperties(prev => ({ ...prev, [key]: e.target.value }))}
@@ -242,53 +181,34 @@ export default function FeatureEditor({
               </div>
             );
           }
-
           if (fieldDef.type === 'number') {
             return (
               <div key={key} style={{ marginBottom: '6px' }}>
-                <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>
-                  {label}
-                </label>
-                <input
-                  type="number"
-                  value={value}
+                <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>{label}</label>
+                <input type="number" value={value}
                   onChange={(e) => setFormProperties(prev => ({ ...prev, [key]: e.target.value ? parseFloat(e.target.value) : '' }))}
                   style={{ width: '100%', padding: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }}
                 />
               </div>
             );
           }
-
           if (fieldDef.type === 'date') {
             return (
               <div key={key} style={{ marginBottom: '6px' }}>
-                <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>
-                  {label}
-                </label>
-                <input
-                  type="date"
-                  value={value}
+                <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>{label}</label>
+                <input type="date" value={value}
                   onChange={(e) => setFormProperties(prev => ({ ...prev, [key]: e.target.value }))}
                   style={{ width: '100%', padding: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }}
                 />
               </div>
             );
           }
+          if (fieldDef.type === 'json') return null;
 
-          if (fieldDef.type === 'json') {
-            // Skip JSON fields (contacts, chemicals) for now — Phase 4+
-            return null;
-          }
-
-          // Default: text
           return (
             <div key={key} style={{ marginBottom: '6px' }}>
-              <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>
-                {label}
-              </label>
-              <input
-                type="text"
-                value={value}
+              <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>{label}</label>
+              <input type="text" value={value}
                 onChange={(e) => setFormProperties(prev => ({ ...prev, [key]: e.target.value }))}
                 style={{ width: '100%', padding: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }}
               />
@@ -300,171 +220,89 @@ export default function FeatureEditor({
   };
 
   // =========================================================================
-  // RENDER
+  // RENDER STATES
   // =========================================================================
 
-  // STATE 1: Placement mode — user picking where to put a new feature
-  if (isPlacing && !placementData) {
+  // STATE 1: Placing mode, waiting for map click (no coords yet)
+  if (isPlacing && !placementCoords) {
     const layer = layers.find(l => l.id === placingLayerId);
     return (
       <div style={{
-        background: '#fff',
-        border: '1px solid #ddd',
-        borderRadius: '8px',
-        padding: '16px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        fontSize: '0.85rem',
+        background: '#fff', border: '1px solid #ddd', borderRadius: '8px',
+        padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', fontSize: '0.85rem',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
           <span style={{ fontSize: '1.3rem' }}>{layer?.icon}</span>
-          <span style={{ fontWeight: '600', color: '#333' }}>
-            Place {layer?.name || 'Feature'}
-          </span>
+          <span style={{ fontWeight: '600', color: '#333' }}>Place {layer?.name || 'Feature'}</span>
         </div>
-        <div style={{ color: '#666', marginBottom: '12px' }}>
-          Click on the map to place a pin.
-        </div>
-        <button
-          onClick={() => { resetForm(); onCancelPlacing?.(); }}
-          style={{
-            width: '100%',
-            padding: '8px',
-            background: '#f3f4f6',
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '0.85rem',
-          }}
-        >
+        <div style={{ color: '#666', marginBottom: '12px' }}>Click on the map to place a pin.</div>
+        <button onClick={() => { resetForm(); onCancelPlacing?.(); }}
+          style={{ width: '100%', padding: '8px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
           Cancel
         </button>
       </div>
     );
   }
 
-  // STATE 2: Feature form — new placement or editing existing
-  if (placementData || (selectedFeature && editing)) {
+  // STATE 2: Placement form (coords received) OR editing existing feature
+  if (placementCoords || (selectedFeature && editing)) {
     return (
       <div style={{
-        background: '#fff',
-        border: '1px solid #ddd',
-        borderRadius: '8px',
-        padding: '16px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        fontSize: '0.85rem',
-        maxHeight: 'calc(100vh - 80px)',
-        overflow: 'auto',
+        background: '#fff', border: '1px solid #ddd', borderRadius: '8px',
+        padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', fontSize: '0.85rem',
+        maxHeight: 'calc(100vh - 80px)', overflow: 'auto',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
           <span style={{ fontSize: '1.3rem' }}>{activeLayer?.icon}</span>
-          <span style={{ fontWeight: '600', color: '#333' }}>
-            {editing ? 'Edit' : 'New'} {activeLayer?.name || 'Feature'}
-          </span>
-        </div>
-
-        {/* Core fields */}
-        <div style={{ marginBottom: '6px' }}>
-          <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>
-            Title *
-          </label>
-          <input
-            type="text"
-            value={formTitle}
-            onChange={(e) => setFormTitle(e.target.value)}
-            style={{ width: '100%', padding: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }}
-            autoFocus
-          />
+          <span style={{ fontWeight: '600', color: '#333' }}>{editing ? 'Edit' : 'New'} {activeLayer?.name || 'Feature'}</span>
         </div>
 
         <div style={{ marginBottom: '6px' }}>
-          <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>
-            Description
-          </label>
-          <textarea
-            value={formDescription}
-            onChange={(e) => setFormDescription(e.target.value)}
-            rows={2}
-            style={{ width: '100%', padding: '5px', fontSize: '0.85rem', resize: 'vertical', boxSizing: 'border-box' }}
-          />
+          <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>Title *</label>
+          <input type="text" value={formTitle} onChange={(e) => setFormTitle(e.target.value)}
+            style={{ width: '100%', padding: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }} autoFocus />
         </div>
 
         <div style={{ marginBottom: '6px' }}>
-          <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>
-            Address
-          </label>
-          <input
-            type="text"
-            value={formAddress}
-            onChange={(e) => setFormAddress(e.target.value)}
-            style={{ width: '100%', padding: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }}
-          />
+          <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>Description</label>
+          <textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)}
+            rows={2} style={{ width: '100%', padding: '5px', fontSize: '0.85rem', resize: 'vertical', boxSizing: 'border-box' }} />
         </div>
 
-        {/* Radius — only for point_radius layers */}
+        <div style={{ marginBottom: '6px' }}>
+          <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>Address</label>
+          <input type="text" value={formAddress} onChange={(e) => setFormAddress(e.target.value)}
+            style={{ width: '100%', padding: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+        </div>
+
         {activeLayer?.geometry_type === 'point_radius' && (
           <div style={{ marginBottom: '6px' }}>
-            <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>
-              Alert Radius (meters)
-            </label>
-            <input
-              type="number"
-              value={formRadius}
-              onChange={(e) => setFormRadius(e.target.value)}
-              style={{ width: '100%', padding: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }}
-            />
+            <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '2px' }}>Alert Radius (meters)</label>
+            <input type="number" value={formRadius} onChange={(e) => setFormRadius(e.target.value)}
+              style={{ width: '100%', padding: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }} />
           </div>
         )}
 
-        {/* Dynamic property fields from schema */}
         {renderPropertyFields()}
 
-        {/* GPS coordinates (read-only) */}
-        {placementData && (
+        {placementCoords && (
           <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '8px', fontFamily: 'monospace' }}>
-            {placementData.lat.toFixed(6)}, {placementData.lng.toFixed(6)}
+            {placementCoords.lat.toFixed(6)}, {placementCoords.lng.toFixed(6)}
           </div>
         )}
 
-        {error && (
-          <div style={{ color: '#dc2626', fontSize: '0.8rem', marginTop: '8px' }}>
-            {error}
-          </div>
-        )}
+        {error && <div style={{ color: '#dc2626', fontSize: '0.8rem', marginTop: '8px' }}>{error}</div>}
 
-        {/* Action buttons */}
         <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-          <button
-            onClick={handleSave}
-            disabled={saving}
+          <button onClick={handleSave} disabled={saving}
             style={{
-              flex: 1,
-              padding: '8px',
-              background: activeLayer?.color || '#3B82F6',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: saving ? 'wait' : 'pointer',
-              fontSize: '0.85rem',
-              fontWeight: '500',
-            }}
-          >
+              flex: 1, padding: '8px', background: activeLayer?.color || '#3B82F6', color: '#fff',
+              border: 'none', borderRadius: '4px', cursor: saving ? 'wait' : 'pointer', fontSize: '0.85rem', fontWeight: '500',
+            }}>
             {saving ? 'Saving...' : editing ? 'Update' : 'Save'}
           </button>
-          <button
-            onClick={() => {
-              resetForm();
-              if (isPlacing) onCancelPlacing?.();
-              else onClearSelection?.();
-            }}
-            style={{
-              padding: '8px 16px',
-              background: '#f3f4f6',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-            }}
-          >
+          <button onClick={() => { resetForm(); if (isPlacing) onCancelPlacing?.(); else onClearSelection?.(); }}
+            style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
             Cancel
           </button>
         </div>
@@ -472,60 +310,25 @@ export default function FeatureEditor({
     );
   }
 
-  // STATE 3: Feature selected but not editing — show view + edit/delete buttons
+  // STATE 3: Feature selected, show edit/delete buttons
   if (selectedFeature) {
     const isClosure = (selectedFeature.layer_type || selectedFeature.properties?.layer_type) === 'closure';
-
     return (
       <div style={{
-        background: '#fff',
-        border: '1px solid #ddd',
-        borderRadius: '8px',
-        padding: '12px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        fontSize: '0.85rem',
+        background: '#fff', border: '1px solid #ddd', borderRadius: '8px',
+        padding: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', fontSize: '0.85rem',
       }}>
-        <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-          <button
-            onClick={() => setEditing(true)}
-            style={{
-              flex: 1,
-              padding: '7px',
-              background: '#3B82F6',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-            }}
-          >
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => setEditing(true)}
+            style={{ flex: 1, padding: '7px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
             Edit
           </button>
-          <button
-            onClick={handleDelete}
-            style={{
-              padding: '7px 14px',
-              background: isClosure ? '#059669' : '#dc2626',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-            }}
-          >
+          <button onClick={handleDelete}
+            style={{ padding: '7px 14px', background: isClosure ? '#059669' : '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
             {isClosure ? 'Reopened' : 'Delete'}
           </button>
-          <button
-            onClick={onClearSelection}
-            style={{
-              padding: '7px 10px',
-              background: '#f3f4f6',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-            }}
-          >
+          <button onClick={onClearSelection}
+            style={{ padding: '7px 10px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
             ✕
           </button>
         </div>
@@ -533,44 +336,24 @@ export default function FeatureEditor({
     );
   }
 
-  // STATE 4: Default — show "Add Feature" toolbar
+  // STATE 4: Default — Add Feature toolbar
   return (
     <div style={{
-      background: '#fff',
-      border: '1px solid #ddd',
-      borderRadius: '8px',
-      padding: '12px',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-      fontSize: '0.85rem',
+      background: '#fff', border: '1px solid #ddd', borderRadius: '8px',
+      padding: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', fontSize: '0.85rem',
     }}>
-      <div style={{
-        fontSize: '0.75rem',
-        fontWeight: '600',
-        color: '#888',
-        textTransform: 'uppercase',
-        marginBottom: '8px',
-      }}>
+      <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#888', textTransform: 'uppercase', marginBottom: '8px' }}>
         Add Feature
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
         {placeableLayers.map(layer => (
-          <button
-            key={layer.id}
-            onClick={() => onStartPlacing?.(layer.id)}
+          <button key={layer.id} onClick={() => onStartPlacing?.(layer.id)}
             title={`Place ${layer.name}`}
             style={{
-              padding: '6px 10px',
-              background: '#f9fafb',
-              border: '1px solid #e5e7eb',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '0.8rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              whiteSpace: 'nowrap',
-            }}
-          >
+              padding: '6px 10px', background: '#f9fafb', border: '1px solid #e5e7eb',
+              borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
+              display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap',
+            }}>
             <span>{layer.icon}</span>
             <span>{layer.name}</span>
           </button>

@@ -25,10 +25,11 @@ export default function MapPage({ userSession }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loadingFeatures, setLoadingFeatures] = useState(new Set());
 
-  // Phase 4: Edit mode state
+  // Phase 4: Edit mode state — ALL placement state lives here in MapPage
   const isOfficerOrAdmin = userSession?.role === 'OFFICER' || userSession?.role === 'ADMIN';
   const [isPlacing, setIsPlacing] = useState(false);
   const [placingLayerId, setPlacingLayerId] = useState(null);
+  const [placementCoords, setPlacementCoords] = useState(null); // { lat, lng }
 
   // Load map config
   useEffect(() => {
@@ -46,7 +47,6 @@ export default function MapPage({ userSession }) {
       .then(data => {
         setLayers(data.layers || []);
         setVisibleLayers(prev => {
-          // On first load, auto-enable layers with features
           if (prev.size === 0) {
             const autoVisible = new Set();
             (data.layers || []).forEach(l => {
@@ -92,7 +92,6 @@ export default function MapPage({ userSession }) {
     });
   }, [visibleLayers]);
 
-  // Toggle layer visibility
   const handleToggleLayer = useCallback((layerId) => {
     setVisibleLayers(prev => {
       const next = new Set(prev);
@@ -102,52 +101,57 @@ export default function MapPage({ userSession }) {
     });
   }, []);
 
-  // Handle feature click from map
   const handleFeatureClick = useCallback((feature) => {
-    setSelectedFeature(feature);
-  }, []);
+    if (!isPlacing) {
+      setSelectedFeature(feature);
+    }
+  }, [isPlacing]);
 
-  // Handle map click — either placement or clear selection
+  // Map click — placement or clear selection
   const handleMapClick = useCallback((lat, lng) => {
-    if (isPlacing && window.__featureEditorPlacement) {
-      window.__featureEditorPlacement(lat, lng);
+    if (isPlacing) {
+      setPlacementCoords({ lat, lng });
     } else {
       setSelectedFeature(null);
     }
   }, [isPlacing]);
 
-  // Phase 4: Start placing
+  // Start/cancel placing
   const handleStartPlacing = useCallback((layerId) => {
     setIsPlacing(true);
     setPlacingLayerId(layerId);
+    setPlacementCoords(null);
     setSelectedFeature(null);
   }, []);
 
   const handleCancelPlacing = useCallback(() => {
     setIsPlacing(false);
     setPlacingLayerId(null);
+    setPlacementCoords(null);
   }, []);
 
-  // Phase 4: After feature CRUD — refresh layer data
+  // After feature CRUD — refresh
   const refreshLayerData = useCallback((layerId) => {
-    if (layerId) {
-      loadLayerGeojson(layerId, true);
-    }
+    if (layerId) loadLayerGeojson(layerId, true);
     loadLayers();
   }, [loadLayerGeojson, loadLayers]);
 
   const handleFeatureCreated = useCallback((feature) => {
     refreshLayerData(feature.layer_id);
+    setIsPlacing(false);
+    setPlacingLayerId(null);
+    setPlacementCoords(null);
   }, [refreshLayerData]);
 
   const handleFeatureUpdated = useCallback((feature) => {
     refreshLayerData(feature.layer_id);
+    setSelectedFeature(null);
   }, [refreshLayerData]);
 
   const handleFeatureDeleted = useCallback((featureId) => {
-    // We don't know the layer_id from just featureId, refresh all visible
     visibleLayers.forEach(id => loadLayerGeojson(id, true));
     loadLayers();
+    setSelectedFeature(null);
   }, [visibleLayers, loadLayerGeojson, loadLayers]);
 
   // Build geojsonLayers prop
@@ -157,13 +161,7 @@ export default function MapPage({ userSession }) {
     if (!geojson || !geojson.features?.length) return;
     const layer = layers.find(l => l.id === layerId);
     if (!layer) return;
-    geojsonLayers.push({
-      layerId,
-      geojson,
-      color: layer.color,
-      opacity: layer.opacity,
-      icon: layer.icon,
-    });
+    geojsonLayers.push({ layerId, geojson, color: layer.color, opacity: layer.opacity, icon: layer.icon });
   });
 
   const stationCenter = config?.station_lat && config?.station_lng
@@ -254,43 +252,26 @@ export default function MapPage({ userSession }) {
           geojsonLayers={geojsonLayers}
           onFeatureClick={handleFeatureClick}
           onMapClick={handleMapClick}
-          style={{ cursor: isPlacing ? 'crosshair' : undefined }}
         />
 
-        {/* Feature detail popup (view mode) — shown when NOT editing */}
+        {/* Feature detail popup (view mode — non-officer) */}
         {selectedFeature && !isOfficerOrAdmin && (
           <div style={{
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-            zIndex: 10,
-            maxHeight: 'calc(100vh - 40px)',
-            overflow: 'auto',
+            position: 'absolute', top: '10px', right: '10px', zIndex: 10,
+            maxHeight: 'calc(100vh - 40px)', overflow: 'auto',
           }}>
-            <FeatureDetail
-              feature={selectedFeature}
-              onClose={() => setSelectedFeature(null)}
-            />
+            <FeatureDetail feature={selectedFeature} onClose={() => setSelectedFeature(null)} />
           </div>
         )}
 
         {/* Officer/Admin: Feature detail + edit/delete buttons */}
         {selectedFeature && isOfficerOrAdmin && (
           <div style={{
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-            zIndex: 10,
-            maxHeight: 'calc(100vh - 40px)',
-            overflow: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
+            position: 'absolute', top: '10px', right: '10px', zIndex: 10,
+            maxHeight: 'calc(100vh - 40px)', overflow: 'auto',
+            display: 'flex', flexDirection: 'column', gap: '8px',
           }}>
-            <FeatureDetail
-              feature={selectedFeature}
-              onClose={() => setSelectedFeature(null)}
-            />
+            <FeatureDetail feature={selectedFeature} onClose={() => setSelectedFeature(null)} />
             <FeatureEditor
               layers={layers}
               selectedFeature={selectedFeature}
@@ -299,11 +280,12 @@ export default function MapPage({ userSession }) {
               onFeatureDeleted={handleFeatureDeleted}
               isPlacing={false}
               placingLayerId={null}
+              placementCoords={null}
             />
           </div>
         )}
 
-        {/* Officer/Admin: Feature editor toolbar (bottom-left) */}
+        {/* Officer/Admin: Feature editor toolbar OR placement form */}
         {isOfficerOrAdmin && !selectedFeature && (
           <div style={{
             position: 'absolute',
@@ -319,43 +301,25 @@ export default function MapPage({ userSession }) {
               onStartPlacing={handleStartPlacing}
               onCancelPlacing={handleCancelPlacing}
               placingLayerId={placingLayerId}
+              placementCoords={placementCoords}
             />
           </div>
         )}
 
-        {/* Placement mode indicator */}
-        {isPlacing && (
+        {/* Placement mode indicator (top center) */}
+        {isPlacing && !placementCoords && (
           <div style={{
-            position: 'absolute',
-            top: '10px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: '#fff',
-            padding: '8px 16px',
-            borderRadius: '20px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-            fontSize: '0.85rem',
-            color: '#333',
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
+            position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)',
+            background: '#fff', padding: '8px 16px', borderRadius: '20px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)', fontSize: '0.85rem',
+            color: '#333', zIndex: 10, display: 'flex', alignItems: 'center', gap: '8px',
           }}>
             <span>{layers.find(l => l.id === placingLayerId)?.icon}</span>
             <span>Click the map to place</span>
-            <button
-              onClick={handleCancelPlacing}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                color: '#888',
-                padding: '0 4px',
-              }}
-            >
-              ✕
-            </button>
+            <button onClick={handleCancelPlacing} style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: '1rem', color: '#888', padding: '0 4px',
+            }}>✕</button>
           </div>
         )}
 
@@ -364,14 +328,9 @@ export default function MapPage({ userSession }) {
           <div style={{
             position: 'absolute',
             bottom: isOfficerOrAdmin ? '80px' : '10px',
-            left: '10px',
-            background: '#fff',
-            padding: '6px 12px',
-            borderRadius: '4px',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-            fontSize: '0.8rem',
-            color: '#666',
-            zIndex: 10,
+            left: '10px', background: '#fff', padding: '6px 12px',
+            borderRadius: '4px', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+            fontSize: '0.8rem', color: '#666', zIndex: 10,
           }}>
             Loading features...
           </div>

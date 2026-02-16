@@ -83,6 +83,14 @@ export default function GoogleMap({
   const stationMarkerRef = useRef(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // Ref to always have current onMapClick (avoids stale closure in Google Maps listener)
+  const onMapClickRef = useRef(onMapClick);
+  useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
+  
+  // Same for onFeatureClick
+  const onFeatureClickRef = useRef(onFeatureClick);
+  useEffect(() => { onFeatureClickRef.current = onFeatureClick; }, [onFeatureClick]);
 
   // Fetch API key from config if not provided as prop
   const [resolvedKey, setResolvedKey] = useState(apiKey || null);
@@ -132,11 +140,12 @@ export default function GoogleMap({
           ],
         });
 
-        if (onMapClick) {
-          map.addListener('click', (e) => {
-            onMapClick(e.latLng.lat(), e.latLng.lng());
-          });
-        }
+        // Always register click listener — use ref so callback stays current
+        map.addListener('click', (e) => {
+          if (onMapClickRef.current) {
+            onMapClickRef.current(e.latLng.lat(), e.latLng.lng());
+          }
+        });
 
         mapInstanceRef.current = map;
         setLoading(false);
@@ -285,23 +294,23 @@ export default function GoogleMap({
         };
       });
 
-      // Click handler
-      if (onFeatureClick) {
-        dataLayer.addListener('click', (event) => {
+      // Click handler — use ref so callback stays current
+      dataLayer.addListener('click', (event) => {
+        if (onFeatureClickRef.current) {
           const props = {};
           event.feature.forEachProperty((val, key) => { props[key] = val; });
-          onFeatureClick({
+          onFeatureClickRef.current({
             ...props,
             lat: event.latLng?.lat(),
             lng: event.latLng?.lng(),
           });
-        });
-      }
+        }
+      });
 
       dataLayer.setMap(mapInstanceRef.current);
       dataLayersRef.current.push(dataLayer);
     });
-  }, [geojsonLayers, onFeatureClick]);
+  }, [geojsonLayers]);
 
   // Station marker
   useEffect(() => {
