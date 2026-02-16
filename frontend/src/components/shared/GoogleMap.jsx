@@ -423,12 +423,20 @@ export default function GoogleMap({
             });
           } else {
             // For hydrants, show NFPA color as inner circle
-            const innerColor = (data.layer_type === 'hydrant') ? resolveHydrantColor(item.properties) : null;
+            const isHydrant = data.layer_type === 'hydrant';
+            const innerColor = isHydrant ? resolveHydrantColor(item.properties) : null;
+            let hoverTitle = item.title || '';
+            if (isHydrant) {
+              const hasGpm = item.properties?.GPM || item.properties?.FLOW_GPM || item.properties?.FLOW_RATE;
+              if (!hasGpm) {
+                hoverTitle = (hoverTitle ? hoverTitle + ' — ' : '') + 'Flow rate not verified';
+              }
+            }
             marker = new window.google.maps.Marker({
               position: { lat: item.lat, lng: item.lng },
               map,
               icon: getMarkerIcon(color, innerColor),
-              title: item.title || '',
+              title: hoverTitle,
               zIndex: 10,
             });
 

@@ -310,7 +310,7 @@ export default function FeatureEditor({
     );
   }
 
-  // STATE 3: Feature selected, show edit/delete buttons
+  // STATE 3: Feature selected — only show Delete (editing is handled by FeatureDetail inline)
   if (selectedFeature) {
     const isClosure = (selectedFeature.layer_type || selectedFeature.properties?.layer_type) === 'closure';
     return (
@@ -319,12 +319,8 @@ export default function FeatureEditor({
         padding: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', fontSize: '0.85rem',
       }}>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={() => setEditing(true)}
-            style={{ flex: 1, padding: '7px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
-            Edit
-          </button>
           <button onClick={handleDelete}
-            style={{ padding: '7px 14px', background: isClosure ? '#059669' : '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
+            style={{ flex: 1, padding: '7px 14px', background: isClosure ? '#059669' : '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
             {isClosure ? 'Reopened' : 'Delete'}
           </button>
           <button onClick={onClearSelection}
