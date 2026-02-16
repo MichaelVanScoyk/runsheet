@@ -85,7 +85,7 @@ export default function GoogleMap({
   const fetchControllerRef = useRef(null); // AbortController for in-flight fetches
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  const mapReadyRef = useRef(false); // true once map has fired its first 'idle'
+
 
   // Refs for callbacks — avoids stale closures in Google Maps listeners
   const onMapClickRef = useRef(onMapClick);
@@ -147,13 +147,6 @@ export default function GoogleMap({
         map.addListener('click', (e) => {
           if (onMapClickRef.current) {
             onMapClickRef.current(e.latLng.lat(), e.latLng.lng());
-          }
-        });
-
-        // Track when map is fully ready (bounds available)
-        map.addListener('idle', () => {
-          if (!mapReadyRef.current) {
-            mapReadyRef.current = true;
           }
         });
 
@@ -435,31 +428,12 @@ export default function GoogleMap({
       });
     }
 
-    // Re-load on pan/zoom (idle fires after every pan/zoom completes)
+    // Idle fires after every pan/zoom AND on initial map load
     idleListenerRef.current = map.addListener('idle', loadViewportData);
 
-    // If map is already ready (bounds available), load immediately.
-    // Otherwise poll briefly — covers the race where layers load before map's first idle.
-    if (mapReadyRef.current && map.getBounds()) {
+    // If bounds already available (map was ready before this effect ran), load now
+    if (map.getBounds()) {
       loadViewportData();
-    } else {
-      let attempts = 0;
-      const pollTimer = setInterval(() => {
-        attempts++;
-        if ((mapReadyRef.current && map.getBounds()) || attempts > 20) {
-          clearInterval(pollTimer);
-          if (map.getBounds()) loadViewportData();
-        }
-      }, 100);
-      // Cleanup if effect re-runs before poll completes
-      const cleanup = () => clearInterval(pollTimer);
-      return () => {
-        cleanup();
-        if (idleListenerRef.current) {
-          window.google.maps.event.removeListener(idleListenerRef.current);
-          idleListenerRef.current = null;
-        }
-      };
     }
 
     return () => {
@@ -468,7 +442,7 @@ export default function GoogleMap({
         idleListenerRef.current = null;
       }
     };
-  }, [viewportLayers]); // Re-setup when layers change
+  }, [viewportLayers, loading]); // `loading` ensures re-run when map finishes initializing
 
   // ==========================================================================
   // STATIC GEOJSON — legacy path for small datasets
