@@ -4,6 +4,11 @@
  * Replaces LocationMap.jsx (Leaflet) with Google Maps JS API.
  * Uses the same Google API key already stored in settings (location.google_api_key).
  *
+ * Features:
+ *   - Point layers rendered as clustered Markers (@googlemaps/markerclusterer)
+ *   - Polygon/line layers rendered as GeoJSON Data Layers
+ *   - Singleton script loader, ref-based callbacks to avoid stale closures
+ *
  * Surfaces:
  *   - MapPage (full map with layers, Phase 3)
  *   - RunSheet LocationSection (single incident pin)
@@ -27,6 +32,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { MarkerClusterer, SuperClusterAlgorithm } from '@googlemaps/markerclusterer';
 
 // Google Maps script loader — singleton
 let googleMapsPromise = null;
@@ -58,6 +64,30 @@ function loadGoogleMaps(apiKey) {
   return googleMapsPromise;
 }
 
+// Custom cluster renderer — colored circle with count
+function createClusterRenderer(color) {
+  return {
+    render: ({ count, position }) => {
+      const size = count < 50 ? 36 : count < 200 ? 42 : count < 1000 ? 48 : 54;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${color}" fill-opacity="0.85" stroke="#fff" stroke-width="2"/>
+        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="${size < 42 ? 12 : 13}" font-weight="600" font-family="Arial,sans-serif">${count}</text>
+      </svg>`;
+
+      return new window.google.maps.Marker({
+        position,
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+          scaledSize: new window.google.maps.Size(size, size),
+          anchor: new window.google.maps.Point(size / 2, size / 2),
+        },
+        label: { text: ' ', color: 'transparent' }, // suppress default label
+        zIndex: Number(window.google.maps.Marker.MAX_ZINDEX) + count,
+      });
+    },
+  };
+}
+
 export default function GoogleMap({
   center,
   zoom = 15,
@@ -79,16 +109,16 @@ export default function GoogleMap({
   const markersRef = useRef([]);
   const circlesRef = useRef([]);
   const polygonsRef = useRef([]);
-  const dataLayersRef = useRef([]);
+  const dataLayersRef = useRef([]);       // polygon/line GeoJSON
+  const clusterGroupsRef = useRef([]);    // { clusterer, markers } per point layer
   const stationMarkerRef = useRef(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  
-  // Ref to always have current onMapClick (avoids stale closure in Google Maps listener)
+
+  // Refs for callbacks — avoids stale closures in Google Maps listeners
   const onMapClickRef = useRef(onMapClick);
   useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
-  
-  // Same for onFeatureClick
+
   const onFeatureClickRef = useRef(onFeatureClick);
   useEffect(() => { onFeatureClickRef.current = onFeatureClick; }, [onFeatureClick]);
 
@@ -100,7 +130,6 @@ export default function GoogleMap({
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.google_api_key_configured) {
-          // The actual key is fetched from settings endpoint
           fetch('/api/settings/location/google_api_key')
             .then(r => r.ok ? r.json() : null)
             .then(setting => {
@@ -135,7 +164,6 @@ export default function GoogleMap({
           fullscreenControl: interactive,
           mapTypeId: 'roadmap',
           styles: [
-            // Subtle styling — keeps it clean for fire service use
             { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
           ],
         });
@@ -156,11 +184,14 @@ export default function GoogleMap({
       });
 
     return () => {
-      // Cleanup is handled by clearing refs
       markersRef.current.forEach(m => m.setMap(null));
       circlesRef.current.forEach(c => c.setMap(null));
       polygonsRef.current.forEach(p => p.setMap(null));
       dataLayersRef.current.forEach(dl => dl.setMap(null));
+      clusterGroupsRef.current.forEach(cg => {
+        cg.clusterer.clearMarkers();
+        cg.markers.forEach(m => m.setMap(null));
+      });
       if (stationMarkerRef.current) stationMarkerRef.current.setMap(null);
       mapInstanceRef.current = null;
     };
@@ -173,11 +204,10 @@ export default function GoogleMap({
     mapInstanceRef.current.setZoom(zoom);
   }, [center?.lat, center?.lng, zoom]);
 
-  // Render simple markers
+  // Render simple markers (for non-GeoJSON use cases like RunSheet)
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
 
-    // Clear old markers
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
 
@@ -201,7 +231,7 @@ export default function GoogleMap({
     });
   }, [markers]);
 
-  // Render circles (for point_radius features)
+  // Render circles
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
 
@@ -224,7 +254,7 @@ export default function GoogleMap({
     });
   }, [circles]);
 
-  // Render polygons (for boundaries)
+  // Render polygons
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
 
@@ -246,7 +276,10 @@ export default function GoogleMap({
     });
   }, [polygons]);
 
-  // Render GeoJSON data layers
+  // ==========================================================================
+  // Render GeoJSON layers — POINT layers use clustered markers,
+  // POLYGON/LINE layers use Data Layers
+  // ==========================================================================
   useEffect(() => {
     if (!mapInstanceRef.current || !window.google) return;
 
@@ -254,61 +287,107 @@ export default function GoogleMap({
     dataLayersRef.current.forEach(dl => dl.setMap(null));
     dataLayersRef.current = [];
 
+    // Clear old clustered marker groups
+    clusterGroupsRef.current.forEach(cg => {
+      cg.clusterer.clearMarkers();
+      cg.markers.forEach(m => m.setMap(null));
+    });
+    clusterGroupsRef.current = [];
+
     geojsonLayers.forEach(layer => {
-      if (!layer.geojson) return;
+      if (!layer.geojson?.features?.length) return;
 
-      const dataLayer = new window.google.maps.Data();
-      try {
-        dataLayer.addGeoJson(layer.geojson);
-      } catch (e) {
-        console.warn('Failed to add GeoJSON:', e);
-        return;
-      }
+      // Determine if this is a point layer or polygon/line layer
+      const firstGeomType = layer.geojson.features[0]?.geometry?.type;
+      const isPointLayer = firstGeomType === 'Point' || firstGeomType === 'MultiPoint';
 
-      // Style features
-      dataLayer.setStyle((feature) => {
-        const geomType = feature.getGeometry()?.getType();
-        const color = feature.getProperty('layer_color') || layer.color || '#3B82F6';
+      if (isPointLayer) {
+        // ---- POINT LAYER: Create individual markers + cluster ----
+        const color = layer.color || '#DC2626';
+        const layerMarkers = [];
 
-        if (geomType === 'Point') {
-          return {
-            icon: {
-              path: window.google.maps.SymbolPath.CIRCLE,
-              scale: 7,
-              fillColor: color,
-              fillOpacity: 0.9,
-              strokeColor: '#fff',
-              strokeWeight: 2,
-            },
-            title: feature.getProperty('title') || '',
-          };
-        }
-
-        // Polygon / LineString
-        return {
-          fillColor: color,
-          fillOpacity: layer.opacity || 0.2,
-          strokeColor: color,
-          strokeWeight: 2,
-          strokeOpacity: 0.8,
+        // Build SVG icon for individual markers
+        const markerSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
+          <circle cx="7" cy="7" r="6" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
+        </svg>`;
+        const markerIcon = {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(markerSvg),
+          scaledSize: new window.google.maps.Size(14, 14),
+          anchor: new window.google.maps.Point(7, 7),
         };
-      });
 
-      // Click handler — use ref so callback stays current
-      dataLayer.addListener('click', (event) => {
-        if (onFeatureClickRef.current) {
-          const props = {};
-          event.feature.forEachProperty((val, key) => { props[key] = val; });
-          onFeatureClickRef.current({
-            ...props,
-            lat: event.latLng?.lat(),
-            lng: event.latLng?.lng(),
+        layer.geojson.features.forEach(feature => {
+          const geom = feature.geometry;
+          if (!geom || geom.type !== 'Point') return;
+
+          const [lng, lat] = geom.coordinates;
+          const marker = new window.google.maps.Marker({
+            position: { lat, lng },
+            icon: markerIcon,
+            title: feature.properties?.title || '',
           });
-        }
-      });
 
-      dataLayer.setMap(mapInstanceRef.current);
-      dataLayersRef.current.push(dataLayer);
+          // Click handler — use ref for current callback
+          marker.addListener('click', () => {
+            if (onFeatureClickRef.current) {
+              onFeatureClickRef.current({
+                ...feature.properties,
+                lat,
+                lng,
+              });
+            }
+          });
+
+          layerMarkers.push(marker);
+        });
+
+        // Create clusterer for this layer
+        if (layerMarkers.length > 0) {
+          const clusterer = new MarkerClusterer({
+            map: mapInstanceRef.current,
+            markers: layerMarkers,
+            algorithm: new SuperClusterAlgorithm({ radius: 80, maxZoom: 17 }),
+            renderer: createClusterRenderer(color),
+          });
+
+          clusterGroupsRef.current.push({ clusterer, markers: layerMarkers });
+        }
+      } else {
+        // ---- POLYGON/LINE LAYER: Use Data Layer (no clustering needed) ----
+        const dataLayer = new window.google.maps.Data();
+        try {
+          dataLayer.addGeoJson(layer.geojson);
+        } catch (e) {
+          console.warn('Failed to add GeoJSON:', e);
+          return;
+        }
+
+        dataLayer.setStyle((feature) => {
+          const color = feature.getProperty('layer_color') || layer.color || '#3B82F6';
+          return {
+            fillColor: color,
+            fillOpacity: layer.opacity || 0.2,
+            strokeColor: color,
+            strokeWeight: 2,
+            strokeOpacity: 0.8,
+          };
+        });
+
+        dataLayer.addListener('click', (event) => {
+          if (onFeatureClickRef.current) {
+            const props = {};
+            event.feature.forEachProperty((val, key) => { props[key] = val; });
+            onFeatureClickRef.current({
+              ...props,
+              lat: event.latLng?.lat(),
+              lng: event.latLng?.lng(),
+            });
+          }
+        });
+
+        dataLayer.setMap(mapInstanceRef.current);
+        dataLayersRef.current.push(dataLayer);
+      }
     });
   }, [geojsonLayers]);
 
