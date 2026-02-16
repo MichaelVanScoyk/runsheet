@@ -10,10 +10,10 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import GoogleMap from '../shared/GoogleMap';
-import LayerToggle from '../Map/LayerToggle';
-import FeatureDetail from '../Map/FeatureDetail';
-import FeatureEditor from '../Map/FeatureEditor';
+import GoogleMap from '../components/shared/GoogleMap';
+import LayerToggle from '../components/Map/LayerToggle';
+import FeatureDetail from '../components/Map/FeatureDetail';
+import FeatureEditor from '../components/Map/FeatureEditor';
 
 export default function MapPage({ userSession }) {
   const [config, setConfig] = useState(null);
