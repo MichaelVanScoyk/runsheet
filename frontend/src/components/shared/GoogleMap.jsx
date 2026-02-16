@@ -271,14 +271,14 @@ export default function GoogleMap({
       let svg;
       if (innerColor) {
         // Hydrant-style: outer ring + inner fill showing NFPA color
-        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-          <circle cx="8" cy="8" r="7" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
-          <circle cx="8" cy="8" r="4" fill="${innerColor}" stroke="#fff" stroke-width="0.5"/>
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+          <circle cx="11" cy="11" r="10" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
+          <circle cx="11" cy="11" r="6" fill="${innerColor}" stroke="#fff" stroke-width="0.5"/>
         </svg>`;
         iconCache[key] = {
           url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-          scaledSize: new window.google.maps.Size(16, 16),
-          anchor: new window.google.maps.Point(8, 8),
+          scaledSize: new window.google.maps.Size(22, 22),
+          anchor: new window.google.maps.Point(11, 11),
         };
       } else {
         svg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
