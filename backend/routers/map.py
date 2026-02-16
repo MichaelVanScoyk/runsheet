@@ -1,0 +1,995 @@
+"""
+Map Router — Map Platform API
+
+Phase 2 - Proximity:
+    GET  /api/map/nearby?lat=X&lng=Y     - Proximity snapshot for coordinates
+    GET  /api/map/nearby/{incident_id}   - Proximity snapshot from incident coords
+    GET  /api/map/config                 - Frontend initialization config
+
+Phase 3 - Layers & Features (read):
+    GET  /api/map/layers                 - List layers with feature counts
+    GET  /api/map/layers/{id}/features   - List features in a layer (bbox filter)
+    GET  /api/map/layers/{id}/features/geojson - GeoJSON FeatureCollection for map
+    GET  /api/map/mutual-aid/stations    - List mutual aid stations
+
+Phase 4 - Feature CRUD & Address Notes:
+    POST   /api/map/layers/{id}/features - Create feature
+    PUT    /api/map/features/{id}        - Update feature
+    DELETE /api/map/features/{id}        - Delete feature
+    GET    /api/map/address-notes        - Get notes for address
+    POST   /api/map/address-notes        - Create address note
+    PUT    /api/map/address-notes/{id}   - Update address note
+    DELETE /api/map/address-notes/{id}   - Delete address note
+"""
+
+import json
+import logging
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from typing import Optional
+
+from database import get_db
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+# =============================================================================
+# HELPERS
+# =============================================================================
+
+def _get_feature_flag(db: Session, key: str) -> bool:
+    """Check a map feature flag from settings."""
+    result = db.execute(
+        text("SELECT value, value_type FROM settings WHERE category = 'features' AND key = :key"),
+        {"key": key}
+    ).fetchone()
+    
+    if not result:
+        return False
+    
+    value, value_type = result
+    if value_type == 'boolean':
+        return value.lower() in ('true', '1', 'yes')
+    return False
+
+
+def _get_station_coords(db: Session) -> tuple:
+    """Get station lat/lng from settings."""
+    lat_row = db.execute(
+        text("SELECT value FROM settings WHERE category = 'station' AND key = 'latitude'")
+    ).fetchone()
+    lng_row = db.execute(
+        text("SELECT value FROM settings WHERE category = 'station' AND key = 'longitude'")
+    ).fetchone()
+    
+    lat = float(lat_row[0]) if lat_row else None
+    lng = float(lng_row[0]) if lng_row else None
+    return lat, lng
+
+
+def _get_google_key_configured(db: Session) -> bool:
+    """Check if Google Maps API key is configured."""
+    result = db.execute(
+        text("SELECT value FROM settings WHERE category = 'location' AND key = 'google_api_key'")
+    ).fetchone()
+    return bool(result and result[0] and result[0].strip())
+
+
+# =============================================================================
+# PROXIMITY ENDPOINTS
+# =============================================================================
+
+@router.get("/nearby")
+async def get_nearby(
+    lat: float = Query(..., description="Latitude"),
+    lng: float = Query(..., description="Longitude"),
+    address: Optional[str] = Query(None, description="Address for notes/preplan lookup"),
+    water_radius: int = Query(2000, description="Water source search radius in meters"),
+    db: Session = Depends(get_db),
+):
+    """
+    Get proximity snapshot for arbitrary coordinates.
+    Used by RunSheet, incident creation, and manual queries.
+    
+    Returns the same structure as incidents.map_snapshot JSONB.
+    """
+    if not _get_feature_flag(db, 'enable_proximity_alerts'):
+        return {"error": "Proximity alerts not enabled", "enabled": False}
+    
+    from services.location.proximity import build_proximity_snapshot
+    
+    # Optionally fetch weather for conditional alerts
+    weather_data = None
+    try:
+        from weather_service import get_weather_for_incident
+        from datetime import datetime, timezone
+        weather_data = get_weather_for_incident(
+            timestamp=datetime.now(timezone.utc),
+            latitude=lat,
+            longitude=lng,
+        )
+    except Exception as e:
+        logger.warning(f"Weather fetch failed for proximity query: {e}")
+    
+    snapshot = build_proximity_snapshot(
+        db=db,
+        lat=lat,
+        lng=lng,
+        address=address,
+        weather_data=weather_data,
+    )
+    
+    return snapshot
+
+
+@router.get("/nearby/{incident_id}")
+async def get_nearby_for_incident(
+    incident_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Get proximity snapshot using an incident's stored coordinates.
+    If the incident already has a map_snapshot, returns it directly.
+    Otherwise builds one on the fly (and stores it).
+    """
+    if not _get_feature_flag(db, 'enable_proximity_alerts'):
+        return {"error": "Proximity alerts not enabled", "enabled": False}
+    
+    # Get incident
+    result = db.execute(
+        text("SELECT id, latitude, longitude, address, map_snapshot, weather_api_data FROM incidents WHERE id = :id"),
+        {"id": incident_id}
+    ).fetchone()
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    
+    inc_id, lat_str, lng_str, address, existing_snapshot, weather_api_data = result
+    
+    # If snapshot already exists, return it
+    if existing_snapshot:
+        return existing_snapshot
+    
+    # Need coordinates to build snapshot
+    if not lat_str or not lng_str:
+        return {"error": "Incident has no coordinates", "latitude": None, "longitude": None}
+    
+    lat = float(lat_str)
+    lng = float(lng_str)
+    
+    from services.location.proximity import build_proximity_snapshot
+    
+    # Use incident's stored weather data if available
+    weather_data = weather_api_data
+    if not weather_data:
+        try:
+            from weather_service import get_weather_for_incident
+            from datetime import datetime, timezone
+            weather_data = get_weather_for_incident(
+                timestamp=datetime.now(timezone.utc),
+                latitude=lat,
+                longitude=lng,
+            )
+        except Exception as e:
+            logger.warning(f"Weather fetch failed for incident {incident_id}: {e}")
+    
+    snapshot = build_proximity_snapshot(
+        db=db,
+        lat=lat,
+        lng=lng,
+        address=address,
+        weather_data=weather_data,
+    )
+    
+    # Store snapshot on incident
+    try:
+        db.execute(
+            text("UPDATE incidents SET map_snapshot = :snapshot, updated_at = NOW() WHERE id = :id"),
+            {"snapshot": json.dumps(snapshot), "id": incident_id}
+        )
+        db.commit()
+        logger.info(f"Stored proximity snapshot on incident {incident_id}")
+    except Exception as e:
+        logger.error(f"Failed to store snapshot on incident {incident_id}: {e}")
+    
+    return snapshot
+
+
+# =============================================================================
+# MAP CONFIG
+# =============================================================================
+
+@router.get("/config")
+async def get_map_config(db: Session = Depends(get_db)):
+    """
+    Get map configuration for frontend initialization.
+    Returns API key status, feature flags, station coords, and layer list.
+    """
+    station_lat, station_lng = _get_station_coords(db)
+    
+    # Feature flags
+    enabled_features = {
+        "enable_map_layers": _get_feature_flag(db, 'enable_map_layers'),
+        "enable_gis_import": _get_feature_flag(db, 'enable_gis_import'),
+        "enable_address_notes": _get_feature_flag(db, 'enable_address_notes'),
+        "enable_proximity_alerts": _get_feature_flag(db, 'enable_proximity_alerts'),
+        "enable_mutual_aid_planner": _get_feature_flag(db, 'enable_mutual_aid_planner'),
+    }
+    
+    # Active layers with feature counts
+    layers = []
+    try:
+        result = db.execute(text("""
+            SELECT ml.id, ml.layer_type, ml.name, ml.description, ml.icon, ml.color,
+                   ml.opacity, ml.geometry_type, ml.property_schema, ml.is_system,
+                   ml.route_check, ml.sort_order, ml.is_active,
+                   COALESCE(fc.cnt, 0) as feature_count
+            FROM map_layers ml
+            LEFT JOIN (
+                SELECT layer_id, COUNT(*) as cnt
+                FROM map_features
+                GROUP BY layer_id
+            ) fc ON fc.layer_id = ml.id
+            WHERE ml.is_active = true
+            ORDER BY ml.sort_order, ml.name
+        """))
+        
+        for row in result:
+            layers.append({
+                "id": row[0],
+                "layer_type": row[1],
+                "name": row[2],
+                "description": row[3],
+                "icon": row[4],
+                "color": row[5],
+                "opacity": float(row[6]) if row[6] else 0.3,
+                "geometry_type": row[7],
+                "property_schema": row[8] or {},
+                "is_system": row[9],
+                "route_check": row[10],
+                "sort_order": row[11],
+                "is_active": row[12],
+                "feature_count": row[13],
+            })
+    except Exception as e:
+        logger.error(f"Failed to load map layers: {e}")
+    
+    return {
+        "google_api_key_configured": _get_google_key_configured(db),
+        "enabled_features": enabled_features,
+        "station_lat": station_lat,
+        "station_lng": station_lng,
+        "layers": layers,
+    }
+
+
+# =============================================================================
+# LAYER ENDPOINTS (Phase 3)
+# =============================================================================
+
+@router.get("/layers")
+async def list_layers(
+    include_inactive: bool = False,
+    db: Session = Depends(get_db),
+):
+    """
+    List all layers with feature counts.
+    By default only active layers. Admin can include inactive.
+    """
+    active_filter = "" if include_inactive else "WHERE ml.is_active = true"
+
+    try:
+        result = db.execute(text(f"""
+            SELECT ml.id, ml.layer_type, ml.name, ml.description, ml.icon, ml.color,
+                   ml.opacity, ml.geometry_type, ml.property_schema, ml.is_system,
+                   ml.route_check, ml.sort_order, ml.is_active,
+                   ml.created_at, ml.updated_at,
+                   COALESCE(fc.cnt, 0) as feature_count
+            FROM map_layers ml
+            LEFT JOIN (
+                SELECT layer_id, COUNT(*) as cnt
+                FROM map_features
+                GROUP BY layer_id
+            ) fc ON fc.layer_id = ml.id
+            {active_filter}
+            ORDER BY ml.sort_order, ml.name
+        """))
+
+        layers = []
+        for row in result:
+            layers.append({
+                "id": row[0],
+                "layer_type": row[1],
+                "name": row[2],
+                "description": row[3],
+                "icon": row[4],
+                "color": row[5],
+                "opacity": float(row[6]) if row[6] else 0.3,
+                "geometry_type": row[7],
+                "property_schema": row[8] or {},
+                "is_system": row[9],
+                "route_check": row[10],
+                "sort_order": row[11],
+                "is_active": row[12],
+                "created_at": row[13].isoformat() if row[13] else None,
+                "updated_at": row[14].isoformat() if row[14] else None,
+                "feature_count": row[15],
+            })
+
+        return {"layers": layers}
+    except Exception as e:
+        logger.error(f"Failed to list layers: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load layers")
+
+
+# =============================================================================
+# FEATURE ENDPOINTS (Phase 3 — read only, Phase 4 adds write)
+# =============================================================================
+
+@router.get("/layers/{layer_id}/features")
+async def list_layer_features(
+    layer_id: int,
+    bbox: Optional[str] = Query(None, description="Bounding box: west,south,east,north"),
+    limit: int = Query(500, le=5000),
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    """
+    List features in a layer. Supports bounding box filter for viewport-based loading.
+    Returns coordinates extracted from PostGIS geometry.
+    """
+    # Verify layer exists
+    layer = db.execute(
+        text("SELECT id, layer_type, name, icon, color, geometry_type FROM map_layers WHERE id = :id"),
+        {"id": layer_id}
+    ).fetchone()
+
+    if not layer:
+        raise HTTPException(status_code=404, detail="Layer not found")
+
+    layer_info = {
+        "id": layer[0],
+        "layer_type": layer[1],
+        "name": layer[2],
+        "icon": layer[3],
+        "color": layer[4],
+        "geometry_type": layer[5],
+    }
+
+    # Build query with optional bbox filter
+    bbox_filter = ""
+    params = {"layer_id": layer_id, "limit": limit, "offset": offset}
+
+    if bbox:
+        try:
+            west, south, east, north = [float(x) for x in bbox.split(",")]
+            bbox_filter = """
+                AND ST_Intersects(
+                    mf.geometry,
+                    ST_MakeEnvelope(:west, :south, :east, :north, 4326)
+                )
+            """
+            params.update({"west": west, "south": south, "east": east, "north": north})
+        except (ValueError, IndexError):
+            pass  # Ignore malformed bbox, return all
+
+    try:
+        result = db.execute(text(f"""
+            SELECT mf.id, mf.title, mf.description, mf.radius_meters,
+                   mf.address, mf.properties, mf.external_id, mf.import_source,
+                   mf.imported_at, mf.created_at, mf.updated_at,
+                   ST_Y(ST_Centroid(mf.geometry)) as latitude,
+                   ST_X(ST_Centroid(mf.geometry)) as longitude,
+                   ST_AsGeoJSON(mf.geometry) as geojson
+            FROM map_features mf
+            WHERE mf.layer_id = :layer_id
+            {bbox_filter}
+            ORDER BY mf.title
+            LIMIT :limit OFFSET :offset
+        """), params)
+
+        features = []
+        for row in result:
+            feature = {
+                "id": row[0],
+                "layer_id": layer_id,
+                "title": row[1],
+                "description": row[2],
+                "radius_meters": row[3],
+                "address": row[4],
+                "properties": row[5] or {},
+                "external_id": row[6],
+                "import_source": row[7],
+                "imported_at": row[8].isoformat() if row[8] else None,
+                "created_at": row[9].isoformat() if row[9] else None,
+                "updated_at": row[10].isoformat() if row[10] else None,
+                "latitude": row[11],
+                "longitude": row[12],
+                "layer_name": layer_info["name"],
+                "layer_type": layer_info["layer_type"],
+                "layer_icon": layer_info["icon"],
+                "layer_color": layer_info["color"],
+            }
+
+            # Include GeoJSON for polygon features (for rendering)
+            if layer_info["geometry_type"] in ("polygon",) and row[13]:
+                try:
+                    feature["geometry_geojson"] = json.loads(row[13])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            features.append(feature)
+
+        # Get total count
+        count_result = db.execute(text(f"""
+            SELECT COUNT(*) FROM map_features mf
+            WHERE mf.layer_id = :layer_id {bbox_filter}
+        """), params).scalar()
+
+        return {
+            "layer": layer_info,
+            "features": features,
+            "total": count_result,
+            "limit": limit,
+            "offset": offset,
+        }
+    except Exception as e:
+        logger.error(f"Failed to list features for layer {layer_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load features")
+
+
+@router.get("/layers/{layer_id}/features/geojson")
+async def get_layer_features_geojson(
+    layer_id: int,
+    bbox: Optional[str] = Query(None, description="Bounding box: west,south,east,north"),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all features in a layer as GeoJSON FeatureCollection.
+    Optimized for Google Maps Data Layer rendering.
+    """
+    layer = db.execute(
+        text("SELECT id, layer_type, name, icon, color FROM map_layers WHERE id = :id AND is_active = true"),
+        {"id": layer_id}
+    ).fetchone()
+
+    if not layer:
+        raise HTTPException(status_code=404, detail="Layer not found")
+
+    bbox_filter = ""
+    params = {"layer_id": layer_id}
+
+    if bbox:
+        try:
+            west, south, east, north = [float(x) for x in bbox.split(",")]
+            bbox_filter = """
+                AND ST_Intersects(
+                    mf.geometry,
+                    ST_MakeEnvelope(:west, :south, :east, :north, 4326)
+                )
+            """
+            params.update({"west": west, "south": south, "east": east, "north": north})
+        except (ValueError, IndexError):
+            pass
+
+    try:
+        result = db.execute(text(f"""
+            SELECT mf.id, mf.title, mf.description, mf.properties,
+                   mf.radius_meters, mf.address,
+                   ST_AsGeoJSON(mf.geometry) as geojson
+            FROM map_features mf
+            WHERE mf.layer_id = :layer_id
+            {bbox_filter}
+        """), params)
+
+        geojson_features = []
+        for row in result:
+            try:
+                geometry = json.loads(row[6])
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            properties = row[3] or {}
+            properties.update({
+                "id": row[0],
+                "title": row[1],
+                "description": row[2],
+                "radius_meters": row[4],
+                "address": row[5],
+                "layer_icon": layer[3],
+                "layer_color": layer[4],
+                "layer_type": layer[1],
+            })
+
+            geojson_features.append({
+                "type": "Feature",
+                "geometry": geometry,
+                "properties": properties,
+            })
+
+        return {
+            "type": "FeatureCollection",
+            "features": geojson_features,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get GeoJSON for layer {layer_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load GeoJSON")
+
+
+# =============================================================================
+# MUTUAL AID STATIONS — READ ONLY (Phase 3, display on map)
+# Full CRUD in Phase 6
+# =============================================================================
+
+@router.get("/mutual-aid/stations")
+async def list_mutual_aid_stations(
+    active_only: bool = True,
+    db: Session = Depends(get_db),
+):
+    """List mutual aid stations for map display."""
+    active_filter = "WHERE is_active = true" if active_only else ""
+
+    try:
+        result = db.execute(text(f"""
+            SELECT id, name, department, station_number, address,
+                   latitude, longitude, dispatch_phone, radio_channel,
+                   apparatus, external_id, import_source, relationship,
+                   notes, is_active, created_at
+            FROM mutual_aid_stations
+            {active_filter}
+            ORDER BY name
+        """))
+
+        stations = []
+        for row in result:
+            stations.append({
+                "id": row[0],
+                "name": row[1],
+                "department": row[2],
+                "station_number": row[3],
+                "address": row[4],
+                "latitude": float(row[5]) if row[5] else None,
+                "longitude": float(row[6]) if row[6] else None,
+                "dispatch_phone": row[7],
+                "radio_channel": row[8],
+                "apparatus": row[9] or [],
+                "external_id": row[10],
+                "import_source": row[11],
+                "relationship": row[12],
+                "notes": row[13],
+                "is_active": row[14],
+                "created_at": row[15].isoformat() if row[15] else None,
+            })
+
+        return {"stations": stations}
+    except Exception as e:
+        logger.error(f"Failed to list mutual aid stations: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load stations")
+
+
+# =============================================================================
+# FEATURE CRUD (Phase 4 — create, update, delete features)
+# Officers and Admins only (frontend enforces role check)
+# =============================================================================
+
+class FeatureCreate(BaseModel):
+    """Create a new feature in a layer."""
+    title: str
+    description: Optional[str] = None
+    latitude: float
+    longitude: float
+    radius_meters: Optional[int] = None
+    address: Optional[str] = None
+    properties: Optional[dict] = {}
+    # For polygon features, pass GeoJSON geometry instead of lat/lng
+    geometry_geojson: Optional[dict] = None
+
+class FeatureUpdate(BaseModel):
+    """Update an existing feature."""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    radius_meters: Optional[int] = None
+    address: Optional[str] = None
+    properties: Optional[dict] = None
+    geometry_geojson: Optional[dict] = None
+
+
+@router.post("/layers/{layer_id}/features")
+async def create_feature(
+    layer_id: int,
+    feature: FeatureCreate,
+    db: Session = Depends(get_db),
+):
+    """
+    Create a new feature in a layer.
+    For point features: provide latitude + longitude.
+    For polygon features: provide geometry_geojson (GeoJSON Polygon/MultiPolygon).
+    For point_radius features: provide latitude + longitude + radius_meters.
+    """
+    # Verify layer exists
+    layer = db.execute(
+        text("SELECT id, layer_type, name, geometry_type FROM map_layers WHERE id = :id AND is_active = true"),
+        {"id": layer_id}
+    ).fetchone()
+
+    if not layer:
+        raise HTTPException(status_code=404, detail="Layer not found")
+
+    geometry_type = layer[3]
+
+    # Build geometry SQL
+    if feature.geometry_geojson and geometry_type == 'polygon':
+        # Polygon from GeoJSON
+        geom_sql = "ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326)"
+        geom_params = {"geojson": json.dumps(feature.geometry_geojson)}
+    elif feature.latitude is not None and feature.longitude is not None:
+        # Point from lat/lng
+        geom_sql = "ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)"
+        geom_params = {"lat": feature.latitude, "lng": feature.longitude}
+    else:
+        raise HTTPException(status_code=400, detail="Must provide latitude/longitude or geometry_geojson")
+
+    try:
+        result = db.execute(
+            text(f"""
+                INSERT INTO map_features (layer_id, title, description, geometry, radius_meters, address, properties, import_source)
+                VALUES (:layer_id, :title, :description, {geom_sql}, :radius_meters, :address, :properties, 'manual')
+                RETURNING id, ST_Y(ST_Centroid(geometry)) as lat, ST_X(ST_Centroid(geometry)) as lng
+            """),
+            {
+                "layer_id": layer_id,
+                "title": feature.title,
+                "description": feature.description,
+                "radius_meters": feature.radius_meters,
+                "address": feature.address,
+                "properties": json.dumps(feature.properties or {}),
+                **geom_params,
+            }
+        )
+        row = result.fetchone()
+        db.commit()
+
+        logger.info(f"Created feature '{feature.title}' in layer {layer_id} (id={row[0]})")
+
+        return {
+            "id": row[0],
+            "layer_id": layer_id,
+            "title": feature.title,
+            "latitude": row[1],
+            "longitude": row[2],
+            "layer_type": layer[1],
+            "layer_name": layer[2],
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to create feature in layer {layer_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create feature: {str(e)}")
+
+
+@router.put("/features/{feature_id}")
+async def update_feature(
+    feature_id: int,
+    update: FeatureUpdate,
+    db: Session = Depends(get_db),
+):
+    """
+    Update an existing feature. Only provided fields are updated.
+    """
+    # Verify feature exists
+    existing = db.execute(
+        text("SELECT id, layer_id FROM map_features WHERE id = :id"),
+        {"id": feature_id}
+    ).fetchone()
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="Feature not found")
+
+    # Build dynamic update
+    set_clauses = ["updated_at = NOW()"]
+    params = {"id": feature_id}
+
+    if update.title is not None:
+        set_clauses.append("title = :title")
+        params["title"] = update.title
+
+    if update.description is not None:
+        set_clauses.append("description = :description")
+        params["description"] = update.description
+
+    if update.radius_meters is not None:
+        set_clauses.append("radius_meters = :radius_meters")
+        params["radius_meters"] = update.radius_meters
+
+    if update.address is not None:
+        set_clauses.append("address = :address")
+        params["address"] = update.address
+
+    if update.properties is not None:
+        set_clauses.append("properties = :properties")
+        params["properties"] = json.dumps(update.properties)
+
+    # Geometry update — either from GeoJSON or lat/lng
+    if update.geometry_geojson is not None:
+        set_clauses.append("geometry = ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326)")
+        params["geojson"] = json.dumps(update.geometry_geojson)
+    elif update.latitude is not None and update.longitude is not None:
+        set_clauses.append("geometry = ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)")
+        params["lat"] = update.latitude
+        params["lng"] = update.longitude
+
+    try:
+        db.execute(
+            text(f"""
+                UPDATE map_features
+                SET {', '.join(set_clauses)}
+                WHERE id = :id
+            """),
+            params
+        )
+        db.commit()
+
+        # Return updated feature
+        updated = db.execute(
+            text("""
+                SELECT mf.id, mf.title, mf.description, mf.radius_meters, mf.address,
+                       mf.properties, mf.layer_id,
+                       ST_Y(ST_Centroid(mf.geometry)) as lat,
+                       ST_X(ST_Centroid(mf.geometry)) as lng,
+                       ml.name as layer_name, ml.layer_type
+                FROM map_features mf
+                JOIN map_layers ml ON ml.id = mf.layer_id
+                WHERE mf.id = :id
+            """),
+            {"id": feature_id}
+        ).fetchone()
+
+        logger.info(f"Updated feature {feature_id}")
+
+        return {
+            "id": updated[0],
+            "title": updated[1],
+            "description": updated[2],
+            "radius_meters": updated[3],
+            "address": updated[4],
+            "properties": updated[5] or {},
+            "layer_id": updated[6],
+            "latitude": updated[7],
+            "longitude": updated[8],
+            "layer_name": updated[9],
+            "layer_type": updated[10],
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to update feature {feature_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update feature: {str(e)}")
+
+
+@router.delete("/features/{feature_id}")
+async def delete_feature(
+    feature_id: int,
+    hard_delete: bool = Query(False, description="Hard delete (for closures). Default is soft-delete."),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete a feature.
+    - Closures: hard_delete=true removes the row entirely ("road reopened")
+    - Everything else: soft-delete by removing from layer (or just delete since no soft-delete column)
+    
+    For Phase 4, all deletes are hard deletes since map_features has no is_active column.
+    """
+    existing = db.execute(
+        text("""
+            SELECT mf.id, mf.title, ml.layer_type
+            FROM map_features mf
+            JOIN map_layers ml ON ml.id = mf.layer_id
+            WHERE mf.id = :id
+        """),
+        {"id": feature_id}
+    ).fetchone()
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="Feature not found")
+
+    try:
+        db.execute(
+            text("DELETE FROM map_features WHERE id = :id"),
+            {"id": feature_id}
+        )
+        db.commit()
+
+        logger.info(f"Deleted feature {feature_id} ('{existing[1]}', type={existing[2]})")
+
+        return {
+            "deleted": True,
+            "id": feature_id,
+            "title": existing[1],
+            "layer_type": existing[2],
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to delete feature {feature_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete feature: {str(e)}")
+
+
+# =============================================================================
+# ADDRESS NOTES CRUD (Phase 4)
+# =============================================================================
+
+class AddressNoteCreate(BaseModel):
+    address: str
+    content: str
+    note_type: Optional[str] = 'general'
+    priority: Optional[str] = 'normal'
+    municipality_id: Optional[int] = None
+    incident_id: Optional[int] = None
+
+class AddressNoteUpdate(BaseModel):
+    content: Optional[str] = None
+    note_type: Optional[str] = None
+    priority: Optional[str] = None
+
+
+@router.get("/address-notes")
+async def get_address_notes(
+    address: str = Query(..., description="Address to look up"),
+    db: Session = Depends(get_db),
+):
+    """Get all notes for a normalized address."""
+    normalized = address.strip().upper()
+
+    try:
+        result = db.execute(text("""
+            SELECT id, address, municipality_id, incident_id, note_type,
+                   content, priority, created_at, updated_at
+            FROM address_notes
+            WHERE UPPER(TRIM(address)) = :address
+            ORDER BY
+                CASE priority
+                    WHEN 'critical' THEN 1
+                    WHEN 'high' THEN 2
+                    WHEN 'normal' THEN 3
+                    WHEN 'low' THEN 4
+                    ELSE 5
+                END,
+                created_at DESC
+        """), {"address": normalized})
+
+        notes = []
+        for row in result:
+            notes.append({
+                "id": row[0],
+                "address": row[1],
+                "municipality_id": row[2],
+                "incident_id": row[3],
+                "note_type": row[4],
+                "content": row[5],
+                "priority": row[6],
+                "created_at": row[7].isoformat() if row[7] else None,
+                "updated_at": row[8].isoformat() if row[8] else None,
+            })
+
+        return {"address": normalized, "notes": notes}
+    except Exception as e:
+        logger.error(f"Failed to get address notes: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load address notes")
+
+
+@router.post("/address-notes")
+async def create_address_note(
+    note: AddressNoteCreate,
+    db: Session = Depends(get_db),
+):
+    """Create an address note."""
+    normalized = note.address.strip().upper()
+
+    try:
+        result = db.execute(
+            text("""
+                INSERT INTO address_notes (address, content, note_type, priority, municipality_id, incident_id)
+                VALUES (:address, :content, :note_type, :priority, :municipality_id, :incident_id)
+                RETURNING id, created_at
+            """),
+            {
+                "address": normalized,
+                "content": note.content,
+                "note_type": note.note_type or 'general',
+                "priority": note.priority or 'normal',
+                "municipality_id": note.municipality_id,
+                "incident_id": note.incident_id,
+            }
+        )
+        row = result.fetchone()
+        db.commit()
+
+        logger.info(f"Created address note for '{normalized}' (id={row[0]})")
+
+        return {
+            "id": row[0],
+            "address": normalized,
+            "content": note.content,
+            "note_type": note.note_type,
+            "priority": note.priority,
+            "created_at": row[1].isoformat() if row[1] else None,
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to create address note: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create address note")
+
+
+@router.put("/address-notes/{note_id}")
+async def update_address_note(
+    note_id: int,
+    update: AddressNoteUpdate,
+    db: Session = Depends(get_db),
+):
+    """Update an address note."""
+    existing = db.execute(
+        text("SELECT id FROM address_notes WHERE id = :id"),
+        {"id": note_id}
+    ).fetchone()
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="Address note not found")
+
+    set_clauses = ["updated_at = NOW()"]
+    params = {"id": note_id}
+
+    if update.content is not None:
+        set_clauses.append("content = :content")
+        params["content"] = update.content
+    if update.note_type is not None:
+        set_clauses.append("note_type = :note_type")
+        params["note_type"] = update.note_type
+    if update.priority is not None:
+        set_clauses.append("priority = :priority")
+        params["priority"] = update.priority
+
+    try:
+        db.execute(
+            text(f"UPDATE address_notes SET {', '.join(set_clauses)} WHERE id = :id"),
+            params
+        )
+        db.commit()
+
+        logger.info(f"Updated address note {note_id}")
+        return {"updated": True, "id": note_id}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to update address note {note_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update address note")
+
+
+@router.delete("/address-notes/{note_id}")
+async def delete_address_note(
+    note_id: int,
+    db: Session = Depends(get_db),
+):
+    """Delete an address note."""
+    existing = db.execute(
+        text("SELECT id, address FROM address_notes WHERE id = :id"),
+        {"id": note_id}
+    ).fetchone()
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="Address note not found")
+
+    try:
+        db.execute(
+            text("DELETE FROM address_notes WHERE id = :id"),
+            {"id": note_id}
+        )
+        db.commit()
+
+        logger.info(f"Deleted address note {note_id} for '{existing[1]}'")
+        return {"deleted": True, "id": note_id, "address": existing[1]}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to delete address note {note_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete address note")

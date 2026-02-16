@@ -225,6 +225,52 @@ async def geocode_incident_endpoint(
         
         logger.info(f"Geocoded incident {incident_id}: {result.get('matched_address')} ({result.get('provider')})")
         
+        # =================================================================
+        # PROXIMITY SNAPSHOT — Phase 2 Map Platform
+        # After geocoding succeeds, run proximity queries and store snapshot.
+        # Reuses incident weather data for flood/wildfire conditional alerts.
+        # =================================================================
+        try:
+            from services.location.proximity import build_proximity_snapshot
+            
+            # Get incident's weather data (already fetched by incident update flow)
+            weather_row = db.execute(
+                text("SELECT weather_api_data FROM incidents WHERE id = :id"),
+                {"id": incident_id}
+            ).fetchone()
+            weather_data = weather_row[0] if weather_row and weather_row[0] else None
+            
+            # If no weather stored yet, fetch it now
+            if not weather_data:
+                try:
+                    from weather_service import get_weather_for_incident
+                    from datetime import datetime, timezone
+                    weather_data = get_weather_for_incident(
+                        timestamp=datetime.now(timezone.utc),
+                        latitude=result["latitude"],
+                        longitude=result["longitude"],
+                    )
+                except Exception:
+                    pass  # Weather is optional for proximity
+            
+            snapshot = build_proximity_snapshot(
+                db=db,
+                lat=result["latitude"],
+                lng=result["longitude"],
+                address=address,
+                weather_data=weather_data,
+            )
+            
+            db.execute(
+                text("UPDATE incidents SET map_snapshot = :snapshot, updated_at = NOW() WHERE id = :id"),
+                {"snapshot": json.dumps(snapshot), "id": incident_id}
+            )
+            db.commit()
+            logger.info(f"Proximity snapshot stored for incident {incident_id}")
+        except Exception as e:
+            logger.warning(f"Proximity snapshot failed for incident {incident_id}: {e}")
+            # Don't fail the geocode response if proximity fails
+        
         return GeocodeResponse(
             success=True,
             latitude=result.get("latitude"),

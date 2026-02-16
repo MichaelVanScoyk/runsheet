@@ -30,6 +30,7 @@ import MunicipalitiesPage from './pages/MunicipalitiesPage';
 import AdminPage from './pages/AdminPage';
 import ReportsPage from './pages/ReportsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
+import MapPage from './pages/MapPage';
 import AcceptInvitePage from './pages/AcceptInvitePage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import TenantLogin from './components/TenantLogin';
@@ -677,6 +678,11 @@ function AppContentInner({
               📈 Analytics
             </NavLink>
           </li>
+          <li>
+            <NavLink to="/map" className={({ isActive }) => isActive ? 'active' : ''} onClick={() => setSidebarOpen(false)}>
+              🗺️ Map
+            </NavLink>
+          </li>
           {/* Admin - only show for OFFICER or ADMIN */}
           {userSession && (userSession.role === 'OFFICER' || userSession.role === 'ADMIN') && (
             <li>
@@ -710,6 +716,7 @@ function AppContentInner({
           <Route path="/" element={<IncidentsPage userSession={userSession} />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/analytics" element={<AnalyticsPage userSession={userSession} />} />
+          <Route path="/map" element={<MapPage userSession={userSession} />} />
           <Route path="/personnel" element={<PersonnelPage />} />
           <Route path="/apparatus" element={<ApparatusPage />} />
           <Route path="/municipalities" element={<MunicipalitiesPage />} />
