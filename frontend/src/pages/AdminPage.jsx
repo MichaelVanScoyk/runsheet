@@ -2737,7 +2737,7 @@ function FeaturesTab() {
 // GIS IMPORT TAB COMPONENT
 // ============================================================================
 
-function GISImportTab() {
+function GISImportTab({ userRole }) {
   const [layers, setLayers] = useState([]);
 
   useEffect(() => {
@@ -2751,6 +2751,7 @@ function GISImportTab() {
     <div style={{ maxWidth: '640px' }}>
       <ImportWizard
         layers={layers}
+        userRole={userRole}
         onImportComplete={() => {
           // Reload layers to update feature counts
           fetch('/api/map/layers')
@@ -2913,7 +2914,7 @@ function AdminPage({ userSession }) {
         {activeTab === 'avalerts' && <AVAlertsTab />}
         {activeTab === 'cad' && <CADSettingsTab />}
         {activeTab === 'features' && <FeaturesTab />}
-        {activeTab === 'gis_import' && <GISImportTab />}
+        {activeTab === 'gis_import' && <GISImportTab userRole={userSession?.role} />}
         {activeTab === 'help' && <HelpAdminTab />}
       </div>
     </div>

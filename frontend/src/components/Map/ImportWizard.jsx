@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-export default function ImportWizard({ layers = [], onImportComplete }) {
+export default function ImportWizard({ layers = [], onImportComplete, userRole }) {
   const [step, setStep] = useState(0);
   const [url, setUrl] = useState('');
   const [preview, setPreview] = useState(null);
@@ -121,8 +121,10 @@ export default function ImportWizard({ layers = [], onImportComplete }) {
     }
   };
 
+  const isAdmin = userRole === 'ADMIN';
+
   const handleDeleteConfig = async (configId, name) => {
-    if (!window.confirm(`Delete import config "${name}"? This does NOT delete already imported features.`)) return;
+    if (!window.confirm(`To check for new data, use Refresh.\n\nTo delete all features of this import AS WELL AS any edits your department has created, click OK to confirm.`)) return;
     try {
       await fetch(`/api/map/gis/configs/${configId}`, { method: 'DELETE' });
       loadConfigs();
@@ -169,17 +171,19 @@ export default function ImportWizard({ layers = [], onImportComplete }) {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '600', color: '#333' }}>{c.name}</div>
                     <div style={{ fontSize: '0.75rem', color: '#888' }}>
-                      {c.layer_name} · {c.last_refresh_count || 0} features
+                    {c.layer_name} · {c.last_refresh_count || 0} features synced
                     </div>
                   </div>
                   <button onClick={() => handleRefresh(c.id)} disabled={refreshingId === c.id}
                     style={{ padding: '6px 12px', background: '#f3f4f6', border: '1px solid #ddd', borderRadius: '4px', cursor: refreshingId === c.id ? 'wait' : 'pointer', fontSize: '0.8rem' }}>
                     {refreshingId === c.id ? 'Refreshing...' : 'Refresh'}
                   </button>
+                  {isAdmin && (
                   <button onClick={() => handleDeleteConfig(c.id, c.name)}
                     style={{ padding: '6px 10px', background: 'none', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', color: '#888' }}>
-                    ✕
+                      ✕
                   </button>
+                )}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: '#666', background: '#f9fafb', borderRadius: '4px', padding: '6px 8px' }}>
                   <div style={{ marginBottom: '2px' }}>
