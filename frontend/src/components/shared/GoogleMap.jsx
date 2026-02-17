@@ -267,14 +267,32 @@ export default function GoogleMap({
       return;
     }
 
-    // Build SVG icon cache per color
+    // Build icon cache
     const iconCache = {};
-    function getMarkerIcon(color, innerColor) {
-      const key = color + (innerColor || '');
+
+    // Emoji marker: colored circle background + emoji on top
+    function getEmojiMarkerIcon(emoji, color) {
+      const key = `emoji_${emoji}_${color}`;
+      if (iconCache[key]) return iconCache[key];
+      const size = 32;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 1}" fill="${color}" fill-opacity="0.15" stroke="${color}" stroke-width="2"/>
+        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" font-size="18">${emoji}</text>
+      </svg>`;
+      iconCache[key] = {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+        scaledSize: new window.google.maps.Size(size, size),
+        anchor: new window.google.maps.Point(size / 2, size / 2),
+      };
+      return iconCache[key];
+    }
+
+    // Hydrant-specific: outer ring + inner NFPA color fill
+    function getHydrantMarkerIcon(color, innerColor) {
+      const key = `hydrant_${color}_${innerColor || 'none'}`;
       if (iconCache[key]) return iconCache[key];
       let svg;
       if (innerColor) {
-        // Hydrant-style: outer ring + inner fill showing NFPA color
         svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
           <circle cx="11" cy="11" r="10" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
           <circle cx="11" cy="11" r="6" fill="${innerColor}" stroke="#fff" stroke-width="0.5"/>
@@ -432,22 +450,31 @@ export default function GoogleMap({
               clickable: false,
             });
           } else {
-            // For hydrants, show NFPA color as inner circle
+            // Choose icon based on layer type
             const isHydrant = data.layer_type === 'hydrant';
-            const innerColor = isHydrant ? resolveHydrantColor(item.properties) : null;
+            let markerIcon;
             let hoverTitle = item.title || '';
+
             if (isHydrant) {
+              // Hydrants: NFPA color dot system
+              const innerColor = resolveHydrantColor(item.properties);
+              markerIcon = getHydrantMarkerIcon(color, innerColor);
               const capColor = item.properties?.CAP_COLOR || item.properties?.BODY_COLOR;
               if (capColor) {
                 hoverTitle = (hoverTitle ? hoverTitle + ' — ' : '') + capColor;
               } else {
                 hoverTitle = (hoverTitle ? hoverTitle + ' — ' : '') + 'Color not supplied';
               }
+            } else {
+              // All other layers: emoji from layer definition
+              const emoji = data.layer_icon || 'ℹ️';
+              markerIcon = getEmojiMarkerIcon(emoji, color);
             }
+
             marker = new window.google.maps.Marker({
               position: { lat: item.lat, lng: item.lng },
               map,
-              icon: getMarkerIcon(color, innerColor),
+              icon: markerIcon,
               title: hoverTitle,
               zIndex: 10,
             });
