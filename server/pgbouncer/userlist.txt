@@ -1,0 +1,13 @@
+;; PgBouncer User Authentication
+;; /etc/pgbouncer/userlist.txt
+;;
+;; Format: "username" "md5hash"
+;; Hash = "md5" + md5(password + username)
+;;
+;; To generate a new hash:
+;;   echo -n "PASSWORDusername" | md5sum | awk '{print "md5" $1}'
+;;
+;; Or query PostgreSQL directly:
+;;   SELECT rolname, rolpassword FROM pg_authid WHERE rolname = 'dashboard';
+
+"dashboard" "md51c7f7ab511f70c343b91edc6632d858b"

@@ -3,11 +3,18 @@ Database connection for RunSheet - Multi-tenant
 
 Routes to correct database based on subdomain.
 Uses FastAPI dependency injection - the correct way.
+
+CONNECTION ROUTING (Phase B):
+- All connections go through PgBouncer on port 6432
+- PgBouncer handles connection pooling (transaction mode)
+- SQLAlchemy uses NullPool (no app-side pooling, PgBouncer does it)
+- Tenant lookup cached for 5 minutes (slug → database_name only)
 """
 
 from sqlalchemy import create_engine, text as sa_text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 from fastapi import Request
 import time
 import logging
@@ -24,34 +31,32 @@ _session_factories = {}
 _tenant_cache = {}
 _TENANT_CACHE_TTL = 300  # 5 minutes
 
-# Pooled engine for master DB lookups (replaces raw psycopg2)
+# PgBouncer base URL (port 6432)
+_PGBOUNCER_BASE = "postgresql://dashboard:dashboard@localhost:6432"
+
+# Pooled engine for master DB lookups
+# NullPool: PgBouncer handles pooling, not SQLAlchemy
 _master_engine = None
 
 
 def _get_master_engine():
-    """Get pooled engine for cadreport_master lookups."""
+    """Get NullPool engine for cadreport_master lookups via PgBouncer."""
     global _master_engine
     if _master_engine is None:
         _master_engine = create_engine(
-            "postgresql:///cadreport_master",
-            pool_size=2,
-            max_overflow=3,
-            pool_timeout=10,
-            pool_recycle=1800,
+            f"{_PGBOUNCER_BASE}/cadreport_master",
+            poolclass=NullPool,
             pool_pre_ping=True,
         )
     return _master_engine
 
 
 def _get_engine(db_name: str):
-    """Get or create engine for a database"""
+    """Get or create NullPool engine for a tenant database via PgBouncer."""
     if db_name not in _engines:
         _engines[db_name] = create_engine(
-            f"postgresql:///{db_name}",
-            pool_size=200,
-            max_overflow=100,
-            pool_timeout=30,
-            pool_recycle=1800,
+            f"{_PGBOUNCER_BASE}/{db_name}",
+            poolclass=NullPool,
             pool_pre_ping=True,
         )
     return _engines[db_name]
@@ -115,11 +120,11 @@ def _is_internal_ip(ip: str) -> bool:
     """Check if IP is localhost or private network (CAD listener, etc.)"""
     if not ip:
         return False
-    
+
     # Localhost
     if ip in ("127.0.0.1", "::1", "localhost"):
         return True
-    
+
     # Private networks (RFC 1918)
     if ip.startswith("192.168."):
         return True
@@ -132,7 +137,7 @@ def _is_internal_ip(ip: str) -> bool:
                 return True
         except:
             pass
-    
+
     return False
 
 
@@ -140,26 +145,26 @@ def _extract_slug(host: str) -> str:
     """Extract tenant slug from Host header"""
     if not host:
         return "glenmoorefc"
-    
+
     host = host.split(':')[0]  # Remove port
-    
+
     if host.endswith('.cadreport.com'):
         slug = host.replace('.cadreport.com', '')
         if slug and slug != 'www':
             return slug
-    
+
     if host.endswith('.cadreports.com'):
         slug = host.replace('.cadreports.com', '')
         if slug and slug != 'www':
             return slug
-    
+
     return "glenmoorefc"  # Default
 
 
 def get_db(request: Request):
     """
     FastAPI dependency - yields database session for the tenant in the request.
-    
+
     Tenant is determined by:
     1. X-Tenant header (trusted only from internal IPs - CAD listener)
     2. Host header subdomain (browser requests)
@@ -168,7 +173,7 @@ def get_db(request: Request):
     # Check for X-Tenant header from internal IPs (CAD listener)
     x_tenant = request.headers.get('x-tenant')
     client_ip = request.client.host if request.client else None
-    
+
     if x_tenant and _is_internal_ip(client_ip):
         # Trust X-Tenant from internal network
         slug = x_tenant
@@ -176,9 +181,9 @@ def get_db(request: Request):
     else:
         # Extract from Host header (browser requests)
         slug = _extract_slug(request.headers.get('host', ''))
-    
+
     db_name = _get_tenant_database(slug)
-    
+
     SessionLocal = _get_session_factory(db_name)
     db = SessionLocal()
     try:
@@ -190,10 +195,10 @@ def get_db(request: Request):
 def get_db_for_tenant(tenant_slug: str):
     """
     Get database session for a specific tenant by slug.
-    
+
     Used by background tasks and services that don't have a request object.
     Caller is responsible for closing the session.
-    
+
     Usage:
         db = next(get_db_for_tenant("glenmoorefc"))
         try:

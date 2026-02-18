@@ -8,12 +8,12 @@ from typing import Any, Optional
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-# Database connection string
-DATABASE_URL = "dbname=runsheet_db"
+# Database connection string — routed through PgBouncer (port 6432)
+DATABASE_URL = "postgresql://dashboard:dashboard@localhost:6432/runsheet_db"
 
 
 def get_db_connection():
-    """Get database connection"""
+    """Get database connection via PgBouncer"""
     return psycopg2.connect(DATABASE_URL)
 
 
