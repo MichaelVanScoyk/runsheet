@@ -31,6 +31,9 @@ Phase 5a - GIS Import (ArcGIS REST):
 Phase 5b - GIS Import (File Upload):
     POST /api/map/gis/file/upload        - Upload + parse file for preview
     POST /api/map/gis/file/import        - Import parsed file into layer
+
+Phase A - Viewport Optimization:
+    POST /api/map/layers/batch/clustered  - Batch viewport query (multiple layers, single request)
 """
 
 import json
@@ -40,7 +43,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import Optional
+from typing import List, Optional
 
 from database import get_db
 
@@ -615,30 +618,24 @@ async def get_layer_features_geojson(
 # VIEWPORT CLUSTERED FEATURES (server-side clustering for large datasets)
 # =============================================================================
 
-@router.get("/layers/{layer_id}/features/clustered")
-async def get_clustered_features(
+def _query_clustered_layer(
+    db: Session,
     layer_id: int,
-    bbox: str = Query(..., description="Bounding box: west,south,east,north"),
-    zoom: int = Query(14, ge=0, le=22),
-    db: Session = Depends(get_db),
-):
+    west: float, south: float, east: float, north: float,
+    zoom: int,
+) -> dict:
     """
-    Server-side clustered features for viewport-based map rendering.
-    
-    At low zoom (0-15): Returns grid-based clusters with count + centroid.
-    At high zoom (16+): Returns individual features.
-    
-    Grid cell size scales with zoom level so clusters look natural.
-    PostGIS does the heavy lifting — frontend only receives ~50-200 items.
+    Internal helper: query clustered/individual features for a single layer.
+    Returns the layer result dict or None if layer not found.
+    Used by both the individual GET endpoint and the batch POST endpoint.
     """
-    # Verify layer
     layer = db.execute(
         text("SELECT id, layer_type, name, icon, color, geometry_type, opacity, stroke_color, stroke_opacity, stroke_weight FROM map_layers WHERE id = :id AND is_active = true"),
         {"id": layer_id}
     ).fetchone()
 
     if not layer:
-        raise HTTPException(status_code=404, detail="Layer not found")
+        return None
 
     layer_style = {
         "fill_color": layer[4],
@@ -648,11 +645,6 @@ async def get_clustered_features(
         "stroke_weight": layer[9] or 2,
     }
 
-    try:
-        west, south, east, north = [float(x) for x in bbox.split(",")]
-    except (ValueError, IndexError):
-        raise HTTPException(status_code=400, detail="Invalid bbox format. Use: west,south,east,north")
-
     params = {
         "layer_id": layer_id,
         "west": west, "south": south, "east": east, "north": north,
@@ -661,133 +653,198 @@ async def get_clustered_features(
     is_point_layer = layer[5] in ('point', 'point_radius')
     CLUSTER_THRESHOLD_ZOOM = 16
 
-    try:
-        if is_point_layer and zoom < CLUSTER_THRESHOLD_ZOOM:
-            # --- SERVER-SIDE GRID CLUSTERING ---
-            # Grid cell size in degrees — smaller cells at higher zoom
-            # Approximate: zoom 10 ~ 0.1 deg, zoom 14 ~ 0.005 deg, zoom 15 ~ 0.003 deg
-            cell_size = 360.0 / (2 ** zoom) / 4
-            params["cell_size"] = cell_size
+    if is_point_layer and zoom < CLUSTER_THRESHOLD_ZOOM:
+        # --- SERVER-SIDE GRID CLUSTERING ---
+        cell_size = 360.0 / (2 ** zoom) / 4
+        params["cell_size"] = cell_size
 
-            result = db.execute(text("""
-                SELECT
-                    COUNT(*) as point_count,
-                    AVG(ST_Y(geometry)) as center_lat,
-                    AVG(ST_X(geometry)) as center_lng,
-                    MIN(id) as sample_id,
-                    MIN(title) as sample_title,
-                    CASE WHEN COUNT(*) = 1 THEN MIN(description) ELSE NULL END as single_description,
-                    CASE WHEN COUNT(*) = 1 THEN MIN(properties::text)::jsonb ELSE NULL END as single_properties,
-                    CASE WHEN COUNT(*) = 1 THEN MIN(address) ELSE NULL END as single_address,
-                    CASE WHEN COUNT(*) = 1 THEN MIN(radius_meters) ELSE NULL END as single_radius,
-                    CASE WHEN COUNT(*) = 1 THEN MIN(notes) ELSE NULL END as single_notes
-                FROM map_features
-                WHERE layer_id = :layer_id
-                  AND ST_Intersects(
-                      geometry,
-                      ST_MakeEnvelope(:west, :south, :east, :north, 4326)
-                  )
-                GROUP BY
-                    FLOOR(ST_X(geometry) / :cell_size),
-                    FLOOR(ST_Y(geometry) / :cell_size)
-                ORDER BY point_count DESC
-            """), params)
+        result = db.execute(text("""
+            SELECT
+                COUNT(*) as point_count,
+                AVG(ST_Y(geometry)) as center_lat,
+                AVG(ST_X(geometry)) as center_lng,
+                MIN(id) as sample_id,
+                MIN(title) as sample_title,
+                CASE WHEN COUNT(*) = 1 THEN MIN(description) ELSE NULL END as single_description,
+                CASE WHEN COUNT(*) = 1 THEN MIN(properties::text)::jsonb ELSE NULL END as single_properties,
+                CASE WHEN COUNT(*) = 1 THEN MIN(address) ELSE NULL END as single_address,
+                CASE WHEN COUNT(*) = 1 THEN MIN(radius_meters) ELSE NULL END as single_radius,
+                CASE WHEN COUNT(*) = 1 THEN MIN(notes) ELSE NULL END as single_notes
+            FROM map_features
+            WHERE layer_id = :layer_id
+              AND ST_Intersects(
+                  geometry,
+                  ST_MakeEnvelope(:west, :south, :east, :north, 4326)
+              )
+            GROUP BY
+                FLOOR(ST_X(geometry) / :cell_size),
+                FLOOR(ST_Y(geometry) / :cell_size)
+            ORDER BY point_count DESC
+        """), params)
 
-            items = []
-            for row in result:
-                count = row[0]
-                if count == 1:
-                    # Single feature — return with full details
-                    items.append({
-                        "type": "feature",
-                        "id": row[3],
-                        "lat": float(row[1]),
-                        "lng": float(row[2]),
-                        "title": row[4],
-                        "description": row[5],
-                        "properties": row[6] or {},
-                        "address": row[7],
-                        "radius_meters": row[8],
-                        "notes": row[9],
-                    })
-                else:
-                    # Cluster
-                    items.append({
-                        "type": "cluster",
-                        "count": count,
-                        "lat": float(row[1]),
-                        "lng": float(row[2]),
-                    })
-
-            return {
-                "layer_id": layer_id,
-                "layer_type": layer[1],
-                "layer_color": layer[4],
-                "layer_icon": layer[3],
-                "layer_style": layer_style,
-                "zoom": zoom,
-                "clustered": True,
-                "items": items,
-                "total_items": len(items),
-            }
-
-        else:
-            # --- INDIVIDUAL FEATURES (high zoom or polygon layers) ---
-            result = db.execute(text("""
-                SELECT mf.id, mf.title, mf.description, mf.properties,
-                       mf.radius_meters, mf.address, mf.notes,
-                       ST_Y(ST_Centroid(mf.geometry)) as lat,
-                       ST_X(ST_Centroid(mf.geometry)) as lng,
-                       ST_AsGeoJSON(mf.geometry) as geojson
-                FROM map_features mf
-                WHERE mf.layer_id = :layer_id
-                  AND ST_Intersects(
-                      mf.geometry,
-                      ST_MakeEnvelope(:west, :south, :east, :north, 4326)
-                  )
-                LIMIT 2000
-            """), params)
-
-            items = []
-            for row in result:
-                item = {
+        items = []
+        for row in result:
+            count = row[0]
+            if count == 1:
+                items.append({
                     "type": "feature",
-                    "id": row[0],
-                    "title": row[1],
-                    "description": row[2],
-                    "properties": row[3] or {},
-                    "radius_meters": row[4],
-                    "address": row[5],
-                    "notes": row[6],
-                    "lat": float(row[7]) if row[7] else None,
-                    "lng": float(row[8]) if row[8] else None,
-                    "layer_type": layer[1],
-                    "layer_icon": layer[3],
-                    "layer_color": layer[4],
-                }
-                # Include full geometry for polygon layers
-                if layer[5] == 'polygon' and row[9]:
-                    try:
-                        item["geometry"] = json.loads(row[9])
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-                items.append(item)
+                    "id": row[3],
+                    "lat": float(row[1]),
+                    "lng": float(row[2]),
+                    "title": row[4],
+                    "description": row[5],
+                    "properties": row[6] or {},
+                    "address": row[7],
+                    "radius_meters": row[8],
+                    "notes": row[9],
+                })
+            else:
+                items.append({
+                    "type": "cluster",
+                    "count": count,
+                    "lat": float(row[1]),
+                    "lng": float(row[2]),
+                })
 
-            return {
-                "layer_id": layer_id,
+        return {
+            "layer_id": layer_id,
+            "layer_type": layer[1],
+            "layer_color": layer[4],
+            "layer_icon": layer[3],
+            "layer_style": layer_style,
+            "zoom": zoom,
+            "clustered": True,
+            "items": items,
+            "total_items": len(items),
+        }
+
+    else:
+        # --- INDIVIDUAL FEATURES (high zoom or polygon layers) ---
+        result = db.execute(text("""
+            SELECT mf.id, mf.title, mf.description, mf.properties,
+                   mf.radius_meters, mf.address, mf.notes,
+                   ST_Y(ST_Centroid(mf.geometry)) as lat,
+                   ST_X(ST_Centroid(mf.geometry)) as lng,
+                   ST_AsGeoJSON(mf.geometry) as geojson
+            FROM map_features mf
+            WHERE mf.layer_id = :layer_id
+              AND ST_Intersects(
+                  mf.geometry,
+                  ST_MakeEnvelope(:west, :south, :east, :north, 4326)
+              )
+            LIMIT 2000
+        """), params)
+
+        items = []
+        for row in result:
+            item = {
+                "type": "feature",
+                "id": row[0],
+                "title": row[1],
+                "description": row[2],
+                "properties": row[3] or {},
+                "radius_meters": row[4],
+                "address": row[5],
+                "notes": row[6],
+                "lat": float(row[7]) if row[7] else None,
+                "lng": float(row[8]) if row[8] else None,
                 "layer_type": layer[1],
-                "layer_color": layer[4],
                 "layer_icon": layer[3],
-                "layer_style": layer_style,
-                "zoom": zoom,
-                "clustered": False,
-                "items": items,
-                "total_items": len(items),
+                "layer_color": layer[4],
             }
+            if layer[5] == 'polygon' and row[9]:
+                try:
+                    item["geometry"] = json.loads(row[9])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            items.append(item)
 
+        return {
+            "layer_id": layer_id,
+            "layer_type": layer[1],
+            "layer_color": layer[4],
+            "layer_icon": layer[3],
+            "layer_style": layer_style,
+            "zoom": zoom,
+            "clustered": False,
+            "items": items,
+            "total_items": len(items),
+        }
+
+
+@router.get("/layers/{layer_id}/features/clustered")
+async def get_clustered_features(
+    layer_id: int,
+    bbox: str = Query(..., description="Bounding box: west,south,east,north"),
+    zoom: int = Query(14, ge=0, le=22),
+    db: Session = Depends(get_db),
+):
+    """
+    Server-side clustered features for a single layer.
+    Kept for backward compatibility and single-layer use cases.
+    For multi-layer viewport loading, use POST /layers/batch/clustered.
+    """
+    try:
+        west, south, east, north = [float(x) for x in bbox.split(",")]
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail="Invalid bbox format. Use: west,south,east,north")
+
+    try:
+        result = _query_clustered_layer(db, layer_id, west, south, east, north, zoom)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Layer not found")
+        return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get clustered features for layer {layer_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to load clustered features")
+
+
+# =============================================================================
+# BATCH VIEWPORT CLUSTERED FEATURES (Phase A — reduces N requests to 1)
+# =============================================================================
+
+class BatchClusteredRequest(BaseModel):
+    layer_ids: List[int]
+    bbox: str
+    zoom: int = 14
+
+
+@router.post("/layers/batch/clustered")
+async def get_batch_clustered_features(
+    request: BatchClusteredRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Batch viewport query — returns clustered features for multiple layers
+    in a single request. Replaces N parallel GETs from the frontend.
+
+    Request: { "layer_ids": [1,3,5], "bbox": "west,south,east,north", "zoom": 14 }
+    Response: { "layers": { "1": {...}, "3": {...}, "5": {...} }, "zoom": 14 }
+    """
+    try:
+        west, south, east, north = [float(x) for x in request.bbox.split(",")]
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail="Invalid bbox format. Use: west,south,east,north")
+
+    if not request.layer_ids:
+        return {"layers": {}, "zoom": request.zoom}
+
+    if len(request.layer_ids) > 20:
+        raise HTTPException(status_code=400, detail="Maximum 20 layers per batch request")
+
+    layers_result = {}
+    for lid in request.layer_ids:
+        try:
+            data = _query_clustered_layer(db, lid, west, south, east, north, request.zoom)
+            if data is not None:
+                layers_result[str(lid)] = data
+        except Exception as e:
+            logger.warning(f"Batch: failed to query layer {lid}: {e}")
+            # Skip failed layers, don't fail the whole batch
+
+    return {"layers": layers_result, "zoom": request.zoom}
 
 
 # =============================================================================

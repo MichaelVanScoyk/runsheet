@@ -84,6 +84,7 @@ export default function GoogleMap({
   const stationMarkerRef = useRef(null);
   const idleListenerRef = useRef(null);
   const fetchControllerRef = useRef(null); // AbortController for in-flight fetches
+  const debounceTimerRef = useRef(null); // 300ms debounce for idle event
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -359,26 +360,28 @@ export default function GoogleMap({
       const bbox = `${sw.lng()},${sw.lat()},${ne.lng()},${ne.lat()}`;
       const zoom = map.getZoom();
 
-      // Fetch all visible layers in parallel
-      const fetches = currentLayers.map(layer =>
-        fetch(`/api/map/layers/${layer.layerId}/features/clustered?bbox=${bbox}&zoom=${zoom}`, { signal })
-          .then(r => r.ok ? r.json() : null)
-          .catch(e => {
-            if (e.name !== 'AbortError') console.warn(`Failed to fetch layer ${layer.layerId}:`, e);
-            return null;
-          })
-      );
-
-      let results;
+      // Single batch POST replaces N parallel GETs
+      const layerIds = currentLayers.map(l => l.layerId);
+      let batchData;
       try {
-        results = await Promise.all(fetches);
+        const response = await fetch('/api/map/layers/batch/clustered', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ layer_ids: layerIds, bbox, zoom }),
+          signal,
+        });
+        if (!response.ok) return;
+        batchData = await response.json();
       } catch (e) {
-        if (e.name !== 'AbortError') console.warn('Viewport fetch failed:', e);
+        if (e.name !== 'AbortError') console.warn('Viewport batch fetch failed:', e);
         return;
       }
 
       // Check if we were aborted while awaiting
       if (signal.aborted) return;
+
+      // Convert batch response to array format for rendering
+      const results = layerIds.map(lid => batchData.layers?.[String(lid)] || null);
 
       // Clear old viewport markers
       viewportMarkersRef.current.forEach(m => m.setMap(null));
@@ -505,8 +508,11 @@ export default function GoogleMap({
       });
     }
 
-    // Idle fires after every pan/zoom AND on initial map load
-    idleListenerRef.current = map.addListener('idle', loadViewportData);
+    // 300ms debounce on idle — rapid panning collapses into a single fetch cycle
+    idleListenerRef.current = map.addListener('idle', () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(loadViewportData, 300);
+    });
 
     // If bounds already available (map was ready before this effect ran), load now
     if (map.getBounds()) {
@@ -514,6 +520,10 @@ export default function GoogleMap({
     }
 
     return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
       if (idleListenerRef.current) {
         window.google.maps.event.removeListener(idleListenerRef.current);
         idleListenerRef.current = null;
