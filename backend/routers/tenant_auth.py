@@ -1,31 +1,52 @@
 """
-Tenant Authentication Router
+Tenant Authentication Router — Phase C (JWT)
 
 Handles fire department (tenant) level authentication:
-- Login with department credentials
-- Logout
-- Session validation
-- Signup requests
+- Login: validates credentials, issues JWT access token + refresh token
+- Refresh: exchanges refresh token for new access token
+- Logout: revokes refresh token, clears cookies
+- Session check: validates JWT (no DB hit) for frontend auth state
+- Signup requests: unchanged from Phase B
+
+Two-tier auth:
+- Tenant-level (auth_level="tenant"): department shared password login
+- User-level (auth_level="user"): individual personnel login (future)
+
+Transition strategy:
+- New logins get JWT cookies (cadreport_jwt + cadreport_refresh)
+- Legacy session cookies (tenant_session) still work via middleware fallback
+- No forced logout — existing sessions expire naturally or on next login
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
+from sqlalchemy import text, func
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timezone
 from typing import Optional
-import secrets
 import bcrypt
 import logging
 
-from sqlalchemy import func
 from master_database import get_master_session
-from master_models import Tenant, TenantRequest, TenantSession
+from master_models import Tenant, TenantRequest, TenantSession, RefreshToken
+from jwt_auth import (
+    create_access_token,
+    create_refresh_token,
+    validate_access_token,
+    set_auth_cookies,
+    clear_auth_cookies,
+    extract_token_from_request,
+    REFRESH_COOKIE,
+    REFRESH_TOKEN_LIFETIME,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-SESSION_COOKIE_NAME = "tenant_session"
-SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
+
+# =============================================================================
+# REQUEST / RESPONSE MODELS
+# =============================================================================
 
 
 class TenantLoginRequest(BaseModel):
@@ -60,6 +81,11 @@ class SessionCheckResponse(BaseModel):
     name: Optional[str] = None
 
 
+# =============================================================================
+# HELPERS
+# =============================================================================
+
+
 def verify_tenant_password(password: str, password_hash: str) -> bool:
     try:
         return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
@@ -70,172 +96,6 @@ def verify_tenant_password(password: str, password_hash: str) -> bool:
 
 def hash_tenant_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
-
-def generate_session_token() -> str:
-    return secrets.token_urlsafe(32)
-
-
-def get_session_from_cookie(request: Request, db: Session) -> Optional[TenantSession]:
-    token = request.cookies.get(SESSION_COOKIE_NAME)
-    if not token:
-        return None
-    
-    session = db.query(TenantSession).filter(
-        TenantSession.session_token == token
-    ).first()
-    
-    if not session:
-        return None
-    
-    if session.expires_at and session.expires_at < datetime.now(timezone.utc):
-        db.delete(session)
-        db.commit()
-        return None
-    
-    return session
-
-
-def get_tenant_from_session(request: Request, db: Session) -> Optional[Tenant]:
-    session = get_session_from_cookie(request, db)
-    if not session:
-        return None
-    
-    tenant = db.query(Tenant).filter(
-        Tenant.id == session.tenant_id,
-        func.upper(Tenant.status) == 'ACTIVE'
-    ).first()
-    
-    if tenant:
-        session.last_used_at = datetime.now(timezone.utc)
-        db.commit()
-    
-    return tenant
-
-
-async def require_tenant_auth(
-    request: Request,
-    db: Session = Depends(get_master_session)
-) -> Tenant:
-    tenant = get_tenant_from_session(request, db)
-    if not tenant:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return tenant
-
-
-@router.post("/login", response_model=TenantLoginResponse)
-async def tenant_login(
-    data: TenantLoginRequest,
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_master_session)
-):
-    tenant = db.query(Tenant).filter(
-        Tenant.slug == data.slug.lower().strip()
-    ).first()
-    
-    if not tenant:
-        raise HTTPException(status_code=401, detail="Invalid department or password")
-    
-    if tenant.status.upper() != 'ACTIVE':
-        raise HTTPException(status_code=403, detail=f"Account is {tenant.status}")
-    
-    if not verify_tenant_password(data.password, tenant.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid department or password")
-    
-    session_token = generate_session_token()
-    session = TenantSession(
-        tenant_id=tenant.id,
-        session_token=session_token,
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        expires_at=None,
-    )
-    db.add(session)
-    
-    tenant.last_login_at = datetime.now(timezone.utc)
-    db.commit()
-    
-    # Set cookie scoped to the specific subdomain
-    # Extract full subdomain host to prevent cookie leaking across tenants
-    host = request.headers.get("host", "").split(':')[0].lower()
-    cookie_domain = host if '.cadreport.com' in host else None
-    
-    cookie_kwargs = dict(
-        key=SESSION_COOKIE_NAME,
-        value=session_token,
-        max_age=SESSION_COOKIE_MAX_AGE,
-        httponly=True,
-        secure=True,
-        samesite="lax",
-    )
-    # Only set domain for production subdomains (not localhost)
-    if cookie_domain:
-        cookie_kwargs["domain"] = cookie_domain
-    
-    response.set_cookie(**cookie_kwargs)
-    
-    logger.info(f"Tenant login: {tenant.slug}")
-    
-    return TenantLoginResponse(
-        status="ok",
-        tenant_id=tenant.id,
-        slug=tenant.slug,
-        name=tenant.name,
-        database_name=tenant.database_name,
-        timezone=tenant.timezone,
-    )
-
-
-@router.post("/logout")
-async def tenant_logout(
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_master_session)
-):
-    session = get_session_from_cookie(request, db)
-    
-    if session:
-        db.delete(session)
-        db.commit()
-    
-    # Delete cookie
-    response.delete_cookie(SESSION_COOKIE_NAME)
-    
-    return {"status": "ok", "message": "Logged out"}
-
-
-@router.get("/session", response_model=SessionCheckResponse)
-async def check_session(
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_master_session)
-):
-    tenant = get_tenant_from_session(request, db)
-    
-    if tenant:
-        # SECURITY: Validate session tenant matches the subdomain being accessed
-        # Prevents cross-tenant data exposure when cookies leak across subdomains
-        host = request.headers.get("host", "")
-        subdomain_slug = _extract_subdomain_slug(host)
-        
-        if subdomain_slug and tenant.slug.lower() != subdomain_slug.lower():
-            logger.warning(
-                f"Tenant session mismatch: cookie belongs to '{tenant.slug}' "
-                f"but accessed from subdomain '{subdomain_slug}' - rejecting session"
-            )
-            # Clear the stale cookie so it doesn't keep causing mismatches
-            response.delete_cookie(SESSION_COOKIE_NAME)
-            return SessionCheckResponse(authenticated=False)
-        
-        return SessionCheckResponse(
-            authenticated=True,
-            tenant_id=tenant.id,
-            slug=tenant.slug,
-            name=tenant.name,
-        )
-    
-    return SessionCheckResponse(authenticated=False)
 
 
 def _extract_subdomain_slug(host: str) -> Optional[str]:
@@ -254,27 +114,313 @@ def _extract_subdomain_slug(host: str) -> Optional[str]:
     return None
 
 
+# =============================================================================
+# LOGIN — Issues JWT + refresh token
+# =============================================================================
+
+
+@router.post("/login", response_model=TenantLoginResponse)
+async def tenant_login(
+    data: TenantLoginRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_master_session)
+):
+    tenant = db.query(Tenant).filter(
+        Tenant.slug == data.slug.lower().strip()
+    ).first()
+
+    if not tenant:
+        raise HTTPException(status_code=401, detail="Invalid department or password")
+
+    if tenant.status.upper() != 'ACTIVE':
+        raise HTTPException(status_code=403, detail=f"Account is {tenant.status}")
+
+    if not verify_tenant_password(data.password, tenant.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid department or password")
+
+    # Create JWT access token
+    access_token = create_access_token(
+        tenant_slug=tenant.slug,
+        tenant_db=tenant.database_name,
+        auth_level="tenant",
+        tenant_id=tenant.id,
+        tenant_name=tenant.name,
+    )
+
+    # Create refresh token and store in DB
+    refresh_token_str = create_refresh_token()
+    refresh_record = RefreshToken(
+        tenant_id=tenant.id,
+        auth_level="tenant",
+        token=refresh_token_str,
+        expires_at=datetime.now(timezone.utc) + REFRESH_TOKEN_LIFETIME,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    db.add(refresh_record)
+
+    # Update last login
+    tenant.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+
+    # Set cookies
+    host = request.headers.get("host", "")
+    set_auth_cookies(response, access_token, refresh_token_str, host)
+
+    # Also clear legacy session cookie if present (clean transition)
+    legacy_token = request.cookies.get("tenant_session")
+    if legacy_token:
+        response.delete_cookie("tenant_session")
+
+    logger.info(f"Tenant login (JWT): {tenant.slug}")
+
+    return TenantLoginResponse(
+        status="ok",
+        tenant_id=tenant.id,
+        slug=tenant.slug,
+        name=tenant.name,
+        database_name=tenant.database_name,
+        timezone=tenant.timezone,
+    )
+
+
+# =============================================================================
+# REFRESH — Exchange refresh token for new access token
+# =============================================================================
+
+
+@router.post("/refresh")
+async def refresh_access_token(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_master_session)
+):
+    """
+    Exchange a valid refresh token for a new JWT access token.
+
+    Called automatically by the frontend when the access token expires (401).
+    One DB hit per 15-minute cycle — the only master DB query in normal flow.
+    """
+    refresh_token_str = request.cookies.get(REFRESH_COOKIE)
+    if not refresh_token_str:
+        raise HTTPException(status_code=401, detail="No refresh token")
+
+    # Look up refresh token
+    refresh_record = db.query(RefreshToken).filter(
+        RefreshToken.token == refresh_token_str,
+        RefreshToken.revoked_at.is_(None),
+    ).first()
+
+    if not refresh_record:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    # Check expiration
+    if refresh_record.expires_at < datetime.now(timezone.utc):
+        # Clean up expired token
+        db.delete(refresh_record)
+        db.commit()
+        raise HTTPException(status_code=401, detail="Refresh token expired")
+
+    # Look up tenant (confirm still active)
+    tenant = db.query(Tenant).filter(
+        Tenant.id == refresh_record.tenant_id,
+        func.upper(Tenant.status) == 'ACTIVE',
+    ).first()
+
+    if not tenant:
+        # Tenant suspended/deleted — revoke the refresh token
+        refresh_record.revoked_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(status_code=401, detail="Tenant not active")
+
+    # Issue new access token
+    access_token = create_access_token(
+        tenant_slug=tenant.slug,
+        tenant_db=tenant.database_name,
+        auth_level=refresh_record.auth_level,
+        user_id=refresh_record.user_id,
+        tenant_id=tenant.id,
+        tenant_name=tenant.name,
+    )
+
+    # Update last_used timestamp
+    refresh_record.last_used_at = datetime.now(timezone.utc)
+    db.commit()
+
+    # Set new access token cookie (refresh cookie unchanged — it's still valid)
+    host = request.headers.get("host", "")
+    from jwt_auth import ACCESS_COOKIE, ACCESS_TOKEN_LIFETIME
+    cookie_domain = None
+    host_clean = host.split(":")[0].lower()
+    if ".cadreport.com" in host_clean:
+        cookie_domain = host_clean
+
+    cookie_kwargs = dict(
+        key=ACCESS_COOKIE,
+        value=access_token,
+        max_age=int(ACCESS_TOKEN_LIFETIME.total_seconds()),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
+    if cookie_domain:
+        cookie_kwargs["domain"] = cookie_domain
+
+    response.set_cookie(**cookie_kwargs)
+
+    return {
+        "status": "ok",
+        "tenant_slug": tenant.slug,
+        "auth_level": refresh_record.auth_level,
+    }
+
+
+# =============================================================================
+# LOGOUT — Revoke refresh token, clear cookies
+# =============================================================================
+
+
+@router.post("/logout")
+async def tenant_logout(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_master_session)
+):
+    # Revoke refresh token if present
+    refresh_token_str = request.cookies.get(REFRESH_COOKIE)
+    if refresh_token_str:
+        refresh_record = db.query(RefreshToken).filter(
+            RefreshToken.token == refresh_token_str,
+        ).first()
+        if refresh_record:
+            refresh_record.revoked_at = datetime.now(timezone.utc)
+
+    # Also clean up legacy session if present
+    legacy_token = request.cookies.get("tenant_session")
+    if legacy_token:
+        legacy_session = db.query(TenantSession).filter(
+            TenantSession.session_token == legacy_token
+        ).first()
+        if legacy_session:
+            db.delete(legacy_session)
+
+    db.commit()
+
+    # Clear all auth cookies
+    host = request.headers.get("host", "")
+    clear_auth_cookies(response, host)
+
+    return {"status": "ok", "message": "Logged out"}
+
+
+# =============================================================================
+# SESSION CHECK — JWT validation (no DB hit for valid tokens)
+# =============================================================================
+
+
+@router.get("/session", response_model=SessionCheckResponse)
+async def check_session(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_master_session)
+):
+    """
+    Check authentication status. Used by frontend on page load.
+    
+    For JWT tokens: validates signature only (no DB hit).
+    For legacy sessions: falls back to DB lookup (transition period).
+    """
+    host = request.headers.get("host", "")
+    subdomain_slug = _extract_subdomain_slug(host)
+
+    # Try JWT first
+    token = extract_token_from_request(request)
+    if token:
+        claims = validate_access_token(token)
+        if claims:
+            # Verify token's tenant matches subdomain
+            if subdomain_slug and claims.tenant_slug.lower() != subdomain_slug.lower():
+                logger.warning(
+                    f"JWT tenant mismatch: token={claims.tenant_slug} subdomain={subdomain_slug}"
+                )
+                clear_auth_cookies(response, host)
+                return SessionCheckResponse(authenticated=False)
+
+            return SessionCheckResponse(
+                authenticated=True,
+                tenant_id=claims.tenant_id,
+                slug=claims.tenant_slug,
+                name=claims.tenant_name,
+            )
+
+    # Fallback: try legacy session cookie (transition period)
+    legacy_token = request.cookies.get("tenant_session")
+    if legacy_token:
+        session = db.query(TenantSession).filter(
+            TenantSession.session_token == legacy_token
+        ).first()
+
+        if session:
+            # Check expiration
+            if session.expires_at and session.expires_at < datetime.now(timezone.utc):
+                db.delete(session)
+                db.commit()
+                return SessionCheckResponse(authenticated=False)
+
+            tenant = db.query(Tenant).filter(
+                Tenant.id == session.tenant_id,
+                func.upper(Tenant.status) == 'ACTIVE'
+            ).first()
+
+            if tenant:
+                # Verify tenant matches subdomain
+                if subdomain_slug and tenant.slug.lower() != subdomain_slug.lower():
+                    logger.warning(
+                        f"Legacy session tenant mismatch: session={tenant.slug} subdomain={subdomain_slug}"
+                    )
+                    response.delete_cookie("tenant_session")
+                    return SessionCheckResponse(authenticated=False)
+
+                session.last_used_at = datetime.now(timezone.utc)
+                db.commit()
+
+                return SessionCheckResponse(
+                    authenticated=True,
+                    tenant_id=tenant.id,
+                    slug=tenant.slug,
+                    name=tenant.name,
+                )
+
+    return SessionCheckResponse(authenticated=False)
+
+
+# =============================================================================
+# SIGNUP REQUESTS — Unchanged from Phase B
+# =============================================================================
+
+
 @router.post("/signup-request")
 async def submit_signup_request(
     data: TenantSignupRequest,
     db: Session = Depends(get_master_session)
 ):
     slug = data.requested_slug.lower().strip()
-    
+
     if not slug.isalnum() or len(slug) < 3 or len(slug) > 50:
         raise HTTPException(status_code=400, detail="Subdomain must be 3-50 alphanumeric characters")
-    
+
     existing = db.query(Tenant).filter(Tenant.slug == slug).first()
     if existing:
         raise HTTPException(status_code=400, detail="This subdomain is already taken")
-    
+
     pending = db.query(TenantRequest).filter(
         TenantRequest.requested_slug == slug,
         func.upper(TenantRequest.status) == 'PENDING'
     ).first()
     if pending:
         raise HTTPException(status_code=400, detail="A request for this subdomain is already pending")
-    
+
     tenant_request = TenantRequest(
         requested_slug=slug,
         department_name=data.department_name.strip(),
@@ -288,9 +434,9 @@ async def submit_signup_request(
     )
     db.add(tenant_request)
     db.commit()
-    
+
     logger.info(f"New tenant request: {slug} - {data.department_name}")
-    
+
     # Send notification email to admin
     try:
         from email_service import send_lead_notification
@@ -305,8 +451,7 @@ async def submit_signup_request(
         )
     except Exception as e:
         logger.error(f"Failed to send lead notification email: {e}")
-        # Don't fail the request if email fails
-    
+
     return {
         "status": "ok",
         "message": "Request submitted. You will be contacted once approved.",
@@ -320,12 +465,12 @@ async def list_tenant_requests(
     db: Session = Depends(get_master_session)
 ):
     query = db.query(TenantRequest).order_by(TenantRequest.created_at.desc())
-    
+
     if status:
         query = query.filter(TenantRequest.status == status)
-    
+
     requests = query.all()
-    
+
     return [
         {
             "id": r.id,
@@ -354,15 +499,15 @@ async def approve_tenant_request(
     tenant_request = db.query(TenantRequest).filter(
         TenantRequest.id == request_id
     ).first()
-    
+
     if not tenant_request:
         raise HTTPException(status_code=404, detail="Request not found")
-    
+
     if tenant_request.status.upper() != 'PENDING':
         raise HTTPException(status_code=400, detail=f"Request is already {tenant_request.status}")
-    
+
     database_name = f"runsheet_{tenant_request.requested_slug}"
-    
+
     tenant = Tenant(
         slug=tenant_request.requested_slug,
         name=tenant_request.department_name,
@@ -374,16 +519,16 @@ async def approve_tenant_request(
     )
     db.add(tenant)
     db.flush()
-    
+
     tenant_request.status = 'APPROVED'
     tenant_request.reviewed_by = admin_name
     tenant_request.reviewed_at = datetime.now(timezone.utc)
     tenant_request.tenant_id = tenant.id
-    
+
     db.commit()
-    
+
     logger.info(f"Tenant approved: {tenant.slug}")
-    
+
     return {
         "status": "ok",
         "message": f"Tenant {tenant.slug} created",
@@ -402,18 +547,18 @@ async def reject_tenant_request(
     tenant_request = db.query(TenantRequest).filter(
         TenantRequest.id == request_id
     ).first()
-    
+
     if not tenant_request:
         raise HTTPException(status_code=404, detail="Request not found")
-    
+
     if tenant_request.status.upper() != 'PENDING':
         raise HTTPException(status_code=400, detail=f"Request is already {tenant_request.status}")
-    
+
     tenant_request.status = 'REJECTED'
     tenant_request.reviewed_by = admin_name
     tenant_request.reviewed_at = datetime.now(timezone.utc)
     tenant_request.rejection_reason = reason
-    
+
     db.commit()
-    
+
     return {"status": "ok", "message": "Request rejected"}

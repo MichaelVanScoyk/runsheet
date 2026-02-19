@@ -9,6 +9,65 @@ const api = axios.create({
 });
 
 // ============================================================================
+// JWT REFRESH INTERCEPTOR (Phase C)
+// ============================================================================
+// When an API call returns 401, attempt to refresh the JWT access token.
+// If refresh succeeds, retry the original request transparently.
+// If refresh fails, the user needs to re-login.
+
+let isRefreshing = false;
+let refreshQueue = [];
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Only intercept 401s that aren't already retries or auth endpoints
+    if (
+      error.response?.status !== 401 ||
+      originalRequest._retry ||
+      originalRequest.url === '/tenant/login' ||
+      originalRequest.url === '/tenant/refresh' ||
+      originalRequest.url === '/tenant/session'
+    ) {
+      return Promise.reject(error);
+    }
+
+    // If already refreshing, queue this request
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        refreshQueue.push({ resolve, reject, config: originalRequest });
+      });
+    }
+
+    originalRequest._retry = true;
+    isRefreshing = true;
+
+    try {
+      await axios.post(`${API_BASE}/tenant/refresh`, {}, { withCredentials: true });
+
+      // Refresh succeeded — retry queued requests
+      refreshQueue.forEach(({ resolve, config }) => resolve(api(config)));
+      refreshQueue = [];
+
+      // Retry the original request
+      return api(originalRequest);
+    } catch (refreshError) {
+      // Refresh failed — reject all queued requests
+      refreshQueue.forEach(({ reject }) => reject(refreshError));
+      refreshQueue = [];
+
+      // Don't force redirect here — let the component handle it
+      // (App.jsx checkTenantSession will detect unauthenticated state)
+      return Promise.reject(error);
+    } finally {
+      isRefreshing = false;
+    }
+  }
+);
+
+// ============================================================================
 // INCIDENTS
 // ============================================================================
 

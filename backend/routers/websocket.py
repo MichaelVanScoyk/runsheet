@@ -29,6 +29,8 @@ import logging
 import asyncio
 import uuid
 
+from jwt_auth import extract_token_from_websocket_params, validate_access_token
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -67,10 +69,10 @@ _av_connections_lock = asyncio.Lock()
 SERVER_PING_INTERVAL = 30
 
 
-def _extract_tenant_from_host(host: str) -> str:
-    """Extract tenant slug from Host header (same logic as database.py)"""
+def _extract_tenant_from_host(host: str) -> Optional[str]:
+    """Extract tenant slug from Host header. Returns None if not determinable."""
     if not host:
-        return "glenmoorefc"
+        return None
     
     host = host.split(':')[0]  # Remove port
     
@@ -84,7 +86,7 @@ def _extract_tenant_from_host(host: str) -> str:
         if slug and slug != 'www':
             return slug
     
-    return "glenmoorefc"  # Default
+    return None
 
 
 # =============================================================================
@@ -413,12 +415,27 @@ async def websocket_incidents(websocket: WebSocket):
     """
     WebSocket endpoint for real-time incident updates.
     
-    Connection is automatically associated with tenant based on Host header.
+    Phase C: JWT validated at handshake before accept(). User-level JWT required.
+    Falls back to host-based identification during transition period.
     Server sends periodic pings to keep connection alive through Cloudflare/nginx.
     """
-    # Extract tenant from Host header
-    host = websocket.headers.get('host', '')
-    tenant_slug = _extract_tenant_from_host(host)
+    # Authenticate via JWT (query param or cookie)
+    token = extract_token_from_websocket_params(websocket)
+    if token:
+        claims = validate_access_token(token)
+        if not claims:
+            await websocket.close(code=4001, reason="Invalid or expired token")
+            return
+        tenant_slug = claims.tenant_slug
+    else:
+        # Transition fallback: identify tenant from Host header
+        # TODO: Remove this fallback once all clients send JWT
+        host = websocket.headers.get('host', '')
+        tenant_slug = _extract_tenant_from_host(host)
+        if not tenant_slug:
+            await websocket.close(code=4002, reason="Cannot determine tenant")
+            return
+        logger.info(f"WebSocket /ws/incidents connected WITHOUT JWT (transition): {tenant_slug}")
     
     # Accept the connection
     await websocket.accept()
@@ -474,13 +491,28 @@ async def websocket_av_alerts(websocket: WebSocket):
     """
     WebSocket endpoint for Audio/Visual alerts.
     
-    Sends dispatch and close alerts for browser sound/TTS notifications.
-    Connection is automatically associated with tenant based on Host header.
+    Phase C: JWT validated at handshake before accept(). Tenant-level JWT sufficient
+    (StationBell devices don't have individual logins).
+    Falls back to host-based identification during transition period.
     Tracked in the device registry for identification and management.
     """
-    # Extract tenant from Host header
-    host = websocket.headers.get('host', '')
-    tenant_slug = _extract_tenant_from_host(host)
+    # Authenticate via JWT (query param or cookie)
+    token = extract_token_from_websocket_params(websocket)
+    if token:
+        claims = validate_access_token(token)
+        if not claims:
+            await websocket.close(code=4001, reason="Invalid or expired token")
+            return
+        tenant_slug = claims.tenant_slug
+    else:
+        # Transition fallback: identify tenant from Host header
+        # TODO: Remove this fallback once all clients send JWT
+        host = websocket.headers.get('host', '')
+        tenant_slug = _extract_tenant_from_host(host)
+        if not tenant_slug:
+            await websocket.close(code=4002, reason="Cannot determine tenant")
+            return
+        logger.info(f"WebSocket /ws/AValerts connected WITHOUT JWT (transition): {tenant_slug}")
     
     # Accept the connection
     await websocket.accept()

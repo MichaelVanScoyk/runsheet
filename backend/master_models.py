@@ -152,6 +152,43 @@ class TenantSession(MasterBase):
     last_used_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class RefreshToken(MasterBase):
+    """
+    JWT refresh token storage (Phase C).
+    
+    Access tokens (JWT) are short-lived (15 min) and validated by signature only.
+    Refresh tokens are long-lived (30 days) and validated against this table.
+    
+    One DB hit per 15-minute refresh cycle instead of one per request.
+    
+    The tenant_sessions table stays in parallel during transition.
+    """
+    __tablename__ = "refresh_tokens"
+    
+    id = Column(Integer, primary_key=True)
+    
+    # Who this token belongs to
+    tenant_id = Column(Integer, ForeignKey('tenants.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer)               # Null for tenant-level auth
+    auth_level = Column(String(20), nullable=False, default='tenant')  # "tenant" or "user"
+    
+    # The token itself (opaque, not JWT)
+    token = Column(String(255), unique=True, nullable=False, index=True)
+    
+    # Lifecycle
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    revoked_at = Column(DateTime(timezone=True))  # Null = active, set = revoked
+    
+    # Context (for audit / device management)
+    ip_address = Column(String(45))
+    user_agent = Column(Text)
+    device_info = Column(String(200))       # "Chrome - Windows", "StationBell Bay 1", etc.
+    
+    # Audit
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_used_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class MasterAdmin(MasterBase):
     """
     System administrator account for CADReport platform.

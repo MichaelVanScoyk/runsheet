@@ -60,7 +60,19 @@ from routers.reports import router as reports_router
 from database import engine, Base
 from master_database import MasterSessionLocal
 from master_models import TenantSession, Tenant
+from jwt_auth import (
+    validate_access_token,
+    extract_token_from_request,
+    is_tenant_revoked,
+    refresh_revocation_cache,
+    start_revocation_refresh_task,
+    LEGACY_SESSION_COOKIE,
+)
 from datetime import datetime, timezone
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Routes that don't require tenant authentication
 PUBLIC_PATHS = [
@@ -70,6 +82,7 @@ PUBLIC_PATHS = [
     "/api/tenant/logout",
     "/api/tenant/session",
     "/api/tenant/signup-request",
+    "/api/tenant/refresh",
     # Master admin routes (have their own auth)
     "/api/master/login",
     "/api/master/logout",
@@ -152,9 +165,12 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
     """
     Middleware to enforce tenant authentication on all API routes.
     
+    Phase C: JWT-first authentication with legacy session fallback.
+    
     1. Always identifies tenant from subdomain (for email context, etc.)
-    2. Checks for valid tenant_session cookie for protected routes
+    2. For protected routes, validates JWT (no DB hit) or falls back to legacy session
     3. Allows internal requests from localhost/LAN (CAD listener, etc.) without auth
+    4. Checks emergency revocation cache (refreshed every 60s)
     """
     
     async def dispatch(self, request: Request, call_next):
@@ -195,7 +211,7 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         # STEP 2: Check if this route requires authentication
         # =====================================================================
         
-        # Allow public paths without session
+        # Allow public paths without auth
         if path in PUBLIC_PATHS:
             return await call_next(request)
         
@@ -210,87 +226,132 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         
         # =====================================================================
-        # STEP 3: Validate session for protected routes
+        # STEP 3: Validate authentication — JWT first, legacy session fallback
         # =====================================================================
-        session_token = request.cookies.get("tenant_session")
         
-        if not session_token:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Not authenticated - no session"}
-            )
+        # --- Try JWT (no DB hit) ---
+        jwt_token = extract_token_from_request(request)
+        if jwt_token:
+            claims = validate_access_token(jwt_token)
+            if claims:
+                # Check emergency revocation
+                if is_tenant_revoked(claims.tenant_slug):
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Tenant suspended"}
+                    )
+                
+                # SECURITY: Validate JWT tenant matches subdomain
+                if tenant_slug and claims.tenant_slug.lower() != tenant_slug.lower():
+                    logger.warning(
+                        f"Middleware: JWT tenant '{claims.tenant_slug}' does not match "
+                        f"subdomain '{tenant_slug}' - rejecting request"
+                    )
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Token does not match this department"}
+                    )
+                
+                # Store tenant info from JWT claims (no DB needed)
+                request.state.tenant_slug = claims.tenant_slug
+                request.state.tenant_id = claims.tenant_id
+                request.state.tenant_db = claims.tenant_db
+                request.state.auth_level = claims.auth_level
+                request.state.jwt_claims = claims
+                
+                # Store user info if user-level auth
+                if claims.is_user_level:
+                    request.state.user_id = claims.user_id
+                    request.state.user_role = claims.role
+                
+                return await call_next(request)
         
-        # Validate session against database
-        db = MasterSessionLocal()
-        try:
-            session = db.query(TenantSession).filter(
-                TenantSession.session_token == session_token
-            ).first()
-            
-            if not session:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Not authenticated - invalid session"}
-                )
-            
-            # Check expiration (if set)
-            if session.expires_at and session.expires_at < datetime.now(timezone.utc):
-                db.delete(session)
+        # --- Fallback: legacy session cookie (transition period) ---
+        session_token = request.cookies.get(LEGACY_SESSION_COOKIE)
+        if session_token:
+            db = MasterSessionLocal()
+            try:
+                session = db.query(TenantSession).filter(
+                    TenantSession.session_token == session_token
+                ).first()
+                
+                if not session:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Not authenticated - invalid session"}
+                    )
+                
+                # Check expiration (if set)
+                if session.expires_at and session.expires_at < datetime.now(timezone.utc):
+                    db.delete(session)
+                    db.commit()
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Session expired"}
+                    )
+                
+                # Check tenant is active
+                tenant = db.query(Tenant).filter(
+                    Tenant.id == session.tenant_id,
+                    Tenant.status == 'active'
+                ).first()
+                
+                if not tenant:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Tenant not found or inactive"}
+                    )
+                
+                # SECURITY: Validate session tenant matches subdomain
+                if tenant_slug and tenant.slug.lower() != tenant_slug.lower():
+                    logger.warning(
+                        f"Middleware: legacy session tenant '{tenant.slug}' does not match "
+                        f"subdomain '{tenant_slug}' - rejecting request"
+                    )
+                    response = JSONResponse(
+                        status_code=401,
+                        content={"detail": "Session does not match this department"}
+                    )
+                    response.delete_cookie(LEGACY_SESSION_COOKIE)
+                    return response
+                
+                # Update last used timestamp
+                session.last_used_at = datetime.now(timezone.utc)
                 db.commit()
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Session expired"}
-                )
+                
+                # Store tenant info in request state
+                request.state.tenant = tenant
+                request.state.tenant_id = tenant.id
+                request.state.tenant_slug = tenant.slug
+                
+            finally:
+                db.close()
             
-            # Check tenant is active
-            tenant = db.query(Tenant).filter(
-                Tenant.id == session.tenant_id,
-                Tenant.status == 'active'
-            ).first()
-            
-            if not tenant:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Tenant not found or inactive"}
-                )
-            
-            # SECURITY: Validate session tenant matches the subdomain being accessed
-            # Prevents cross-tenant data exposure when cookies leak across subdomains
-            if tenant_slug and tenant.slug.lower() != tenant_slug.lower():
-                import logging
-                logging.getLogger(__name__).warning(
-                    f"Middleware: session tenant '{tenant.slug}' does not match "
-                    f"subdomain '{tenant_slug}' - rejecting request"
-                )
-                response = JSONResponse(
-                    status_code=401,
-                    content={"detail": "Session does not match this department"}
-                )
-                response.delete_cookie("tenant_session")
-                return response
-            
-            # Update last used timestamp
-            session.last_used_at = datetime.now(timezone.utc)
-            db.commit()
-            
-            # Store tenant info in request state (verified to match subdomain)
-            request.state.tenant = tenant
-            request.state.tenant_id = tenant.id
-            request.state.tenant_slug = tenant.slug
-            
-        finally:
-            db.close()
+            return await call_next(request)
         
-        # Continue to the actual route
-        return await call_next(request)
+        # --- No valid auth found ---
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Not authenticated"}
+        )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print("RunSheet starting up...")
+    
+    # Phase C: Start JWT revocation cache refresh (every 60s)
+    revocation_task = asyncio.create_task(start_revocation_refresh_task())
+    
     yield
+    
     # Shutdown
+    revocation_task.cancel()
+    try:
+        await revocation_task
+    except asyncio.CancelledError:
+        pass
     print("RunSheet shutting down...")
 
 app = FastAPI(
