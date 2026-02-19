@@ -35,8 +35,8 @@ from jwt_auth import extract_token_from_websocket_params, validate_access_token
 # PostgreSQL connection info for direct LISTEN connection (bypasses PgBouncer)
 _PG_HOST = os.environ.get("PGHOST", "127.0.0.1")
 _PG_PORT = int(os.environ.get("PGPORT", "5432"))  # Direct to PostgreSQL, NOT PgBouncer 6432
-_PG_USER = os.environ.get("PGUSER", "runsheet")
-_PG_PASSWORD = os.environ.get("PGPASSWORD", "runsheet")
+_PG_USER = os.environ.get("PGUSER", "dashboard")
+_PG_PASSWORD = os.environ.get("PGPASSWORD", "dashboard")
 _PG_DATABASE = os.environ.get("PGDATABASE", "cadreport_master")
 _NOTIFY_CHANNEL = "cadreport_alerts"
 
