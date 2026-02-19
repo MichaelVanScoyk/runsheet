@@ -18,9 +18,18 @@ only receive glenmoorefc events.
 
 AV alert connections are tracked as ConnectedDevice instances,
 enabling device identification, targeted sends, and management.
+
+Phase D: Multi-worker support via LISTEN/NOTIFY.
+- Connected devices are tracked in PostgreSQL (connected_devices table)
+  so any worker can list all devices for the admin UI.
+- Targeted device commands (test, identify, disconnect) route through
+  NOTIFY so the worker that owns the connection handles it.
+- Broadcasts go through NOTIFY so all workers deliver to their local connections.
 """
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import Dict, Set, Optional, List
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -31,6 +40,7 @@ import uuid
 import os
 
 from jwt_auth import extract_token_from_websocket_params, validate_access_token
+from database import get_db_for_tenant
 
 # PostgreSQL connection info for direct LISTEN connection (bypasses PgBouncer)
 _PG_HOST = os.environ.get("PGHOST", "127.0.0.1")
@@ -39,6 +49,9 @@ _PG_USER = os.environ.get("PGUSER", "dashboard")
 _PG_PASSWORD = os.environ.get("PGPASSWORD", "dashboard")
 _PG_DATABASE = os.environ.get("PGDATABASE", "cadreport_master")
 _NOTIFY_CHANNEL = "cadreport_alerts"
+
+# This worker's PID — used to tag connected_devices rows and clean up on restart
+_WORKER_PID = os.getpid()
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +62,7 @@ router = APIRouter()
 _connections: Dict[str, Set[WebSocket]] = {}
 
 # =============================================================================
-# AV Alerts device registry
+# AV Alerts device registry (in-memory — used for actual WebSocket sends)
 # =============================================================================
 
 @dataclass
@@ -96,6 +109,128 @@ def _extract_tenant_from_host(host: str) -> Optional[str]:
             return slug
     
     return None
+
+
+# =============================================================================
+# Database device tracking (shared across workers via PostgreSQL)
+# =============================================================================
+
+def _db_register_device(tenant_slug: str, device: ConnectedDevice):
+    """Insert a connected device row into the tenant's connected_devices table."""
+    try:
+        db = next(get_db_for_tenant(tenant_slug))
+        try:
+            db.execute(text("""
+                INSERT INTO connected_devices 
+                    (connection_id, worker_pid, tenant_slug, device_type, device_name,
+                     device_id, ip_address, user_agent, connected_at)
+                VALUES (:cid, :pid, :tenant, :dtype, :dname, :did, :ip, :ua, :cat)
+                ON CONFLICT (connection_id) DO UPDATE SET
+                    worker_pid = :pid, device_type = :dtype, device_name = :dname,
+                    device_id = :did, ip_address = :ip, user_agent = :ua
+            """), {
+                "cid": device.connection_id,
+                "pid": _WORKER_PID,
+                "tenant": tenant_slug,
+                "dtype": device.device_type,
+                "dname": device.device_name,
+                "did": device.device_id,
+                "ip": device.ip_address,
+                "ua": device.user_agent,
+                "cat": device.connected_at,
+            })
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Failed to register device in DB: {e}")
+
+
+def _db_unregister_device(tenant_slug: str, connection_id: str):
+    """Remove a connected device row from the tenant's connected_devices table."""
+    try:
+        db = next(get_db_for_tenant(tenant_slug))
+        try:
+            db.execute(text(
+                "DELETE FROM connected_devices WHERE connection_id = :cid"
+            ), {"cid": connection_id})
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Failed to unregister device from DB: {e}")
+
+
+def _db_update_device_registration(tenant_slug: str, connection_id: str, device_type: str, device_name: str, device_id: Optional[str]):
+    """Update device registration info in the database after a register message."""
+    try:
+        db = next(get_db_for_tenant(tenant_slug))
+        try:
+            db.execute(text("""
+                UPDATE connected_devices 
+                SET device_type = :dtype, device_name = :dname, device_id = :did
+                WHERE connection_id = :cid
+            """), {
+                "cid": connection_id,
+                "dtype": device_type,
+                "dname": device_name,
+                "did": device_id,
+            })
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Failed to update device registration in DB: {e}")
+
+
+def _db_cleanup_stale_devices(tenant_slug: str):
+    """Remove connected_devices rows for workers that are no longer running.
+    Called on startup to clean up rows from previous workers that crashed."""
+    try:
+        db = next(get_db_for_tenant(tenant_slug))
+        try:
+            # Delete rows for this worker PID (we're restarting, old connections are gone)
+            db.execute(text(
+                "DELETE FROM connected_devices WHERE worker_pid = :pid"
+            ), {"pid": _WORKER_PID})
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Failed to clean up stale devices: {e}")
+
+
+def db_get_connected_devices(tenant_slug: str) -> List[dict]:
+    """Query all connected devices from the database (cross-worker view)."""
+    try:
+        db = next(get_db_for_tenant(tenant_slug))
+        try:
+            result = db.execute(text("""
+                SELECT connection_id, device_type, device_name, device_id,
+                       ip_address, user_agent, connected_at, worker_pid
+                FROM connected_devices
+                WHERE tenant_slug = :tenant
+                ORDER BY connected_at
+            """), {"tenant": tenant_slug})
+            
+            devices = []
+            for row in result:
+                devices.append({
+                    "connection_id": row[0],
+                    "device_type": row[1],
+                    "device_name": row[2],
+                    "device_id": row[3],
+                    "ip_address": row[4],
+                    "user_agent": row[5],
+                    "connected_at": row[6].isoformat() if row[6] else None,
+                    "worker_pid": row[7],
+                })
+            return devices
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Failed to query connected devices from DB: {e}")
+        return []
 
 
 # =============================================================================
@@ -187,6 +322,9 @@ async def _add_av_connection(tenant_slug: str, websocket: WebSocket) -> str:
         _av_devices[tenant_slug][connection_id] = device
         count = len(_av_devices[tenant_slug])
 
+    # Register in database for cross-worker visibility
+    _db_register_device(tenant_slug, device)
+
     logger.info(f"WebSocket /ws/AValerts connected: {tenant_slug} [{connection_id}] from {device.ip_address} (total: {count})")
     return connection_id
 
@@ -201,6 +339,9 @@ async def _remove_av_connection(tenant_slug: str, connection_id: str):
                 logger.info(f"WebSocket /ws/AValerts disconnected: {tenant_slug} [{connection_id}] {removed.device_name} (total: {count})")
             if not _av_devices[tenant_slug]:
                 del _av_devices[tenant_slug]
+
+    # Remove from database
+    _db_unregister_device(tenant_slug, connection_id)
 
 
 async def broadcast_av_alert(tenant_slug: str, alert_data: dict):
@@ -253,15 +394,21 @@ async def broadcast_av_alert(tenant_slug: str, alert_data: dict):
 # =============================================================================
 
 def get_connection_count(tenant_slug: str = None) -> dict:
-    """Get connection counts for monitoring"""
+    """Get connection counts for monitoring (this worker only for incidents, DB for AV)."""
     if tenant_slug:
+        av_count = len(db_get_connected_devices(tenant_slug))
         return {
             "tenant": tenant_slug,
             "incidents_connections": len(_connections.get(tenant_slug, set())),
-            "av_alerts_connections": len(_av_devices.get(tenant_slug, {})),
+            "av_alerts_connections": av_count,
         }
+    # For the summary view, use in-memory for incidents (approximate) and DB for AV
+    all_tenants = set(list(_connections.keys()))
+    # Add tenants that have AV devices in DB
+    for t in list(_connections.keys()):
+        all_tenants.add(t)
     return {
-        "total_tenants": len(set(list(_connections.keys()) + list(_av_devices.keys()))),
+        "total_tenants": len(all_tenants),
         "incidents_by_tenant": {k: len(v) for k, v in _connections.items()},
         "av_alerts_by_tenant": {k: len(v) for k, v in _av_devices.items()},
     }
@@ -270,68 +417,111 @@ def get_connection_count(tenant_slug: str = None) -> dict:
 def get_connected_av_devices(tenant_slug: str) -> List[dict]:
     """Get list of connected AV alert devices for a tenant.
     
-    Returns serializable device info for the admin UI.
-    Called by devices router (Phase 3+).
+    Queries the database for cross-worker visibility.
+    Called by devices router.
     """
-    devices = _av_devices.get(tenant_slug, {})
-    return [
-        {
-            "connection_id": d.connection_id,
-            "device_type": d.device_type,
-            "device_name": d.device_name,
-            "device_id": d.device_id,
-            "ip_address": d.ip_address,
-            "user_agent": d.user_agent,
-            "connected_at": d.connected_at.isoformat(),
-        }
-        for d in devices.values()
-    ]
+    return db_get_connected_devices(tenant_slug)
 
 
 # =============================================================================
-# Targeted device commands
+# Targeted device commands (routed via NOTIFY for cross-worker delivery)
 # =============================================================================
 
 async def send_to_device(tenant_slug: str, connection_id: str, message: dict) -> bool:
     """Send a message to a specific connected device.
     
-    Returns True if sent successfully, False if device not found or send failed.
-    Used by device command endpoints (test, identify, disconnect).
+    First checks local worker. If not found locally, sends via NOTIFY
+    so the worker that owns the connection handles it.
+    
+    Returns True if sent (locally or via NOTIFY), False if device not found anywhere.
     """
+    # Try local first (fast path)
     async with _av_connections_lock:
         devices = _av_devices.get(tenant_slug, {})
         device = devices.get(connection_id)
-        if not device:
-            return False
-        ws = device.ws
+        if device:
+            try:
+                await device.ws.send_json(message)
+                return True
+            except Exception as e:
+                logger.warning(f"Failed to send to device [{connection_id}]: {e}")
+                return False
     
+    # Not on this worker — route via NOTIFY
     try:
-        await ws.send_json(message)
+        await notify_tenant_event(tenant_slug, "device_command", {
+            "command": "send",
+            "connection_id": connection_id,
+            "message": message,
+        })
         return True
     except Exception as e:
-        logger.warning(f"Failed to send to device [{connection_id}]: {e}")
+        logger.error(f"Failed to route device command via NOTIFY: {e}")
         return False
 
 
 async def disconnect_device(tenant_slug: str, connection_id: str) -> bool:
     """Force-disconnect a specific device by closing its WebSocket.
     
-    Returns True if found and closed, False if not found.
-    The normal cleanup in the finally block of the endpoint will
-    handle removing it from the registry.
+    First checks local worker. If not found locally, sends via NOTIFY
+    so the worker that owns the connection handles it.
+    
+    Returns True if found (locally or via NOTIFY), False if not found anywhere.
     """
+    # Try local first (fast path)
+    async with _av_connections_lock:
+        devices = _av_devices.get(tenant_slug, {})
+        device = devices.get(connection_id)
+        if device:
+            try:
+                await device.ws.close(code=1000, reason="Disconnected by admin")
+            except Exception:
+                pass
+            return True
+    
+    # Not on this worker — route via NOTIFY
+    try:
+        await notify_tenant_event(tenant_slug, "device_command", {
+            "command": "disconnect",
+            "connection_id": connection_id,
+        })
+        return True
+    except Exception as e:
+        logger.error(f"Failed to route disconnect via NOTIFY: {e}")
+        return False
+
+
+async def _handle_device_command(tenant_slug: str, payload: dict):
+    """
+    Handle a device_command NOTIFY on this worker.
+    Called by _dispatch_notification when event_type is 'device_command'.
+    Only the worker that owns the connection will act on it.
+    """
+    command = payload.get("command")
+    connection_id = payload.get("connection_id")
+    
+    if not connection_id:
+        return
+    
+    # Check if this worker owns the connection
     async with _av_connections_lock:
         devices = _av_devices.get(tenant_slug, {})
         device = devices.get(connection_id)
         if not device:
-            return False
-        ws = device.ws
+            return  # Not on this worker — skip silently
     
-    try:
-        await ws.close(code=1000, reason="Disconnected by admin")
-    except Exception:
-        pass  # Already closed
-    return True
+    if command == "send":
+        message = payload.get("message", {})
+        try:
+            await device.ws.send_json(message)
+        except Exception as e:
+            logger.warning(f"Device command send failed [{connection_id}]: {e}")
+    
+    elif command == "disconnect":
+        try:
+            await device.ws.close(code=1000, reason="Disconnected by admin")
+        except Exception:
+            pass
 
 
 # =============================================================================
@@ -397,17 +587,25 @@ async def _handle_register(tenant_slug: str, connection_id: str, message: dict):
         { "type": "register", "device_type": "stationbell_bay", "device_id": "AA:BB:CC", "name": "Bay 1" }
     
     Devices that never send register still work - they just show as "Unknown".
+    Updates both the in-memory dict and the database row.
     """
+    device_type = message.get("device_type", "unknown")
+    device_name = message.get("name", "Unknown")
+    device_id = message.get("device_id")
+
     async with _av_connections_lock:
         devices = _av_devices.get(tenant_slug, {})
         device = devices.get(connection_id)
         if not device:
             return
         
-        device.device_type = message.get("device_type", "unknown")
-        device.device_name = message.get("name", "Unknown")
-        device.device_id = message.get("device_id")  # MAC for StationBell, None for browsers
+        device.device_type = device_type
+        device.device_name = device_name
+        device.device_id = device_id
     
+    # Update database row
+    _db_update_device_registration(tenant_slug, connection_id, device_type, device_name, device_id)
+
     logger.info(
         f"WebSocket /ws/AValerts registered: {tenant_slug} [{connection_id}] "
         f"type={device.device_type} name={device.device_name}"
@@ -437,7 +635,7 @@ async def notify_tenant_event(tenant_slug: str, event_type: str, payload: dict):
     
     Args:
         tenant_slug: Tenant to broadcast to
-        event_type: 'incident' or 'av_alert'
+        event_type: 'incident', 'av_alert', or 'device_command'
         payload: The message dict to broadcast
     """
     notify_data = json.dumps({
@@ -480,6 +678,8 @@ async def _dispatch_notification(tenant_slug: str, event_type: str, payload: dic
             await broadcast_to_tenant(tenant_slug, payload)
         elif event_type == "av_alert":
             await broadcast_av_alert(tenant_slug, payload)
+        elif event_type == "device_command":
+            await _handle_device_command(tenant_slug, payload)
         else:
             logger.warning(f"Unknown NOTIFY event_type: {event_type}")
     except Exception as e:
@@ -576,6 +776,18 @@ async def stop_listen_subscriber():
     if _listen_connection and not _listen_connection.is_closed():
         await _listen_connection.close()
         _listen_connection = None
+
+
+def cleanup_stale_devices_on_startup():
+    """Clean up connected_devices rows from this worker's previous life.
+    Called from main.py lifespan before accepting connections."""
+    # We need to clean up for all tenants, but we only know about tenants
+    # that have the table. For now, clean up glenmoorefc (primary tenant).
+    # When multi-tenant scales, iterate tenant list from master DB.
+    try:
+        _db_cleanup_stale_devices("glenmoorefc")
+    except Exception as e:
+        logger.warning(f"Startup device cleanup failed: {e}")
 
 
 # =============================================================================

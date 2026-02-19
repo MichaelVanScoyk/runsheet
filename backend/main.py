@@ -345,7 +345,8 @@ async def lifespan(app: FastAPI):
     revocation_task = asyncio.create_task(start_revocation_refresh_task())
     
     # Phase D: Start LISTEN/NOTIFY subscriber for cross-worker WebSocket broadcasting
-    from routers.websocket import start_listen_subscriber, stop_listen_subscriber
+    from routers.websocket import start_listen_subscriber, stop_listen_subscriber, cleanup_stale_devices_on_startup
+    cleanup_stale_devices_on_startup()
     listen_task = asyncio.create_task(start_listen_subscriber())
     
     yield
