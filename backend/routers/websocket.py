@@ -440,8 +440,6 @@ async def notify_tenant_event(tenant_slug: str, event_type: str, payload: dict):
         event_type: 'incident' or 'av_alert'
         payload: The message dict to broadcast
     """
-    import asyncpg
-    
     notify_data = json.dumps({
         "tenant": tenant_slug,
         "event_type": event_type,
@@ -460,15 +458,12 @@ async def notify_tenant_event(tenant_slug: str, event_type: str, payload: dict):
         })
     
     try:
-        conn = await asyncpg.connect(
-            host=_PG_HOST, port=_PG_PORT,
-            user=_PG_USER, password=_PG_PASSWORD,
-            database=_PG_DATABASE,
-        )
-        try:
-            await conn.execute(f"NOTIFY {_NOTIFY_CHANNEL}, $1", notify_data)
-        finally:
-            await conn.close()
+        # Reuse the persistent LISTEN connection for NOTIFY (same direct PG connection)
+        if _listen_connection and not _listen_connection.is_closed():
+            await _listen_connection.execute(f"NOTIFY {_NOTIFY_CHANNEL}, $1", notify_data)
+        else:
+            logger.warning("LISTEN connection not available for NOTIFY, falling back to direct broadcast")
+            await _dispatch_notification(tenant_slug, event_type, payload)
     except Exception as e:
         logger.error(f"NOTIFY failed, falling back to direct broadcast: {e}")
         # Fallback: broadcast directly on this worker only (better than silence)

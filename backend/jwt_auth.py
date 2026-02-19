@@ -57,7 +57,10 @@ if JWT_SECRET == _default_secret:
     )
 
 JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_LIFETIME = timedelta(minutes=15)
+# Tenant-level tokens last 30 days (shared department password, no individual identity)
+# User-level tokens last 15 minutes (individual personnel, security-sensitive)
+TENANT_ACCESS_TOKEN_LIFETIME = timedelta(days=30)
+USER_ACCESS_TOKEN_LIFETIME = timedelta(minutes=15)
 REFRESH_TOKEN_LIFETIME = timedelta(days=30)
 
 # Cookie names
@@ -97,6 +100,7 @@ def create_access_token(
         Encoded JWT string
     """
     now = datetime.now(timezone.utc)
+    lifetime = USER_ACCESS_TOKEN_LIFETIME if auth_level == "user" else TENANT_ACCESS_TOKEN_LIFETIME
 
     payload = {
         "tenant_slug": tenant_slug,
@@ -105,7 +109,7 @@ def create_access_token(
         "tenant_id": tenant_id,
         "tenant_name": tenant_name,
         "iat": now,
-        "exp": now + ACCESS_TOKEN_LIFETIME,
+        "exp": now + lifetime,
     }
 
     if auth_level == "user" and user_id is not None:
@@ -264,11 +268,11 @@ def set_auth_cookies(response, access_token: str, refresh_token: str, host: str)
     # Extract domain for cookie scoping
     cookie_domain = _get_cookie_domain(host)
 
-    # Access token cookie — short-lived, httpOnly
+    # Access token cookie — httpOnly, lifetime matches token
     access_kwargs = dict(
         key=ACCESS_COOKIE,
         value=access_token,
-        max_age=int(ACCESS_TOKEN_LIFETIME.total_seconds()),
+        max_age=int(TENANT_ACCESS_TOKEN_LIFETIME.total_seconds()),
         httponly=True,
         secure=True,
         samesite="lax",
@@ -276,7 +280,9 @@ def set_auth_cookies(response, access_token: str, refresh_token: str, host: str)
     if cookie_domain:
         access_kwargs["domain"] = cookie_domain
 
-    # Refresh token cookie — long-lived, httpOnly, path-restricted to /api/tenant/refresh
+    # Refresh token cookie — long-lived, httpOnly, scoped to /api/tenant/
+    # Not path-restricted to just /refresh because /session also needs it
+    # for inline refresh when the access token expires
     refresh_kwargs = dict(
         key=REFRESH_COOKIE,
         value=refresh_token,
@@ -284,7 +290,7 @@ def set_auth_cookies(response, access_token: str, refresh_token: str, host: str)
         httponly=True,
         secure=True,
         samesite="lax",
-        path="/api/tenant/refresh",
+        path="/api/tenant",
     )
     if cookie_domain:
         refresh_kwargs["domain"] = cookie_domain
@@ -302,7 +308,7 @@ def clear_auth_cookies(response, host: str):
         if cookie_domain:
             kwargs["domain"] = cookie_domain
         if cookie_name == REFRESH_COOKIE:
-            kwargs["path"] = "/api/tenant/refresh"
+            kwargs["path"] = "/api/tenant"
         response.delete_cookie(**kwargs)
 
 

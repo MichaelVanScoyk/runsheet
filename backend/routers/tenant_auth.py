@@ -250,7 +250,8 @@ async def refresh_access_token(
 
     # Set new access token cookie (refresh cookie unchanged — it's still valid)
     host = request.headers.get("host", "")
-    from jwt_auth import ACCESS_COOKIE, ACCESS_TOKEN_LIFETIME
+    from jwt_auth import ACCESS_COOKIE, TENANT_ACCESS_TOKEN_LIFETIME, USER_ACCESS_TOKEN_LIFETIME
+    lifetime = USER_ACCESS_TOKEN_LIFETIME if refresh_record.auth_level == "user" else TENANT_ACCESS_TOKEN_LIFETIME
     cookie_domain = None
     host_clean = host.split(":")[0].lower()
     if ".cadreport.com" in host_clean:
@@ -259,7 +260,7 @@ async def refresh_access_token(
     cookie_kwargs = dict(
         key=ACCESS_COOKIE,
         value=access_token,
-        max_age=int(ACCESS_TOKEN_LIFETIME.total_seconds()),
+        max_age=int(lifetime.total_seconds()),
         httponly=True,
         secure=True,
         samesite="lax",
@@ -353,6 +354,59 @@ async def check_session(
                 slug=claims.tenant_slug,
                 name=claims.tenant_name,
             )
+        else:
+            # JWT expired or invalid — try inline refresh before giving up
+            from jwt_auth import REFRESH_COOKIE as _RC
+            refresh_token_str = request.cookies.get(_RC)
+            if refresh_token_str:
+                refresh_record = db.query(RefreshToken).filter(
+                    RefreshToken.token == refresh_token_str,
+                    RefreshToken.revoked_at.is_(None),
+                ).first()
+
+                if refresh_record and refresh_record.expires_at > datetime.now(timezone.utc):
+                    tenant = db.query(Tenant).filter(
+                        Tenant.id == refresh_record.tenant_id,
+                        func.upper(Tenant.status) == 'ACTIVE',
+                    ).first()
+
+                    if tenant:
+                        # Issue new access token
+                        from jwt_auth import create_access_token as _create, ACCESS_COOKIE as _AC, TENANT_ACCESS_TOKEN_LIFETIME as _TATL, USER_ACCESS_TOKEN_LIFETIME as _UATL
+                        new_access = _create(
+                            tenant_slug=tenant.slug,
+                            tenant_db=tenant.database_name,
+                            auth_level=refresh_record.auth_level,
+                            user_id=refresh_record.user_id,
+                            tenant_id=tenant.id,
+                            tenant_name=tenant.name,
+                        )
+                        refresh_record.last_used_at = datetime.now(timezone.utc)
+                        db.commit()
+
+                        # Set new access token cookie
+                        _lifetime = _UATL if refresh_record.auth_level == "user" else _TATL
+                        cookie_kwargs = dict(
+                            key=_AC, value=new_access,
+                            max_age=int(_lifetime.total_seconds()),
+                            httponly=True, secure=True, samesite="lax",
+                        )
+                        cookie_domain = None
+                        host_clean = host.split(":")[0].lower()
+                        if ".cadreport.com" in host_clean:
+                            cookie_domain = host_clean
+                        if cookie_domain:
+                            cookie_kwargs["domain"] = cookie_domain
+                        response.set_cookie(**cookie_kwargs)
+
+                        logger.info(f"Session check: inline refresh for {tenant.slug}")
+
+                        return SessionCheckResponse(
+                            authenticated=True,
+                            tenant_id=tenant.id,
+                            slug=tenant.slug,
+                            name=tenant.name,
+                        )
 
     # Fallback: try legacy session cookie (transition period)
     legacy_token = request.cookies.get("tenant_session")
