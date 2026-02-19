@@ -26,20 +26,20 @@ from database import _extract_slug, _is_internal_ip, get_db_for_tenant
 logger = logging.getLogger(__name__)
 
 # Lazy imports to avoid circular imports
-_ws_av_broadcast = None
+_ws_notify = None
 _tts_service = None
 
 
-def _get_av_broadcast():
-    """Lazy import of AV alert broadcast function"""
-    global _ws_av_broadcast
-    if _ws_av_broadcast is None:
+def _get_av_notify():
+    """Lazy import of NOTIFY function (Phase D — cross-worker broadcasting)"""
+    global _ws_notify
+    if _ws_notify is None:
         try:
-            from routers.websocket import broadcast_av_alert
-            _ws_av_broadcast = broadcast_av_alert
+            from routers.websocket import notify_tenant_event
+            _ws_notify = notify_tenant_event
         except ImportError:
-            _ws_av_broadcast = False  # Mark as unavailable
-    return _ws_av_broadcast if _ws_av_broadcast else None
+            _ws_notify = False  # Mark as unavailable
+    return _ws_notify if _ws_notify else None
 
 
 def _get_tts_service():
@@ -135,8 +135,8 @@ async def emit_av_alert(
         municipality: Municipality name (optional)
         development: Development name (optional)
     """
-    broadcast = _get_av_broadcast()
-    if not broadcast:
+    notify = _get_av_notify()
+    if not notify:
         return
     
     tenant_slug = _extract_tenant_from_request(request)
@@ -213,10 +213,10 @@ async def emit_av_alert(
         alert_data["tts_text"] = tts_text
     
     try:
-        await broadcast(tenant_slug, alert_data)
-        logger.debug(f"AV alert broadcast: {event_type} for incident {incident_id} to {tenant_slug}")
+        await notify(tenant_slug, "av_alert", alert_data)
+        logger.debug(f"AV alert NOTIFY: {event_type} for incident {incident_id} to {tenant_slug}")
     except Exception as e:
-        logger.warning(f"AV alert broadcast failed: {e}")
+        logger.warning(f"AV alert NOTIFY failed: {e}")
 
 
 async def emit_custom_announcement(
@@ -236,8 +236,8 @@ async def emit_custom_announcement(
     Returns:
         Dict with audio_url and tts_text, or None on failure
     """
-    broadcast = _get_av_broadcast()
-    if not broadcast:
+    notify = _get_av_notify()
+    if not notify:
         return None
     
     tenant_slug = _extract_tenant_from_request(request)
@@ -292,9 +292,9 @@ async def emit_custom_announcement(
     }
     
     try:
-        await broadcast(tenant_slug, alert_data)
-        logger.info(f"Custom announcement broadcast to {tenant_slug}: {message[:50]}...")
+        await notify(tenant_slug, "av_alert", alert_data)
+        logger.info(f"Custom announcement NOTIFY to {tenant_slug}: {message[:50]}...")
     except Exception as e:
-        logger.warning(f"Custom announcement broadcast failed: {e}")
+        logger.warning(f"Custom announcement NOTIFY failed: {e}")
     
     return result

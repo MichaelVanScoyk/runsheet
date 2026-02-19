@@ -344,6 +344,10 @@ async def lifespan(app: FastAPI):
     # Phase C: Start JWT revocation cache refresh (every 60s)
     revocation_task = asyncio.create_task(start_revocation_refresh_task())
     
+    # Phase D: Start LISTEN/NOTIFY subscriber for cross-worker WebSocket broadcasting
+    from routers.websocket import start_listen_subscriber, stop_listen_subscriber
+    listen_task = asyncio.create_task(start_listen_subscriber())
+    
     yield
     
     # Shutdown
@@ -352,6 +356,15 @@ async def lifespan(app: FastAPI):
         await revocation_task
     except asyncio.CancelledError:
         pass
+    
+    # Phase D: Stop LISTEN subscriber
+    listen_task.cancel()
+    try:
+        await listen_task
+    except asyncio.CancelledError:
+        pass
+    await stop_listen_subscriber()
+    
     print("RunSheet shutting down...")
 
 app = FastAPI(

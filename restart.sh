@@ -1,13 +1,51 @@
 #!/bin/bash
 set -e
 
+# Phase D: Calculate worker count — (2 × CPU cores) + 1
+# Override with CADREPORT_WORKERS environment variable if set
+CORES=$(nproc)
+WORKERS=$(( (CORES * 2) + 1 ))
+WORKERS=${CADREPORT_WORKERS:-$WORKERS}
+export CADREPORT_WORKERS=$WORKERS
+echo "=== Server: ${CORES} cores, ${WORKERS} workers ==="
+
+# Write worker count to env file for systemd to read
+mkdir -p /opt/runsheet/data
+echo "CADREPORT_WORKERS=$WORKERS" > /opt/runsheet/data/worker_env
+
+# =============================================================================
+# Phase D: Graceful restart via SIGHUP (rolling worker replacement)
+# Usage: ./restart.sh --graceful   (code deploys only, no dropped connections)
+#        ./restart.sh              (full restart, for config/infrastructure changes)
+# =============================================================================
+if [ "$1" = "--graceful" ]; then
+    echo "=== Graceful restart (SIGHUP) ==="
+    UVICORN_PID=$(pgrep -f 'uvicorn main:app' -o 2>/dev/null || true)
+    if [ -n "$UVICORN_PID" ]; then
+        echo "Sending SIGHUP to uvicorn master (PID $UVICORN_PID)..."
+        kill -HUP $UVICORN_PID
+        sleep 5
+        # Verify backend is still up
+        if curl -s http://127.0.0.1:8001/health > /dev/null 2>&1; then
+            echo "Backend healthy after graceful restart"
+            echo ""
+            echo "=== GRACEFUL RESTART COMPLETE ==="
+            exit 0
+        else
+            echo "WARNING: Backend not responding after SIGHUP, falling through to full restart"
+        fi
+    else
+        echo "WARNING: No uvicorn process found, falling through to full restart"
+    fi
+fi
+
 echo "=== Stopping everything ==="
 pkill -9 -f vite 2>/dev/null || true
 pkill -f "cad_listener.py" 2>/dev/null || true
 sudo systemctl stop runsheet 2>/dev/null || true
 sleep 3
 
-echo "=== Starting backend ==="
+echo "=== Starting backend ($WORKERS workers) ==="
 sudo systemctl start runsheet
 sleep 3
 

@@ -30,33 +30,36 @@ logger = logging.getLogger(__name__)
 # WEBSOCKET HELPERS
 # =============================================================================
 
-# Import WebSocket broadcast helper (deferred to avoid circular imports)
-_ws_broadcast = None
+# Import WebSocket NOTIFY helper (deferred to avoid circular imports)
+_ws_notify = None
 
 
-def _get_ws_broadcast():
-    """Lazy import of WebSocket broadcast function"""
-    global _ws_broadcast
-    if _ws_broadcast is None:
+def _get_ws_notify():
+    """Lazy import of NOTIFY function (Phase D — cross-worker broadcasting)"""
+    global _ws_notify
+    if _ws_notify is None:
         try:
-            from routers.websocket import broadcast_to_tenant
-            _ws_broadcast = broadcast_to_tenant
+            from routers.websocket import notify_tenant_event
+            _ws_notify = notify_tenant_event
         except ImportError:
-            _ws_broadcast = False  # Mark as unavailable
-    return _ws_broadcast if _ws_broadcast else None
+            _ws_notify = False  # Mark as unavailable
+    return _ws_notify if _ws_notify else None
 
 
 async def emit_incident_event(request, event_type: str, incident_data: dict):
     """
-    Emit WebSocket event for incident changes.
+    Emit WebSocket event for incident changes via PostgreSQL NOTIFY.
+    
+    Phase D: Uses NOTIFY instead of direct broadcast so all workers
+    receive the event and broadcast to their local connections.
     
     Args:
         request: FastAPI request (to extract tenant)
         event_type: One of 'incident_created', 'incident_updated', 'incident_closed'
         incident_data: Dict of incident fields to broadcast
     """
-    broadcast = _get_ws_broadcast()
-    if not broadcast:
+    notify = _get_ws_notify()
+    if not notify:
         return
     
     # Extract tenant slug (same logic as database routing)
@@ -69,14 +72,14 @@ async def emit_incident_event(request, event_type: str, incident_data: dict):
         tenant_slug = _extract_slug(request.headers.get('host', ''))
     
     try:
-        await broadcast(tenant_slug, {
+        await notify(tenant_slug, "incident", {
             "type": event_type,
             "incident": incident_data,
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
-        logger.debug(f"WebSocket broadcast: {event_type} to {tenant_slug}")
+        logger.debug(f"WebSocket NOTIFY: {event_type} to {tenant_slug}")
     except Exception as e:
-        logger.warning(f"WebSocket broadcast failed: {e}")
+        logger.warning(f"WebSocket NOTIFY failed: {e}")
 
 
 # =============================================================================

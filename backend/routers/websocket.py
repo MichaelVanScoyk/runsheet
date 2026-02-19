@@ -28,8 +28,17 @@ import json
 import logging
 import asyncio
 import uuid
+import os
 
 from jwt_auth import extract_token_from_websocket_params, validate_access_token
+
+# PostgreSQL connection info for direct LISTEN connection (bypasses PgBouncer)
+_PG_HOST = os.environ.get("PGHOST", "127.0.0.1")
+_PG_PORT = int(os.environ.get("PGPORT", "5432"))  # Direct to PostgreSQL, NOT PgBouncer 6432
+_PG_USER = os.environ.get("PGUSER", "runsheet")
+_PG_PASSWORD = os.environ.get("PGPASSWORD", "runsheet")
+_PG_DATABASE = os.environ.get("PGDATABASE", "cadreport_master")
+_NOTIFY_CHANNEL = "cadreport_alerts"
 
 logger = logging.getLogger(__name__)
 
@@ -404,6 +413,174 @@ async def _handle_register(tenant_slug: str, connection_id: str, message: dict):
         f"type={device.device_type} name={device.device_name}"
         f"{f' id={device.device_id}' if device.device_id else ''}"
     )
+
+
+# =============================================================================
+# LISTEN/NOTIFY — Cross-Worker Broadcasting (Phase D)
+# =============================================================================
+
+# Track the LISTEN subscriber task so lifespan can cancel it
+_listen_task: Optional[asyncio.Task] = None
+_listen_connection = None  # asyncpg connection for LISTEN
+
+
+async def notify_tenant_event(tenant_slug: str, event_type: str, payload: dict):
+    """
+    Issue a PostgreSQL NOTIFY on the shared cadreport_alerts channel.
+    
+    All workers (including this one) will receive the notification via their
+    LISTEN subscriber and broadcast to their local WebSocket connections.
+    
+    CRITICAL: Callers must NOT also call broadcast_to_tenant() or
+    broadcast_av_alert() directly — the LISTEN handler does that.
+    Double-calling would deliver the message twice to devices on this worker.
+    
+    Args:
+        tenant_slug: Tenant to broadcast to
+        event_type: 'incident' or 'av_alert'
+        payload: The message dict to broadcast
+    """
+    import asyncpg
+    
+    notify_data = json.dumps({
+        "tenant": tenant_slug,
+        "event_type": event_type,
+        "payload": payload,
+    })
+    
+    # PostgreSQL NOTIFY payload limit is 8000 bytes
+    if len(notify_data) > 7500:
+        logger.warning(f"NOTIFY payload too large ({len(notify_data)} bytes), truncating")
+        # For oversized payloads, strip large fields and send a refresh hint
+        payload_slim = {"type": payload.get("type", event_type), "refresh": True}
+        notify_data = json.dumps({
+            "tenant": tenant_slug,
+            "event_type": event_type,
+            "payload": payload_slim,
+        })
+    
+    try:
+        conn = await asyncpg.connect(
+            host=_PG_HOST, port=_PG_PORT,
+            user=_PG_USER, password=_PG_PASSWORD,
+            database=_PG_DATABASE,
+        )
+        try:
+            await conn.execute(f"NOTIFY {_NOTIFY_CHANNEL}, $1", notify_data)
+        finally:
+            await conn.close()
+    except Exception as e:
+        logger.error(f"NOTIFY failed, falling back to direct broadcast: {e}")
+        # Fallback: broadcast directly on this worker only (better than silence)
+        await _dispatch_notification(tenant_slug, event_type, payload)
+
+
+async def _dispatch_notification(tenant_slug: str, event_type: str, payload: dict):
+    """
+    Route a received notification to the appropriate local broadcast function.
+    Called by the LISTEN handler on every worker that receives the notification.
+    """
+    try:
+        if event_type == "incident":
+            await broadcast_to_tenant(tenant_slug, payload)
+        elif event_type == "av_alert":
+            await broadcast_av_alert(tenant_slug, payload)
+        else:
+            logger.warning(f"Unknown NOTIFY event_type: {event_type}")
+    except Exception as e:
+        logger.error(f"Failed to dispatch notification for {tenant_slug}/{event_type}: {e}")
+
+
+async def start_listen_subscriber():
+    """
+    Start the PostgreSQL LISTEN subscriber for this worker.
+    Maintains a persistent direct asyncpg connection to PostgreSQL (port 5432,
+    bypassing PgBouncer) and dispatches incoming notifications to local
+    WebSocket broadcast functions.
+    
+    Called from main.py lifespan. Runs until cancelled.
+    """
+    import asyncpg
+    global _listen_connection
+    
+    retry_delay = 1  # Start with 1s, exponential backoff to 30s
+    
+    while True:
+        try:
+            logger.info(f"LISTEN subscriber connecting to PostgreSQL {_PG_HOST}:{_PG_PORT}/{_PG_DATABASE}")
+            _listen_connection = await asyncpg.connect(
+                host=_PG_HOST, port=_PG_PORT,
+                user=_PG_USER, password=_PG_PASSWORD,
+                database=_PG_DATABASE,
+            )
+            retry_delay = 1  # Reset on successful connect
+            
+            # Subscribe to the shared channel
+            await _listen_connection.add_listener(
+                _NOTIFY_CHANNEL, _on_notification
+            )
+            logger.info(f"LISTEN subscriber active on channel '{_NOTIFY_CHANNEL}'")
+            
+            # Keep connection alive — asyncpg handles keepalives internally.
+            # We just wait here until the connection drops or task is cancelled.
+            while True:
+                await asyncio.sleep(60)
+                # Periodic health check — if connection is closed, break to reconnect
+                if _listen_connection.is_closed():
+                    logger.warning("LISTEN connection closed, reconnecting...")
+                    break
+                    
+        except asyncio.CancelledError:
+            logger.info("LISTEN subscriber shutting down")
+            if _listen_connection and not _listen_connection.is_closed():
+                await _listen_connection.close()
+            _listen_connection = None
+            return
+        except Exception as e:
+            logger.error(f"LISTEN subscriber error: {e}, reconnecting in {retry_delay}s")
+            _listen_connection = None
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, 30)
+
+
+def _on_notification(connection, pid, channel, payload_str):
+    """
+    Callback for asyncpg LISTEN notifications.
+    Called synchronously by asyncpg — schedules async dispatch on the event loop.
+    """
+    try:
+        data = json.loads(payload_str)
+        tenant_slug = data.get("tenant")
+        event_type = data.get("event_type")
+        payload = data.get("payload", {})
+        
+        if not tenant_slug or not event_type:
+            logger.warning(f"Malformed NOTIFY payload: {payload_str[:200]}")
+            return
+        
+        # Schedule async dispatch on the running event loop
+        loop = asyncio.get_event_loop()
+        loop.create_task(_dispatch_notification(tenant_slug, event_type, payload))
+        
+    except json.JSONDecodeError:
+        logger.warning(f"Invalid JSON in NOTIFY payload: {payload_str[:200]}")
+    except Exception as e:
+        logger.error(f"Error handling NOTIFY: {e}")
+
+
+async def stop_listen_subscriber():
+    """Stop the LISTEN subscriber. Called from main.py lifespan shutdown."""
+    global _listen_task, _listen_connection
+    if _listen_task:
+        _listen_task.cancel()
+        try:
+            await _listen_task
+        except asyncio.CancelledError:
+            pass
+        _listen_task = None
+    if _listen_connection and not _listen_connection.is_closed():
+        await _listen_connection.close()
+        _listen_connection = None
 
 
 # =============================================================================

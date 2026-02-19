@@ -1684,8 +1684,10 @@ async def delete_import_config(
 # Two-step: upload+parse → preview → confirm import
 # =============================================================================
 
-# Temp file storage for parsed uploads awaiting confirmation
-_pending_uploads = {}  # temp_id → {filepath, parsed_result, created_at}
+# Disk-based storage for parsed uploads awaiting confirmation (Phase D — multi-worker safe)
+import os as _os
+PENDING_UPLOADS_DIR = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), "data", "tmp_uploads")
+_os.makedirs(PENDING_UPLOADS_DIR, exist_ok=True)
 
 
 @router.post("/gis/file/upload")
@@ -1731,13 +1733,13 @@ async def file_upload_preview(
         # Parse the file
         result = parse_gis_file(temp_path, file.filename or 'unknown')
 
-        # Store for import step
-        from datetime import datetime, timezone
-        _pending_uploads[temp_id] = {
-            "filepath": temp_path,
-            "parsed_result": result,
-            "created_at": datetime.now(timezone.utc),
-        }
+        # Store parsed result to disk for import step (multi-worker safe)
+        pending_path = os.path.join(PENDING_UPLOADS_DIR, f"{temp_id}.json")
+        with open(pending_path, 'w') as pf:
+            json.dump({
+                "filepath": temp_path,
+                "parsed_result": result,
+            }, pf)
 
         # Build sample values (same format as ArcGIS preview)
         sample_values = {}
@@ -1794,13 +1796,20 @@ async def file_import(
     import os
     from services.location.import_pipeline import import_features_to_layer
 
-    # Look up pending upload
-    pending = _pending_uploads.get(request.temp_id)
-    if not pending:
+    # Look up pending upload from disk (multi-worker safe)
+    pending_path = os.path.join(PENDING_UPLOADS_DIR, f"{request.temp_id}.json")
+    if not os.path.exists(pending_path):
         raise HTTPException(
             status_code=404,
             detail="Upload not found. It may have expired. Please re-upload the file."
         )
+
+    try:
+        with open(pending_path, 'r') as pf:
+            pending = json.load(pf)
+    except (json.JSONDecodeError, OSError) as e:
+        logger.error(f"Failed to read pending upload {request.temp_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to read upload data")
 
     parsed = pending["parsed_result"]
 
@@ -1888,27 +1897,48 @@ async def file_import(
 
 
 def _cleanup_pending(temp_id: str):
-    """Remove a pending upload and its temp file."""
+    """Remove a pending upload JSON and its associated temp file from disk."""
     import os
-    pending = _pending_uploads.pop(temp_id, None)
-    if pending and os.path.exists(pending.get("filepath", "")):
+    pending_path = os.path.join(PENDING_UPLOADS_DIR, f"{temp_id}.json")
+    if os.path.exists(pending_path):
         try:
-            os.remove(pending["filepath"])
+            with open(pending_path, 'r') as pf:
+                pending = json.load(pf)
+            # Remove the original uploaded file
+            filepath = pending.get("filepath", "")
+            if filepath and os.path.exists(filepath):
+                os.remove(filepath)
+        except (json.JSONDecodeError, OSError):
+            pass
+        # Remove the pending JSON
+        try:
+            os.remove(pending_path)
         except OSError:
             pass
 
 
 def cleanup_expired_uploads(max_age_hours: int = 1):
-    """Remove pending uploads older than max_age_hours. Call periodically."""
+    """Remove pending uploads older than max_age_hours based on file mtime."""
     import os
-    from datetime import datetime, timezone, timedelta
+    import time
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
-    expired = [
-        tid for tid, data in _pending_uploads.items()
-        if data.get("created_at", cutoff) < cutoff
-    ]
-    for tid in expired:
-        _cleanup_pending(tid)
-    if expired:
-        logger.info(f"Cleaned up {len(expired)} expired file uploads")
+    cutoff_time = time.time() - (max_age_hours * 3600)
+    expired_count = 0
+
+    try:
+        for filename in os.listdir(PENDING_UPLOADS_DIR):
+            if not filename.endswith('.json'):
+                continue
+            filepath = os.path.join(PENDING_UPLOADS_DIR, filename)
+            try:
+                if os.path.getmtime(filepath) < cutoff_time:
+                    temp_id = filename[:-5]  # Strip .json
+                    _cleanup_pending(temp_id)
+                    expired_count += 1
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+    if expired_count:
+        logger.info(f"Cleaned up {expired_count} expired file uploads")
