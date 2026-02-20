@@ -598,11 +598,18 @@ class TTSPreprocessor:
             for row in result:
                 field_id = row[0]
                 if field_id in defaults:
+                    raw_options = row[4]
+                    if isinstance(raw_options, dict):
+                        options = raw_options
+                    elif raw_options:
+                        options = json.loads(raw_options)
+                    else:
+                        options = {}
                     defaults[field_id] = {
                         'pause_after': row[1] or 'medium',
                         'prefix': row[2],
                         'suffix': row[3],
-                        'options': json.loads(row[4]) if row[4] else {},
+                        'options': options,
                     }
             
         except Exception as e:
