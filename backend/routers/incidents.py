@@ -292,6 +292,8 @@ async def get_incident(
         "esz_box": incident.esz_box,
         "latitude": getattr(incident, 'latitude', None),
         "longitude": getattr(incident, 'longitude', None),
+        "route_polyline": getattr(incident, 'route_polyline', None),
+        "map_snapshot": getattr(incident, 'map_snapshot', None),
         "neris_location": incident.neris_location,
         
         # Core times - ALL UTC with Z suffix

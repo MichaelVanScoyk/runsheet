@@ -67,11 +67,13 @@ export default function GoogleMap({
   onMapClick,
   onFeatureClick,
   isPlacing = false,
+  routePolyline,
   height = '400px',
   interactive = true,
   showStation = false,
   stationCoords,
   style = {},
+  fitBounds,
   apiKey,
 }) {
   const mapRef = useRef(null);
@@ -181,6 +183,12 @@ export default function GoogleMap({
     mapInstanceRef.current.setCenter({ lat: parseFloat(center.lat), lng: parseFloat(center.lng) });
     mapInstanceRef.current.setZoom(zoom);
   }, [center?.lat, center?.lng, zoom]);
+
+  // Fit bounds (for route display)
+  useEffect(() => {
+    if (!mapInstanceRef.current || !fitBounds) return;
+    mapInstanceRef.current.fitBounds(fitBounds, { padding: 40 });
+  }, [fitBounds]);
 
   // Render simple markers
   useEffect(() => {
@@ -586,6 +594,34 @@ export default function GoogleMap({
       dataLayersRef.current.push(dataLayer);
     });
   }, [geojsonLayers]);
+
+  // Route polyline
+  const routeLineRef = useRef(null);
+  useEffect(() => {
+    if (!mapInstanceRef.current || !window.google) return;
+    if (routeLineRef.current) { routeLineRef.current.setMap(null); routeLineRef.current = null; }
+    if (!routePolyline) return;
+
+    try {
+      const path = window.google.maps.geometry.encoding.decodePath(routePolyline);
+      routeLineRef.current = new window.google.maps.Polyline({
+        path,
+        map: mapInstanceRef.current,
+        strokeColor: '#2563EB',
+        strokeOpacity: 0.8,
+        strokeWeight: 4,
+        zIndex: 5,
+      });
+      // Auto-fit bounds to show entire route
+      if (path.length > 1) {
+        const bounds = new window.google.maps.LatLngBounds();
+        path.forEach(p => bounds.extend(p));
+        mapInstanceRef.current.fitBounds(bounds, { padding: 40 });
+      }
+    } catch (e) {
+      console.warn('Failed to decode route polyline:', e);
+    }
+  }, [routePolyline, loading]);
 
   // Station marker
   useEffect(() => {

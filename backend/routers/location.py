@@ -226,6 +226,39 @@ async def geocode_incident_endpoint(
         logger.info(f"Geocoded incident {incident_id}: {result.get('matched_address')} ({result.get('provider')})")
         
         # =================================================================
+        # DRIVING ROUTE — Station → Incident
+        # Cached as encoded polyline (frontend) + PostGIS geometry (spatial queries)
+        # =================================================================
+        try:
+            from services.location.route import fetch_route
+            
+            if google_key:
+                route_data = fetch_route(
+                    origin_lat=station_lat,
+                    origin_lng=station_lng,
+                    dest_lat=result["latitude"],
+                    dest_lng=result["longitude"],
+                    google_api_key=google_key,
+                )
+                if route_data:
+                    db.execute(
+                        text("""
+                            UPDATE incidents
+                            SET route_polyline = :polyline,
+                                route_geometry = ST_LineFromEncodedPolyline(:polyline)
+                            WHERE id = :id
+                        """),
+                        {"polyline": route_data["polyline"], "id": incident_id},
+                    )
+                    db.commit()
+                    logger.info(
+                        f"Route cached for incident {incident_id}: "
+                        f"{route_data['distance_meters']}m, {route_data['duration_seconds']}s"
+                    )
+        except Exception as e:
+            logger.warning(f"Route caching failed for incident {incident_id}: {e}")
+        
+        # =================================================================
         # PROXIMITY SNAPSHOT — Phase 2 Map Platform
         # After geocoding succeeds, run proximity queries and store snapshot.
         # Reuses incident weather data for flood/wildfire conditional alerts.

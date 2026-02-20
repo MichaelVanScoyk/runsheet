@@ -1,8 +1,8 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useRunSheet } from '../RunSheetContext';
 
-// Lazy load LocationMap so leaflet import failure doesn't crash the page
-const LocationMap = lazy(() => import('../../shared/LocationMap'));
+// Lazy load IncidentMap (Google Maps route display)
+const IncidentMap = lazy(() => import('../../shared/IncidentMap'));
 
 export default function LocationSection() {
   const { 
@@ -165,14 +165,11 @@ export default function LocationSection() {
       {incidentCoords.lat && incidentCoords.lng ? (
         <>
           <Suspense fallback={<div style={{ flex: 1, minHeight: '300px', background: '#f5f5f5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', fontSize: '0.85rem' }}>Loading map...</div>}>
-            <LocationMap
-              latitude={incidentCoords.lat}
-              longitude={incidentCoords.lng}
-              markerLabel={formData.address || ''}
-              height="100%"
-              zoom={15}
-              interactive={true}
-              style={{ flex: 1, minHeight: '300px' }}
+            <IncidentMap
+              incidentCoords={incidentCoords}
+              stationCoords={locationConfig ? { lat: locationConfig.station_latitude, lng: locationConfig.station_longitude } : null}
+              routePolyline={incident?.route_polyline}
+              height="300px"
             />
           </Suspense>
           {geocodeResult && (
