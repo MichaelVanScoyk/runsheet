@@ -216,6 +216,7 @@ function AVAlertsTab() {
     loadUnitMappings();
     loadVoices();
     loadAbbreviations();
+    loadRecentIncidents();
   }, []);
 
   // Reload unit mappings when filter changes
@@ -392,6 +393,54 @@ function AVAlertsTab() {
       setMessage({ type: 'error', text: 'Failed to play sound.' });
     });
   }, [settings]);
+
+  // Recent incidents for replay
+  const [recentIncidents, setRecentIncidents] = useState([]);
+  const [recentIncidentsLoading, setRecentIncidentsLoading] = useState(false);
+  const [replayingId, setReplayingId] = useState(null);
+
+  const loadRecentIncidents = async () => {
+    setRecentIncidentsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/test-alerts/recent-incidents?limit=5`);
+      if (res.ok) {
+        const data = await res.json();
+        setRecentIncidents(data.incidents || []);
+      }
+    } catch (err) {
+      console.warn('Failed to load recent incidents:', err);
+    } finally {
+      setRecentIncidentsLoading(false);
+    }
+  };
+
+  // Replay a real incident alert to all devices
+  const replayIncident = async (incident, eventType = 'dispatch') => {
+    setReplayingId(incident.id);
+    setMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/test-alerts/replay-incident`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          incident_id: incident.id,
+          event_type: eventType,
+        }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setMessage({ type: 'success', text: `Replayed ${eventType} for ${data.incident_number} to all devices` });
+      } else {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to replay alert');
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setReplayingId(null);
+    }
+  };
 
   // Send test alert to all connected devices
   const sendTestAlert = async (soundType) => {
@@ -1586,22 +1635,88 @@ function AVAlertsTab() {
           )}
         </div>
         
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
           <button
             className="btn btn-primary"
             onClick={playServerPreview}
             disabled={playingPreview || !previewText}
-            title="Play server-generated TTS audio"
+            title="Play server-generated TTS audio (local only)"
           >
             {playingPreview ? '⏳ Playing...' : '🔊 Play Preview'}
           </button>
           <button
             className="btn btn-secondary"
             onClick={() => sendTestAlert('dispatch_fire')}
-            title="Send full test alert (tone + TTS) to all devices"
+            title="Send generic test alert (tone + TTS) to all devices"
           >
             📡 Test All Devices
           </button>
+        </div>
+
+        {/* Replay real incidents */}
+        <div style={{ borderTop: '1px solid #d0e3ed', paddingTop: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 500, color: '#1e3a5f' }}>
+              Replay Real Incident
+            </div>
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={loadRecentIncidents}
+              disabled={recentIncidentsLoading}
+              style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+            >
+              {recentIncidentsLoading ? '⏳' : '🔄'}
+            </button>
+          </div>
+          <p style={{ color: '#4a6785', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
+            Replay a real dispatch to all devices — exact same klaxon → TTS flow.
+          </p>
+          {recentIncidents.length === 0 ? (
+            <div style={{ padding: '0.5rem', color: '#999', fontStyle: 'italic', fontSize: '0.85rem' }}>
+              {recentIncidentsLoading ? 'Loading...' : 'No recent incidents'}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {recentIncidents.map(inc => (
+                <div
+                  key={inc.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.5rem 0.75rem',
+                    background: '#fff',
+                    borderRadius: '4px',
+                    border: '1px solid #d0e3ed',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <span style={{
+                    fontWeight: 600,
+                    color: inc.call_category === 'EMS' ? '#dc2626' : '#b45309',
+                    minWidth: '65px',
+                  }}>
+                    {inc.incident_number}
+                  </span>
+                  <span style={{ color: '#333', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {inc.cad_event_type}{inc.address ? ` — ${inc.address}` : ''}
+                  </span>
+                  <span style={{ color: '#999', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
+                    {inc.units?.length || 0} units
+                  </span>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={() => replayIncident(inc, 'dispatch')}
+                    disabled={replayingId === inc.id}
+                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                    title="Replay dispatch alert to all devices"
+                  >
+                    {replayingId === inc.id ? '⏳...' : '📡 Replay'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

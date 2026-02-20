@@ -170,9 +170,12 @@ export function useAVAlerts({
   }, [enabled, settingsLoaded, settings]);
 
   // Play sound based on alert type
+  // Returns a Promise that resolves when playback finishes (or immediately if no sound)
+  // This allows callers to await the klaxon before starting TTS,
+  // matching StationBell behavior: klaxon → TTS (sequential, not overlapping)
   const playSound = useCallback((eventType, callCategory) => {
-    if (!enabledRef.current) return;
-    if (settings?.enabled === false) return;
+    if (!enabledRef.current) return Promise.resolve();
+    if (settings?.enabled === false) return Promise.resolve();
     
     let soundKey;
     if (eventType === 'dispatch') {
@@ -182,15 +185,20 @@ export function useAVAlerts({
     }
     // Announcements don't play klaxon
     
-    if (!soundKey) return;
+    if (!soundKey) return Promise.resolve();
     
     const audio = audioRefs.current[soundKey];
-    if (audio) {
+    if (!audio) return Promise.resolve();
+    
+    return new Promise((resolve) => {
       audio.currentTime = 0;
+      audio.onended = () => resolve();
+      audio.onerror = () => resolve(); // Resolve even on error so TTS still plays
       audio.play().catch(err => {
         console.warn('Audio playback failed:', err);
+        resolve(); // Resolve so TTS still plays
       });
-    }
+    });
   }, [settings]);
 
   // Play server-generated audio (from Piper TTS)
@@ -234,20 +242,22 @@ export function useAVAlerts({
   }, [settings, playServerAudio]);
 
   // Handle incoming alert
-  const handleAlert = useCallback((alert) => {
+  // Sequential: klaxon plays to completion THEN TTS starts
+  // This matches StationBell hardware behavior and gives the server
+  // time to finish generating the TTS MP3 during klaxon playback
+  const handleAlert = useCallback(async (alert) => {
     setLastAlert(alert);
-    
-    // Play sound (dispatch/close only, not announcements)
-    if (alert.event_type !== 'announcement') {
-      playSound(alert.event_type, alert.call_category);
-    }
-    
-    // TTS for dispatch and announcement
-    if (alert.event_type === 'dispatch' || alert.event_type === 'announcement') {
-      speakAlert(alert);
-    }
-    
     onAlertRef.current?.(alert);
+    
+    // Play klaxon first (dispatch/close only, not announcements)
+    if (alert.event_type !== 'announcement') {
+      await playSound(alert.event_type, alert.call_category);
+    }
+    
+    // THEN play TTS after klaxon finishes (dispatch and announcement)
+    if (alert.event_type === 'dispatch' || alert.event_type === 'announcement') {
+      await speakAlert(alert);
+    }
   }, [playSound, speakAlert]);
 
   // WebSocket connection

@@ -139,6 +139,152 @@ async def test_tts_generation():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/recent-incidents")
+async def get_recent_incidents_for_test(request: Request, limit: int = 5):
+    """
+    Get recent incidents for the test alert picker.
+    Returns minimal incident info so the admin can choose which to replay.
+    """
+    from database import get_db_for_tenant, _extract_slug
+    from sqlalchemy import text
+    
+    tenant_slug = _extract_slug(request.headers.get('host', ''))
+    
+    db = None
+    try:
+        db = next(get_db_for_tenant(tenant_slug))
+        results = db.execute(text("""
+            SELECT id, internal_incident_number, call_category,
+                   cad_event_type, cad_event_subtype, address,
+                   cross_streets, esz_box, municipality_code, cad_units,
+                   incident_date
+            FROM incidents 
+            WHERE cad_event_type IS NOT NULL AND deleted_at IS NULL
+            ORDER BY created_at DESC 
+            LIMIT :limit
+        """), {"limit": limit}).fetchall()
+        
+        incidents = []
+        for r in results:
+            # Extract unit IDs from cad_units JSONB
+            units = []
+            cad_units_raw = r[9]
+            if cad_units_raw:
+                try:
+                    unit_list = cad_units_raw if isinstance(cad_units_raw, list) else __import__('json').loads(cad_units_raw)
+                    units = [u.get('unit_id', '') for u in unit_list if u.get('unit_id')]
+                except Exception:
+                    pass
+            
+            incidents.append({
+                "id": r[0],
+                "incident_number": r[1],
+                "call_category": r[2],
+                "cad_event_type": r[3],
+                "cad_event_subtype": r[4],
+                "address": r[5],
+                "cross_streets": r[6],
+                "box": r[7],
+                "municipality": r[8],
+                "units": units,
+                "incident_date": r[10].isoformat() if r[10] else None,
+            })
+        
+        return {"incidents": incidents}
+    
+    except Exception as e:
+        logger.error(f"Failed to load recent incidents: {e}")
+        return {"incidents": []}
+    finally:
+        if db:
+            db.close()
+
+
+class ReplayIncidentRequest(BaseModel):
+    incident_id: int
+    event_type: str = "dispatch"  # "dispatch" or "close"
+
+
+@router.post("/replay-incident")
+async def replay_incident_alert(
+    request: Request,
+    data: ReplayIncidentRequest
+):
+    """
+    Replay a real incident's AV alert to all connected devices.
+    
+    Generates fresh TTS from the incident's actual data (using current settings),
+    then broadcasts klaxon + TTS to all browsers and StationBell devices.
+    This is the exact same flow as a real dispatch — same emit_av_alert call.
+    """
+    from database import get_db_for_tenant, _extract_slug
+    from sqlalchemy import text
+    
+    tenant_slug = _extract_slug(request.headers.get('host', ''))
+    
+    db = None
+    try:
+        db = next(get_db_for_tenant(tenant_slug))
+        result = db.execute(text("""
+            SELECT id, call_category, cad_event_type, cad_event_subtype,
+                   address, cross_streets, esz_box, municipality_code, cad_units,
+                   internal_incident_number
+            FROM incidents 
+            WHERE id = :incident_id AND deleted_at IS NULL
+        """), {"incident_id": data.incident_id}).fetchone()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Incident not found")
+        
+        # Extract unit IDs from cad_units JSONB
+        units = []
+        cad_units_raw = result[8]
+        if cad_units_raw:
+            try:
+                unit_list = cad_units_raw if isinstance(cad_units_raw, list) else __import__('json').loads(cad_units_raw)
+                units = [u.get('unit_id', '') for u in unit_list if u.get('unit_id')]
+            except Exception:
+                pass
+        
+        incident_number = result[9]
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to load incident for replay: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if db:
+            db.close()
+    
+    try:
+        await emit_av_alert(
+            request=request,
+            event_type=data.event_type,
+            incident_id=data.incident_id,
+            call_category=result[1],
+            cad_event_type=result[2],
+            cad_event_subtype=result[3],
+            address=result[4],
+            units_due=units,
+            cross_streets=result[5],
+            box=result[6],
+            municipality=result[7],
+        )
+        
+        logger.info(f"Replayed {data.event_type} alert for incident {incident_number}")
+        
+        return {
+            "success": True,
+            "message": f"Replayed {data.event_type} for {incident_number}",
+            "incident_number": incident_number,
+        }
+    
+    except Exception as e:
+        logger.error(f"Failed to replay alert: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/test-alert")
 async def send_test_alert(
     request: Request,
@@ -170,15 +316,14 @@ async def send_test_alert(
             db = next(get_db_for_tenant(tenant_slug))
             result = db.execute(text("""
                 SELECT cad_event_type, cad_event_subtype, address, cross_streets, 
-                       box, units_due
+                       esz_box, cad_units
                 FROM incidents 
-                WHERE cad_event_type IS NOT NULL 
+                WHERE cad_event_type IS NOT NULL AND deleted_at IS NULL
                 ORDER BY created_at DESC 
                 LIMIT 1
             """)).fetchone()
             
             if result:
-                import json
                 cad_event_type = cad_event_type or result[0] or "TEST ALERT"
                 cad_event_subtype = cad_event_subtype or result[1]
                 address = address or result[2] or "Test Address"
@@ -186,16 +331,16 @@ async def send_test_alert(
                 box = box or result[4]
                 
                 if not units_due:
-                    units_raw = result[5]
-                    if units_raw:
+                    cad_units_raw = result[5]
+                    if cad_units_raw:
                         try:
-                            units_due = json.loads(units_raw) if units_raw.startswith('[') else [u.strip() for u in units_raw.split(',')]
-                        except:
+                            unit_list = cad_units_raw if isinstance(cad_units_raw, list) else __import__('json').loads(cad_units_raw)
+                            units_due = [u.get('unit_id', '') for u in unit_list if u.get('unit_id')]
+                        except Exception:
                             units_due = ["TEST1", "TEST2"]
                     else:
                         units_due = ["TEST1", "TEST2"]
             else:
-                # No incidents found, use defaults
                 cad_event_type = cad_event_type or "TEST ALERT"
                 address = address or "123 Test Street"
                 units_due = units_due or ["TEST1", "TEST2"]
@@ -397,9 +542,10 @@ async def preview_tts_settings(request: Request):
     )
     
     # Generate actual audio for preview
-    # Use timestamp-based ID to ensure fresh file generation
-    import time
-    preview_id = int(time.time() * 1000) % 1000000  # Unique per request
+    # Use UUID to guarantee unique filenames — prevents race condition
+    # when multiple preview requests arrive simultaneously
+    import uuid
+    preview_id = f"preview_{uuid.uuid4().hex[:8]}"  # Unique ID per request
     audio_url = None
     try:
         result = await tts.generate_alert_audio(

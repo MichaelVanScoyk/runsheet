@@ -417,10 +417,10 @@ class TTSService:
                     stderr=asyncio.subprocess.PIPE
                 )
                 
-                await asyncio.wait_for(proc.communicate(), timeout=10.0)
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
                 
                 if proc.returncode != 0:
-                    logger.error(f"ffmpeg failed for {incident_id}")
+                    logger.error(f"ffmpeg failed for {incident_id}: {stderr.decode() if stderr else 'no stderr'}")
                     return {"audio_url": None, "tts_text": text}
                 
                 # Remove WAV file
@@ -518,10 +518,10 @@ class TTSService:
                     stderr=asyncio.subprocess.PIPE
                 )
                 
-                await asyncio.wait_for(proc.communicate(), timeout=10.0)
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
                 
                 if proc.returncode != 0:
-                    logger.error(f"ffmpeg failed for custom message")
+                    logger.error(f"ffmpeg failed for custom message: {stderr.decode() if stderr else 'no stderr'}")
                     return {"audio_url": None, "tts_text": text}
                 
                 wav_path.unlink(missing_ok=True)
