@@ -658,7 +658,9 @@ async def notify_tenant_event(tenant_slug: str, event_type: str, payload: dict):
     try:
         # Reuse the persistent LISTEN connection for NOTIFY (same direct PG connection)
         if _listen_connection and not _listen_connection.is_closed():
-            await _listen_connection.execute(f"NOTIFY {_NOTIFY_CHANNEL}, $1", notify_data)
+            await _listen_connection.execute(
+                "SELECT pg_notify($1, $2)", _NOTIFY_CHANNEL, notify_data
+            )
         else:
             logger.warning("LISTEN connection not available for NOTIFY, falling back to direct broadcast")
             await _dispatch_notification(tenant_slug, event_type, payload)
