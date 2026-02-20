@@ -89,6 +89,8 @@ PUBLIC_PATHS = [
     "/api/master/me",
     # AV alerts settings (read-only, needed by StationBell ESP32 devices)
     "/api/settings/av-alerts",
+    # Branding theme (read-only, needed by TenantLogin page after logout)
+    "/api/branding/theme",
 ]
 
 # Path prefixes that don't require tenant auth (for dynamic routes)
