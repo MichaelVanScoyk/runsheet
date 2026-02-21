@@ -298,6 +298,32 @@ export default function GoogleMap({
       return iconCache[key];
     }
 
+    // Google-style drop pin marker for incidents
+    function getIncidentPinIcon(color, count) {
+      const hasCount = count && count > 1;
+      const key = `pin_${color}_${count || 1}`;
+      if (iconCache[key]) return iconCache[key];
+      const w = hasCount ? 34 : 28;
+      const h = hasCount ? 44 : 38;
+      const cx = w / 2;
+      const r = hasCount ? 13 : 11;
+      const countText = hasCount
+        ? `<text x="${cx}" y="${r + 2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="11" font-weight="700" font-family="Arial,sans-serif">${count > 99 ? '99+' : count}</text>`
+        : '';
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+        <filter id="s"><feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-opacity="0.3"/></filter>
+        <path d="M${cx} ${h - 1} C${cx} ${h - 1} ${cx + r + 2} ${r + 6} ${cx + r + 2} ${r + 2} A${r + 2} ${r + 2} 0 0 0 ${cx - r - 2} ${r + 2} C${cx - r - 2} ${r + 6} ${cx} ${h - 1} ${cx} ${h - 1}Z" fill="${color}" filter="url(#s)" stroke="#fff" stroke-width="1.5"/>
+        <circle cx="${cx}" cy="${r + 2}" r="${hasCount ? 5 : 4}" fill="#fff" fill-opacity="0.9"/>
+        ${countText}
+      </svg>`;
+      iconCache[key] = {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+        scaledSize: new window.google.maps.Size(w, h),
+        anchor: new window.google.maps.Point(cx, h - 1),
+      };
+      return iconCache[key];
+    }
+
     // Hydrant-specific: outer ring + inner NFPA color fill
     function getHydrantMarkerIcon(color, innerColor) {
       const key = `hydrant_${color}_${innerColor || 'none'}`;
@@ -450,15 +476,21 @@ export default function GoogleMap({
         }
 
         // Point items (clusters + individual features)
+        const isIncidentLayer = data.layer_type?.startsWith('incident_');
+
         data.items.forEach(item => {
           if (item.geometry) return; // already handled as polygon above
 
           let marker;
           if (item.type === 'cluster') {
+            // Incident clusters use pin icon with count, others use circle
+            const clusterIcon = isIncidentLayer
+              ? getIncidentPinIcon(color, item.count)
+              : getClusterIcon(color, item.count);
             marker = new window.google.maps.Marker({
               position: { lat: item.lat, lng: item.lng },
               map,
-              icon: getClusterIcon(color, item.count),
+              icon: clusterIcon,
               zIndex: 100 + item.count,
               clickable: false,
             });
@@ -468,7 +500,16 @@ export default function GoogleMap({
             let markerIcon;
             let hoverTitle = item.title || '';
 
-            if (isHydrant) {
+            if (isIncidentLayer) {
+              // Incidents: Google-style drop pin
+              markerIcon = getIncidentPinIcon(color);
+              const props = item.properties || {};
+              const parts = [props.incident_number];
+              if (props.cad_event_type) parts.push(props.cad_event_type);
+              if (props.cad_event_subtype) parts.push(props.cad_event_subtype);
+              if (props.address) parts.push(props.address);
+              hoverTitle = parts.filter(Boolean).join(' — ');
+            } else if (isHydrant) {
               // Hydrants: NFPA color dot system
               const innerColor = resolveHydrantColor(item.properties);
               markerIcon = getHydrantMarkerIcon(color, innerColor);
@@ -489,28 +530,56 @@ export default function GoogleMap({
               map,
               icon: markerIcon,
               title: hoverTitle,
-              zIndex: 10,
+              zIndex: isIncidentLayer ? 20 : 10,
             });
 
-            // Click handler for individual features
-            marker.addListener('click', () => {
-              if (onFeatureClickRef.current) {
-                onFeatureClickRef.current({
-                  id: item.id,
-                  title: item.title,
-                  description: item.description,
-                  properties: item.properties || {},
-                  radius_meters: item.radius_meters,
-                  address: item.address,
-                  notes: item.notes,
-                  lat: item.lat,
-                  lng: item.lng,
-                  layer_type: data.layer_type,
-                  layer_icon: data.layer_icon,
-                  layer_color: data.layer_color,
-                });
-              }
-            });
+            // Click handler — incidents get InfoWindow popup, others use feature panel
+            if (isIncidentLayer) {
+              marker.addListener('click', () => {
+                const props = item.properties || {};
+                const typeDisplay = [props.cad_event_type, props.cad_event_subtype].filter(Boolean).join(' / ');
+                const dateDisplay = props.incident_date || '';
+                const content = `
+                  <div style="font-family:system-ui,sans-serif;min-width:200px;max-width:280px;padding:2px">
+                    <div style="font-weight:700;font-size:14px;color:${color};margin-bottom:4px">
+                      ${props.incident_number || item.title || ''}
+                    </div>
+                    ${typeDisplay ? `<div style="font-size:12px;color:#555;margin-bottom:2px">${typeDisplay}</div>` : ''}
+                    ${props.address ? `<div style="font-size:12px;color:#333;margin-bottom:2px">${props.address}</div>` : ''}
+                    ${props.location_name ? `<div style="font-size:11px;color:#777;margin-bottom:2px">${props.location_name}</div>` : ''}
+                    ${dateDisplay ? `<div style="font-size:11px;color:#888;margin-bottom:6px">${dateDisplay}</div>` : ''}
+                    <a href="/?incident=${item.id}"
+                       style="display:inline-block;font-size:12px;font-weight:600;color:#fff;background:${color};padding:4px 10px;border-radius:4px;text-decoration:none;margin-top:2px"
+                       >View Run Sheet</a>
+                  </div>
+                `;
+                // Close any existing InfoWindow
+                if (map.__activeInfoWindow) map.__activeInfoWindow.close();
+                const iw = new window.google.maps.InfoWindow({ content });
+                iw.open(map, marker);
+                map.__activeInfoWindow = iw;
+              });
+            } else {
+              // Standard feature click handler
+              marker.addListener('click', () => {
+                if (onFeatureClickRef.current) {
+                  onFeatureClickRef.current({
+                    id: item.id,
+                    title: item.title,
+                    description: item.description,
+                    properties: item.properties || {},
+                    radius_meters: item.radius_meters,
+                    address: item.address,
+                    notes: item.notes,
+                    lat: item.lat,
+                    lng: item.lng,
+                    layer_type: data.layer_type,
+                    layer_icon: data.layer_icon,
+                    layer_color: data.layer_color,
+                  });
+                }
+              });
+            }
           }
 
           viewportMarkersRef.current.push(marker);

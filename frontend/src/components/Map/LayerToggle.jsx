@@ -35,6 +35,7 @@ export default function LayerToggle({ layers = [], visibleLayers = new Set(), on
 
   // Group layers by category for visual organization
   const groups = {
+    'Incidents': populatedLayers.filter(l => l.layer_type?.startsWith('incident_')),
     'Water Sources': populatedLayers.filter(l => ['hydrant', 'dry_hydrant', 'draft_point'].includes(l.layer_type)),
     'Hazards & Closures': populatedLayers.filter(l => ['hazard', 'closure', 'tri_facility', 'railroad_crossing'].includes(l.layer_type)),
     'Boundaries': populatedLayers.filter(l => l.layer_type === 'boundary'),

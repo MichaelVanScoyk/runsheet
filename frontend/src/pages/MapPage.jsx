@@ -53,7 +53,8 @@ export default function MapPage({ userSession }) {
           if (prev.size === 0) {
             const autoVisible = new Set();
             (data.layers || []).forEach(l => {
-              if (l.feature_count > 0) autoVisible.add(l.id);
+              // Incident layers start OFF by default (user toggles on)
+              if (l.feature_count > 0 && !l.is_virtual) autoVisible.add(l.id);
             });
             return autoVisible;
           }

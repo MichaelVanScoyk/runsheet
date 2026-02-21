@@ -313,6 +313,26 @@ async def list_layers(
                 "stroke_weight": row[18] or 2,
             })
 
+        # Append virtual incident layers with feature counts
+        for key, vl in INCIDENT_VIRTUAL_LAYERS.items():
+            try:
+                from datetime import datetime as _dt, date as _date
+                _now = _dt.now()
+                _date_start = _date(_now.year, 1, 1)
+                count = db.execute(text("""
+                    SELECT COUNT(*) FROM incidents
+                    WHERE call_category = :cat
+                      AND deleted_at IS NULL
+                      AND latitude IS NOT NULL AND longitude IS NOT NULL
+                      AND latitude != '' AND longitude != ''
+                      AND incident_date >= :ds
+                """), {"cat": vl["call_category"], "ds": _date_start}).scalar() or 0
+            except Exception:
+                count = 0
+            layer_copy = {k: v for k, v in vl.items() if k not in ("call_category",)}
+            layer_copy["feature_count"] = count
+            layers.append(layer_copy)
+
         return {"layers": layers}
     except Exception as e:
         logger.error(f"Failed to list layers: {e}")
@@ -776,9 +796,230 @@ async def get_clustered_features(
 # =============================================================================
 
 class BatchClusteredRequest(BaseModel):
-    layer_ids: List[int]
+    layer_ids: List  # int for map_layers, str for virtual layers ("incident_fire", "incident_ems")
     bbox: str
     zoom: int = 14
+
+
+# =============================================================================
+# VIRTUAL INCIDENT LAYERS — query incidents table with same clustering pattern
+# =============================================================================
+
+# Virtual layer definitions (appended to /api/map/layers response)
+INCIDENT_VIRTUAL_LAYERS = {
+    "incident_fire": {
+        "id": "incident_fire",
+        "layer_type": "incident_fire",
+        "name": "Fire Incidents",
+        "description": "Fire incidents (YTD)",
+        "icon": "🔥",
+        "color": "#DC2626",
+        "opacity": 0.9,
+        "geometry_type": "point",
+        "property_schema": {},
+        "is_system": True,
+        "route_check": False,
+        "sort_order": 900,
+        "is_active": True,
+        "stroke_color": "#DC2626",
+        "stroke_opacity": 0.8,
+        "stroke_weight": 2,
+        "is_virtual": True,
+        "call_category": "FIRE",
+    },
+    "incident_ems": {
+        "id": "incident_ems",
+        "layer_type": "incident_ems",
+        "name": "EMS Incidents",
+        "description": "EMS incidents (YTD)",
+        "icon": "🚑",
+        "color": "#2563EB",
+        "opacity": 0.9,
+        "geometry_type": "point",
+        "property_schema": {},
+        "is_system": True,
+        "route_check": False,
+        "sort_order": 901,
+        "is_active": True,
+        "stroke_color": "#2563EB",
+        "stroke_opacity": 0.8,
+        "stroke_weight": 2,
+        "is_virtual": True,
+        "call_category": "EMS",
+    },
+}
+
+
+def _query_incident_layer(
+    db: Session,
+    layer_key: str,
+    west: float, south: float, east: float, north: float,
+    zoom: int,
+    date_range: str = "ytd",
+) -> Optional[dict]:
+    """
+    Query incidents as a virtual map layer with server-side clustering.
+    Same pattern as _query_clustered_layer but sources from incidents table.
+    """
+    from datetime import datetime, date as date_type
+
+    layer_def = INCIDENT_VIRTUAL_LAYERS.get(layer_key)
+    if not layer_def:
+        return None
+
+    category = layer_def["call_category"]
+    color = layer_def["color"]
+
+    # Date filter
+    now = datetime.now()
+    if date_range == "90days":
+        from datetime import timedelta
+        date_start = (now - timedelta(days=90)).date()
+    else:
+        # YTD
+        date_start = date_type(now.year, 1, 1)
+
+    params = {
+        "category": category,
+        "date_start": date_start,
+        "west": west, "south": south, "east": east, "north": north,
+    }
+
+    CLUSTER_THRESHOLD_ZOOM = 16
+
+    if zoom < CLUSTER_THRESHOLD_ZOOM:
+        # --- SERVER-SIDE GRID CLUSTERING ---
+        cell_size = 360.0 / (2 ** zoom) / 4
+        params["cell_size"] = cell_size
+
+        result = db.execute(text("""
+            SELECT
+                COUNT(*) as point_count,
+                AVG(CAST(latitude AS DOUBLE PRECISION)) as center_lat,
+                AVG(CAST(longitude AS DOUBLE PRECISION)) as center_lng,
+                MIN(id) as sample_id,
+                MIN(internal_incident_number) as sample_title,
+                CASE WHEN COUNT(*) = 1 THEN MIN(address) ELSE NULL END as single_address,
+                CASE WHEN COUNT(*) = 1 THEN MIN(cad_event_type) ELSE NULL END as single_type,
+                CASE WHEN COUNT(*) = 1 THEN MIN(cad_event_subtype) ELSE NULL END as single_subtype,
+                CASE WHEN COUNT(*) = 1 THEN MIN(incident_date::text) ELSE NULL END as single_date,
+                CASE WHEN COUNT(*) = 1 THEN MIN(internal_incident_number) ELSE NULL END as single_number
+            FROM incidents
+            WHERE call_category = :category
+              AND deleted_at IS NULL
+              AND latitude IS NOT NULL AND longitude IS NOT NULL
+              AND latitude != '' AND longitude != ''
+              AND incident_date >= :date_start
+              AND CAST(longitude AS DOUBLE PRECISION) BETWEEN :west AND :east
+              AND CAST(latitude AS DOUBLE PRECISION) BETWEEN :south AND :north
+            GROUP BY
+                FLOOR(CAST(longitude AS DOUBLE PRECISION) / :cell_size),
+                FLOOR(CAST(latitude AS DOUBLE PRECISION) / :cell_size)
+            ORDER BY point_count DESC
+        """), params)
+
+        items = []
+        for row in result:
+            count = row[0]
+            if count == 1:
+                items.append({
+                    "type": "feature",
+                    "id": row[3],
+                    "lat": float(row[1]),
+                    "lng": float(row[2]),
+                    "title": row[9],
+                    "properties": {
+                        "incident_number": row[9],
+                        "address": row[5],
+                        "cad_event_type": row[6],
+                        "cad_event_subtype": row[7],
+                        "incident_date": row[8],
+                        "call_category": category,
+                    },
+                })
+            else:
+                items.append({
+                    "type": "cluster",
+                    "count": count,
+                    "lat": float(row[1]),
+                    "lng": float(row[2]),
+                })
+
+        return {
+            "layer_id": layer_key,
+            "layer_type": layer_def["layer_type"],
+            "layer_color": color,
+            "layer_icon": layer_def["icon"],
+            "layer_style": {
+                "fill_color": color,
+                "fill_opacity": 0.9,
+                "stroke_color": color,
+                "stroke_opacity": 0.8,
+                "stroke_weight": 2,
+            },
+            "zoom": zoom,
+            "clustered": True,
+            "items": items,
+            "total_items": len(items),
+        }
+
+    else:
+        # --- INDIVIDUAL FEATURES (high zoom) ---
+        result = db.execute(text("""
+            SELECT id, internal_incident_number, address, cad_event_type,
+                   cad_event_subtype, incident_date::text, call_category,
+                   CAST(latitude AS DOUBLE PRECISION) as lat,
+                   CAST(longitude AS DOUBLE PRECISION) as lng,
+                   location_name, municipality_code
+            FROM incidents
+            WHERE call_category = :category
+              AND deleted_at IS NULL
+              AND latitude IS NOT NULL AND longitude IS NOT NULL
+              AND latitude != '' AND longitude != ''
+              AND incident_date >= :date_start
+              AND CAST(longitude AS DOUBLE PRECISION) BETWEEN :west AND :east
+              AND CAST(latitude AS DOUBLE PRECISION) BETWEEN :south AND :north
+            ORDER BY incident_date DESC
+            LIMIT 2000
+        """), params)
+
+        items = []
+        for row in result:
+            items.append({
+                "type": "feature",
+                "id": row[0],
+                "lat": float(row[7]),
+                "lng": float(row[8]),
+                "title": row[1],
+                "properties": {
+                    "incident_number": row[1],
+                    "address": row[2],
+                    "cad_event_type": row[3],
+                    "cad_event_subtype": row[4],
+                    "incident_date": row[5],
+                    "call_category": row[6],
+                    "location_name": row[9],
+                    "municipality_code": row[10],
+                },
+            })
+
+        return {
+            "layer_id": layer_key,
+            "layer_type": layer_def["layer_type"],
+            "layer_color": color,
+            "layer_icon": layer_def["icon"],
+            "layer_style": {
+                "fill_color": color,
+                "fill_opacity": 0.9,
+                "stroke_color": color,
+                "stroke_opacity": 0.8,
+                "stroke_weight": 2,
+            },
+            "zoom": zoom,
+            "clustered": False,
+            "items": items,
+            "total_items": len(items),
+        }
 
 
 @router.post("/layers/batch/clustered")
@@ -790,8 +1031,11 @@ async def get_batch_clustered_features(
     Batch viewport query — returns clustered features for multiple layers
     in a single request. Replaces N parallel GETs from the frontend.
 
-    Request: { "layer_ids": [1,3,5], "bbox": "west,south,east,north", "zoom": 14 }
-    Response: { "layers": { "1": {...}, "3": {...}, "5": {...} }, "zoom": 14 }
+    Supports both real map_layers (integer IDs) and virtual incident layers
+    (string IDs: "incident_fire", "incident_ems").
+
+    Request: { "layer_ids": [1,3,5,"incident_fire"], "bbox": "west,south,east,north", "zoom": 14 }
+    Response: { "layers": { "1": {...}, "3": {...}, "incident_fire": {...} }, "zoom": 14 }
     """
     try:
         west, south, east, north = [float(x) for x in request.bbox.split(",")]
@@ -807,7 +1051,11 @@ async def get_batch_clustered_features(
     layers_result = {}
     for lid in request.layer_ids:
         try:
-            data = _query_clustered_layer(db, lid, west, south, east, north, request.zoom)
+            # Virtual incident layers use string IDs
+            if isinstance(lid, str) and lid.startswith("incident_"):
+                data = _query_incident_layer(db, lid, west, south, east, north, request.zoom)
+            else:
+                data = _query_clustered_layer(db, int(lid), west, south, east, north, request.zoom)
             if data is not None:
                 layers_result[str(lid)] = data
         except Exception as e:
