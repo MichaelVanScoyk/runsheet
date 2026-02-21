@@ -298,42 +298,38 @@ export default function GoogleMap({
       return iconCache[key];
     }
 
-    // Incident emoji marker — drop pin shape with emoji inside
-    function getIncidentEmojiIcon(emoji) {
-      const key = `inc_emoji_${emoji}`;
+    // Incident marker — just the emoji
+    function getIncidentIcon(emoji) {
+      const key = `inc_${emoji}`;
       if (iconCache[key]) return iconCache[key];
-      const size = 30;
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size + 8}" viewBox="0 0 ${size} ${size + 8}">
-        <filter id="ds"><feDropShadow dx="0" dy="1" stdDeviation="1" flood-opacity="0.3"/></filter>
-        <path d="M${size/2} ${size + 6} C${size/2} ${size + 6} ${size - 2} ${size/2 + 4} ${size - 2} ${size/2} A${size/2 - 2} ${size/2 - 2} 0 0 0 2 ${size/2} C2 ${size/2 + 4} ${size/2} ${size + 6} ${size/2} ${size + 6}Z" fill="#fff" filter="url(#ds)" stroke="#ccc" stroke-width="0.5"/>
-        <text x="${size/2}" y="${size/2 + 1}" text-anchor="middle" dominant-baseline="central" font-size="18">${emoji}</text>
+      const size = 28;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" font-size="22">${emoji}</text>
       </svg>`;
       iconCache[key] = {
         url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-        scaledSize: new window.google.maps.Size(size, size + 8),
-        anchor: new window.google.maps.Point(size / 2, size + 6),
+        scaledSize: new window.google.maps.Size(size, size),
+        anchor: new window.google.maps.Point(size / 2, size / 2),
       };
       return iconCache[key];
     }
 
-    // Incident cluster icon — pin shape with count badge
+    // Incident cluster — emoji with count badge
     function getIncidentClusterIcon(emoji, count) {
-      const key = `inc_cluster_${emoji}_${count}`;
+      const key = `inc_cl_${emoji}_${count}`;
       if (iconCache[key]) return iconCache[key];
-      const size = 34;
+      const size = 32;
       const badgeR = 9;
       const label = count > 99 ? '99+' : String(count);
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size + badgeR}" height="${size + 10}" viewBox="0 0 ${size + badgeR} ${size + 10}">
-        <filter id="ds2"><feDropShadow dx="0" dy="1" stdDeviation="1" flood-opacity="0.3"/></filter>
-        <path d="M${size/2} ${size + 8} C${size/2} ${size + 8} ${size - 2} ${size/2 + 4} ${size - 2} ${size/2} A${size/2 - 2} ${size/2 - 2} 0 0 0 2 ${size/2} C2 ${size/2 + 4} ${size/2} ${size + 8} ${size/2} ${size + 8}Z" fill="#fff" filter="url(#ds2)" stroke="#ccc" stroke-width="0.5"/>
-        <text x="${size/2}" y="${size/2 + 1}" text-anchor="middle" dominant-baseline="central" font-size="18">${emoji}</text>
-        <circle cx="${size - 2}" cy="${badgeR + 1}" r="${badgeR}" fill="#333" stroke="#fff" stroke-width="1.5"/>
-        <text x="${size - 2}" y="${badgeR + 2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="${label.length > 2 ? 8 : 10}" font-weight="700" font-family="Arial,sans-serif">${label}</text>
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size + badgeR}" height="${size}" viewBox="0 0 ${size + badgeR} ${size}">
+        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" font-size="22">${emoji}</text>
+        <circle cx="${size - 1}" cy="${badgeR + 1}" r="${badgeR}" fill="#333" stroke="#fff" stroke-width="1.5"/>
+        <text x="${size - 1}" y="${badgeR + 2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="${label.length > 2 ? 8 : 10}" font-weight="700" font-family="Arial,sans-serif">${label}</text>
       </svg>`;
       iconCache[key] = {
         url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-        scaledSize: new window.google.maps.Size(size + badgeR, size + 10),
-        anchor: new window.google.maps.Point(size / 2, size + 8),
+        scaledSize: new window.google.maps.Size(size + badgeR, size),
+        anchor: new window.google.maps.Point(size / 2, size / 2),
       };
       return iconCache[key];
     }
@@ -491,7 +487,7 @@ export default function GoogleMap({
 
         // Point items (clusters + individual features)
         const isIncidentLayer = data.layer_type?.startsWith('incident_');
-        const incidentEmoji = data.layer_type === 'incident_fire' ? '🔥' : '⚕️';
+        const incidentEmoji = data.layer_type === 'incident_fire' ? '🔥' : '🚑';
 
         data.items.forEach(item => {
           if (item.geometry) return; // already handled as polygon above
@@ -552,7 +548,7 @@ export default function GoogleMap({
 
             if (isIncidentLayer) {
               // Incidents: emoji pin (fire or EMS)
-              markerIcon = getIncidentEmojiIcon(incidentEmoji);
+              markerIcon = getIncidentIcon(incidentEmoji);
               const props = item.properties || {};
               const parts = [props.incident_number];
               if (props.cad_event_type) parts.push(props.cad_event_type);
