@@ -89,6 +89,7 @@ export default function GoogleMap({
   const debounceTimerRef = useRef(null); // 300ms debounce for idle event
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
 
 
   // Refs for callbacks — avoids stale closures in Google Maps listeners
@@ -159,6 +160,7 @@ export default function GoogleMap({
 
         mapInstanceRef.current = map;
         setLoading(false);
+        setMapReady(true);
       })
       .catch((err) => {
         setError(err.message);
@@ -179,20 +181,20 @@ export default function GoogleMap({
 
   // Update center/zoom
   useEffect(() => {
-    if (!mapInstanceRef.current || !center?.lat || !center?.lng) return;
+    if (!mapReady || !center?.lat || !center?.lng) return;
     mapInstanceRef.current.setCenter({ lat: parseFloat(center.lat), lng: parseFloat(center.lng) });
     mapInstanceRef.current.setZoom(zoom);
   }, [center?.lat, center?.lng, zoom]);
 
   // Fit bounds (for route display)
   useEffect(() => {
-    if (!mapInstanceRef.current || !fitBounds) return;
+    if (!mapReady || !fitBounds) return;
     mapInstanceRef.current.fitBounds(fitBounds, { padding: 40 });
-  }, [fitBounds]);
+  }, [mapReady, fitBounds]);
 
   // Render simple markers
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google) return;
+    if (!mapReady) return;
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
 
@@ -209,11 +211,11 @@ export default function GoogleMap({
       }
       markersRef.current.push(marker);
     });
-  }, [markers]);
+  }, [mapReady, markers]);
 
   // Render circles
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google) return;
+    if (!mapReady) return;
     circlesRef.current.forEach(c => c.setMap(null));
     circlesRef.current = [];
 
@@ -231,11 +233,11 @@ export default function GoogleMap({
       });
       circlesRef.current.push(circle);
     });
-  }, [circles]);
+  }, [mapReady, circles]);
 
   // Render polygons
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google) return;
+    if (!mapReady) return;
     polygonsRef.current.forEach(p => p.setMap(null));
     polygonsRef.current = [];
 
@@ -252,14 +254,14 @@ export default function GoogleMap({
       });
       polygonsRef.current.push(polygon);
     });
-  }, [polygons]);
+  }, [mapReady, polygons]);
 
   // ==========================================================================
   // VIEWPORT-BASED LOADING — server-side clustering
   // ==========================================================================
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map || !window.google) return;
+    if (!mapReady || !map) return;
 
     // Remove old idle listener
     if (idleListenerRef.current) {
@@ -537,13 +539,13 @@ export default function GoogleMap({
         idleListenerRef.current = null;
       }
     };
-  }, [viewportLayers, loading]); // `loading` ensures re-run when map finishes initializing
+  }, [viewportLayers, mapReady]);
 
   // ==========================================================================
   // STATIC GEOJSON — legacy path for small datasets
   // ==========================================================================
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !geojsonLayers?.length) return;
+    if (!mapReady || !geojsonLayers?.length) return;
 
     geojsonLayers.forEach(layer => {
       if (!layer.geojson?.features?.length) return;
@@ -593,12 +595,12 @@ export default function GoogleMap({
       dataLayer.setMap(mapInstanceRef.current);
       dataLayersRef.current.push(dataLayer);
     });
-  }, [geojsonLayers]);
+  }, [mapReady, geojsonLayers]);
 
   // Route polyline
   const routeLineRef = useRef(null);
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google) return;
+    if (!mapReady) return;
     if (routeLineRef.current) { routeLineRef.current.setMap(null); routeLineRef.current = null; }
     if (!routePolyline) return;
 
@@ -621,11 +623,11 @@ export default function GoogleMap({
     } catch (e) {
       console.warn('Failed to decode route polyline:', e);
     }
-  }, [routePolyline, loading]);
+  }, [mapReady, routePolyline]);
 
   // Station marker
   useEffect(() => {
-    if (!mapInstanceRef.current || !window.google || !showStation || !stationCoords) return;
+    if (!mapReady || !showStation || !stationCoords) return;
     if (stationMarkerRef.current) stationMarkerRef.current.setMap(null);
 
     stationMarkerRef.current = new window.google.maps.Marker({
@@ -642,7 +644,7 @@ export default function GoogleMap({
       },
       zIndex: 1000,
     });
-  }, [showStation, stationCoords?.lat, stationCoords?.lng]);
+  }, [mapReady, showStation, stationCoords?.lat, stationCoords?.lng]);
 
   if (error) {
     return (
