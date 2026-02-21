@@ -64,9 +64,16 @@ def geocode_address(
     if google_api_key:
         result = _geocode_google(address, station_lat, station_lng, state, google_api_key)
         if result:
+            # ROOFTOP = Google has the real address, trust it
+            if result.get('location_type') == 'ROOFTOP':
+                return result
+            # RANGE_INTERPOLATED = Google guessed, check Census for actual 911 address
+            census_result = _geocode_census(address, station_lat, station_lng, state)
+            if census_result and census_result.get('distance_km', 9999) < result.get('distance_km', 9999):
+                return census_result
             return result
     
-    # Fallback to Census (free, no key needed)
+    # Fallback to Census if no Google key
     result = _geocode_census(address, station_lat, station_lng, state)
     if result:
         return result
@@ -99,6 +106,13 @@ def _geocode_google(
         "address": query_address,
         "key": api_key,
     }
+    
+    # Bias results toward station area (not a filter — results outside bounds still returned)
+    if station_lat and station_lng:
+        # ~30km box around station
+        offset = 0.27  # ~30km in degrees
+        params["bounds"] = (f"{station_lat - offset},{station_lng - offset}"
+                            f"|{station_lat + offset},{station_lng + offset}")
     
     try:
         with httpx.Client(timeout=GOOGLE_TIMEOUT) as client:
