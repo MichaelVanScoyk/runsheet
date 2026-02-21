@@ -379,3 +379,129 @@ def geocode_incident(
         "geocode_data": None,
         "needs_review": True,
     }
+
+
+def geocode_all_matches(
+    address: str,
+    station_lat: float,
+    station_lng: float,
+    state: str = "PA",
+    google_api_key: Optional[str] = None,
+) -> list:
+    """
+    Return ALL geocode matches from Google + Census, each with distance_km.
+    Sorted by distance to station. Used by the manual location picker UI.
+    """
+    from .distance import haversine_km
+
+    if not address or not address.strip():
+        return []
+
+    all_matches = []
+
+    # Google
+    if google_api_key:
+        all_matches.extend(_get_raw_google(address, state, google_api_key))
+
+    # Census
+    all_matches.extend(_get_raw_census(address, state))
+
+    # Add distance via distance.py haversine
+    for m in all_matches:
+        lat = m.get("latitude")
+        lng = m.get("longitude")
+        if lat is not None and lng is not None:
+            m["distance_km"] = round(haversine_km(station_lat, station_lng, lat, lng), 2)
+        else:
+            m["distance_km"] = 9999
+
+    # Dedupe by coords
+    seen = set()
+    deduped = []
+    for m in all_matches:
+        key = (round(m.get("latitude", 0), 5), round(m.get("longitude", 0), 5))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(m)
+
+    deduped.sort(key=lambda m: m["distance_km"])
+    return deduped
+
+
+def _get_raw_google(address: str, state: str, api_key: str) -> list:
+    """Fetch all Google results as normalized dicts."""
+    query_address = address.strip()
+    if not any(s in query_address.upper() for s in [f', {state}', f',{state}', f' {state} ']):
+        query_address = f"{query_address}, {state}"
+
+    try:
+        with httpx.Client(timeout=GOOGLE_TIMEOUT) as client:
+            response = client.get(GOOGLE_BASE, params={"address": query_address, "key": api_key})
+            response.raise_for_status()
+            data = response.json()
+    except Exception:
+        return []
+
+    if data.get("status") != "OK":
+        return []
+
+    confidence_map = {"ROOFTOP": 1.0, "RANGE_INTERPOLATED": 0.8, "GEOMETRIC_CENTER": 0.6, "APPROXIMATE": 0.4}
+    matches = []
+    for r in data.get("results", []):
+        geo = r.get("geometry", {})
+        loc = geo.get("location", {})
+        location_type = geo.get("location_type", "")
+        components = {}
+        for comp in r.get("address_components", []):
+            for t in comp.get("types", []):
+                components[t] = comp
+        matches.append({
+            "latitude": loc.get("lat"),
+            "longitude": loc.get("lng"),
+            "matched_address": r.get("formatted_address", ""),
+            "city": components.get("locality", {}).get("long_name", ""),
+            "state": components.get("administrative_area_level_1", {}).get("short_name", ""),
+            "county": components.get("administrative_area_level_2", {}).get("long_name", "").replace(" County", ""),
+            "provider": "google",
+            "confidence": confidence_map.get(location_type, 0.5),
+        })
+    return matches
+
+
+def _get_raw_census(address: str, state: str) -> list:
+    """Fetch all Census results as normalized dicts."""
+    query_address = address.strip()
+    if not any(s in query_address.upper() for s in [f', {state}', f',{state}', f' {state} ']):
+        query_address = f"{query_address}, {state}"
+
+    try:
+        with httpx.Client(timeout=CENSUS_TIMEOUT) as client:
+            response = client.get(CENSUS_BASE, params={
+                "address": query_address,
+                "benchmark": "Public_AR_Current",
+                "vintage": "Current_Current",
+                "format": "json",
+            })
+            response.raise_for_status()
+            data = response.json()
+    except Exception:
+        return []
+
+    matches = []
+    for m in data.get("result", {}).get("addressMatches", []):
+        coords = m.get("coordinates", {})
+        addr_comp = m.get("addressComponents", {})
+        geographies = m.get("geographies", {})
+        county_sub = geographies.get("County Subdivisions", [{}])[0] if geographies.get("County Subdivisions") else {}
+        counties = geographies.get("Counties", [{}])[0] if geographies.get("Counties") else {}
+        matches.append({
+            "latitude": coords.get("y"),
+            "longitude": coords.get("x"),
+            "matched_address": m.get("matchedAddress", ""),
+            "city": addr_comp.get("city", ""),
+            "state": addr_comp.get("state", ""),
+            "county": counties.get("BASENAME", "") or county_sub.get("COUNTY", ""),
+            "provider": "census",
+            "confidence": 1.0,
+        })
+    return matches

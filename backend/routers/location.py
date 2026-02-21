@@ -286,6 +286,108 @@ async def get_location_config(db: Session = Depends(get_db)):
     }
 
 
+@router.post("/geocode-options")
+async def geocode_options(
+    request: GeocodeRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Return all geocode matches for an address, sorted by distance to station.
+    Used by the location picker UI to let users choose the correct match.
+    """
+    if not is_location_enabled(db):
+        raise HTTPException(status_code=403, detail="Location services not enabled")
+
+    from services.location.geocoding import geocode_all_matches
+
+    station_lat, station_lng = get_station_coords(db)
+    google_key = get_google_api_key(db)
+    state = request.state or get_default_state(db)
+
+    matches = geocode_all_matches(
+        address=request.address,
+        station_lat=station_lat,
+        station_lng=station_lng,
+        state=state or "PA",
+        google_api_key=google_key,
+    )
+
+    return {"matches": matches, "count": len(matches)}
+
+
+@router.post("/set-coords/{incident_id}")
+async def set_incident_coords(
+    incident_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+):
+    """
+    Manually set lat/lng on an incident from the location picker.
+    Expects: {latitude, longitude, matched_address, provider}
+    """
+    import json
+
+    lat = data.get("latitude")
+    lng = data.get("longitude")
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="latitude and longitude required")
+
+    # Verify incident exists
+    row = db.execute(text(
+        "SELECT id FROM incidents WHERE id = :id AND deleted_at IS NULL"
+    ), {"id": incident_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    # Save coords + geocode data, clear old route/snapshot so background task regenerates
+    geocode_data = {
+        "latitude": lat,
+        "longitude": lng,
+        "matched_address": data.get("matched_address", ""),
+        "provider": data.get("provider", "manual"),
+        "distance_km": data.get("distance_km"),
+        "source": "manual_picker",
+    }
+    db.execute(text("""
+        UPDATE incidents
+        SET latitude = :lat, longitude = :lng,
+            geocode_data = :data,
+            geocode_needs_review = false,
+            route_polyline = NULL, route_geometry = NULL, map_snapshot = NULL,
+            updated_at = NOW()
+        WHERE id = :id
+    """), {
+        "lat": str(lat), "lng": str(lng),
+        "data": json.dumps(geocode_data),
+        "id": incident_id,
+    })
+    db.commit()
+
+    # Fetch route in background
+    try:
+        google_key = get_google_api_key(db)
+        station_lat, station_lng = get_station_coords(db)
+        if google_key and station_lat:
+            from services.location.route import fetch_route
+            route_data = fetch_route(
+                origin_lat=station_lat, origin_lng=station_lng,
+                dest_lat=float(lat), dest_lng=float(lng),
+                google_api_key=google_key,
+            )
+            if route_data:
+                db.execute(text("""
+                    UPDATE incidents
+                    SET route_polyline = :polyline,
+                        route_geometry = ST_LineFromEncodedPolyline(:polyline)
+                    WHERE id = :id
+                """), {"polyline": route_data["polyline"], "id": incident_id})
+                db.commit()
+    except Exception as e:
+        logger.warning(f"Route fetch failed after manual set for incident {incident_id}: {e}")
+
+    return {"success": True, "latitude": lat, "longitude": lng}
+
+
 @router.post("/backfill")
 async def backfill_location_data(
     request: Request,

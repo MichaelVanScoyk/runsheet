@@ -18,6 +18,9 @@ export default function LocationSection() {
   const [geocodeResult, setGeocodeResult] = useState(null);
   const [manualCoords, setManualCoords] = useState(null);
   const [manualPolyline, setManualPolyline] = useState(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerMatches, setPickerMatches] = useState([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
 
   // Load location config (feature flag) once
   useEffect(() => {
@@ -38,6 +41,57 @@ export default function LocationSection() {
   const hasCoords = !!(incidentCoords.lat && incidentCoords.lng);
   const needsReview = incident?.geocode_needs_review === true;
 
+  // Open picker: fetch all matches for current address
+  const handleOpenPicker = async () => {
+    if (!formData.address) return;
+    setPickerOpen(true);
+    setPickerLoading(true);
+    setPickerMatches([]);
+    try {
+      const res = await fetch('/api/location/geocode-options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: formData.address }),
+      });
+      const data = await res.json();
+      setPickerMatches(data.matches || []);
+    } catch {
+      setPickerMatches([]);
+    } finally {
+      setPickerLoading(false);
+    }
+  };
+
+  // User selects a match from the picker
+  const handlePickMatch = async (match) => {
+    if (!incident?.id) return;
+    setPickerOpen(false);
+    setGeocoding(true);
+    try {
+      const res = await fetch(`/api/location/set-coords/${incident.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(match),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setManualCoords({ lat: data.latitude, lng: data.longitude });
+        setGeocodeResult({ success: true, address: match.matched_address, distance: match.distance_km });
+        // Fetch route polyline after a short delay (set-coords generates it)
+        setTimeout(async () => {
+          try {
+            const incRes = await fetch(`/api/incidents/${incident.id}`);
+            const incData = await incRes.json();
+            if (incData.route_polyline) setManualPolyline(incData.route_polyline);
+          } catch {}
+        }, 1000);
+      }
+    } catch {} finally {
+      setGeocoding(false);
+    }
+  };
+
+  // Auto-geocode retry (no picker, just best match)
   const handleGeocode = async () => {
     if (!incident?.id) return;
     setGeocoding(true);
@@ -48,7 +102,6 @@ export default function LocationSection() {
       if (data.success) {
         setManualCoords({ lat: data.latitude, lng: data.longitude });
         setGeocodeResult({ success: true, address: data.matched_address, distance: data.distance_km });
-        // Fetch updated route polyline (cached by geocode endpoint)
         try {
           const incRes = await fetch(`/api/incidents/${incident.id}`);
           const incData = await incRes.json();
@@ -185,6 +238,12 @@ export default function LocationSection() {
               ✓ {geocodeResult.address} ({geocodeResult.distance}km from station)
             </div>
           )}
+          <button
+            onClick={handleOpenPicker}
+            style={{ fontSize: '0.7rem', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', marginTop: '0.25rem', textDecoration: 'underline' }}
+          >
+            Wrong location? Pick a different match
+          </button>
         </>
       ) : incident?.id && formData.address ? (
         <div style={{
@@ -204,21 +263,22 @@ export default function LocationSection() {
               <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
                 ⚠ Address could not be geocoded automatically
               </span>
-              <button
-                onClick={handleGeocode}
-                disabled={geocoding}
-                style={{
-                  padding: '0.35rem 0.75rem',
-                  background: geocoding ? '#999' : '#2563eb',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '0.8rem',
-                  cursor: geocoding ? 'wait' : 'pointer',
-                }}
-              >
-                {geocoding ? 'Geocoding...' : '📍 Retry Geocode'}
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={handleGeocode}
+                  disabled={geocoding}
+                  style={{ padding: '0.35rem 0.75rem', background: geocoding ? '#999' : '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.8rem', cursor: geocoding ? 'wait' : 'pointer' }}
+                >
+                  {geocoding ? 'Geocoding...' : '📍 Retry'}
+                </button>
+                <button
+                  onClick={handleOpenPicker}
+                  disabled={pickerLoading}
+                  style={{ padding: '0.35rem 0.75rem', background: '#f5f5f5', color: '#333', border: '1px solid #ccc', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer' }}
+                >
+                  📍 Pick Location
+                </button>
+              </div>
             </>
           ) : (
             <span style={{ fontSize: '0.8rem', color: '#888' }}>
@@ -232,6 +292,35 @@ export default function LocationSection() {
           )}
         </div>
       ) : null}
+
+      {/* Location picker dropdown */}
+      {pickerOpen && (
+        <div style={{ marginTop: '0.5rem', border: '1px solid #ddd', borderRadius: '6px', background: '#fff', maxHeight: '200px', overflowY: 'auto', fontSize: '0.8rem' }}>
+          {pickerLoading ? (
+            <div style={{ padding: '1rem', textAlign: 'center', color: '#888' }}>Searching...</div>
+          ) : pickerMatches.length === 0 ? (
+            <div style={{ padding: '1rem', textAlign: 'center', color: '#888' }}>No matches found</div>
+          ) : (
+            pickerMatches.map((m, i) => (
+              <div
+                key={i}
+                onClick={() => handlePickMatch(m)}
+                style={{ padding: '0.5rem 0.75rem', cursor: 'pointer', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f0f7ff'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+              >
+                <span>{m.matched_address}</span>
+                <span style={{ color: '#888', fontSize: '0.7rem', marginLeft: '0.5rem', whiteSpace: 'nowrap' }}>
+                  {m.distance_km}km · {m.provider}
+                </span>
+              </div>
+            ))
+          )}
+          <div style={{ padding: '0.25rem 0.75rem', textAlign: 'right' }}>
+            <button onClick={() => setPickerOpen(false)} style={{ fontSize: '0.7rem', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   ) : null;
 
