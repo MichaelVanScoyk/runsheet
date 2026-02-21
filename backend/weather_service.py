@@ -197,11 +197,10 @@ def get_weather_for_incident(
     Returns:
         Dict with weather data or None
     """
-    # Default to Station 48 if no coords provided (fallback only)
-    if latitude is None:
-        latitude = 40.0977
-    if longitude is None:
-        longitude = -75.7833
+    # Coords are required — caller must provide them from settings
+    if latitude is None or longitude is None:
+        logger.warning("Weather fetch skipped: no coordinates provided")
+        return None
     
     if provider == "openweathermap" and api_key:
         return fetch_weather_openweathermap(latitude, longitude, timestamp, api_key)

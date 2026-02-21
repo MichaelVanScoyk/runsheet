@@ -19,6 +19,10 @@ from pydantic import BaseModel
 from typing import Optional
 
 from database import get_db
+from routers.settings import (
+    get_station_coords, get_google_api_key, get_geocodio_api_key,
+    get_default_state, is_location_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +35,7 @@ router = APIRouter()
 
 class GeocodeRequest(BaseModel):
     address: str
-    state: Optional[str] = "PA"
+    state: Optional[str] = None
 
 
 class GeocodeResponse(BaseModel):
@@ -44,72 +48,6 @@ class GeocodeResponse(BaseModel):
     all_matches: Optional[int] = None
     needs_review: bool = False
     geocode_data: Optional[dict] = None
-
-
-# =============================================================================
-# HELPERS
-# =============================================================================
-
-def _get_feature_enabled(db: Session) -> bool:
-    """Check if location services feature flag is enabled."""
-    result = db.execute(
-        text("SELECT value, value_type FROM settings WHERE category = 'features' AND key = 'enable_location_services'")
-    ).fetchone()
-    
-    if not result:
-        return False  # Default OFF
-    
-    value, value_type = result
-    if value_type == 'boolean':
-        return value.lower() in ('true', '1', 'yes')
-    return False
-
-
-def _get_station_coords(db: Session) -> tuple:
-    """Get station lat/lng from settings."""
-    lat_row = db.execute(
-        text("SELECT value FROM settings WHERE category = 'station' AND key = 'latitude'")
-    ).fetchone()
-    lng_row = db.execute(
-        text("SELECT value FROM settings WHERE category = 'station' AND key = 'longitude'")
-    ).fetchone()
-    
-    lat = float(lat_row[0]) if lat_row else 40.0977
-    lng = float(lng_row[0]) if lng_row else -75.7833
-    return lat, lng
-
-
-def _get_google_key(db: Session) -> Optional[str]:
-    """Get Google Geocoding API key from settings, if configured."""
-    result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'location' AND key = 'google_api_key'")
-    ).fetchone()
-    
-    if result and result[0] and result[0].strip():
-        return result[0].strip()
-    return None
-
-
-def _get_geocodio_key(db: Session) -> Optional[str]:
-    """Get Geocodio API key from settings, if configured."""
-    result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'location' AND key = 'geocodio_api_key'")
-    ).fetchone()
-    
-    if result and result[0] and result[0].strip():
-        return result[0].strip()
-    return None
-
-
-def _get_state(db: Session) -> str:
-    """Get default state from settings, fallback to PA."""
-    result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'location' AND key = 'default_state'")
-    ).fetchone()
-    
-    if result and result[0] and result[0].strip():
-        return result[0].strip()
-    return "PA"
 
 
 # =============================================================================
@@ -126,15 +64,15 @@ async def geocode_address_endpoint(
     Returns the best match closest to the station.
     Does not save to database - use geocode/{incident_id} for that.
     """
-    if not _get_feature_enabled(db):
+    if not is_location_enabled(db):
         raise HTTPException(status_code=403, detail="Location services not enabled")
     
     from services.location.geocoding import geocode_address
     
-    station_lat, station_lng = _get_station_coords(db)
-    google_key = _get_google_key(db)
-    geocodio_key = _get_geocodio_key(db)
-    state = request.state or _get_state(db)
+    station_lat, station_lng = get_station_coords(db)
+    google_key = get_google_api_key(db)
+    geocodio_key = get_geocodio_api_key(db)
+    state = request.state or get_default_state(db)
     
     result = geocode_address(
         address=request.address,
@@ -170,7 +108,7 @@ async def geocode_incident_endpoint(
     Geocode an incident by ID. Reads the address from the incident,
     geocodes it, and updates the incident with lat/lng + geocode data.
     """
-    if not _get_feature_enabled(db):
+    if not is_location_enabled(db):
         raise HTTPException(status_code=403, detail="Location services not enabled")
     
     # Get the incident
@@ -188,10 +126,10 @@ async def geocode_incident_endpoint(
     
     from services.location.geocoding import geocode_address
     
-    station_lat, station_lng = _get_station_coords(db)
-    google_key = _get_google_key(db)
-    geocodio_key = _get_geocodio_key(db)
-    state = _get_state(db)
+    station_lat, station_lng = get_station_coords(db)
+    google_key = get_google_api_key(db)
+    geocodio_key = get_geocodio_api_key(db)
+    state = get_default_state(db)
     
     result = geocode_address(
         address=address,
@@ -332,16 +270,17 @@ async def get_location_config(db: Session = Depends(get_db)):
     Get location services configuration for the frontend.
     Returns whether the feature is enabled and basic config.
     """
-    enabled = _get_feature_enabled(db)
-    station_lat, station_lng = _get_station_coords(db)
-    has_google = bool(_get_google_key(db))
-    has_geocodio = bool(_get_geocodio_key(db))
+    enabled = is_location_enabled(db)
+    station_lat, station_lng = get_station_coords(db)
+    google_key = get_google_api_key(db)
+    has_geocodio = bool(get_geocodio_api_key(db))
     
     return {
         "enabled": enabled,
         "station_latitude": station_lat,
         "station_longitude": station_lng,
-        "has_google": has_google,
+        "google_api_key": google_key if enabled else None,
+        "has_google": bool(google_key),
         "has_geocodio": has_geocodio,
-        "default_state": _get_state(db),
+        "default_state": get_default_state(db),
     }

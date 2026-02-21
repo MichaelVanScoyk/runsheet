@@ -533,10 +533,45 @@ def get_setting_value(db: Session, category: str, key: str, default: Any = None)
 
 
 def get_station_coords(db: Session) -> tuple:
-    """Get station coordinates for weather lookup"""
-    lat = get_setting_value(db, 'station', 'latitude', 40.0977)
-    lon = get_setting_value(db, 'station', 'longitude', -75.7833)
-    return (float(lat), float(lon))
+    """
+    Get station coordinates from settings table.
+    Returns (lat, lng) as floats, or (None, None) if not configured.
+    Callers must handle None — do NOT add hardcoded fallbacks.
+    """
+    lat = get_setting_value(db, 'station', 'latitude', None)
+    lng = get_setting_value(db, 'station', 'longitude', None)
+    if lat is not None and lng is not None:
+        return (float(lat), float(lng))
+    return (None, None)
+
+
+def get_google_api_key(db: Session) -> Optional[str]:
+    """Get Google API key from settings, or None if not configured."""
+    val = get_setting_value(db, 'location', 'google_api_key', None)
+    if val and str(val).strip():
+        return str(val).strip()
+    return None
+
+
+def get_geocodio_api_key(db: Session) -> Optional[str]:
+    """Get Geocodio API key from settings, or None if not configured."""
+    val = get_setting_value(db, 'location', 'geocodio_api_key', None)
+    if val and str(val).strip():
+        return str(val).strip()
+    return None
+
+
+def get_default_state(db: Session) -> Optional[str]:
+    """Get default state from settings, or None if not configured."""
+    val = get_setting_value(db, 'location', 'default_state', None)
+    if val and str(val).strip():
+        return str(val).strip()
+    return None
+
+
+def is_location_enabled(db: Session) -> bool:
+    """Check if location services feature flag is enabled."""
+    return bool(get_setting_value(db, 'features', 'enable_location_services', False))
 
 
 # =============================================================================

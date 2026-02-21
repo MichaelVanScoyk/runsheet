@@ -46,6 +46,9 @@ from sqlalchemy import text
 from typing import List, Optional
 
 from database import get_db
+from routers.settings import (
+    get_setting_value, get_station_coords, get_google_api_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,40 +61,7 @@ router = APIRouter()
 
 def _get_feature_flag(db: Session, key: str) -> bool:
     """Check a map feature flag from settings."""
-    result = db.execute(
-        text("SELECT value, value_type FROM settings WHERE category = 'features' AND key = :key"),
-        {"key": key}
-    ).fetchone()
-    
-    if not result:
-        return False
-    
-    value, value_type = result
-    if value_type == 'boolean':
-        return value.lower() in ('true', '1', 'yes')
-    return False
-
-
-def _get_station_coords(db: Session) -> tuple:
-    """Get station lat/lng from settings."""
-    lat_row = db.execute(
-        text("SELECT value FROM settings WHERE category = 'station' AND key = 'latitude'")
-    ).fetchone()
-    lng_row = db.execute(
-        text("SELECT value FROM settings WHERE category = 'station' AND key = 'longitude'")
-    ).fetchone()
-    
-    lat = float(lat_row[0]) if lat_row else None
-    lng = float(lng_row[0]) if lng_row else None
-    return lat, lng
-
-
-def _get_google_key_configured(db: Session) -> bool:
-    """Check if Google Maps API key is configured."""
-    result = db.execute(
-        text("SELECT value FROM settings WHERE category = 'location' AND key = 'google_api_key'")
-    ).fetchone()
-    return bool(result and result[0] and result[0].strip())
+    return bool(get_setting_value(db, 'features', key, False))
 
 
 # =============================================================================
@@ -224,7 +194,7 @@ async def get_map_config(db: Session = Depends(get_db)):
     Get map configuration for frontend initialization.
     Returns API key status, feature flags, station coords, and layer list.
     """
-    station_lat, station_lng = _get_station_coords(db)
+    station_lat, station_lng = get_station_coords(db)
     
     # Feature flags
     enabled_features = {
@@ -278,7 +248,7 @@ async def get_map_config(db: Session = Depends(get_db)):
         logger.error(f"Failed to load map layers: {e}")
     
     return {
-        "google_api_key_configured": _get_google_key_configured(db),
+        "google_api_key_configured": bool(get_google_api_key(db)),
         "enabled_features": enabled_features,
         "station_lat": station_lat,
         "station_lng": station_lng,
