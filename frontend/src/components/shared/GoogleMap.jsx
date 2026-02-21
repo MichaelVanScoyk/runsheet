@@ -302,9 +302,9 @@ export default function GoogleMap({
     function getIncidentIcon(emoji) {
       const key = `inc_${emoji}`;
       if (iconCache[key]) return iconCache[key];
-      const size = 28;
+      const size = 35;
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" font-size="22">${emoji}</text>
+        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" font-size="28">${emoji}</text>
       </svg>`;
       iconCache[key] = {
         url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),

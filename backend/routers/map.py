@@ -885,8 +885,8 @@ def _query_incident_layer(
         "west": west, "south": south, "east": east, "north": north,
     }
 
-    # Incidents decluster earlier than map features (zoom 13 vs 16)
-    CLUSTER_THRESHOLD_ZOOM = 13
+    # No clustering for incidents — always show individual markers
+    CLUSTER_THRESHOLD_ZOOM = 0
 
     if zoom < CLUSTER_THRESHOLD_ZOOM:
         # --- SERVER-SIDE GRID CLUSTERING ---
