@@ -16,6 +16,8 @@ export default function LocationSection() {
   const [locationConfig, setLocationConfig] = useState(null);
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeResult, setGeocodeResult] = useState(null);
+  const [manualCoords, setManualCoords] = useState(null);
+  const [manualPolyline, setManualPolyline] = useState(null);
 
   // Load location config (feature flag) once
   useEffect(() => {
@@ -35,10 +37,6 @@ export default function LocationSection() {
 
   const hasCoords = !!(incidentCoords.lat && incidentCoords.lng);
   const needsReview = incident?.geocode_needs_review === true;
-
-  // Manual geocode — retry button for failed background geocodes
-  const [manualCoords, setManualCoords] = useState(null);
-  const [manualPolyline, setManualPolyline] = useState(null);
 
   const handleGeocode = async () => {
     if (!incident?.id) return;
