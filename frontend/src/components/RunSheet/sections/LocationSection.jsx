@@ -7,6 +7,7 @@ const IncidentMap = lazy(() => import('../../shared/IncidentMap'));
 export default function LocationSection() {
   const { 
     incident, 
+    refreshedIncident,
     formData, 
     handleChange, 
     municipalities,
@@ -31,20 +32,21 @@ export default function LocationSection() {
       .catch(() => {});
   }, []);
 
-  // Coords come from the incident (populated by background task on ingest)
-  // Falls back to manualCoords if user clicked Retry Geocode
+  // Coords priority: manualCoords (user action) > refreshedIncident (after save) > original incident prop
+  const liveIncident = refreshedIncident || incident;
   const incidentCoords = manualCoords
     ? manualCoords
-    : (incident?.latitude && incident?.longitude)
-      ? { lat: incident.latitude, lng: incident.longitude }
+    : (liveIncident?.latitude && liveIncident?.longitude)
+      ? { lat: liveIncident.latitude, lng: liveIncident.longitude }
       : { lat: null, lng: null };
 
   const hasCoords = !!(incidentCoords.lat && incidentCoords.lng);
 
-  // Poll for coords after save when address exists but no coords yet
-  // Background geocode task runs async — poll until coords appear
+  // After save clears coords, poll for background geocode to complete
   useEffect(() => {
-    if (!incident?.id || !formData.address || hasCoords) return;
+    if (!liveIncident?.id || !formData.address || hasCoords) return;
+    // Only poll if we just saved (refreshedIncident exists with null coords)
+    if (!refreshedIncident) return;
     let cancelled = false;
     let attempts = 0;
     const maxAttempts = 10;
@@ -52,7 +54,7 @@ export default function LocationSection() {
       if (cancelled || attempts >= maxAttempts) { clearInterval(interval); return; }
       attempts++;
       try {
-        const res = await fetch(`/api/incidents/${incident.id}`);
+        const res = await fetch(`/api/incidents/${liveIncident.id}`);
         const data = await res.json();
         if (data.latitude && data.longitude) {
           setManualCoords({ lat: data.latitude, lng: data.longitude });
@@ -62,7 +64,7 @@ export default function LocationSection() {
       } catch {}
     }, 2000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [incident?.id, formData.address, hasCoords]);
+  }, [liveIncident?.id, formData.address, hasCoords, refreshedIncident]);
 
   // Open picker: fetch all matches for current address
   const handleOpenPicker = async () => {
@@ -109,7 +111,9 @@ export default function LocationSection() {
           } catch {}
         }, 1000);
       }
-    } catch {} finally {
+    } catch (err) {
+      console.error('Pick match failed:', err);
+    } finally {
       setGeocoding(false);
     }
   };
@@ -253,7 +257,7 @@ export default function LocationSection() {
             <IncidentMap
               incidentCoords={incidentCoords}
               stationCoords={locationConfig ? { lat: locationConfig.station_latitude, lng: locationConfig.station_longitude } : null}
-              routePolyline={manualPolyline || incident?.route_polyline}
+              routePolyline={manualPolyline || liveIncident?.route_polyline}
               height="300px"
             />
           </Suspense>

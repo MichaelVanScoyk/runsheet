@@ -366,7 +366,7 @@ def full_reparse_incident(incident_id: int, db: Session, edited_by: Optional[int
         WHERE id = :id
     """), params)
     
-    # If address changed from reparse, invalidate cached location data
+    # If address changed from reparse, invalidate cached location data and re-geocode
     if new_address and old_address != new_address:
         try:
             db.execute(text("""
@@ -377,10 +377,28 @@ def full_reparse_incident(incident_id: int, db: Session, edited_by: Optional[int
                     geocode_needs_review = false
                 WHERE id = :id
             """), {"id": incident_id})
+            db.commit()
             import logging
-            logging.getLogger(__name__).info(
+            _logger = logging.getLogger(__name__)
+            _logger.info(
                 f"Reparse changed address on incident {incident_id}: '{old_address}' → '{new_address}' — location data invalidated"
             )
+            # Queue background geocode for the new address
+            try:
+                from services.location.background_task import process_incident_location
+                from routers.settings import is_location_enabled
+                if is_location_enabled(db):
+                    # Can't use background_tasks here (not an async endpoint with BackgroundTasks),
+                    # so run synchronously in a thread
+                    import threading
+                    threading.Thread(
+                        target=process_incident_location,
+                        args=(incident_id, None),
+                        daemon=True
+                    ).start()
+                    _logger.info(f"Queued background geocode for reparsed incident {incident_id}")
+            except ImportError:
+                pass
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Location invalidation failed during reparse for incident {incident_id}: {e}")

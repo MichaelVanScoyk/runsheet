@@ -321,6 +321,9 @@ def _split_address_location(cell) -> tuple:
     if not lines:
         return (None, None)
     
+    # Normalize whitespace in all lines (collapse multiple spaces)
+    lines = [re.sub(r'\s+', ' ', l) for l in lines]
+
     if len(lines) == 1:
         # Single line - all address, no location name
         return (lines[0], None)

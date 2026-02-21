@@ -265,6 +265,10 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
   
   const [formData, setFormData] = useState(initialFormData);
   const [assignments, setAssignments] = useState({});
+  
+  // After save, holds the refreshed incident data from the server
+  // LocationSection uses this to see cleared coords, updated geocode, etc.
+  const [refreshedIncident, setRefreshedIncident] = useState(null);
 
   // Close audit log when clicking outside
   useEffect(() => {
@@ -755,6 +759,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
       try {
         const refreshRes = await fetch(`/api/incidents/${incident.id}`);
         const refreshed = await refreshRes.json();
+        setRefreshedIncident(refreshed);
         setFormData(prev => ({
           ...prev,
           address: refreshed.address || '',
@@ -837,6 +842,15 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
 
+      // Re-fetch incident to pick up backend changes (e.g. cleared coords after address change)
+      try {
+        const refreshRes = await fetch(`/api/incidents/${incidentId}`);
+        const refreshed = await refreshRes.json();
+        setRefreshedIncident(refreshed);
+      } catch (err) {
+        console.error('Failed to refresh after save:', err);
+      }
+
       if (onSave) onSave(incidentId);
       // Don't call onClose - stay on form after save
     } catch (err) {
@@ -876,6 +890,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
   const value = {
     // Props
     incident,
+    refreshedIncident,
     onSave,
     onClose,
     onNavigate,
