@@ -26,14 +26,20 @@ export default function LocationSection() {
   }, []);
 
   // Coords come from the incident (populated by background task on ingest)
-  const incidentCoords = (incident?.latitude && incident?.longitude)
-    ? { lat: incident.latitude, lng: incident.longitude }
-    : { lat: null, lng: null };
+  // Falls back to manualCoords if user clicked Retry Geocode
+  const incidentCoords = manualCoords
+    ? manualCoords
+    : (incident?.latitude && incident?.longitude)
+      ? { lat: incident.latitude, lng: incident.longitude }
+      : { lat: null, lng: null };
 
   const hasCoords = !!(incidentCoords.lat && incidentCoords.lng);
   const needsReview = incident?.geocode_needs_review === true;
 
   // Manual geocode — retry button for failed background geocodes
+  const [manualCoords, setManualCoords] = useState(null);
+  const [manualPolyline, setManualPolyline] = useState(null);
+
   const handleGeocode = async () => {
     if (!incident?.id) return;
     setGeocoding(true);
@@ -42,7 +48,14 @@ export default function LocationSection() {
       const res = await fetch(`/api/location/geocode/${incident.id}`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
+        setManualCoords({ lat: data.latitude, lng: data.longitude });
         setGeocodeResult({ success: true, address: data.matched_address, distance: data.distance_km });
+        // Fetch updated route polyline (cached by geocode endpoint)
+        try {
+          const incRes = await fetch(`/api/incidents/${incident.id}`);
+          const incData = await incRes.json();
+          if (incData.route_polyline) setManualPolyline(incData.route_polyline);
+        } catch {}
       } else {
         setGeocodeResult({ success: false });
       }
@@ -165,7 +178,7 @@ export default function LocationSection() {
             <IncidentMap
               incidentCoords={incidentCoords}
               stationCoords={locationConfig ? { lat: locationConfig.station_latitude, lng: locationConfig.station_longitude } : null}
-              routePolyline={incident?.route_polyline}
+              routePolyline={manualPolyline || incident?.route_polyline}
               height="300px"
             />
           </Suspense>
