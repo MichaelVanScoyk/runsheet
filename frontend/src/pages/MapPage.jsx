@@ -24,7 +24,17 @@ export default function MapPage({ userSession }) {
   const [config, setConfig] = useState(null);
   const [layers, setLayers] = useState([]);
   const [layersLoading, setLayersLoading] = useState(true);
-  const [visibleLayers, setVisibleLayers] = useState(new Set());
+  // Layer toggle persistence via localStorage
+  const [visibleLayers, setVisibleLayers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('map_visible_layers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return new Set(parsed);
+      }
+    } catch {}
+    return new Set();
+  });
   const [selectedFeature, setSelectedFeature] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -50,6 +60,7 @@ export default function MapPage({ userSession }) {
       .then(data => {
         setLayers(data.layers || []);
         setVisibleLayers(prev => {
+          // Only auto-populate if nothing was loaded from localStorage
           if (prev.size === 0) {
             const autoVisible = new Set();
             (data.layers || []).forEach(l => {
@@ -58,6 +69,10 @@ export default function MapPage({ userSession }) {
             });
             return autoVisible;
           }
+          // Prune any saved layer IDs that no longer exist
+          const validIds = new Set((data.layers || []).map(l => l.id));
+          const pruned = new Set([...prev].filter(id => validIds.has(id)));
+          if (pruned.size !== prev.size) return pruned;
           return prev;
         });
       })
@@ -92,6 +107,8 @@ export default function MapPage({ userSession }) {
       const next = new Set(prev);
       if (next.has(layerId)) next.delete(layerId);
       else next.add(layerId);
+      // Persist to localStorage
+      try { localStorage.setItem('map_visible_layers', JSON.stringify([...next])); } catch {}
       return next;
     });
   }, []);

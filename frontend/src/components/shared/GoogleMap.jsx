@@ -298,28 +298,42 @@ export default function GoogleMap({
       return iconCache[key];
     }
 
-    // Google-style drop pin marker for incidents
-    function getIncidentPinIcon(color, count) {
-      const hasCount = count && count > 1;
-      const key = `pin_${color}_${count || 1}`;
+    // Incident emoji marker — drop pin shape with emoji inside
+    function getIncidentEmojiIcon(emoji) {
+      const key = `inc_emoji_${emoji}`;
       if (iconCache[key]) return iconCache[key];
-      const w = hasCount ? 34 : 28;
-      const h = hasCount ? 44 : 38;
-      const cx = w / 2;
-      const r = hasCount ? 13 : 11;
-      const countText = hasCount
-        ? `<text x="${cx}" y="${r + 2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="11" font-weight="700" font-family="Arial,sans-serif">${count > 99 ? '99+' : count}</text>`
-        : '';
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-        <filter id="s"><feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-opacity="0.3"/></filter>
-        <path d="M${cx} ${h - 1} C${cx} ${h - 1} ${cx + r + 2} ${r + 6} ${cx + r + 2} ${r + 2} A${r + 2} ${r + 2} 0 0 0 ${cx - r - 2} ${r + 2} C${cx - r - 2} ${r + 6} ${cx} ${h - 1} ${cx} ${h - 1}Z" fill="${color}" filter="url(#s)" stroke="#fff" stroke-width="1.5"/>
-        <circle cx="${cx}" cy="${r + 2}" r="${hasCount ? 5 : 4}" fill="#fff" fill-opacity="0.9"/>
-        ${countText}
+      const size = 30;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size + 8}" viewBox="0 0 ${size} ${size + 8}">
+        <filter id="ds"><feDropShadow dx="0" dy="1" stdDeviation="1" flood-opacity="0.3"/></filter>
+        <path d="M${size/2} ${size + 6} C${size/2} ${size + 6} ${size - 2} ${size/2 + 4} ${size - 2} ${size/2} A${size/2 - 2} ${size/2 - 2} 0 0 0 2 ${size/2} C2 ${size/2 + 4} ${size/2} ${size + 6} ${size/2} ${size + 6}Z" fill="#fff" filter="url(#ds)" stroke="#ccc" stroke-width="0.5"/>
+        <text x="${size/2}" y="${size/2 + 1}" text-anchor="middle" dominant-baseline="central" font-size="18">${emoji}</text>
       </svg>`;
       iconCache[key] = {
         url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-        scaledSize: new window.google.maps.Size(w, h),
-        anchor: new window.google.maps.Point(cx, h - 1),
+        scaledSize: new window.google.maps.Size(size, size + 8),
+        anchor: new window.google.maps.Point(size / 2, size + 6),
+      };
+      return iconCache[key];
+    }
+
+    // Incident cluster icon — pin shape with count badge
+    function getIncidentClusterIcon(emoji, count) {
+      const key = `inc_cluster_${emoji}_${count}`;
+      if (iconCache[key]) return iconCache[key];
+      const size = 34;
+      const badgeR = 9;
+      const label = count > 99 ? '99+' : String(count);
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size + badgeR}" height="${size + 10}" viewBox="0 0 ${size + badgeR} ${size + 10}">
+        <filter id="ds2"><feDropShadow dx="0" dy="1" stdDeviation="1" flood-opacity="0.3"/></filter>
+        <path d="M${size/2} ${size + 8} C${size/2} ${size + 8} ${size - 2} ${size/2 + 4} ${size - 2} ${size/2} A${size/2 - 2} ${size/2 - 2} 0 0 0 2 ${size/2} C2 ${size/2 + 4} ${size/2} ${size + 8} ${size/2} ${size + 8}Z" fill="#fff" filter="url(#ds2)" stroke="#ccc" stroke-width="0.5"/>
+        <text x="${size/2}" y="${size/2 + 1}" text-anchor="middle" dominant-baseline="central" font-size="18">${emoji}</text>
+        <circle cx="${size - 2}" cy="${badgeR + 1}" r="${badgeR}" fill="#333" stroke="#fff" stroke-width="1.5"/>
+        <text x="${size - 2}" y="${badgeR + 2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="${label.length > 2 ? 8 : 10}" font-weight="700" font-family="Arial,sans-serif">${label}</text>
+      </svg>`;
+      iconCache[key] = {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+        scaledSize: new window.google.maps.Size(size + badgeR, size + 10),
+        anchor: new window.google.maps.Point(size / 2, size + 8),
       };
       return iconCache[key];
     }
@@ -477,23 +491,59 @@ export default function GoogleMap({
 
         // Point items (clusters + individual features)
         const isIncidentLayer = data.layer_type?.startsWith('incident_');
+        const incidentEmoji = data.layer_type === 'incident_fire' ? '🔥' : '⚕️';
 
         data.items.forEach(item => {
           if (item.geometry) return; // already handled as polygon above
 
           let marker;
           if (item.type === 'cluster') {
-            // Incident clusters use pin icon with count, others use circle
-            const clusterIcon = isIncidentLayer
-              ? getIncidentPinIcon(color, item.count)
-              : getClusterIcon(color, item.count);
-            marker = new window.google.maps.Marker({
-              position: { lat: item.lat, lng: item.lng },
-              map,
-              icon: clusterIcon,
-              zIndex: 100 + item.count,
-              clickable: false,
-            });
+            if (isIncidentLayer) {
+              // Incident cluster: emoji pin with count badge, clickable
+              marker = new window.google.maps.Marker({
+                position: { lat: item.lat, lng: item.lng },
+                map,
+                icon: getIncidentClusterIcon(incidentEmoji, item.count),
+                title: `${item.count} incidents`,
+                zIndex: 100 + item.count,
+              });
+              // Click — show list of incidents or zoom in
+              marker.addListener('click', () => {
+                if (item.incidents && item.incidents.length > 0) {
+                  // Build list of incidents for InfoWindow
+                  const listHtml = item.incidents.map(inc => {
+                    const typeStr = [inc.cad_event_type, inc.cad_event_subtype].filter(Boolean).join(' / ');
+                    return `<a href="/?incident=${inc.id}" style="display:block;padding:4px 0;border-bottom:1px solid #eee;text-decoration:none;color:#333">
+                      <div style="font-weight:600;font-size:12px;color:${color}">${inc.incident_number || ''}</div>
+                      ${typeStr ? `<div style="font-size:11px;color:#666">${typeStr}</div>` : ''}
+                      ${inc.address ? `<div style="font-size:11px;color:#888">${inc.address}</div>` : ''}
+                      ${inc.incident_date ? `<div style="font-size:10px;color:#aaa">${inc.incident_date}</div>` : ''}
+                    </a>`;
+                  }).join('');
+                  const content = `<div style="font-family:system-ui,sans-serif;min-width:220px;max-width:300px;max-height:300px;overflow-y:auto;padding:2px">
+                    <div style="font-weight:700;font-size:13px;color:#333;margin-bottom:6px;border-bottom:2px solid ${color};padding-bottom:4px">${item.count} Incidents</div>
+                    ${listHtml}
+                  </div>`;
+                  if (map.__activeInfoWindow) map.__activeInfoWindow.close();
+                  const iw = new window.google.maps.InfoWindow({ content });
+                  iw.open(map, marker);
+                  map.__activeInfoWindow = iw;
+                } else {
+                  // Large cluster — zoom in
+                  map.setZoom(map.getZoom() + 2);
+                  map.panTo({ lat: item.lat, lng: item.lng });
+                }
+              });
+            } else {
+              // Regular layer cluster
+              marker = new window.google.maps.Marker({
+                position: { lat: item.lat, lng: item.lng },
+                map,
+                icon: getClusterIcon(color, item.count),
+                zIndex: 100 + item.count,
+                clickable: false,
+              });
+            }
           } else {
             // Choose icon based on layer type
             const isHydrant = data.layer_type === 'hydrant';
@@ -501,8 +551,8 @@ export default function GoogleMap({
             let hoverTitle = item.title || '';
 
             if (isIncidentLayer) {
-              // Incidents: Google-style drop pin
-              markerIcon = getIncidentPinIcon(color);
+              // Incidents: emoji pin (fire or EMS)
+              markerIcon = getIncidentEmojiIcon(incidentEmoji);
               const props = item.properties || {};
               const parts = [props.incident_number];
               if (props.cad_event_type) parts.push(props.cad_event_type);

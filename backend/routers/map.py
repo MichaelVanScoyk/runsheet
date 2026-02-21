@@ -885,7 +885,8 @@ def _query_incident_layer(
         "west": west, "south": south, "east": east, "north": north,
     }
 
-    CLUSTER_THRESHOLD_ZOOM = 16
+    # Incidents decluster earlier than map features (zoom 13 vs 16)
+    CLUSTER_THRESHOLD_ZOOM = 13
 
     if zoom < CLUSTER_THRESHOLD_ZOOM:
         # --- SERVER-SIDE GRID CLUSTERING ---
@@ -903,7 +904,10 @@ def _query_incident_layer(
                 CASE WHEN COUNT(*) = 1 THEN MIN(cad_event_type) ELSE NULL END as single_type,
                 CASE WHEN COUNT(*) = 1 THEN MIN(cad_event_subtype) ELSE NULL END as single_subtype,
                 CASE WHEN COUNT(*) = 1 THEN MIN(incident_date::text) ELSE NULL END as single_date,
-                CASE WHEN COUNT(*) = 1 THEN MIN(internal_incident_number) ELSE NULL END as single_number
+                CASE WHEN COUNT(*) = 1 THEN MIN(internal_incident_number) ELSE NULL END as single_number,
+                FLOOR(CAST(longitude AS DOUBLE PRECISION) / :cell_size) as cell_x,
+                FLOOR(CAST(latitude AS DOUBLE PRECISION) / :cell_size) as cell_y,
+                ARRAY_AGG(id ORDER BY incident_date DESC) as incident_ids
             FROM incidents
             WHERE call_category = :category
               AND deleted_at IS NULL
@@ -918,8 +922,36 @@ def _query_incident_layer(
             ORDER BY point_count DESC
         """), params)
 
-        items = []
+        # Collect cluster IDs for detail lookup
+        cluster_rows = []
+        cluster_ids_to_fetch = []
         for row in result:
+            cluster_rows.append(row)
+            count = row[0]
+            if count > 1 and count <= 10:
+                cluster_ids_to_fetch.extend(row[12][:10])  # ARRAY_AGG result
+
+        # Batch-fetch details for small clusters
+        cluster_incident_map = {}
+        if cluster_ids_to_fetch:
+            detail_result = db.execute(text("""
+                SELECT id, internal_incident_number, address, cad_event_type,
+                       cad_event_subtype, incident_date::text
+                FROM incidents WHERE id = ANY(:ids)
+                ORDER BY incident_date DESC
+            """), {"ids": cluster_ids_to_fetch})
+            for dr in detail_result:
+                cluster_incident_map[dr[0]] = {
+                    "id": dr[0],
+                    "incident_number": dr[1],
+                    "address": dr[2],
+                    "cad_event_type": dr[3],
+                    "cad_event_subtype": dr[4],
+                    "incident_date": dr[5],
+                }
+
+        items = []
+        for row in cluster_rows:
             count = row[0]
             if count == 1:
                 items.append({
@@ -938,12 +970,20 @@ def _query_incident_layer(
                     },
                 })
             else:
-                items.append({
+                cluster_item = {
                     "type": "cluster",
                     "count": count,
                     "lat": float(row[1]),
                     "lng": float(row[2]),
-                })
+                }
+                # Include incident details for small clusters
+                if count <= 10 and row[12]:
+                    cluster_item["incidents"] = [
+                        cluster_incident_map[iid]
+                        for iid in row[12][:10]
+                        if iid in cluster_incident_map
+                    ]
+                items.append(cluster_item)
 
         return {
             "layer_id": layer_key,
