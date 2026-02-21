@@ -292,6 +292,8 @@ async def get_incident(
         "esz_box": incident.esz_box,
         "latitude": getattr(incident, 'latitude', None),
         "longitude": getattr(incident, 'longitude', None),
+        "geocode_data": getattr(incident, 'geocode_data', None),
+        "geocode_needs_review": getattr(incident, 'geocode_needs_review', None),
         "route_polyline": getattr(incident, 'route_polyline', None),
         "map_snapshot": getattr(incident, 'map_snapshot', None),
         "neris_location": incident.neris_location,
@@ -605,6 +607,16 @@ async def create_incident(
         getattr(incident, 'development', None),
     )
     
+    # Background location processing (geocode → route → proximity)
+    try:
+        from services.location.background_task import process_incident_location
+        from routers.settings import is_location_enabled
+        if is_location_enabled(db):
+            tenant_slug = _extract_slug(request.headers.get('host', ''))
+            background_tasks.add_task(process_incident_location, incident.id, tenant_slug)
+    except ImportError:
+        pass
+    
     return {
         "id": incident.id, 
         "internal_incident_number": incident_number,
@@ -875,6 +887,32 @@ async def update_incident(
             logger.debug(f"Review tasks for incident {incident_id}: {review_result}")
     except Exception as e:
         logger.error(f"Review task check failed for incident {incident_id}: {e}")
+    
+    # ==========================================================================
+    # Address change → invalidate cached location data, re-geocode in background
+    # ==========================================================================
+    if 'address' in changes:
+        try:
+            db.execute(text("""
+                UPDATE incidents SET 
+                    latitude = NULL, longitude = NULL,
+                    route_polyline = NULL, route_geometry = NULL,
+                    map_snapshot = NULL, geocode_data = NULL,
+                    geocode_needs_review = false
+                WHERE id = :id
+            """), {"id": incident_id})
+            db.commit()
+            
+            from services.location.background_task import process_incident_location
+            from routers.settings import is_location_enabled
+            if is_location_enabled(db):
+                tenant_slug = _extract_slug(request.headers.get('host', ''))
+                background_tasks.add_task(process_incident_location, incident_id, tenant_slug)
+                logger.info(f"Address changed on incident {incident_id} — location data invalidated, re-queued")
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.warning(f"Location invalidation failed for incident {incident_id}: {e}")
     
     return {"status": "ok", "id": incident_id, "neris_id": incident.neris_id}
 

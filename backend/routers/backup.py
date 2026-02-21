@@ -353,11 +353,37 @@ def full_reparse_incident(incident_id: int, db: Session, edited_by: Optional[int
     
     set_clause = ", ".join(set_parts)
     
+    # Check if address changed — need old address for location invalidation
+    old_address_row = db.execute(text(
+        "SELECT address FROM incidents WHERE id = :id"
+    ), {"id": incident_id}).fetchone()
+    old_address = old_address_row[0] if old_address_row else None
+    new_address = update_fields.get('address')
+    
     db.execute(text(f"""
         UPDATE incidents 
         SET {set_clause}, updated_at = NOW()
         WHERE id = :id
     """), params)
+    
+    # If address changed from reparse, invalidate cached location data
+    if new_address and old_address != new_address:
+        try:
+            db.execute(text("""
+                UPDATE incidents SET 
+                    latitude = NULL, longitude = NULL,
+                    route_polyline = NULL, route_geometry = NULL,
+                    map_snapshot = NULL, geocode_data = NULL,
+                    geocode_needs_review = false
+                WHERE id = :id
+            """), {"id": incident_id})
+            import logging
+            logging.getLogger(__name__).info(
+                f"Reparse changed address on incident {incident_id}: '{old_address}' → '{new_address}' — location data invalidated"
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Location invalidation failed during reparse for incident {incident_id}: {e}")
     
     # Add audit log entry for the reparse
     # Look up person's name if edited_by provided, otherwise use "CAD Parser"

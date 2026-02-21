@@ -12,13 +12,13 @@ Endpoints:
 
 import json
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
 from typing import Optional
 
-from database import get_db
+from database import get_db, _extract_slug
 from routers.settings import (
     get_station_coords, get_google_api_key, get_geocodio_api_key,
     get_default_state, is_location_enabled,
@@ -284,3 +284,69 @@ async def get_location_config(db: Session = Depends(get_db)):
         "has_geocodio": has_geocodio,
         "default_state": get_default_state(db),
     }
+
+
+@router.post("/backfill")
+async def backfill_location_data(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    year: Optional[int] = Query(None, description="Process all incidents from this year"),
+    incident_id: Optional[int] = Query(None, description="Process a single incident"),
+    force: bool = Query(False, description="Clear existing location data first"),
+    db: Session = Depends(get_db),
+):
+    """
+    Queue background location processing for incidents.
+
+    Use cases:
+        - Enable location services for the first time → backfill all
+        - Switch geocoding providers → force=true for a year
+        - Import new hydrant GIS layer → re-run proximity
+        - Change station coordinates → force=true to regenerate routes
+    """
+    if not is_location_enabled(db):
+        raise HTTPException(status_code=403, detail="Location services not enabled")
+
+    if not year and not incident_id:
+        raise HTTPException(status_code=400, detail="Provide year or incident_id")
+
+    from services.location.background_task import process_incident_location
+
+    tenant_slug = _extract_slug(request.headers.get('host', ''))
+
+    # Build query for matching incidents
+    if incident_id:
+        rows = db.execute(text(
+            "SELECT id FROM incidents WHERE id = :id AND deleted_at IS NULL"
+        ), {"id": incident_id}).fetchall()
+    else:
+        rows = db.execute(text(
+            "SELECT id FROM incidents WHERE year_prefix = :year AND deleted_at IS NULL ORDER BY id"
+        ), {"year": year}).fetchall()
+
+    if not rows:
+        return {"queued": 0, "year": year, "incident_id": incident_id}
+
+    # If force, clear existing location data so background task re-processes
+    if force:
+        ids = [r[0] for r in rows]
+        # Use ANY() for array parameter
+        db.execute(text("""
+            UPDATE incidents SET
+                latitude = NULL, longitude = NULL,
+                route_polyline = NULL, route_geometry = NULL,
+                map_snapshot = NULL, geocode_data = NULL,
+                geocode_needs_review = false
+            WHERE id = ANY(:ids)
+        """), {"ids": ids})
+        db.commit()
+
+    # Queue background tasks
+    queued = 0
+    for r in rows:
+        background_tasks.add_task(process_incident_location, r[0], tenant_slug)
+        queued += 1
+
+    logger.info(f"Backfill queued {queued} incidents (year={year}, force={force})")
+
+    return {"queued": queued, "year": year, "incident_id": incident_id, "force": force}
