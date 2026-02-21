@@ -10,6 +10,7 @@ export default function LocationSection() {
     formData, 
     handleChange, 
     municipalities,
+    userSession,
   } = useRunSheet();
 
   // Location services state
@@ -39,6 +40,29 @@ export default function LocationSection() {
       : { lat: null, lng: null };
 
   const hasCoords = !!(incidentCoords.lat && incidentCoords.lng);
+
+  // Poll for coords after save when address exists but no coords yet
+  // Background geocode task runs async — poll until coords appear
+  useEffect(() => {
+    if (!incident?.id || !formData.address || hasCoords) return;
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 10;
+    const interval = setInterval(async () => {
+      if (cancelled || attempts >= maxAttempts) { clearInterval(interval); return; }
+      attempts++;
+      try {
+        const res = await fetch(`/api/incidents/${incident.id}`);
+        const data = await res.json();
+        if (data.latitude && data.longitude) {
+          setManualCoords({ lat: data.latitude, lng: data.longitude });
+          if (data.route_polyline) setManualPolyline(data.route_polyline);
+          clearInterval(interval);
+        }
+      } catch {}
+    }, 2000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [incident?.id, formData.address, hasCoords]);
 
   // Open picker: fetch all matches for current address
   const handleOpenPicker = async () => {
@@ -117,6 +141,7 @@ export default function LocationSection() {
   };
 
   const locationEnabled = locationConfig?.enabled;
+  const isOfficerOrAdmin = userSession?.role === 'OFFICER' || userSession?.role === 'ADMIN';
 
   const fieldsColumn = (
     <div className="flex flex-col gap-2">
@@ -237,12 +262,23 @@ export default function LocationSection() {
               ✓ {geocodeResult.address} ({geocodeResult.distance}km from station)
             </div>
           )}
-          <button
-            onClick={handleOpenPicker}
-            style={{ fontSize: '0.7rem', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', marginTop: '0.25rem', textDecoration: 'underline' }}
-          >
-            Wrong location? Pick a different match
-          </button>
+          {isOfficerOrAdmin && (
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <button
+                onClick={handleGeocode}
+                disabled={geocoding}
+                style={{ fontSize: '0.7rem', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                {geocoding ? 'Geocoding...' : '📍 Re-geocode'}
+              </button>
+              <button
+                onClick={handleOpenPicker}
+                style={{ fontSize: '0.7rem', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                📍 Pick different match
+              </button>
+            </div>
+          )}
         </>
       ) : incident?.id && formData.address ? (
         <div style={{

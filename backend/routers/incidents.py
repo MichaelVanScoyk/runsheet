@@ -889,9 +889,11 @@ async def update_incident(
         logger.error(f"Review task check failed for incident {incident_id}: {e}")
     
     # ==========================================================================
-    # Address change → invalidate cached location data, re-geocode in background
+    # Location field change → invalidate cached location data, re-geocode in background
+    # Triggers on address, municipality, cross streets, or ESZ change
     # ==========================================================================
-    if 'address' in changes:
+    LOCATION_FIELDS = {'address', 'municipality_code', 'cross_streets', 'esz_box'}
+    if LOCATION_FIELDS & set(changes.keys()):
         try:
             db.execute(text("""
                 UPDATE incidents SET 
@@ -908,7 +910,8 @@ async def update_incident(
             if is_location_enabled(db):
                 tenant_slug = _extract_slug(request.headers.get('host', ''))
                 background_tasks.add_task(process_incident_location, incident_id, tenant_slug)
-                logger.info(f"Address changed on incident {incident_id} — location data invalidated, re-queued")
+                changed_loc_fields = LOCATION_FIELDS & set(changes.keys())
+                logger.info(f"Location fields changed on incident {incident_id}: {changed_loc_fields} — location data invalidated, re-queued")
         except ImportError:
             pass
         except Exception as e:
