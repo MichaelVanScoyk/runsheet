@@ -15,7 +15,6 @@ export default function LocationSection() {
   // Location services state
   const [locationConfig, setLocationConfig] = useState(null);
   const [geocoding, setGeocoding] = useState(false);
-  const [incidentCoords, setIncidentCoords] = useState({ lat: null, lng: null });
   const [geocodeResult, setGeocodeResult] = useState(null);
 
   // Load location config (feature flag) once
@@ -26,16 +25,15 @@ export default function LocationSection() {
       .catch(() => {});
   }, []);
 
-  // Sync coords from incident prop, or auto-geocode if missing
-  useEffect(() => {
-    if (incident?.latitude && incident?.longitude) {
-      setIncidentCoords({ lat: incident.latitude, lng: incident.longitude });
-    } else if (incident?.id && formData.address && locationConfig?.enabled && !geocoding) {
-      // Auto-geocode on mount when incident has address but no coords
-      handleGeocode();
-    }
-  }, [incident?.latitude, incident?.longitude, incident?.id, locationConfig?.enabled]);
+  // Coords come from the incident (populated by background task on ingest)
+  const incidentCoords = (incident?.latitude && incident?.longitude)
+    ? { lat: incident.latitude, lng: incident.longitude }
+    : { lat: null, lng: null };
 
+  const hasCoords = !!(incidentCoords.lat && incidentCoords.lng);
+  const needsReview = incident?.geocode_needs_review === true;
+
+  // Manual geocode — retry button for failed background geocodes
   const handleGeocode = async () => {
     if (!incident?.id) return;
     setGeocoding(true);
@@ -44,7 +42,6 @@ export default function LocationSection() {
       const res = await fetch(`/api/location/geocode/${incident.id}`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        setIncidentCoords({ lat: data.latitude, lng: data.longitude });
         setGeocodeResult({ success: true, address: data.matched_address, distance: data.distance_km });
       } else {
         setGeocodeResult({ success: false });
@@ -162,7 +159,7 @@ export default function LocationSection() {
 
   const mapColumn = locationEnabled ? (
     <div className="flex flex-col h-full">
-      {incidentCoords.lat && incidentCoords.lng ? (
+      {hasCoords ? (
         <>
           <Suspense fallback={<div style={{ flex: 1, minHeight: '300px', background: '#f5f5f5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', fontSize: '0.85rem' }}>Loading map...</div>}>
             <IncidentMap
@@ -172,12 +169,9 @@ export default function LocationSection() {
               height="300px"
             />
           </Suspense>
-          {geocodeResult && (
-            <div style={{ fontSize: '0.75rem', color: geocodeResult.success ? '#22c55e' : '#ef4444', marginTop: '0.25rem' }}>
-              {geocodeResult.success 
-                ? `✓ ${geocodeResult.address} (${geocodeResult.distance}km from station)`
-                : '✗ Could not geocode address'
-              }
+          {geocodeResult?.success && (
+            <div style={{ fontSize: '0.75rem', color: '#22c55e', marginTop: '0.25rem' }}>
+              ✓ {geocodeResult.address} ({geocodeResult.distance}km from station)
             </div>
           )}
         </>
@@ -189,24 +183,42 @@ export default function LocationSection() {
           border: '1px dashed #ccc',
           borderRadius: '6px',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
+          gap: '0.5rem',
         }}>
-          <button
-            onClick={handleGeocode}
-            disabled={geocoding}
-            style={{
-              padding: '0.35rem 0.75rem',
-              background: geocoding ? '#999' : '#2563eb',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '0.8rem',
-              cursor: geocoding ? 'wait' : 'pointer',
-            }}
-          >
-            {geocoding ? 'Geocoding...' : '📍 Geocode Address'}
-          </button>
+          {needsReview ? (
+            <>
+              <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
+                ⚠ Address could not be geocoded automatically
+              </span>
+              <button
+                onClick={handleGeocode}
+                disabled={geocoding}
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  background: geocoding ? '#999' : '#2563eb',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '0.8rem',
+                  cursor: geocoding ? 'wait' : 'pointer',
+                }}
+              >
+                {geocoding ? 'Geocoding...' : '📍 Retry Geocode'}
+              </button>
+            </>
+          ) : (
+            <span style={{ fontSize: '0.8rem', color: '#888' }}>
+              📍 Geocoding in progress...
+            </span>
+          )}
+          {geocodeResult && !geocodeResult.success && (
+            <span style={{ fontSize: '0.75rem', color: '#ef4444' }}>
+              ✗ Could not geocode address
+            </span>
+          )}
         </div>
       ) : null}
     </div>
