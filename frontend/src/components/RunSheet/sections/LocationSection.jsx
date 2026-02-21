@@ -39,7 +39,6 @@ export default function LocationSection() {
       : { lat: null, lng: null };
 
   const hasCoords = !!(incidentCoords.lat && incidentCoords.lng);
-  const needsReview = incident?.geocode_needs_review === true;
 
   // Open picker: fetch all matches for current address
   const handleOpenPicker = async () => {
@@ -258,33 +257,25 @@ export default function LocationSection() {
           justifyContent: 'center',
           gap: '0.5rem',
         }}>
-          {needsReview ? (
-            <>
-              <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
-                ⚠ Address could not be geocoded automatically
-              </span>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  onClick={handleGeocode}
-                  disabled={geocoding}
-                  style={{ padding: '0.35rem 0.75rem', background: geocoding ? '#999' : '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.8rem', cursor: geocoding ? 'wait' : 'pointer' }}
-                >
-                  {geocoding ? 'Geocoding...' : '📍 Retry'}
-                </button>
-                <button
-                  onClick={handleOpenPicker}
-                  disabled={pickerLoading}
-                  style={{ padding: '0.35rem 0.75rem', background: '#f5f5f5', color: '#333', border: '1px solid #ccc', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer' }}
-                >
-                  📍 Pick Location
-                </button>
-              </div>
-            </>
-          ) : (
-            <span style={{ fontSize: '0.8rem', color: '#888' }}>
-              📍 Geocoding in progress...
-            </span>
-          )}
+          <span style={{ fontSize: '0.8rem', color: '#888' }}>
+            📍 No location set
+          </span>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={handleGeocode}
+              disabled={geocoding}
+              style={{ padding: '0.35rem 0.75rem', background: geocoding ? '#999' : '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.8rem', cursor: geocoding ? 'wait' : 'pointer' }}
+            >
+              {geocoding ? 'Geocoding...' : '📍 Auto Geocode'}
+            </button>
+            <button
+              onClick={handleOpenPicker}
+              disabled={pickerLoading}
+              style={{ padding: '0.35rem 0.75rem', background: '#f5f5f5', color: '#333', border: '1px solid #ccc', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer' }}
+            >
+              📍 Pick Location
+            </button>
+          </div>
           {geocodeResult && !geocodeResult.success && (
             <span style={{ fontSize: '0.75rem', color: '#ef4444' }}>
               ✗ Could not geocode address
