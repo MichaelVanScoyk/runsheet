@@ -315,6 +315,13 @@ class Incident(Base):
     latitude = Column(String(20))
     longitude = Column(String(20))
     
+    # Location cache — populated by background task on CAD ingest
+    geocode_data = Column(JSONB)                    # Full geocode API response
+    geocode_needs_review = Column(Boolean, default=False)  # True if auto-geocode failed
+    route_polyline = Column(Text)                   # Encoded Google polyline (station → incident)
+    route_geometry = Column(Text)                   # PostGIS geometry (ST_LineFromEncodedPolyline)
+    map_snapshot = Column(JSONB)                    # Proximity snapshot (hazards, water, etc.)
+    
     # =========================================================================
     # TIMES - Core (all TIMESTAMP WITH TIME ZONE, stored as UTC)
     # =========================================================================
