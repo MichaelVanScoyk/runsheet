@@ -109,9 +109,10 @@ def _process(db, incident_id: int):
             logger.warning(f"Station coords not configured — cannot geocode incident {incident_id}")
             return
 
-        from services.location.geocoding import geocode_address
+        from services.location.mile_marker import geocode_with_mile_marker_fallback
 
-        result = geocode_address(
+        result = geocode_with_mile_marker_fallback(
+            db=db,
             address=address,
             station_lat=station_lat,
             station_lng=station_lng,

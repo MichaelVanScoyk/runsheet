@@ -7,6 +7,8 @@
  *   - FeatureEditor toolbar: add, edit, delete features
  *   - Click-to-place, dynamic property forms from layer schema
  *   - Closure management (place pin, "Reopened" quick-delete)
+ * Phase 5: Highway Route Editor
+ *   - Draw highway routes for mile marker geocoding
  *
  * Uses viewport-based server-side clustering:
  *   - GoogleMap sends bbox + zoom to backend on pan/zoom
@@ -19,6 +21,7 @@ import GoogleMap from '../components/shared/GoogleMap';
 import LayerToggle from '../components/Map/LayerToggle';
 import FeatureDetail from '../components/Map/FeatureDetail';
 import FeatureEditor from '../components/Map/FeatureEditor';
+import HighwayRouteEditor from '../components/Map/HighwayRouteEditor';
 
 export default function MapPage({ userSession }) {
   const [config, setConfig] = useState(null);
@@ -43,6 +46,12 @@ export default function MapPage({ userSession }) {
   const [isPlacing, setIsPlacing] = useState(false);
   const [placingLayerId, setPlacingLayerId] = useState(null);
   const [placementCoords, setPlacementCoords] = useState(null);
+
+  // Phase 5: Highway route editor state
+  const [isRouteEditorOpen, setIsRouteEditorOpen] = useState(false);
+  const [editingRoute, setEditingRoute] = useState(null);
+  const [routePoints, setRoutePoints] = useState([]);
+  const [highwayRoutes, setHighwayRoutes] = useState([]);
 
   // Load map config
   useEffect(() => {
@@ -82,6 +91,16 @@ export default function MapPage({ userSession }) {
 
   useEffect(() => { loadLayers(); }, [loadLayers]);
 
+  // Load highway routes
+  const loadHighwayRoutes = useCallback(() => {
+    fetch('/api/map/highway-routes')
+      .then(r => r.ok ? r.json() : { routes: [] })
+      .then(data => setHighwayRoutes(data.routes || []))
+      .catch(() => setHighwayRoutes([]));
+  }, []);
+
+  useEffect(() => { loadHighwayRoutes(); }, [loadHighwayRoutes]);
+
   // Build viewportLayers — tells GoogleMap which layers to fetch via viewport API
   const viewportLayers = useMemo(() => {
     const result = [];
@@ -114,7 +133,7 @@ export default function MapPage({ userSession }) {
   }, []);
 
   const handleFeatureClick = useCallback((feature) => {
-    if (!isPlacing) {
+    if (!isPlacing && !isRouteEditorOpen) {
       // Enrich with layer's property_schema so FeatureDetail shows all defined fields
       const layer = layers.find(l => l.layer_type === feature.layer_type);
       if (layer?.property_schema) {
@@ -122,15 +141,18 @@ export default function MapPage({ userSession }) {
       }
       setSelectedFeature(feature);
     }
-  }, [isPlacing, layers]);
+  }, [isPlacing, isRouteEditorOpen, layers]);
 
   const handleMapClick = useCallback((lat, lng) => {
-    if (isPlacing) {
+    if (isRouteEditorOpen) {
+      // Add point to route
+      setRoutePoints(prev => [...prev, { lat, lng }]);
+    } else if (isPlacing) {
       setPlacementCoords({ lat, lng });
     } else {
       setSelectedFeature(null);
     }
-  }, [isPlacing]);
+  }, [isPlacing, isRouteEditorOpen]);
 
   const handleStartPlacing = useCallback((layerId) => {
     setIsPlacing(true);
@@ -171,9 +193,60 @@ export default function MapPage({ userSession }) {
     setTimeout(() => setIsPlacing(false), 300);
   }, [loadLayers]);
 
+  // Highway route editor handlers
+  const handleOpenRouteEditor = useCallback((route = null) => {
+    setEditingRoute(route);
+    setRoutePoints(route?.points || []);
+    setIsRouteEditorOpen(true);
+    setSidebarOpen(false); // Hide sidebar to give more map space
+  }, []);
+
+  const handleCloseRouteEditor = useCallback(() => {
+    setIsRouteEditorOpen(false);
+    setEditingRoute(null);
+    setRoutePoints([]);
+    setSidebarOpen(true);
+  }, []);
+
+  const handleRouteSaved = useCallback((route) => {
+    loadHighwayRoutes();
+    handleCloseRouteEditor();
+  }, [loadHighwayRoutes, handleCloseRouteEditor]);
+
+  const handleDeleteRoute = useCallback(async (routeId) => {
+    if (!window.confirm('Delete this highway route?')) return;
+    try {
+      const res = await fetch(`/api/map/highway-routes/${routeId}`, { method: 'DELETE' });
+      if (res.ok) {
+        loadHighwayRoutes();
+      }
+    } catch (e) {
+      console.error('Failed to delete route:', e);
+    }
+  }, [loadHighwayRoutes]);
+
   const stationCenter = config?.station_lat && config?.station_lng
     ? { lat: config.station_lat, lng: config.station_lng }
     : null;
+
+  // Build markers for route points while editing
+  const routeEditMarkers = useMemo(() => {
+    if (!isRouteEditorOpen) return [];
+    return routePoints.map((p, i) => ({
+      lat: p.lat,
+      lng: p.lng,
+      title: `Point ${i + 1}`,
+      color: '#2563eb',
+    }));
+  }, [isRouteEditorOpen, routePoints]);
+
+  // Build polyline path for route while editing
+  const routeEditPolyline = useMemo(() => {
+    if (!isRouteEditorOpen || routePoints.length < 2) return null;
+    // Create encoded polyline from points (or we could pass raw path)
+    // For now, just return null and handle rendering differently
+    return null;
+  }, [isRouteEditorOpen, routePoints]);
 
   if (!config) {
     return <div style={{ padding: '2rem', color: '#888' }}>Loading map configuration...</div>;
@@ -220,32 +293,112 @@ export default function MapPage({ userSession }) {
             onToggleLayer={handleToggleLayer}
             loading={layersLoading}
           />
+
+          {/* Highway Routes section */}
+          {isOfficerOrAdmin && (
+            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #eee' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '8px',
+              }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#555' }}>
+                  Mile Marker Roads
+                </span>
+                <button
+                  onClick={() => handleOpenRouteEditor()}
+                  style={{
+                    padding: '4px 8px',
+                    background: '#2563eb',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '0.7rem',
+                  }}
+                >
+                  + New
+                </button>
+              </div>
+              {highwayRoutes.length === 0 ? (
+                <div style={{ fontSize: '0.8rem', color: '#888', fontStyle: 'italic' }}>
+                  No routes defined
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {highwayRoutes.map(route => (
+                    <div
+                      key={route.id}
+                      style={{
+                        padding: '8px',
+                        background: '#f9fafb',
+                        borderRadius: '4px',
+                        fontSize: '0.8rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}
+                    >
+                      <span style={{ flex: 1 }}>{route.name}</span>
+                      <button
+                        onClick={() => handleOpenRouteEditor(route)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: '#2563eb',
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteRoute(route.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: '#dc2626',
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Sidebar toggle */}
-      <button
-        onClick={() => setSidebarOpen(prev => !prev)}
-        style={{
-          position: 'absolute',
-          left: sidebarOpen ? '260px' : '0px',
-          top: '10px',
-          zIndex: 10,
-          background: '#fff',
-          border: '1px solid #ddd',
-          borderLeft: 'none',
-          borderRadius: '0 4px 4px 0',
-          padding: '8px 4px',
-          cursor: 'pointer',
-          fontSize: '0.8rem',
-          color: '#666',
-          boxShadow: '2px 0 4px rgba(0,0,0,0.1)',
-          transition: 'left 0.2s',
-        }}
-        title={sidebarOpen ? 'Hide layers' : 'Show layers'}
-      >
-        {sidebarOpen ? '◀' : '▶'}
-      </button>
+      {!isRouteEditorOpen && (
+        <button
+          onClick={() => setSidebarOpen(prev => !prev)}
+          style={{
+            position: 'absolute',
+            left: sidebarOpen ? '260px' : '0px',
+            top: '10px',
+            zIndex: 10,
+            background: '#fff',
+            border: '1px solid #ddd',
+            borderLeft: 'none',
+            borderRadius: '0 4px 4px 0',
+            padding: '8px 4px',
+            cursor: 'pointer',
+            fontSize: '0.8rem',
+            color: '#666',
+            boxShadow: '2px 0 4px rgba(0,0,0,0.1)',
+            transition: 'left 0.2s',
+          }}
+          title={sidebarOpen ? 'Hide layers' : 'Show layers'}
+        >
+          {sidebarOpen ? '◀' : '▶'}
+        </button>
+      )}
 
       {/* Map area */}
       <div style={{ flex: 1, position: 'relative' }}>
@@ -256,14 +409,15 @@ export default function MapPage({ userSession }) {
           interactive={true}
           showStation={true}
           stationCoords={stationCenter}
-          viewportLayers={viewportLayers}
+          viewportLayers={isRouteEditorOpen ? [] : viewportLayers}
+          markers={routeEditMarkers}
           onFeatureClick={handleFeatureClick}
           onMapClick={handleMapClick}
-          isPlacing={isPlacing}
+          isPlacing={isPlacing || isRouteEditorOpen}
         />
 
         {/* Feature detail popup — editable for OFFICER/ADMIN */}
-        {selectedFeature && (
+        {selectedFeature && !isRouteEditorOpen && (
           <div style={{
             position: 'absolute', top: '10px', right: '10px', zIndex: 10,
             maxHeight: 'calc(100vh - 40px)', overflow: 'auto',
@@ -280,7 +434,7 @@ export default function MapPage({ userSession }) {
         )}
 
         {/* Officer/Admin: Feature editor toolbar OR placement form */}
-        {isOfficerOrAdmin && !selectedFeature && (
+        {isOfficerOrAdmin && !selectedFeature && !isRouteEditorOpen && (
           <div style={{
             position: 'absolute',
             bottom: '10px',
@@ -301,7 +455,7 @@ export default function MapPage({ userSession }) {
         )}
 
         {/* Placement mode indicator (top center) */}
-        {isPlacing && !placementCoords && (
+        {isPlacing && !placementCoords && !isRouteEditorOpen && (
           <div style={{
             position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)',
             background: '#fff', padding: '8px 16px', borderRadius: '20px',
@@ -317,6 +471,17 @@ export default function MapPage({ userSession }) {
           </div>
         )}
       </div>
+
+      {/* Highway Route Editor */}
+      <HighwayRouteEditor
+        isOpen={isRouteEditorOpen}
+        onClose={handleCloseRouteEditor}
+        onRouteSaved={handleRouteSaved}
+        existingRoute={editingRoute}
+        points={routePoints}
+        onSetPoints={setRoutePoints}
+        onClearPoints={() => setRoutePoints([])}
+      />
     </div>
   );
 }

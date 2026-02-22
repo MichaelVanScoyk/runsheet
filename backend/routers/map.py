@@ -2200,3 +2200,360 @@ def cleanup_expired_uploads(max_age_hours: int = 1):
 
     if expired_count:
         logger.info(f"Cleaned up {expired_count} expired file uploads")
+
+
+# =============================================================================
+# HIGHWAY ROUTES — Mile Marker Geocoding (Phase 5)
+# Tenant-drawn routes for interpolating GPS from mile marker addresses
+# =============================================================================
+
+class HighwayRoutePoint(BaseModel):
+    sequence: int
+    lat: float
+    lng: float
+
+
+class HighwayRouteCreate(BaseModel):
+    name: str
+    bidirectional: bool = True
+    direction: Optional[str] = None  # NB, SB, EB, WB (if not bidirectional)
+    limited_access: bool = False
+    miles_decrease_toward: str  # NB, SB, EB, WB
+    mm_point_index: int  # which point is the MM anchor
+    mm_value: float  # mile marker value at anchor
+    aliases: List[str] = []
+    points: List[HighwayRoutePoint]
+
+
+class HighwayRouteUpdate(BaseModel):
+    name: Optional[str] = None
+    bidirectional: Optional[bool] = None
+    direction: Optional[str] = None
+    limited_access: Optional[bool] = None
+    miles_decrease_toward: Optional[str] = None
+    mm_point_index: Optional[int] = None
+    mm_value: Optional[float] = None
+    aliases: Optional[List[str]] = None
+    points: Optional[List[HighwayRoutePoint]] = None
+
+
+@router.get("/highway-routes")
+async def list_highway_routes(db: Session = Depends(get_db)):
+    """List all highway routes with their points and aliases."""
+    try:
+        # Check if tables exist
+        table_check = db.execute(text("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'highway_routes'
+            )
+        """)).scalar()
+        
+        if not table_check:
+            return {"routes": []}
+        
+        # Get routes
+        routes_result = db.execute(text("""
+            SELECT id, name, bidirectional, direction, limited_access,
+                   miles_decrease_toward, mm_point_index, mm_value,
+                   created_at, updated_at
+            FROM highway_routes
+            ORDER BY name
+        """))
+        
+        routes = []
+        for row in routes_result:
+            route_id = row[0]
+            
+            # Get points for this route
+            points_result = db.execute(text("""
+                SELECT sequence, lat, lng
+                FROM highway_route_points
+                WHERE route_id = :route_id
+                ORDER BY sequence
+            """), {"route_id": route_id})
+            
+            points = [{"sequence": p[0], "lat": float(p[1]), "lng": float(p[2])} 
+                      for p in points_result]
+            
+            # Get aliases for this route
+            aliases_result = db.execute(text("""
+                SELECT alias
+                FROM highway_route_aliases
+                WHERE route_id = :route_id
+                ORDER BY alias
+            """), {"route_id": route_id})
+            
+            aliases = [a[0] for a in aliases_result]
+            
+            routes.append({
+                "id": route_id,
+                "name": row[1],
+                "bidirectional": row[2],
+                "direction": row[3],
+                "limited_access": row[4],
+                "miles_decrease_toward": row[5],
+                "mm_point_index": row[6],
+                "mm_value": float(row[7]) if row[7] else None,
+                "created_at": row[8].isoformat() if row[8] else None,
+                "updated_at": row[9].isoformat() if row[9] else None,
+                "points": points,
+                "aliases": aliases,
+            })
+        
+        return {"routes": routes}
+    except Exception as e:
+        logger.error(f"Failed to list highway routes: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load highway routes")
+
+
+@router.get("/highway-routes/{route_id}")
+async def get_highway_route(route_id: int, db: Session = Depends(get_db)):
+    """Get a single highway route with points and aliases."""
+    try:
+        route = db.execute(text("""
+            SELECT id, name, bidirectional, direction, limited_access,
+                   miles_decrease_toward, mm_point_index, mm_value,
+                   created_at, updated_at
+            FROM highway_routes
+            WHERE id = :id
+        """), {"id": route_id}).fetchone()
+        
+        if not route:
+            raise HTTPException(status_code=404, detail="Highway route not found")
+        
+        # Get points
+        points_result = db.execute(text("""
+            SELECT sequence, lat, lng
+            FROM highway_route_points
+            WHERE route_id = :route_id
+            ORDER BY sequence
+        """), {"route_id": route_id})
+        
+        points = [{"sequence": p[0], "lat": float(p[1]), "lng": float(p[2])} 
+                  for p in points_result]
+        
+        # Get aliases
+        aliases_result = db.execute(text("""
+            SELECT alias
+            FROM highway_route_aliases
+            WHERE route_id = :route_id
+            ORDER BY alias
+        """), {"route_id": route_id})
+        
+        aliases = [a[0] for a in aliases_result]
+        
+        return {
+            "id": route[0],
+            "name": route[1],
+            "bidirectional": route[2],
+            "direction": route[3],
+            "limited_access": route[4],
+            "miles_decrease_toward": route[5],
+            "mm_point_index": route[6],
+            "mm_value": float(route[7]) if route[7] else None,
+            "created_at": route[8].isoformat() if route[8] else None,
+            "updated_at": route[9].isoformat() if route[9] else None,
+            "points": points,
+            "aliases": aliases,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get highway route {route_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load highway route")
+
+
+@router.post("/highway-routes")
+async def create_highway_route(
+    route: HighwayRouteCreate,
+    db: Session = Depends(get_db),
+):
+    """Create a new highway route with points and aliases."""
+    if len(route.points) < 2:
+        raise HTTPException(status_code=400, detail="Route must have at least 2 points")
+    
+    if route.mm_point_index < 0 or route.mm_point_index >= len(route.points):
+        raise HTTPException(status_code=400, detail="Invalid mile marker point index")
+    
+    try:
+        # Insert route
+        result = db.execute(text("""
+            INSERT INTO highway_routes 
+                (name, bidirectional, direction, limited_access, 
+                 miles_decrease_toward, mm_point_index, mm_value)
+            VALUES 
+                (:name, :bidirectional, :direction, :limited_access,
+                 :miles_decrease_toward, :mm_point_index, :mm_value)
+            RETURNING id
+        """), {
+            "name": route.name,
+            "bidirectional": route.bidirectional,
+            "direction": route.direction if not route.bidirectional else None,
+            "limited_access": route.limited_access,
+            "miles_decrease_toward": route.miles_decrease_toward,
+            "mm_point_index": route.mm_point_index,
+            "mm_value": route.mm_value,
+        })
+        route_id = result.fetchone()[0]
+        
+        # Insert points
+        for pt in route.points:
+            db.execute(text("""
+                INSERT INTO highway_route_points (route_id, sequence, lat, lng)
+                VALUES (:route_id, :sequence, :lat, :lng)
+            """), {
+                "route_id": route_id,
+                "sequence": pt.sequence,
+                "lat": pt.lat,
+                "lng": pt.lng,
+            })
+        
+        # Insert aliases
+        for alias in route.aliases:
+            db.execute(text("""
+                INSERT INTO highway_route_aliases (route_id, alias)
+                VALUES (:route_id, :alias)
+            """), {
+                "route_id": route_id,
+                "alias": alias.strip().upper(),
+            })
+        
+        db.commit()
+        logger.info(f"Created highway route '{route.name}' (id={route_id}) with {len(route.points)} points")
+        
+        return {
+            "id": route_id,
+            "name": route.name,
+            "points_count": len(route.points),
+            "aliases": route.aliases,
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to create highway route: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create highway route: {str(e)}")
+
+
+@router.put("/highway-routes/{route_id}")
+async def update_highway_route(
+    route_id: int,
+    update: HighwayRouteUpdate,
+    db: Session = Depends(get_db),
+):
+    """Update a highway route. Points and aliases are replaced entirely if provided."""
+    # Verify exists
+    existing = db.execute(
+        text("SELECT id FROM highway_routes WHERE id = :id"),
+        {"id": route_id}
+    ).fetchone()
+    
+    if not existing:
+        raise HTTPException(status_code=404, detail="Highway route not found")
+    
+    try:
+        # Update route fields
+        set_clauses = ["updated_at = NOW()"]
+        params = {"id": route_id}
+        
+        if update.name is not None:
+            set_clauses.append("name = :name")
+            params["name"] = update.name
+        if update.bidirectional is not None:
+            set_clauses.append("bidirectional = :bidirectional")
+            params["bidirectional"] = update.bidirectional
+        if update.direction is not None:
+            set_clauses.append("direction = :direction")
+            params["direction"] = update.direction
+        if update.limited_access is not None:
+            set_clauses.append("limited_access = :limited_access")
+            params["limited_access"] = update.limited_access
+        if update.miles_decrease_toward is not None:
+            set_clauses.append("miles_decrease_toward = :miles_decrease_toward")
+            params["miles_decrease_toward"] = update.miles_decrease_toward
+        if update.mm_point_index is not None:
+            set_clauses.append("mm_point_index = :mm_point_index")
+            params["mm_point_index"] = update.mm_point_index
+        if update.mm_value is not None:
+            set_clauses.append("mm_value = :mm_value")
+            params["mm_value"] = update.mm_value
+        
+        db.execute(
+            text(f"UPDATE highway_routes SET {', '.join(set_clauses)} WHERE id = :id"),
+            params
+        )
+        
+        # Replace points if provided
+        if update.points is not None:
+            if len(update.points) < 2:
+                raise HTTPException(status_code=400, detail="Route must have at least 2 points")
+            
+            db.execute(
+                text("DELETE FROM highway_route_points WHERE route_id = :route_id"),
+                {"route_id": route_id}
+            )
+            
+            for pt in update.points:
+                db.execute(text("""
+                    INSERT INTO highway_route_points (route_id, sequence, lat, lng)
+                    VALUES (:route_id, :sequence, :lat, :lng)
+                """), {
+                    "route_id": route_id,
+                    "sequence": pt.sequence,
+                    "lat": pt.lat,
+                    "lng": pt.lng,
+                })
+        
+        # Replace aliases if provided
+        if update.aliases is not None:
+            db.execute(
+                text("DELETE FROM highway_route_aliases WHERE route_id = :route_id"),
+                {"route_id": route_id}
+            )
+            
+            for alias in update.aliases:
+                db.execute(text("""
+                    INSERT INTO highway_route_aliases (route_id, alias)
+                    VALUES (:route_id, :alias)
+                """), {
+                    "route_id": route_id,
+                    "alias": alias.strip().upper(),
+                })
+        
+        db.commit()
+        logger.info(f"Updated highway route {route_id}")
+        
+        return {"updated": True, "id": route_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to update highway route {route_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update highway route: {str(e)}")
+
+
+@router.delete("/highway-routes/{route_id}")
+async def delete_highway_route(route_id: int, db: Session = Depends(get_db)):
+    """Delete a highway route and its points/aliases (cascades)."""
+    existing = db.execute(
+        text("SELECT id, name FROM highway_routes WHERE id = :id"),
+        {"id": route_id}
+    ).fetchone()
+    
+    if not existing:
+        raise HTTPException(status_code=404, detail="Highway route not found")
+    
+    try:
+        # CASCADE handles points and aliases
+        db.execute(
+            text("DELETE FROM highway_routes WHERE id = :id"),
+            {"id": route_id}
+        )
+        db.commit()
+        
+        logger.info(f"Deleted highway route {route_id} ('{existing[1]}')")
+        
+        return {"deleted": True, "id": route_id, "name": existing[1]}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to delete highway route {route_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete highway route")
