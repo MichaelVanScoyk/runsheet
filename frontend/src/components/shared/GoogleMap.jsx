@@ -1,15 +1,8 @@
 /**
  * GoogleMap.jsx — Shared Google Maps component
  *
- * Supports two loading modes:
- *   1. Modern (Map ID configured): Uses async importLibrary() + AdvancedMarkerElement
- *   2. Legacy (no Map ID): Uses script tag loading + google.maps.Marker (with console warnings)
- *
- * Rendering modes:
- *   1. Simple markers/circles/polygons — for RunSheet, small datasets
- *   2. Viewport-loaded layers — for MapPage with server-side clustering
- *      Frontend sends bbox + zoom → backend returns clusters or features
- *      Only ~50-200 markers exist at any time regardless of dataset size
+ * Uses Google's recommended inline bootstrap loader pattern for dynamic library loading.
+ * Supports AdvancedMarkerElement when Map ID is configured, falls back to legacy Marker otherwise.
  *
  * Props:
  *   center        - { lat, lng } — map center
@@ -31,100 +24,73 @@
 import { useEffect, useRef, useState } from 'react';
 
 // =============================================================================
-// GOOGLE MAPS LOADER — supports both modern (async) and legacy (script tag) modes
+// GOOGLE MAPS LOADER — Uses Google's inline bootstrap loader pattern
 // =============================================================================
 
-let googleMapsPromise = null;
-let googleMapsLoaded = false;
-let loadingMode = null; // 'modern' | 'legacy'
-let markerLibrary = null; // AdvancedMarkerElement class (modern mode only)
+let loaderInstalled = false;
+let loadPromise = null;
 
 /**
- * Load Google Maps using the modern async bootstrap pattern.
- * Required for AdvancedMarkerElement.
+ * Install the Google Maps bootstrap loader (run once).
+ * This is Google's recommended inline bootstrap pattern that enables importLibrary().
  */
-async function loadGoogleMapsModern(apiKey, mapId) {
-  if (googleMapsLoaded && loadingMode === 'modern') {
-    return { google: window.google, markerLib: markerLibrary };
+function installBootstrapLoader(apiKey) {
+  if (loaderInstalled) return;
+  if (window.google?.maps?.importLibrary) {
+    loaderInstalled = true;
+    return;
   }
-  if (googleMapsPromise && loadingMode === 'modern') {
-    return googleMapsPromise;
-  }
-
-  // If legacy script already loaded, we can't switch to modern mode
-  // Fall back to legacy markers (with console warnings)
-  if (window.google?.maps && !window.google.maps.importLibrary) {
-    console.warn('Google Maps already loaded without async mode - using legacy markers');
-    loadingMode = 'legacy';
-    googleMapsLoaded = true;
-    return { google: window.google, markerLib: null };
-  }
-
-  loadingMode = 'modern';
-  googleMapsPromise = (async () => {
-    // Load the bootstrap script with loading=async parameter
-    if (!window.google?.maps) {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&loading=async`;
-      script.async = true;
-      document.head.appendChild(script);
-      
-      // Wait for script to load
-      await new Promise((resolve, reject) => {
-        script.onload = resolve;
-        script.onerror = () => reject(new Error('Failed to load Google Maps bootstrap'));
-      });
-    }
-
-    // Import required libraries
-    const [mapsLib, markerLib, geometryLib] = await Promise.all([
-      window.google.maps.importLibrary('maps'),
-      window.google.maps.importLibrary('marker'),
-      window.google.maps.importLibrary('geometry'),
-    ]);
-
-    markerLibrary = markerLib;
-    googleMapsLoaded = true;
-    
-    return { google: window.google, markerLib };
-  })();
-
-  return googleMapsPromise;
+  
+  // Google's inline bootstrap loader - creates google.maps.importLibrary()
+  ((g) => {
+    var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__", m = document, b = window;
+    b = b[c] || (b[c] = {});
+    var d = b.maps || (b.maps = {}), r = new Set, e = new URLSearchParams;
+    var u = () => h || (h = new Promise(async (f, n) => {
+      await (a = m.createElement("script"));
+      e.set("libraries", [...r] + "");
+      for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]);
+      e.set("callback", c + ".maps." + q);
+      a.src = `https://maps.${c}apis.com/maps/api/js?` + e;
+      d[q] = f;
+      a.onerror = () => h = n(Error(p + " could not load."));
+      a.nonce = m.querySelector("script[nonce]")?.nonce || "";
+      m.head.append(a);
+    }));
+    d[l] ? console.warn(p + " only loads once. Ignoring:", g) : d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n));
+  })({ key: apiKey, v: "weekly" });
+  
+  loaderInstalled = true;
 }
 
 /**
- * Load Google Maps using the legacy script tag pattern.
- * Fallback when Map ID is not configured.
+ * Load Google Maps libraries using importLibrary().
+ * Returns { Map, AdvancedMarkerElement (if mapId provided), geometry functions }
  */
-function loadGoogleMapsLegacy(apiKey) {
-  if (googleMapsLoaded && loadingMode === 'legacy') {
-    return Promise.resolve(window.google);
-  }
-  if (googleMapsPromise && loadingMode === 'legacy') {
-    return googleMapsPromise;
-  }
-
-  loadingMode = 'legacy';
-  googleMapsPromise = new Promise((resolve, reject) => {
-    if (window.google?.maps) {
-      googleMapsLoaded = true;
-      resolve(window.google);
-      return;
+async function loadGoogleMaps(apiKey, mapId) {
+  if (loadPromise) return loadPromise;
+  
+  installBootstrapLoader(apiKey);
+  
+  loadPromise = (async () => {
+    // Load required libraries
+    const { Map } = await window.google.maps.importLibrary('maps');
+    await window.google.maps.importLibrary('geometry');
+    
+    let AdvancedMarkerElement = null;
+    if (mapId) {
+      try {
+        const markerLib = await window.google.maps.importLibrary('marker');
+        AdvancedMarkerElement = markerLib.AdvancedMarkerElement;
+      } catch (e) {
+        console.warn('Failed to load marker library:', e);
+      }
     }
-
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      googleMapsLoaded = true;
-      resolve(window.google);
-    };
-    script.onerror = () => reject(new Error('Failed to load Google Maps'));
-    document.head.appendChild(script);
-  });
-
-  return googleMapsPromise;
+    
+    return { Map, AdvancedMarkerElement };
+  })();
+  
+  return loadPromise;
 }
 
 // =============================================================================
@@ -132,7 +98,7 @@ function loadGoogleMapsLegacy(apiKey) {
 // =============================================================================
 
 /**
- * Create a DOM element for AdvancedMarkerElement content (modern mode)
+ * Create a DOM element for AdvancedMarkerElement content
  */
 function createMarkerContent(svgContent, size) {
   const div = document.createElement('div');
@@ -275,8 +241,7 @@ export default function GoogleMap({
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
-  const [useModernMarkers, setUseModernMarkers] = useState(false);
-  const markerLibRef = useRef(null);
+  const advancedMarkerRef = useRef(null); // Store AdvancedMarkerElement class
 
   // Refs for callbacks — avoids stale closures in Google Maps listeners
   const onMapClickRef = useRef(onMapClick);
@@ -291,7 +256,7 @@ export default function GoogleMap({
   const viewportLayersRef = useRef(viewportLayers);
   useEffect(() => { viewportLayersRef.current = viewportLayers; }, [viewportLayers]);
 
-  // Fetch API key and Map ID
+  // Fetch API key and Map ID from backend
   const [resolvedKey, setResolvedKey] = useState(apiKey || null);
   const [resolvedMapId, setResolvedMapId] = useState(null);
   
@@ -348,58 +313,35 @@ export default function GoogleMap({
 
     const initMap = async () => {
       try {
-        let map;
-        let useModern = false;
+        // Load Google Maps using bootstrap loader
+        const { Map, AdvancedMarkerElement } = await loadGoogleMaps(resolvedKey, resolvedMapId);
+        advancedMarkerRef.current = AdvancedMarkerElement;
         
+        // Create map options
+        const mapOptions = {
+          center: { lat: parseFloat(startCenter.lat), lng: parseFloat(startCenter.lng) },
+          zoom,
+          disableDefaultUI: !interactive,
+          zoomControl: interactive,
+          scrollwheel: interactive,
+          draggable: interactive,
+          mapTypeControl: interactive,
+          streetViewControl: false,
+          fullscreenControl: interactive,
+        };
+        
+        // Add mapId if we have it (required for AdvancedMarkerElement)
         if (resolvedMapId) {
-          // Try modern mode with AdvancedMarkerElement
-          const result = await loadGoogleMapsModern(resolvedKey, resolvedMapId);
-          markerLibRef.current = result.markerLib;
-          
-          // If markerLib is null, legacy script was already loaded - fall back
-          useModern = result.markerLib !== null;
-          
-          if (useModern) {
-            map = new window.google.maps.Map(mapRef.current, {
-              center: { lat: parseFloat(startCenter.lat), lng: parseFloat(startCenter.lng) },
-              zoom,
-              mapId: resolvedMapId,
-              disableDefaultUI: !interactive,
-              zoomControl: interactive,
-              scrollwheel: interactive,
-              draggable: interactive,
-              mapTypeControl: interactive,
-              streetViewControl: false,
-              fullscreenControl: interactive,
-            });
-          }
+          mapOptions.mapId = resolvedMapId;
+        } else {
+          // Legacy styling when no mapId
+          mapOptions.mapTypeId = 'roadmap';
+          mapOptions.styles = [
+            { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+          ];
         }
         
-        if (!useModern) {
-          // Legacy mode (fallback)
-          if (!window.google?.maps) {
-            await loadGoogleMapsLegacy(resolvedKey);
-          }
-          setUseModernMarkers(false);
-          
-          map = new window.google.maps.Map(mapRef.current, {
-            center: { lat: parseFloat(startCenter.lat), lng: parseFloat(startCenter.lng) },
-            zoom,
-            disableDefaultUI: !interactive,
-            zoomControl: interactive,
-            scrollwheel: interactive,
-            draggable: interactive,
-            mapTypeControl: interactive,
-            streetViewControl: false,
-            fullscreenControl: interactive,
-            mapTypeId: 'roadmap',
-            styles: [
-              { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-            ],
-          });
-        } else {
-          setUseModernMarkers(true);
-        }
+        const map = new Map(mapRef.current, mapOptions);
 
         map.addListener('click', (e) => {
           if (onMapClickRef.current) {
@@ -411,6 +353,7 @@ export default function GoogleMap({
         setLoading(false);
         setMapReady(true);
       } catch (err) {
+        console.error('Map init error:', err);
         setError(err.message);
         setLoading(false);
       }
@@ -419,16 +362,30 @@ export default function GoogleMap({
     initMap();
 
     return () => {
-      markersRef.current.forEach(m => m.map = null);
+      markersRef.current.forEach(m => {
+        if (m.map !== undefined) m.map = null;
+        else if (m.setMap) m.setMap(null);
+      });
       circlesRef.current.forEach(c => c.setMap(null));
       polygonsRef.current.forEach(p => p.setMap(null));
       dataLayersRef.current.forEach(dl => dl.setMap(null));
-      viewportMarkersRef.current.forEach(m => m.map = null);
-      if (stationMarkerRef.current) stationMarkerRef.current.map = null;
+      viewportMarkersRef.current.forEach(m => {
+        if (m.map !== undefined) m.map = null;
+        else if (m.setMap) m.setMap(null);
+      });
+      if (stationMarkerRef.current) {
+        if (stationMarkerRef.current.map !== undefined) stationMarkerRef.current.map = null;
+        else if (stationMarkerRef.current.setMap) stationMarkerRef.current.setMap(null);
+      }
       if (idleListenerRef.current) window.google?.maps?.event?.removeListener(idleListenerRef.current);
       mapInstanceRef.current = null;
     };
   }, [resolvedKey, resolvedMapId]);
+
+  // Helper to check if we can use advanced markers
+  const useAdvancedMarkers = () => {
+    return resolvedMapId && advancedMarkerRef.current;
+  };
 
   // Update center/zoom
   useEffect(() => {
@@ -454,23 +411,19 @@ export default function GoogleMap({
     
     // Clear old markers
     markersRef.current.forEach(m => {
-      if (useModernMarkers) {
-        m.map = null;
-      } else {
-        m.setMap(null);
-      }
+      if (m.map !== undefined) m.map = null;
+      else if (m.setMap) m.setMap(null);
     });
     markersRef.current = [];
 
     const map = mapInstanceRef.current;
+    const AdvancedMarker = advancedMarkerRef.current;
 
     markers.forEach((m, idx) => {
       const position = { lat: parseFloat(m.lat), lng: parseFloat(m.lng) };
       
-      if (useModernMarkers && markerLibRef.current) {
+      if (useAdvancedMarkers()) {
         // Modern: AdvancedMarkerElement
-        const { AdvancedMarkerElement } = markerLibRef.current;
-        
         let content;
         if (m.icon) {
           const img = document.createElement('img');
@@ -483,7 +436,7 @@ export default function GoogleMap({
           content = createMarkerContent(createNumberedMarkerSvg(label, m.color), 28);
         }
         
-        const marker = new AdvancedMarkerElement({
+        const marker = new AdvancedMarker({
           map,
           position,
           title: m.title || '',
@@ -529,7 +482,7 @@ export default function GoogleMap({
         markersRef.current.push(marker);
       }
     });
-  }, [mapReady, markers, useModernMarkers]);
+  }, [mapReady, markers, resolvedMapId]);
 
   // ==========================================================================
   // RENDER CIRCLES
@@ -592,14 +545,17 @@ export default function GoogleMap({
 
     if (!viewportLayers || viewportLayers.length === 0) {
       viewportMarkersRef.current.forEach(m => {
-        if (useModernMarkers) m.map = null;
-        else m.setMap(null);
+        if (m.map !== undefined) m.map = null;
+        else if (m.setMap) m.setMap(null);
       });
       viewportMarkersRef.current = [];
       dataLayersRef.current.forEach(dl => dl.setMap(null));
       dataLayersRef.current = [];
       return;
     }
+
+    const AdvancedMarker = advancedMarkerRef.current;
+    const canUseAdvanced = useAdvancedMarkers();
 
     // Icon cache for legacy mode
     const iconCache = {};
@@ -655,8 +611,8 @@ export default function GoogleMap({
 
       // Clear old markers
       viewportMarkersRef.current.forEach(m => {
-        if (useModernMarkers) m.map = null;
-        else m.setMap(null);
+        if (m.map !== undefined) m.map = null;
+        else if (m.setMap) m.setMap(null);
       });
       viewportMarkersRef.current = [];
 
@@ -718,8 +674,7 @@ export default function GoogleMap({
           const position = { lat: item.lat, lng: item.lng };
           let marker;
 
-          if (useModernMarkers && markerLibRef.current) {
-            const { AdvancedMarkerElement } = markerLibRef.current;
+          if (canUseAdvanced) {
             let content;
             let hoverTitle = item.title || '';
 
@@ -755,7 +710,7 @@ export default function GoogleMap({
               }
             }
 
-            marker = new AdvancedMarkerElement({
+            marker = new AdvancedMarker({
               map,
               position,
               title: hoverTitle,
@@ -880,7 +835,7 @@ export default function GoogleMap({
               clickable: item.type === 'cluster' ? isIncidentLayer : true,
             });
 
-            // Click handlers (same logic as modern mode)
+            // Click handlers (same logic as advanced mode)
             if (item.type === 'cluster' && isIncidentLayer) {
               marker.addListener('click', () => {
                 if (item.incidents && item.incidents.length > 0) {
@@ -976,7 +931,7 @@ export default function GoogleMap({
         idleListenerRef.current = null;
       }
     };
-  }, [viewportLayers, mapReady, useModernMarkers]);
+  }, [viewportLayers, mapReady, resolvedMapId]);
 
   // ==========================================================================
   // STATIC GEOJSON — legacy path for small datasets
@@ -1087,20 +1042,17 @@ export default function GoogleMap({
     
     // Clear old marker
     if (stationMarkerRef.current) {
-      if (useModernMarkers) {
-        stationMarkerRef.current.map = null;
-      } else {
-        stationMarkerRef.current.setMap(null);
-      }
+      if (stationMarkerRef.current.map !== undefined) stationMarkerRef.current.map = null;
+      else if (stationMarkerRef.current.setMap) stationMarkerRef.current.setMap(null);
     }
 
     const position = { lat: parseFloat(stationCoords.lat), lng: parseFloat(stationCoords.lng) };
+    const AdvancedMarker = advancedMarkerRef.current;
 
-    if (useModernMarkers && markerLibRef.current) {
-      const { AdvancedMarkerElement } = markerLibRef.current;
+    if (useAdvancedMarkers()) {
       const content = createMarkerContent(createStationMarkerSvg(16), 16);
       
-      stationMarkerRef.current = new AdvancedMarkerElement({
+      stationMarkerRef.current = new AdvancedMarker({
         map: mapInstanceRef.current,
         position,
         title: 'Station',
@@ -1123,7 +1075,7 @@ export default function GoogleMap({
         zIndex: 1000,
       });
     }
-  }, [mapReady, showStation, stationCoords?.lat, stationCoords?.lng, useModernMarkers]);
+  }, [mapReady, showStation, stationCoords?.lat, stationCoords?.lng, resolvedMapId]);
 
   // ==========================================================================
   // RENDER
