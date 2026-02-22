@@ -289,16 +289,30 @@ def geocode_mile_marker(
     first_pt = points[0]
     last_pt = points[-1]
     
-    # For EW routes: WB means west, so lower longitude
-    # For NS routes: SB means south, so lower latitude
+    # Determine if lower mile markers are toward the START of the route (index 0)
+    # by checking if point 0 is in the "miles_decrease_toward" direction from the last point.
+    #
+    # For EW routes: WB means west = more negative longitude
+    # For NS routes: SB means south = more negative latitude
+    #
+    # If first point is MORE WEST than last point, and miles decrease toward WB,
+    # then lower miles are toward the start.
     if miles_decrease_toward in ("WB", "EB"):
-        # East-West route
-        decrease_at_start = (miles_decrease_toward == "WB" and first_pt["lng"] < last_pt["lng"]) or \
-                           (miles_decrease_toward == "EB" and first_pt["lng"] > last_pt["lng"])
+        # East-West route - compare longitudes
+        # WB = west = more negative longitude
+        first_is_west_of_last = first_pt["lng"] < last_pt["lng"]
+        if miles_decrease_toward == "WB":
+            decrease_at_start = first_is_west_of_last
+        else:  # EB
+            decrease_at_start = not first_is_west_of_last
     else:
-        # North-South route
-        decrease_at_start = (miles_decrease_toward == "SB" and first_pt["lat"] < last_pt["lat"]) or \
-                           (miles_decrease_toward == "NB" and first_pt["lat"] > last_pt["lat"])
+        # North-South route - compare latitudes
+        # SB = south = more negative latitude
+        first_is_south_of_last = first_pt["lat"] < last_pt["lat"]
+        if miles_decrease_toward == "SB":
+            decrease_at_start = first_is_south_of_last
+        else:  # NB
+            decrease_at_start = not first_is_south_of_last
     
     # If miles decrease toward the start (index 0), then:
     #   - Negative mile_diff (lower mile) = move toward start = subtract from anchor_distance
