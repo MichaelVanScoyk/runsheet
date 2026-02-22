@@ -166,9 +166,6 @@ def extract_tenant_slug_from_host(host: str) -> str | None:
 class SuspendedTenantMiddleware(BaseHTTPMiddleware):
     """
     Middleware to redirect suspended tenant subdomains to main domain.
-    
-    Runs BEFORE TenantAuthMiddleware to catch suspended tenants early,
-    before any branding or data is served.
     """
     
     async def dispatch(self, request: Request, call_next):
@@ -185,24 +182,9 @@ class SuspendedTenantMiddleware(BaseHTTPMiddleware):
         status_info = check_tenant_status(tenant_slug)
         
         if status_info['exists'] and status_info['status'] != 'ACTIVE':
-            # Tenant exists but is suspended/pending/etc
-            # For API requests, return JSON error
-            path = request.url.path
-            if path.startswith("/api"):
-                return JSONResponse(
-                    status_code=403,
-                    content={
-                        "detail": f"This department is currently {status_info['status'].lower()}",
-                        "status": status_info['status'],
-                        "redirect": "https://cadreport.com"
-                    }
-                )
-            # For non-API requests (page loads), redirect to main domain
+            # Redirect to main domain
             from fastapi.responses import RedirectResponse
-            return RedirectResponse(
-                url="https://cadreport.com?reason=suspended",
-                status_code=302
-            )
+            return RedirectResponse(url="https://cadreport.com", status_code=302)
         
         return await call_next(request)
 
