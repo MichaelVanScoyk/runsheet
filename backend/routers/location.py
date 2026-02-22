@@ -67,14 +67,15 @@ async def geocode_address_endpoint(
     if not is_location_enabled(db):
         raise HTTPException(status_code=403, detail="Location services not enabled")
     
-    from services.location.geocoding import geocode_address
+    from services.location.mile_marker import geocode_with_mile_marker_fallback
     
     station_lat, station_lng = get_station_coords(db)
     google_key = get_google_api_key(db)
     geocodio_key = get_geocodio_api_key(db)
     state = request.state or get_default_state(db)
     
-    result = geocode_address(
+    result = geocode_with_mile_marker_fallback(
+        db=db,
         address=request.address,
         station_lat=station_lat,
         station_lng=station_lng,
@@ -124,14 +125,15 @@ async def geocode_incident_endpoint(
     if not address:
         raise HTTPException(status_code=400, detail="Incident has no address")
     
-    from services.location.geocoding import geocode_address
+    from services.location.mile_marker import geocode_with_mile_marker_fallback
     
     station_lat, station_lng = get_station_coords(db)
     google_key = get_google_api_key(db)
     geocodio_key = get_geocodio_api_key(db)
     state = get_default_state(db)
     
-    result = geocode_address(
+    result = geocode_with_mile_marker_fallback(
+        db=db,
         address=address,
         station_lat=station_lat,
         station_lng=station_lng,
