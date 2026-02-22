@@ -41,15 +41,14 @@ function loadGoogleMaps(apiKey) {
       return;
     }
 
-    // Google recommends callback-based loading for async
-    window.__googleMapsCallback = () => {
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
       googleMapsLoaded = true;
       resolve(window.google);
     };
-    
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&callback=__googleMapsCallback`;
-    script.async = true;
     script.onerror = () => reject(new Error('Failed to load Google Maps'));
     document.head.appendChild(script);
   });
