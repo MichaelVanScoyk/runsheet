@@ -18,6 +18,7 @@ export default function LocationSection() {
   const [geocodeResult, setGeocodeResult] = useState(null);
   const [manualCoords, setManualCoords] = useState(null);
   const [manualPolyline, setManualPolyline] = useState(null);
+  const [hasManualGeocode, setHasManualGeocode] = useState(false); // Track if user triggered re-geocode
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerMatches, setPickerMatches] = useState([]);
   const [pickerLoading, setPickerLoading] = useState(false);
@@ -127,11 +128,16 @@ export default function LocationSection() {
       if (data.success) {
         setManualCoords({ lat: data.latitude, lng: data.longitude });
         setGeocodeResult({ success: true, address: data.matched_address, distance: data.distance_km });
+        setHasManualGeocode(true); // Mark that user triggered geocode
+        // Fetch updated incident to get route (or lack thereof for limited_access)
         try {
           const incRes = await fetch(`/api/incidents/${incident.id}`);
           const incData = await incRes.json();
-          if (incData.route_polyline) setManualPolyline(incData.route_polyline);
-        } catch {}
+          // Set to the new value (null if limited_access, polyline if normal road)
+          setManualPolyline(incData.route_polyline || null);
+        } catch {
+          setManualPolyline(null);
+        }
       } else {
         setGeocodeResult({ success: false });
       }
@@ -254,7 +260,7 @@ export default function LocationSection() {
           <IncidentMap
             incidentCoords={incidentCoords}
             stationCoords={locationConfig ? { lat: locationConfig.station_latitude, lng: locationConfig.station_longitude } : null}
-            routePolyline={manualPolyline || liveIncident?.route_polyline}
+            routePolyline={hasManualGeocode ? manualPolyline : (manualPolyline || liveIncident?.route_polyline)}
             height="300px"
           />
           {geocodeResult?.success && (
