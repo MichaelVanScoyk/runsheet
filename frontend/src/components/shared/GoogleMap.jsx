@@ -183,13 +183,15 @@ export default function GoogleMap({
   // Update center/zoom
   useEffect(() => {
     if (!mapReady || !center?.lat || !center?.lng) return;
+    if (!mapInstanceRef.current) return; // Guard against null map instance
     mapInstanceRef.current.setCenter({ lat: parseFloat(center.lat), lng: parseFloat(center.lng) });
     mapInstanceRef.current.setZoom(zoom);
-  }, [center?.lat, center?.lng, zoom]);
+  }, [mapReady, center?.lat, center?.lng, zoom]);
 
   // Fit bounds (for route display)
   useEffect(() => {
     if (!mapReady || !fitBounds) return;
+    if (!mapInstanceRef.current) return; // Guard against null map instance
     mapInstanceRef.current.fitBounds(fitBounds, { padding: 40 });
   }, [mapReady, fitBounds]);
 

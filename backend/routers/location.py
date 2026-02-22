@@ -168,35 +168,41 @@ async def geocode_incident_endpoint(
         # =================================================================
         # DRIVING ROUTE — Station → Incident
         # Cached as encoded polyline (frontend) + PostGIS geometry (spatial queries)
+        # Skip routing for limited_access locations (highways, turnpikes)
         # =================================================================
-        try:
-            from services.location.route import fetch_route
-            
-            if google_key:
-                route_data = fetch_route(
-                    origin_lat=station_lat,
-                    origin_lng=station_lng,
-                    dest_lat=result["latitude"],
-                    dest_lng=result["longitude"],
-                    google_api_key=google_key,
-                )
-                if route_data:
-                    db.execute(
-                        text("""
-                            UPDATE incidents
-                            SET route_polyline = :polyline,
-                                route_geometry = ST_LineFromEncodedPolyline(:polyline)
-                            WHERE id = :id
-                        """),
-                        {"polyline": route_data["polyline"], "id": incident_id},
+        is_limited_access = result.get("limited_access", False)
+        
+        if is_limited_access:
+            logger.info(f"Skipping route for incident {incident_id}: limited_access location (highway/turnpike)")
+        else:
+            try:
+                from services.location.route import fetch_route
+                
+                if google_key:
+                    route_data = fetch_route(
+                        origin_lat=station_lat,
+                        origin_lng=station_lng,
+                        dest_lat=result["latitude"],
+                        dest_lng=result["longitude"],
+                        google_api_key=google_key,
                     )
-                    db.commit()
-                    logger.info(
-                        f"Route cached for incident {incident_id}: "
-                        f"{route_data['distance_meters']}m, {route_data['duration_seconds']}s"
-                    )
-        except Exception as e:
-            logger.warning(f"Route caching failed for incident {incident_id}: {e}")
+                    if route_data:
+                        db.execute(
+                            text("""
+                                UPDATE incidents
+                                SET route_polyline = :polyline,
+                                    route_geometry = ST_LineFromEncodedPolyline(:polyline)
+                                WHERE id = :id
+                            """),
+                            {"polyline": route_data["polyline"], "id": incident_id},
+                        )
+                        db.commit()
+                        logger.info(
+                            f"Route cached for incident {incident_id}: "
+                            f"{route_data['distance_meters']}m, {route_data['duration_seconds']}s"
+                        )
+            except Exception as e:
+                logger.warning(f"Route caching failed for incident {incident_id}: {e}")
         
         # =================================================================
         # PROXIMITY SNAPSHOT — Phase 2 Map Platform
