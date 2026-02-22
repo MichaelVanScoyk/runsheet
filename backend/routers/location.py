@@ -303,10 +303,13 @@ async def get_location_config(db: Session = Depends(get_db)):
     Get location services configuration for the frontend.
     Returns whether the feature is enabled and basic config.
     """
+    from routers.settings import get_setting_value
+    
     enabled = is_location_enabled(db)
     station_lat, station_lng = get_station_coords(db)
     google_key = get_google_api_key(db)
     has_geocodio = bool(get_geocodio_api_key(db))
+    google_map_id = get_setting_value(db, 'location', 'google_map_id', None)
     
     return {
         "enabled": enabled,
@@ -315,6 +318,7 @@ async def get_location_config(db: Session = Depends(get_db)):
         "google_api_key": google_key if enabled else None,
         "has_google": bool(google_key),
         "has_geocodio": has_geocodio,
+        "has_map_id": bool(google_map_id and str(google_map_id).strip()),
         "default_state": get_default_state(db),
     }
 

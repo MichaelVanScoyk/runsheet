@@ -2668,6 +2668,31 @@ function FeaturesTab() {
 
                   <div style={{ marginBottom: '0.75rem' }}>
                     <label style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginBottom: '0.25rem' }}>
+                      Google Map ID (for advanced markers)
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        defaultValue=""
+                        placeholder={locationConfig.has_map_id ? '••••••• (configured)' : 'e.g., 8e0a97af9386fef'}
+                        onBlur={(e) => {
+                          if (e.target.value) saveLocationSetting('google_map_id', e.target.value);
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                        disabled={savingConfig}
+                        style={{ flex: 1, padding: '0.4rem 0.6rem', border: '1px solid #ddd', borderRadius: '4px', fontSize: '0.85rem' }}
+                      />
+                      {locationConfig.has_map_id && (
+                        <span style={{ color: '#22c55e', fontSize: '0.8rem' }}>✓ Active</span>
+                      )}
+                    </div>
+                    <small style={{ color: '#888', fontSize: '0.75rem' }}>
+                      Optional. Enables modern marker API (no console warnings). Get at console.cloud.google.com → Maps → Map Management → Create Map ID.
+                    </small>
+                  </div>
+
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#666', marginBottom: '0.25rem' }}>
                       Geocodio API Key (last resort fallback)
                     </label>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
