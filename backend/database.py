@@ -72,35 +72,70 @@ def _get_session_factory(db_name: str):
     return _session_factories[db_name]
 
 
-def _get_tenant_database(slug: str) -> str:
-    """Look up tenant's database from master. Cached for 5 minutes."""
+class TenantNotActiveError(Exception):
+    """Raised when tenant exists but is not active (suspended, pending, etc.)"""
+    def __init__(self, slug: str, status: str):
+        self.slug = slug
+        self.status = status
+        super().__init__(f"Tenant {slug} is {status}")
+
+
+def _get_tenant_database(slug: str, raise_on_inactive: bool = False) -> str:
+    """Look up tenant's database from master. Cached for 5 minutes.
+    
+    Args:
+        slug: Tenant subdomain slug
+        raise_on_inactive: If True, raises TenantNotActiveError for suspended/pending tenants
+                          instead of falling back to default database.
+    """
     now = time.time()
 
     # Check cache first
     if slug in _tenant_cache:
-        db_name, cached_at = _tenant_cache[slug]
-        if now - cached_at < _TENANT_CACHE_TTL:
-            return db_name
+        cached_entry = _tenant_cache[slug]
+        # Cache format: (db_name, timestamp) or (None, timestamp, status) for inactive
+        if len(cached_entry) == 2:
+            db_name, cached_at = cached_entry
+            if now - cached_at < _TENANT_CACHE_TTL:
+                return db_name
+        elif len(cached_entry) == 3:
+            _, cached_at, status = cached_entry
+            if now - cached_at < _TENANT_CACHE_TTL:
+                if raise_on_inactive:
+                    raise TenantNotActiveError(slug, status)
+                # Fall through to default
 
     # Cache miss or expired — query master using pooled connection
     try:
         engine = _get_master_engine()
         with engine.connect() as conn:
+            # First check if tenant exists at all
             result = conn.execute(
-                sa_text("SELECT database_name FROM tenants WHERE slug = :slug AND UPPER(status) = 'ACTIVE'"),
+                sa_text("SELECT database_name, status FROM tenants WHERE slug = :slug"),
                 {"slug": slug}
             ).fetchone()
 
-        if result and result[0]:
-            _tenant_cache[slug] = (result[0], now)
-            return result[0]
+        if result:
+            db_name, status = result[0], result[1]
+            if status and status.upper() == 'ACTIVE':
+                _tenant_cache[slug] = (db_name, now)
+                return db_name
+            else:
+                # Tenant exists but not active - cache the inactive status
+                _tenant_cache[slug] = (None, now, status.upper() if status else 'UNKNOWN')
+                if raise_on_inactive:
+                    raise TenantNotActiveError(slug, status.upper() if status else 'UNKNOWN')
+    except TenantNotActiveError:
+        raise
     except Exception as e:
         logger.error(f"Tenant lookup failed for {slug}: {e}")
 
         # Return stale cache if available
         if slug in _tenant_cache:
-            logger.warning(f"Using stale cache for tenant {slug}")
-            return _tenant_cache[slug][0]
+            cached_entry = _tenant_cache[slug]
+            if len(cached_entry) == 2:
+                logger.warning(f"Using stale cache for tenant {slug}")
+                return cached_entry[0]
 
     _tenant_cache[slug] = ("runsheet_db", now)
     return "runsheet_db"
@@ -190,6 +225,33 @@ def get_db(request: Request):
         yield db
     finally:
         db.close()
+
+
+def check_tenant_status(slug: str) -> dict:
+    """
+    Check tenant status without getting a database connection.
+    Returns dict with 'exists', 'status', 'database_name' keys.
+    Used by middleware to redirect suspended tenants.
+    """
+    try:
+        engine = _get_master_engine()
+        with engine.connect() as conn:
+            result = conn.execute(
+                sa_text("SELECT database_name, status, name FROM tenants WHERE slug = :slug"),
+                {"slug": slug}
+            ).fetchone()
+        
+        if result:
+            return {
+                'exists': True,
+                'database_name': result[0],
+                'status': result[1].upper() if result[1] else 'UNKNOWN',
+                'name': result[2],
+            }
+        return {'exists': False, 'status': None, 'database_name': None, 'name': None}
+    except Exception as e:
+        logger.error(f"Tenant status check failed for {slug}: {e}")
+        return {'exists': False, 'status': None, 'database_name': None, 'name': None}
 
 
 def get_db_for_tenant(tenant_slug: str):
