@@ -15,7 +15,7 @@
  *   onClearPoints    - () => void
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const DIRECTIONS = ['NB', 'SB', 'EB', 'WB'];
 
@@ -47,6 +47,7 @@ export default function HighwayRouteEditor({
   // UI state
   const [mode, setMode] = useState('trace'); // 'trace' | 'draw' | 'setMM'
   const [traceStart, setTraceStart] = useState(null); // first click for trace
+  const traceStartRef = useRef(null); // ref for closure-safe access
   const [tracing, setTracing] = useState(false); // API call in progress
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -87,6 +88,7 @@ export default function HighwayRouteEditor({
       setMmValue('');
       setAliases([]);
       setMode('trace'); // new route starts in trace mode
+      traceStartRef.current = null;
       setTraceStart(null);
       onMmPointChange?.(null);
       if (onClearPoints) onClearPoints();
@@ -102,10 +104,14 @@ export default function HighwayRouteEditor({
 
   // Handle map click in trace mode
   const handleTraceClick = useCallback(async (lat, lng) => {
-    if (!traceStart) {
+    const currentTraceStart = traceStartRef.current;
+    
+    if (!currentTraceStart) {
       // First click - set start point
-      setTraceStart({ lat, lng });
-      onTraceStartChange?.({ lat, lng });
+      const startPoint = { lat, lng };
+      traceStartRef.current = startPoint;
+      setTraceStart(startPoint);
+      onTraceStartChange?.(startPoint);
       return;
     }
     
@@ -118,8 +124,8 @@ export default function HighwayRouteEditor({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          start_lat: traceStart.lat,
-          start_lng: traceStart.lng,
+          start_lat: currentTraceStart.lat,
+          start_lng: currentTraceStart.lng,
           end_lat: lat,
           end_lng: lng,
         }),
@@ -139,6 +145,7 @@ export default function HighwayRouteEditor({
       
       // Switch to draw mode for fine-tuning
       setMode('draw');
+      traceStartRef.current = null;
       setTraceStart(null);
       onTraceStartChange?.(null);
       
@@ -147,10 +154,11 @@ export default function HighwayRouteEditor({
     } finally {
       setTracing(false);
     }
-  }, [traceStart, onSetPoints, onTraceStartChange]);
+  }, [onSetPoints, onTraceStartChange]);
 
   // Cancel trace mode
   const handleCancelTrace = useCallback(() => {
+    traceStartRef.current = null;
     setTraceStart(null);
     onTraceStartChange?.(null);
   }, [onTraceStartChange]);
@@ -463,6 +471,7 @@ export default function HighwayRouteEditor({
               <button
                 onClick={() => {
                   setMode('draw');
+                  traceStartRef.current = null;
                   setTraceStart(null);
                   onTraceStartChange?.(null);
                 }}
