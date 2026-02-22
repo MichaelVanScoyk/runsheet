@@ -1,8 +1,6 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { useRunSheet } from '../RunSheetContext';
-
-// Lazy load IncidentMap (Google Maps route display)
-const IncidentMap = lazy(() => import('../../shared/IncidentMap'));
+import IncidentMap from '../../shared/IncidentMap';
 
 export default function LocationSection() {
   const { 
@@ -253,14 +251,12 @@ export default function LocationSection() {
     <div className="flex flex-col h-full">
       {hasCoords ? (
         <>
-          <Suspense fallback={<div style={{ flex: 1, minHeight: '300px', background: '#f5f5f5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', fontSize: '0.85rem' }}>Loading map...</div>}>
-            <IncidentMap
-              incidentCoords={incidentCoords}
-              stationCoords={locationConfig ? { lat: locationConfig.station_latitude, lng: locationConfig.station_longitude } : null}
-              routePolyline={manualPolyline || liveIncident?.route_polyline}
-              height="300px"
-            />
-          </Suspense>
+          <IncidentMap
+            incidentCoords={incidentCoords}
+            stationCoords={locationConfig ? { lat: locationConfig.station_latitude, lng: locationConfig.station_longitude } : null}
+            routePolyline={manualPolyline || liveIncident?.route_polyline}
+            height="300px"
+          />
           {geocodeResult?.success && (
             <div style={{ fontSize: '0.75rem', color: '#22c55e', marginTop: '0.25rem' }}>
               ✓ {geocodeResult.address} ({geocodeResult.distance}km from station)
