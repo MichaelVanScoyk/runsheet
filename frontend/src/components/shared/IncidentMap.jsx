@@ -29,17 +29,17 @@ export default function IncidentMap({
   onClickFullMap,
 }) {
   // Incident location marker (red pin)
+  // Memoize with primitive values to avoid re-renders
+  const lat = incidentCoords?.lat;
+  const lng = incidentCoords?.lng;
   const markers = useMemo(() => {
-    console.log('IncidentMap markers useMemo:', { lat: incidentCoords?.lat, lng: incidentCoords?.lng });
-    if (!incidentCoords?.lat || !incidentCoords?.lng) return [];
+    if (!lat || !lng) return [];
     return [{
-      lat: incidentCoords.lat,
-      lng: incidentCoords.lng,
+      lat,
+      lng,
       title: 'Incident Location',
     }];
-  }, [incidentCoords?.lat, incidentCoords?.lng]);
-  
-  console.log('IncidentMap render:', { incidentCoords, markers, routePolyline: !!routePolyline });
+  }, [lat, lng]);
 
   return (
     <div style={{ height, width: '100%', position: 'relative', zIndex: 0 }}>

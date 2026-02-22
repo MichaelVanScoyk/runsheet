@@ -198,6 +198,7 @@ export default function GoogleMap({
   // Render simple markers
   useEffect(() => {
     if (!mapReady) return;
+    if (!mapInstanceRef.current) return;
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
 
