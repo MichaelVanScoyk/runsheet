@@ -30,6 +30,7 @@ export default function IncidentMap({
 }) {
   // Incident location marker (red pin)
   const markers = useMemo(() => {
+    console.log('IncidentMap markers useMemo:', { lat: incidentCoords?.lat, lng: incidentCoords?.lng });
     if (!incidentCoords?.lat || !incidentCoords?.lng) return [];
     return [{
       lat: incidentCoords.lat,
@@ -37,6 +38,8 @@ export default function IncidentMap({
       title: 'Incident Location',
     }];
   }, [incidentCoords?.lat, incidentCoords?.lng]);
+  
+  console.log('IncidentMap render:', { incidentCoords, markers, routePolyline: !!routePolyline });
 
   return (
     <div style={{ height, width: '100%', position: 'relative', zIndex: 0 }}>

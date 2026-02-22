@@ -39,6 +39,9 @@ export default function LocationSection() {
       : { lat: null, lng: null };
 
   const hasCoords = !!(incidentCoords.lat && incidentCoords.lng);
+  
+  // Debug logging
+  console.log('LocationSection render:', { manualCoords, incidentCoords, hasCoords, liveIncidentCoords: liveIncident ? { lat: liveIncident.latitude, lng: liveIncident.longitude } : null });
 
   // After save clears coords, poll for background geocode to complete
   useEffect(() => {
@@ -124,18 +127,26 @@ export default function LocationSection() {
     try {
       const res = await fetch(`/api/location/geocode/${incident.id}`, { method: 'POST' });
       const data = await res.json();
+      console.log('Geocode response:', data);
       if (data.success) {
-        setManualCoords({ lat: data.latitude, lng: data.longitude });
+        const newCoords = { lat: data.latitude, lng: data.longitude };
+        console.log('Setting manualCoords:', newCoords);
+        setManualCoords(newCoords);
         setGeocodeResult({ success: true, address: data.matched_address, distance: data.distance_km });
         try {
           const incRes = await fetch(`/api/incidents/${incident.id}`);
           const incData = await incRes.json();
+          console.log('Incident fetch after geocode:', { lat: incData.latitude, lng: incData.longitude, route: incData.route_polyline });
           if (incData.route_polyline) setManualPolyline(incData.route_polyline);
-        } catch {}
+        } catch (e) {
+          console.error('Incident fetch failed:', e);
+        }
       } else {
+        console.log('Geocode failed:', data);
         setGeocodeResult({ success: false });
       }
-    } catch {
+    } catch (e) {
+      console.error('Geocode error:', e);
       setGeocodeResult({ success: false });
     } finally {
       setGeocoding(false);
