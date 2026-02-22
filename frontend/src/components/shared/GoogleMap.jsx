@@ -129,16 +129,22 @@ export default function GoogleMap({
       .catch(() => setError('Failed to check map config'));
   }, [apiKey]);
 
-  // Initialize map
+  // Initialize map - only depends on resolvedKey, not center
+  // Center updates are handled by a separate useEffect
+  const initialCenter = useRef(center);
   useEffect(() => {
-    if (!resolvedKey || !mapRef.current || !center?.lat || !center?.lng) return;
+    if (!resolvedKey || !mapRef.current) return;
     if (mapInstanceRef.current) return;
+    
+    // Use initial center or current center for first render
+    const startCenter = initialCenter.current || center;
+    if (!startCenter?.lat || !startCenter?.lng) return;
 
     setLoading(true);
     loadGoogleMaps(resolvedKey)
       .then((google) => {
         const map = new google.maps.Map(mapRef.current, {
-          center: { lat: parseFloat(center.lat), lng: parseFloat(center.lng) },
+          center: { lat: parseFloat(startCenter.lat), lng: parseFloat(startCenter.lng) },
           zoom,
           disableDefaultUI: !interactive,
           zoomControl: interactive,
@@ -178,7 +184,7 @@ export default function GoogleMap({
       if (idleListenerRef.current) window.google?.maps?.event?.removeListener(idleListenerRef.current);
       mapInstanceRef.current = null;
     };
-  }, [resolvedKey, center?.lat, center?.lng]);
+  }, [resolvedKey]);
 
   // Update center/zoom
   useEffect(() => {
