@@ -157,9 +157,14 @@ def is_mile_marker_address(address: str) -> bool:
     return parse_mile_marker_address(address) is not None
 
 
-def find_route_by_alias(db: Session, alias: str) -> Optional[dict]:
+def find_route_by_alias(db: Session, alias: str, direction: Optional[str] = None) -> Optional[dict]:
     """
-    Look up a highway route by alias.
+    Look up a highway route by alias, optionally filtered by direction.
+    
+    If direction is provided (EB, WB, NB, SB), first tries to find a route
+    where the route's direction matches. Falls back to any matching alias.
+    This allows separate EB/WB routes for divided highways.
+    
     Returns route dict with points, or None if not found.
     """
     # Check if tables exist
@@ -173,15 +178,33 @@ def find_route_by_alias(db: Session, alias: str) -> Optional[dict]:
     if not table_check:
         return None
     
-    # Find route by alias (case-insensitive)
-    result = db.execute(text("""
-        SELECT hr.id, hr.name, hr.bidirectional, hr.direction, hr.limited_access,
-               hr.miles_decrease_toward, hr.mm_point_index, hr.mm_value, hr.mm_digits
-        FROM highway_routes hr
-        JOIN highway_route_aliases hra ON hra.route_id = hr.id
-        WHERE UPPER(hra.alias) = UPPER(:alias)
-        LIMIT 1
-    """), {"alias": alias.strip()}).fetchone()
+    result = None
+    
+    # If direction provided, first try direction-specific route
+    if direction:
+        result = db.execute(text("""
+            SELECT hr.id, hr.name, hr.bidirectional, hr.direction, hr.limited_access,
+                   hr.miles_decrease_toward, hr.mm_point_index, hr.mm_value, hr.mm_digits
+            FROM highway_routes hr
+            JOIN highway_route_aliases hra ON hra.route_id = hr.id
+            WHERE UPPER(hra.alias) = UPPER(:alias)
+              AND UPPER(hr.direction) = UPPER(:direction)
+            LIMIT 1
+        """), {"alias": alias.strip(), "direction": direction}).fetchone()
+        
+        if result:
+            logger.info(f"Found direction-specific route for alias '{alias}' direction '{direction}'")
+    
+    # Fall back to any matching alias (bidirectional or unspecified direction)
+    if not result:
+        result = db.execute(text("""
+            SELECT hr.id, hr.name, hr.bidirectional, hr.direction, hr.limited_access,
+                   hr.miles_decrease_toward, hr.mm_point_index, hr.mm_value, hr.mm_digits
+            FROM highway_routes hr
+            JOIN highway_route_aliases hra ON hra.route_id = hr.id
+            WHERE UPPER(hra.alias) = UPPER(:alias)
+            LIMIT 1
+        """), {"alias": alias.strip()}).fetchone()
     
     if not result:
         return None
@@ -301,10 +324,10 @@ def geocode_mile_marker(
     
     logger.info(f"Mile marker parse: mile_raw={mile_raw}, direction={direction}, road='{road}'")
     
-    # Find route by alias
-    route = find_route_by_alias(db, road)
+    # Find route by alias (direction-aware for divided highways)
+    route = find_route_by_alias(db, road, direction)
     if not route:
-        logger.info(f"No highway route found for alias '{road}'")
+        logger.info(f"No highway route found for alias '{road}' (direction={direction})")
         return None
     
     # Normalize mile marker number using route's mm_digits setting
