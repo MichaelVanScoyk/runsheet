@@ -126,7 +126,7 @@ def log_audit(db: Session, admin_id: int, admin_email: str, action: str,
         INSERT INTO master_audit_log
         (admin_id, admin_email, action, target_type, target_id, target_name, details, ip_address)
         VALUES (:admin_id, :admin_email, :action, :target_type, :target_id, :target_name,
-                :details::jsonb, :ip_address)
+                CAST(:details AS jsonb), :ip_address)
     """), {
         "admin_id": admin_id,
         "admin_email": admin_email,
