@@ -1,6 +1,10 @@
 /**
  * GoogleMap.jsx — Shared Google Maps component
  *
+ * Supports two loading modes:
+ *   1. Modern (Map ID configured): Uses async importLibrary() + AdvancedMarkerElement
+ *   2. Legacy (no Map ID): Uses script tag loading + google.maps.Marker (with console warnings)
+ *
  * Rendering modes:
  *   1. Simple markers/circles/polygons — for RunSheet, small datasets
  *   2. Viewport-loaded layers — for MapPage with server-side clustering
@@ -26,14 +30,72 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-// Google Maps script loader — singleton
+// =============================================================================
+// GOOGLE MAPS LOADER — supports both modern (async) and legacy (script tag) modes
+// =============================================================================
+
 let googleMapsPromise = null;
 let googleMapsLoaded = false;
+let loadingMode = null; // 'modern' | 'legacy'
+let markerLibrary = null; // AdvancedMarkerElement class (modern mode only)
 
-function loadGoogleMaps(apiKey) {
-  if (googleMapsLoaded) return Promise.resolve(window.google);
-  if (googleMapsPromise) return googleMapsPromise;
+/**
+ * Load Google Maps using the modern async bootstrap pattern.
+ * Required for AdvancedMarkerElement.
+ */
+async function loadGoogleMapsModern(apiKey, mapId) {
+  if (googleMapsLoaded && loadingMode === 'modern') {
+    return { google: window.google, markerLib: markerLibrary };
+  }
+  if (googleMapsPromise && loadingMode === 'modern') {
+    return googleMapsPromise;
+  }
 
+  loadingMode = 'modern';
+  googleMapsPromise = (async () => {
+    // Load the bootstrap script
+    if (!window.google?.maps?.importLibrary) {
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&loading=async`;
+      script.async = true;
+      document.head.appendChild(script);
+      
+      // Wait for script to load
+      await new Promise((resolve, reject) => {
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('Failed to load Google Maps bootstrap'));
+      });
+    }
+
+    // Import required libraries
+    const [mapsLib, markerLib, geometryLib] = await Promise.all([
+      window.google.maps.importLibrary('maps'),
+      window.google.maps.importLibrary('marker'),
+      window.google.maps.importLibrary('geometry'),
+    ]);
+
+    markerLibrary = markerLib;
+    googleMapsLoaded = true;
+    
+    return { google: window.google, markerLib };
+  })();
+
+  return googleMapsPromise;
+}
+
+/**
+ * Load Google Maps using the legacy script tag pattern.
+ * Fallback when Map ID is not configured.
+ */
+function loadGoogleMapsLegacy(apiKey) {
+  if (googleMapsLoaded && loadingMode === 'legacy') {
+    return Promise.resolve(window.google);
+  }
+  if (googleMapsPromise && loadingMode === 'legacy') {
+    return googleMapsPromise;
+  }
+
+  loadingMode = 'legacy';
   googleMapsPromise = new Promise((resolve, reject) => {
     if (window.google?.maps) {
       googleMapsLoaded = true;
@@ -56,6 +118,119 @@ function loadGoogleMaps(apiKey) {
   return googleMapsPromise;
 }
 
+// =============================================================================
+// MARKER CREATION HELPERS
+// =============================================================================
+
+/**
+ * Create a DOM element for AdvancedMarkerElement content (modern mode)
+ */
+function createMarkerContent(svgContent, size) {
+  const div = document.createElement('div');
+  div.innerHTML = svgContent;
+  div.style.width = `${size}px`;
+  div.style.height = `${size}px`;
+  return div;
+}
+
+/**
+ * Create SVG for a numbered/colored marker
+ */
+function createNumberedMarkerSvg(label, color, size = 28) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${color}" stroke="#fff" stroke-width="2"/>
+    <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="12" font-weight="600" font-family="Arial,sans-serif">${label}</text>
+  </svg>`;
+}
+
+/**
+ * Create SVG for station marker
+ */
+function createStationMarkerSvg(size = 16) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 1}" fill="#2563EB" stroke="#fff" stroke-width="2"/>
+  </svg>`;
+}
+
+/**
+ * Create SVG for emoji marker (layer icons)
+ */
+function createEmojiMarkerSvg(emoji, color, size = 32) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 1}" fill="${color}" fill-opacity="0.15" stroke="${color}" stroke-width="2"/>
+    <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" font-size="18">${emoji}</text>
+  </svg>`;
+}
+
+/**
+ * Create SVG for incident marker (just emoji)
+ */
+function createIncidentMarkerSvg(emoji, size = 35) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" font-size="28">${emoji}</text>
+  </svg>`;
+}
+
+/**
+ * Create SVG for incident cluster (emoji with count badge)
+ */
+function createIncidentClusterSvg(emoji, count, size = 32) {
+  const badgeR = 9;
+  const label = count > 99 ? '99+' : String(count);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size + badgeR}" height="${size}" viewBox="0 0 ${size + badgeR} ${size}">
+    <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" font-size="22">${emoji}</text>
+    <circle cx="${size - 1}" cy="${badgeR + 1}" r="${badgeR}" fill="#333" stroke="#fff" stroke-width="1.5"/>
+    <text x="${size - 1}" y="${badgeR + 2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="${label.length > 2 ? 8 : 10}" font-weight="700" font-family="Arial,sans-serif">${label}</text>
+  </svg>`;
+}
+
+/**
+ * Create SVG for hydrant marker (NFPA color system)
+ */
+function createHydrantMarkerSvg(color, innerColor) {
+  if (innerColor) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+      <circle cx="11" cy="11" r="10" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="11" cy="11" r="6" fill="${innerColor}" stroke="#fff" stroke-width="0.5"/>
+    </svg>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
+    <circle cx="7" cy="7" r="6" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
+  </svg>`;
+}
+
+/**
+ * Create SVG for cluster marker
+ */
+function createClusterMarkerSvg(color, count) {
+  const size = count < 50 ? 36 : count < 200 ? 42 : count < 1000 ? 48 : 54;
+  return {
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${color}" fill-opacity="0.85" stroke="#fff" stroke-width="2"/>
+      <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="${size < 42 ? 12 : 13}" font-weight="600" font-family="Arial,sans-serif">${count}</text>
+    </svg>`,
+    size,
+  };
+}
+
+/**
+ * Resolve hydrant cap/body color to CSS color
+ */
+function resolveHydrantColor(props) {
+  const raw = (props?.CAP_COLOR || props?.BODY_COLOR || '').toString().toLowerCase().trim();
+  if (!raw) return null;
+  const colorMap = {
+    'red': '#DC2626', 'blue': '#2563EB', 'green': '#16A34A', 'orange': '#EA580C',
+    'yellow': '#EAB308', 'white': '#e5e5e5', 'black': '#333', 'silver': '#999',
+    'purple': '#9333EA', 'chrome': '#aaa',
+  };
+  return colorMap[raw] || null;
+}
+
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
+
 export default function GoogleMap({
   center,
   zoom = 15,
@@ -68,7 +243,7 @@ export default function GoogleMap({
   onFeatureClick,
   isPlacing = false,
   routePolyline,
-  routeEditPath, // [{lat, lng}, ...] for route editing polyline
+  routeEditPath,
   height = '400px',
   interactive = true,
   showStation = false,
@@ -83,15 +258,16 @@ export default function GoogleMap({
   const circlesRef = useRef([]);
   const polygonsRef = useRef([]);
   const dataLayersRef = useRef([]);
-  const viewportMarkersRef = useRef([]); // markers from viewport loading
+  const viewportMarkersRef = useRef([]);
   const stationMarkerRef = useRef(null);
   const idleListenerRef = useRef(null);
-  const fetchControllerRef = useRef(null); // AbortController for in-flight fetches
-  const debounceTimerRef = useRef(null); // 300ms debounce for idle event
+  const fetchControllerRef = useRef(null);
+  const debounceTimerRef = useRef(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
-
+  const [useModernMarkers, setUseModernMarkers] = useState(false);
+  const markerLibRef = useRef(null);
 
   // Refs for callbacks — avoids stale closures in Google Maps listeners
   const onMapClickRef = useRef(onMapClick);
@@ -103,25 +279,46 @@ export default function GoogleMap({
   const isPlacingRef = useRef(isPlacing);
   useEffect(() => { isPlacingRef.current = isPlacing; }, [isPlacing]);
 
-  // Ref for viewportLayers so idle listener always has current list
   const viewportLayersRef = useRef(viewportLayers);
   useEffect(() => { viewportLayersRef.current = viewportLayers; }, [viewportLayers]);
 
-  // Fetch API key
+  // Fetch API key and Map ID
   const [resolvedKey, setResolvedKey] = useState(apiKey || null);
+  const [resolvedMapId, setResolvedMapId] = useState(null);
+  
   useEffect(() => {
-    if (apiKey) { setResolvedKey(apiKey); return; }
+    if (apiKey) { 
+      setResolvedKey(apiKey); 
+      return; 
+    }
+    
     fetch('/api/map/config')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.google_api_key_configured) {
+          // Fetch API key
           fetch('/api/settings/location/google_api_key')
             .then(r => r.ok ? r.json() : null)
             .then(setting => {
-              if (setting?.raw_value) setResolvedKey(setting.raw_value);
-              else setError('Google Maps API key not configured');
+              if (setting?.raw_value) {
+                setResolvedKey(setting.raw_value);
+              } else {
+                setError('Google Maps API key not configured');
+              }
             })
             .catch(() => setError('Failed to load API key'));
+          
+          // Fetch Map ID if configured
+          if (data?.google_map_id_configured) {
+            fetch('/api/settings/location/google_map_id')
+              .then(r => r.ok ? r.json() : null)
+              .then(setting => {
+                if (setting?.raw_value) {
+                  setResolvedMapId(setting.raw_value);
+                }
+              })
+              .catch(() => {}); // Map ID is optional
+          }
         } else {
           setError('Google Maps API key not configured');
         }
@@ -129,35 +326,60 @@ export default function GoogleMap({
       .catch(() => setError('Failed to check map config'));
   }, [apiKey]);
 
-  // Initialize map - only depends on resolvedKey, not center
-  // Center updates are handled by a separate useEffect
+  // Initialize map
   const initialCenter = useRef(center);
   useEffect(() => {
     if (!resolvedKey || !mapRef.current) return;
     if (mapInstanceRef.current) return;
     
-    // Use initial center or current center for first render
     const startCenter = initialCenter.current || center;
     if (!startCenter?.lat || !startCenter?.lng) return;
 
     setLoading(true);
-    loadGoogleMaps(resolvedKey)
-      .then((google) => {
-        const map = new google.maps.Map(mapRef.current, {
-          center: { lat: parseFloat(startCenter.lat), lng: parseFloat(startCenter.lng) },
-          zoom,
-          disableDefaultUI: !interactive,
-          zoomControl: interactive,
-          scrollwheel: interactive,
-          draggable: interactive,
-          mapTypeControl: interactive,
-          streetViewControl: false,
-          fullscreenControl: interactive,
-          mapTypeId: 'roadmap',
-          styles: [
-            { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-          ],
-        });
+
+    const initMap = async () => {
+      try {
+        let map;
+        
+        if (resolvedMapId) {
+          // Modern mode with AdvancedMarkerElement
+          const { google, markerLib } = await loadGoogleMapsModern(resolvedKey, resolvedMapId);
+          markerLibRef.current = markerLib;
+          setUseModernMarkers(true);
+          
+          map = new google.maps.Map(mapRef.current, {
+            center: { lat: parseFloat(startCenter.lat), lng: parseFloat(startCenter.lng) },
+            zoom,
+            mapId: resolvedMapId,
+            disableDefaultUI: !interactive,
+            zoomControl: interactive,
+            scrollwheel: interactive,
+            draggable: interactive,
+            mapTypeControl: interactive,
+            streetViewControl: false,
+            fullscreenControl: interactive,
+          });
+        } else {
+          // Legacy mode (fallback)
+          await loadGoogleMapsLegacy(resolvedKey);
+          setUseModernMarkers(false);
+          
+          map = new window.google.maps.Map(mapRef.current, {
+            center: { lat: parseFloat(startCenter.lat), lng: parseFloat(startCenter.lng) },
+            zoom,
+            disableDefaultUI: !interactive,
+            zoomControl: interactive,
+            scrollwheel: interactive,
+            draggable: interactive,
+            mapTypeControl: interactive,
+            streetViewControl: false,
+            fullscreenControl: interactive,
+            mapTypeId: 'roadmap',
+            styles: [
+              { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+            ],
+          });
+        }
 
         map.addListener('click', (e) => {
           if (onMapClickRef.current) {
@@ -168,28 +390,30 @@ export default function GoogleMap({
         mapInstanceRef.current = map;
         setLoading(false);
         setMapReady(true);
-      })
-      .catch((err) => {
+      } catch (err) {
         setError(err.message);
         setLoading(false);
-      });
+      }
+    };
+
+    initMap();
 
     return () => {
-      markersRef.current.forEach(m => m.setMap(null));
+      markersRef.current.forEach(m => m.map = null);
       circlesRef.current.forEach(c => c.setMap(null));
       polygonsRef.current.forEach(p => p.setMap(null));
       dataLayersRef.current.forEach(dl => dl.setMap(null));
-      viewportMarkersRef.current.forEach(m => m.setMap(null));
-      if (stationMarkerRef.current) stationMarkerRef.current.setMap(null);
+      viewportMarkersRef.current.forEach(m => m.map = null);
+      if (stationMarkerRef.current) stationMarkerRef.current.map = null;
       if (idleListenerRef.current) window.google?.maps?.event?.removeListener(idleListenerRef.current);
       mapInstanceRef.current = null;
     };
-  }, [resolvedKey]);
+  }, [resolvedKey, resolvedMapId]);
 
   // Update center/zoom
   useEffect(() => {
     if (!mapReady || !center?.lat || !center?.lng) return;
-    if (!mapInstanceRef.current) return; // Guard against null map instance
+    if (!mapInstanceRef.current) return;
     mapInstanceRef.current.setCenter({ lat: parseFloat(center.lat), lng: parseFloat(center.lng) });
     mapInstanceRef.current.setZoom(zoom);
   }, [mapReady, center?.lat, center?.lng, zoom]);
@@ -197,59 +421,99 @@ export default function GoogleMap({
   // Fit bounds (for route display)
   useEffect(() => {
     if (!mapReady || !fitBounds) return;
-    if (!mapInstanceRef.current) return; // Guard against null map instance
+    if (!mapInstanceRef.current) return;
     mapInstanceRef.current.fitBounds(fitBounds, { padding: 40 });
   }, [mapReady, fitBounds]);
 
-  // Render simple markers
+  // ==========================================================================
+  // RENDER SIMPLE MARKERS
+  // ==========================================================================
   useEffect(() => {
     if (!mapReady) return;
     if (!mapInstanceRef.current) return;
-    markersRef.current.forEach(m => m.setMap(null));
+    
+    // Clear old markers
+    markersRef.current.forEach(m => {
+      if (useModernMarkers) {
+        m.map = null;
+      } else {
+        m.setMap(null);
+      }
+    });
     markersRef.current = [];
 
-    // Helper to create numbered/colored marker icon
-    function createMarkerIcon(label, color) {
-      const size = 28;
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${color}" stroke="#fff" stroke-width="2"/>
-        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="12" font-weight="600" font-family="Arial,sans-serif">${label}</text>
-      </svg>`;
-      return {
-        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-        scaledSize: new window.google.maps.Size(size, size),
-        anchor: new window.google.maps.Point(size / 2, size / 2),
-      };
-    }
+    const map = mapInstanceRef.current;
 
     markers.forEach((m, idx) => {
-      // Determine icon: use custom icon, or numbered circle with color
-      let markerIcon;
-      if (m.icon) {
-        markerIcon = { url: m.icon, scaledSize: new window.google.maps.Size(32, 32) };
-      } else if (m.color) {
-        // Numbered marker with color - use index + 1 as label (unless title suggests otherwise)
-        const label = m.label || (idx + 1).toString();
-        markerIcon = createMarkerIcon(label, m.color);
-      }
-      // else: default Google marker
+      const position = { lat: parseFloat(m.lat), lng: parseFloat(m.lng) };
+      
+      if (useModernMarkers && markerLibRef.current) {
+        // Modern: AdvancedMarkerElement
+        const { AdvancedMarkerElement } = markerLibRef.current;
+        
+        let content;
+        if (m.icon) {
+          const img = document.createElement('img');
+          img.src = m.icon;
+          img.style.width = '32px';
+          img.style.height = '32px';
+          content = img;
+        } else if (m.color) {
+          const label = m.label || (idx + 1).toString();
+          content = createMarkerContent(createNumberedMarkerSvg(label, m.color), 28);
+        }
+        
+        const marker = new AdvancedMarkerElement({
+          map,
+          position,
+          title: m.title || '',
+          content,
+          zIndex: m.zIndex || 10,
+        });
+        
+        if (m.title) {
+          const iw = new window.google.maps.InfoWindow({ content: m.title });
+          marker.addListener('click', () => iw.open(map, marker));
+        }
+        
+        markersRef.current.push(marker);
+      } else {
+        // Legacy: google.maps.Marker
+        let markerIcon;
+        if (m.icon) {
+          markerIcon = { url: m.icon, scaledSize: new window.google.maps.Size(32, 32) };
+        } else if (m.color) {
+          const label = m.label || (idx + 1).toString();
+          const size = 28;
+          const svg = createNumberedMarkerSvg(label, m.color, size);
+          markerIcon = {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+            scaledSize: new window.google.maps.Size(size, size),
+            anchor: new window.google.maps.Point(size / 2, size / 2),
+          };
+        }
 
-      const marker = new window.google.maps.Marker({
-        position: { lat: parseFloat(m.lat), lng: parseFloat(m.lng) },
-        map: mapInstanceRef.current,
-        title: m.title || '',
-        icon: markerIcon,
-        zIndex: m.zIndex || 10,
-      });
-      if (m.title) {
-        const iw = new window.google.maps.InfoWindow({ content: m.title });
-        marker.addListener('click', () => iw.open(mapInstanceRef.current, marker));
+        const marker = new window.google.maps.Marker({
+          position,
+          map,
+          title: m.title || '',
+          icon: markerIcon,
+          zIndex: m.zIndex || 10,
+        });
+        
+        if (m.title) {
+          const iw = new window.google.maps.InfoWindow({ content: m.title });
+          marker.addListener('click', () => iw.open(map, marker));
+        }
+        
+        markersRef.current.push(marker);
       }
-      markersRef.current.push(marker);
     });
-  }, [mapReady, markers]);
+  }, [mapReady, markers, useModernMarkers]);
 
-  // Render circles
+  // ==========================================================================
+  // RENDER CIRCLES
+  // ==========================================================================
   useEffect(() => {
     if (!mapReady) return;
     circlesRef.current.forEach(c => c.setMap(null));
@@ -271,7 +535,9 @@ export default function GoogleMap({
     });
   }, [mapReady, circles]);
 
-  // Render polygons
+  // ==========================================================================
+  // RENDER POLYGONS
+  // ==========================================================================
   useEffect(() => {
     if (!mapReady) return;
     polygonsRef.current.forEach(p => p.setMap(null));
@@ -299,128 +565,34 @@ export default function GoogleMap({
     const map = mapInstanceRef.current;
     if (!mapReady || !map) return;
 
-    // Remove old idle listener
     if (idleListenerRef.current) {
       window.google.maps.event.removeListener(idleListenerRef.current);
       idleListenerRef.current = null;
     }
 
-    // If no viewport layers, clean up and bail
     if (!viewportLayers || viewportLayers.length === 0) {
-      viewportMarkersRef.current.forEach(m => m.setMap(null));
+      viewportMarkersRef.current.forEach(m => {
+        if (useModernMarkers) m.map = null;
+        else m.setMap(null);
+      });
       viewportMarkersRef.current = [];
       dataLayersRef.current.forEach(dl => dl.setMap(null));
       dataLayersRef.current = [];
       return;
     }
 
-    // Build icon cache
+    // Icon cache for legacy mode
     const iconCache = {};
 
-    // Emoji marker: colored circle background + emoji on top
-    function getEmojiMarkerIcon(emoji, color) {
-      const key = `emoji_${emoji}_${color}`;
+    function getLegacyIcon(svg, size) {
+      const key = svg;
       if (iconCache[key]) return iconCache[key];
-      const size = 32;
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 1}" fill="${color}" fill-opacity="0.15" stroke="${color}" stroke-width="2"/>
-        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" font-size="18">${emoji}</text>
-      </svg>`;
       iconCache[key] = {
         url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
         scaledSize: new window.google.maps.Size(size, size),
         anchor: new window.google.maps.Point(size / 2, size / 2),
       };
       return iconCache[key];
-    }
-
-    // Incident marker — just the emoji
-    function getIncidentIcon(emoji) {
-      const key = `inc_${emoji}`;
-      if (iconCache[key]) return iconCache[key];
-      const size = 35;
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" font-size="28">${emoji}</text>
-      </svg>`;
-      iconCache[key] = {
-        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-        scaledSize: new window.google.maps.Size(size, size),
-        anchor: new window.google.maps.Point(size / 2, size / 2),
-      };
-      return iconCache[key];
-    }
-
-    // Incident cluster — emoji with count badge
-    function getIncidentClusterIcon(emoji, count) {
-      const key = `inc_cl_${emoji}_${count}`;
-      if (iconCache[key]) return iconCache[key];
-      const size = 32;
-      const badgeR = 9;
-      const label = count > 99 ? '99+' : String(count);
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size + badgeR}" height="${size}" viewBox="0 0 ${size + badgeR} ${size}">
-        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" font-size="22">${emoji}</text>
-        <circle cx="${size - 1}" cy="${badgeR + 1}" r="${badgeR}" fill="#333" stroke="#fff" stroke-width="1.5"/>
-        <text x="${size - 1}" y="${badgeR + 2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="${label.length > 2 ? 8 : 10}" font-weight="700" font-family="Arial,sans-serif">${label}</text>
-      </svg>`;
-      iconCache[key] = {
-        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-        scaledSize: new window.google.maps.Size(size + badgeR, size),
-        anchor: new window.google.maps.Point(size / 2, size / 2),
-      };
-      return iconCache[key];
-    }
-
-    // Hydrant-specific: outer ring + inner NFPA color fill
-    function getHydrantMarkerIcon(color, innerColor) {
-      const key = `hydrant_${color}_${innerColor || 'none'}`;
-      if (iconCache[key]) return iconCache[key];
-      let svg;
-      if (innerColor) {
-        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
-          <circle cx="11" cy="11" r="10" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
-          <circle cx="11" cy="11" r="6" fill="${innerColor}" stroke="#fff" stroke-width="0.5"/>
-        </svg>`;
-        iconCache[key] = {
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-          scaledSize: new window.google.maps.Size(22, 22),
-          anchor: new window.google.maps.Point(11, 11),
-        };
-      } else {
-        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
-          <circle cx="7" cy="7" r="6" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
-        </svg>`;
-        iconCache[key] = {
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-          scaledSize: new window.google.maps.Size(14, 14),
-          anchor: new window.google.maps.Point(7, 7),
-        };
-      }
-      return iconCache[key];
-    }
-
-    // Resolve a color name from hydrant data to a CSS color
-    function resolveHydrantColor(props) {
-      const raw = (props?.CAP_COLOR || props?.BODY_COLOR || '').toString().toLowerCase().trim();
-      if (!raw) return null;
-      const colorMap = {
-        'red': '#DC2626', 'blue': '#2563EB', 'green': '#16A34A', 'orange': '#EA580C',
-        'yellow': '#EAB308', 'white': '#e5e5e5', 'black': '#333', 'silver': '#999',
-        'purple': '#9333EA', 'chrome': '#aaa',
-      };
-      return colorMap[raw] || null;
-    }
-
-    function getClusterIcon(color, count) {
-      const size = count < 50 ? 36 : count < 200 ? 42 : count < 1000 ? 48 : 54;
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${color}" fill-opacity="0.85" stroke="#fff" stroke-width="2"/>
-        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="${size < 42 ? 12 : 13}" font-weight="600" font-family="Arial,sans-serif">${count}</text>
-      </svg>`;
-      return {
-        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-        scaledSize: new window.google.maps.Size(size, size),
-        anchor: new window.google.maps.Point(size / 2, size / 2),
-      };
     }
 
     async function loadViewportData() {
@@ -430,7 +602,6 @@ export default function GoogleMap({
       const currentLayers = viewportLayersRef.current;
       if (!currentLayers || currentLayers.length === 0) return;
 
-      // Cancel any in-flight fetches
       if (fetchControllerRef.current) {
         fetchControllerRef.current.abort();
       }
@@ -440,16 +611,15 @@ export default function GoogleMap({
       const ne = bounds.getNorthEast();
       const sw = bounds.getSouthWest();
       const bbox = `${sw.lng()},${sw.lat()},${ne.lng()},${ne.lat()}`;
-      const zoom = map.getZoom();
+      const currentZoom = map.getZoom();
 
-      // Single batch POST replaces N parallel GETs
       const layerIds = currentLayers.map(l => l.layerId);
       let batchData;
       try {
         const response = await fetch('/api/map/layers/batch/clustered', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ layer_ids: layerIds, bbox, zoom }),
+          body: JSON.stringify({ layer_ids: layerIds, bbox, zoom: currentZoom }),
           signal,
         });
         if (!response.ok) return;
@@ -459,17 +629,17 @@ export default function GoogleMap({
         return;
       }
 
-      // Check if we were aborted while awaiting
       if (signal.aborted) return;
 
-      // Convert batch response to array format for rendering
       const results = layerIds.map(lid => batchData.layers?.[String(lid)] || null);
 
-      // Clear old viewport markers
-      viewportMarkersRef.current.forEach(m => m.setMap(null));
+      // Clear old markers
+      viewportMarkersRef.current.forEach(m => {
+        if (useModernMarkers) m.map = null;
+        else m.setMap(null);
+      });
       viewportMarkersRef.current = [];
 
-      // Clear old data layers (for polygon viewport layers)
       dataLayersRef.current.forEach(dl => dl.setMap(null));
       dataLayersRef.current = [];
 
@@ -478,13 +648,11 @@ export default function GoogleMap({
         if (!data?.items) return;
 
         const color = data.layer_color || '#DC2626';
-        const style = data.layer_style || {};
+        const layerStyle = data.layer_style || {};
 
-        // Check if any items have polygon geometry (polygon layers)
+        // Polygon layers
         const hasPolygons = data.items.some(item => item.geometry);
-
         if (hasPolygons) {
-          // Polygon layer — use Data Layer with per-layer style
           const geojson = {
             type: 'FeatureCollection',
             features: data.items.filter(i => i.geometry).map(item => ({
@@ -498,14 +666,13 @@ export default function GoogleMap({
             const dataLayer = new window.google.maps.Data();
             dataLayer.addGeoJson(geojson);
             dataLayer.setStyle(() => ({
-              fillColor: style.fill_color || color,
-              fillOpacity: style.fill_opacity != null ? style.fill_opacity : 0.2,
-              strokeColor: style.stroke_color || color,
-              strokeWeight: style.stroke_weight || 2,
-              strokeOpacity: style.stroke_opacity != null ? style.stroke_opacity : 0.8,
+              fillColor: layerStyle.fill_color || color,
+              fillOpacity: layerStyle.fill_opacity != null ? layerStyle.fill_opacity : 0.2,
+              strokeColor: layerStyle.stroke_color || color,
+              strokeWeight: layerStyle.stroke_weight || 2,
+              strokeOpacity: layerStyle.stroke_opacity != null ? layerStyle.stroke_opacity : 0.8,
             }));
             dataLayer.addListener('click', (event) => {
-              // During placement mode, forward click coords to map click handler
               if (isPlacingRef.current && onMapClickRef.current) {
                 onMapClickRef.current(event.latLng?.lat(), event.latLng?.lng());
                 return;
@@ -521,28 +688,65 @@ export default function GoogleMap({
           }
         }
 
-        // Point items (clusters + individual features)
+        // Point items
         const isIncidentLayer = data.layer_type?.startsWith('incident_');
         const incidentEmoji = data.layer_type === 'incident_fire' ? '🔥' : '🚑';
 
         data.items.forEach(item => {
-          if (item.geometry) return; // already handled as polygon above
+          if (item.geometry) return;
 
+          const position = { lat: item.lat, lng: item.lng };
           let marker;
-          if (item.type === 'cluster') {
-            if (isIncidentLayer) {
-              // Incident cluster: emoji pin with count badge, clickable
-              marker = new window.google.maps.Marker({
-                position: { lat: item.lat, lng: item.lng },
-                map,
-                icon: getIncidentClusterIcon(incidentEmoji, item.count),
-                title: `${item.count} incidents`,
-                zIndex: 100 + item.count,
-              });
-              // Click — show list of incidents or zoom in
+
+          if (useModernMarkers && markerLibRef.current) {
+            const { AdvancedMarkerElement } = markerLibRef.current;
+            let content;
+            let hoverTitle = item.title || '';
+
+            if (item.type === 'cluster') {
+              if (isIncidentLayer) {
+                const size = 41;
+                content = createMarkerContent(createIncidentClusterSvg(incidentEmoji, item.count), size);
+                hoverTitle = `${item.count} incidents`;
+              } else {
+                const { svg, size } = createClusterMarkerSvg(color, item.count);
+                content = createMarkerContent(svg, size);
+              }
+            } else {
+              const isHydrant = data.layer_type === 'hydrant';
+              
+              if (isIncidentLayer) {
+                content = createMarkerContent(createIncidentMarkerSvg(incidentEmoji), 35);
+                const props = item.properties || {};
+                const parts = [props.incident_number];
+                if (props.cad_event_type) parts.push(props.cad_event_type);
+                if (props.cad_event_subtype) parts.push(props.cad_event_subtype);
+                if (props.address) parts.push(props.address);
+                hoverTitle = parts.filter(Boolean).join(' — ');
+              } else if (isHydrant) {
+                const innerColor = resolveHydrantColor(item.properties);
+                const size = innerColor ? 22 : 14;
+                content = createMarkerContent(createHydrantMarkerSvg(color, innerColor), size);
+                const capColor = item.properties?.CAP_COLOR || item.properties?.BODY_COLOR;
+                hoverTitle = (hoverTitle ? hoverTitle + ' — ' : '') + (capColor || 'Color not supplied');
+              } else {
+                const emoji = data.layer_icon || 'ℹ️';
+                content = createMarkerContent(createEmojiMarkerSvg(emoji, color), 32);
+              }
+            }
+
+            marker = new AdvancedMarkerElement({
+              map,
+              position,
+              title: hoverTitle,
+              content,
+              zIndex: item.type === 'cluster' ? 100 + (item.count || 0) : (isIncidentLayer ? 20 : 10),
+            });
+
+            // Click handlers
+            if (item.type === 'cluster' && isIncidentLayer) {
               marker.addListener('click', () => {
                 if (item.incidents && item.incidents.length > 0) {
-                  // Build list of incidents for InfoWindow
                   const listHtml = item.incidents.map(inc => {
                     const typeStr = [inc.cad_event_type, inc.cad_event_subtype].filter(Boolean).join(' / ');
                     return `<a href="/?incident=${inc.id}" style="display:block;padding:4px 0;border-bottom:1px solid #eee;text-decoration:none;color:#333">
@@ -561,67 +765,16 @@ export default function GoogleMap({
                   iw.open(map, marker);
                   map.__activeInfoWindow = iw;
                 } else {
-                  // Large cluster — zoom in
                   map.setZoom(map.getZoom() + 2);
-                  map.panTo({ lat: item.lat, lng: item.lng });
+                  map.panTo(position);
                 }
               });
-            } else {
-              // Regular layer cluster
-              marker = new window.google.maps.Marker({
-                position: { lat: item.lat, lng: item.lng },
-                map,
-                icon: getClusterIcon(color, item.count),
-                zIndex: 100 + item.count,
-                clickable: false,
-              });
-            }
-          } else {
-            // Choose icon based on layer type
-            const isHydrant = data.layer_type === 'hydrant';
-            let markerIcon;
-            let hoverTitle = item.title || '';
-
-            if (isIncidentLayer) {
-              // Incidents: emoji pin (fire or EMS)
-              markerIcon = getIncidentIcon(incidentEmoji);
-              const props = item.properties || {};
-              const parts = [props.incident_number];
-              if (props.cad_event_type) parts.push(props.cad_event_type);
-              if (props.cad_event_subtype) parts.push(props.cad_event_subtype);
-              if (props.address) parts.push(props.address);
-              hoverTitle = parts.filter(Boolean).join(' — ');
-            } else if (isHydrant) {
-              // Hydrants: NFPA color dot system
-              const innerColor = resolveHydrantColor(item.properties);
-              markerIcon = getHydrantMarkerIcon(color, innerColor);
-              const capColor = item.properties?.CAP_COLOR || item.properties?.BODY_COLOR;
-              if (capColor) {
-                hoverTitle = (hoverTitle ? hoverTitle + ' — ' : '') + capColor;
-              } else {
-                hoverTitle = (hoverTitle ? hoverTitle + ' — ' : '') + 'Color not supplied';
-              }
-            } else {
-              // All other layers: emoji from layer definition
-              const emoji = data.layer_icon || 'ℹ️';
-              markerIcon = getEmojiMarkerIcon(emoji, color);
-            }
-
-            marker = new window.google.maps.Marker({
-              position: { lat: item.lat, lng: item.lng },
-              map,
-              icon: markerIcon,
-              title: hoverTitle,
-              zIndex: isIncidentLayer ? 20 : 10,
-            });
-
-            // Click handler — incidents get InfoWindow popup, others use feature panel
-            if (isIncidentLayer) {
+            } else if (isIncidentLayer && item.type !== 'cluster') {
               marker.addListener('click', () => {
                 const props = item.properties || {};
                 const typeDisplay = [props.cad_event_type, props.cad_event_subtype].filter(Boolean).join(' / ');
                 const dateDisplay = props.incident_date || '';
-                const content = `
+                const iwContent = `
                   <div style="font-family:system-ui,sans-serif;min-width:200px;max-width:280px;padding:2px">
                     <div style="font-weight:700;font-size:14px;color:${color};margin-bottom:4px">
                       ${props.incident_number || item.title || ''}
@@ -635,14 +788,129 @@ export default function GoogleMap({
                        >View Run Sheet</a>
                   </div>
                 `;
-                // Close any existing InfoWindow
                 if (map.__activeInfoWindow) map.__activeInfoWindow.close();
-                const iw = new window.google.maps.InfoWindow({ content });
+                const iw = new window.google.maps.InfoWindow({ content: iwContent });
                 iw.open(map, marker);
                 map.__activeInfoWindow = iw;
               });
+            } else if (item.type !== 'cluster') {
+              marker.addListener('click', () => {
+                if (onFeatureClickRef.current) {
+                  onFeatureClickRef.current({
+                    id: item.id,
+                    title: item.title,
+                    description: item.description,
+                    properties: item.properties || {},
+                    radius_meters: item.radius_meters,
+                    address: item.address,
+                    notes: item.notes,
+                    lat: item.lat,
+                    lng: item.lng,
+                    layer_type: data.layer_type,
+                    layer_icon: data.layer_icon,
+                    layer_color: data.layer_color,
+                  });
+                }
+              });
+            }
+
+          } else {
+            // Legacy mode
+            let markerIcon;
+            let hoverTitle = item.title || '';
+
+            if (item.type === 'cluster') {
+              if (isIncidentLayer) {
+                const size = 41;
+                markerIcon = getLegacyIcon(createIncidentClusterSvg(incidentEmoji, item.count, 32), size);
+                hoverTitle = `${item.count} incidents`;
+              } else {
+                const { svg, size } = createClusterMarkerSvg(color, item.count);
+                markerIcon = getLegacyIcon(svg, size);
+              }
             } else {
-              // Standard feature click handler
+              const isHydrant = data.layer_type === 'hydrant';
+              
+              if (isIncidentLayer) {
+                markerIcon = getLegacyIcon(createIncidentMarkerSvg(incidentEmoji), 35);
+                const props = item.properties || {};
+                const parts = [props.incident_number];
+                if (props.cad_event_type) parts.push(props.cad_event_type);
+                if (props.cad_event_subtype) parts.push(props.cad_event_subtype);
+                if (props.address) parts.push(props.address);
+                hoverTitle = parts.filter(Boolean).join(' — ');
+              } else if (isHydrant) {
+                const innerColor = resolveHydrantColor(item.properties);
+                const size = innerColor ? 22 : 14;
+                markerIcon = getLegacyIcon(createHydrantMarkerSvg(color, innerColor), size);
+                const capColor = item.properties?.CAP_COLOR || item.properties?.BODY_COLOR;
+                hoverTitle = (hoverTitle ? hoverTitle + ' — ' : '') + (capColor || 'Color not supplied');
+              } else {
+                const emoji = data.layer_icon || 'ℹ️';
+                markerIcon = getLegacyIcon(createEmojiMarkerSvg(emoji, color), 32);
+              }
+            }
+
+            marker = new window.google.maps.Marker({
+              position,
+              map,
+              icon: markerIcon,
+              title: hoverTitle,
+              zIndex: item.type === 'cluster' ? 100 + (item.count || 0) : (isIncidentLayer ? 20 : 10),
+              clickable: item.type === 'cluster' ? isIncidentLayer : true,
+            });
+
+            // Click handlers (same logic as modern mode)
+            if (item.type === 'cluster' && isIncidentLayer) {
+              marker.addListener('click', () => {
+                if (item.incidents && item.incidents.length > 0) {
+                  const listHtml = item.incidents.map(inc => {
+                    const typeStr = [inc.cad_event_type, inc.cad_event_subtype].filter(Boolean).join(' / ');
+                    return `<a href="/?incident=${inc.id}" style="display:block;padding:4px 0;border-bottom:1px solid #eee;text-decoration:none;color:#333">
+                      <div style="font-weight:600;font-size:12px;color:${color}">${inc.incident_number || ''}</div>
+                      ${typeStr ? `<div style="font-size:11px;color:#666">${typeStr}</div>` : ''}
+                      ${inc.address ? `<div style="font-size:11px;color:#888">${inc.address}</div>` : ''}
+                      ${inc.incident_date ? `<div style="font-size:10px;color:#aaa">${inc.incident_date}</div>` : ''}
+                    </a>`;
+                  }).join('');
+                  const iwContent = `<div style="font-family:system-ui,sans-serif;min-width:220px;max-width:300px;max-height:300px;overflow-y:auto;padding:2px">
+                    <div style="font-weight:700;font-size:13px;color:#333;margin-bottom:6px;border-bottom:2px solid ${color};padding-bottom:4px">${item.count} Incidents</div>
+                    ${listHtml}
+                  </div>`;
+                  if (map.__activeInfoWindow) map.__activeInfoWindow.close();
+                  const iw = new window.google.maps.InfoWindow({ content: iwContent });
+                  iw.open(map, marker);
+                  map.__activeInfoWindow = iw;
+                } else {
+                  map.setZoom(map.getZoom() + 2);
+                  map.panTo(position);
+                }
+              });
+            } else if (isIncidentLayer && item.type !== 'cluster') {
+              marker.addListener('click', () => {
+                const props = item.properties || {};
+                const typeDisplay = [props.cad_event_type, props.cad_event_subtype].filter(Boolean).join(' / ');
+                const dateDisplay = props.incident_date || '';
+                const iwContent = `
+                  <div style="font-family:system-ui,sans-serif;min-width:200px;max-width:280px;padding:2px">
+                    <div style="font-weight:700;font-size:14px;color:${color};margin-bottom:4px">
+                      ${props.incident_number || item.title || ''}
+                    </div>
+                    ${typeDisplay ? `<div style="font-size:12px;color:#555;margin-bottom:2px">${typeDisplay}</div>` : ''}
+                    ${props.address ? `<div style="font-size:12px;color:#333;margin-bottom:2px">${props.address}</div>` : ''}
+                    ${props.location_name ? `<div style="font-size:11px;color:#777;margin-bottom:2px">${props.location_name}</div>` : ''}
+                    ${dateDisplay ? `<div style="font-size:11px;color:#888;margin-bottom:6px">${dateDisplay}</div>` : ''}
+                    <a href="/?incident=${item.id}"
+                       style="display:inline-block;font-size:12px;font-weight:600;color:#fff;background:${color};padding:4px 10px;border-radius:4px;text-decoration:none;margin-top:2px"
+                       >View Run Sheet</a>
+                  </div>
+                `;
+                if (map.__activeInfoWindow) map.__activeInfoWindow.close();
+                const iw = new window.google.maps.InfoWindow({ content: iwContent });
+                iw.open(map, marker);
+                map.__activeInfoWindow = iw;
+              });
+            } else if (item.type !== 'cluster') {
               marker.addListener('click', () => {
                 if (onFeatureClickRef.current) {
                   onFeatureClickRef.current({
@@ -669,13 +937,11 @@ export default function GoogleMap({
       });
     }
 
-    // 300ms debounce on idle — rapid panning collapses into a single fetch cycle
     idleListenerRef.current = map.addListener('idle', () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = setTimeout(loadViewportData, 300);
     });
 
-    // If bounds already available (map was ready before this effect ran), load now
     if (map.getBounds()) {
       loadViewportData();
     }
@@ -690,7 +956,7 @@ export default function GoogleMap({
         idleListenerRef.current = null;
       }
     };
-  }, [viewportLayers, mapReady]);
+  }, [viewportLayers, mapReady, useModernMarkers]);
 
   // ==========================================================================
   // STATIC GEOJSON — legacy path for small datasets
@@ -731,7 +997,6 @@ export default function GoogleMap({
       });
 
       dataLayer.addListener('click', (event) => {
-        // During placement mode, forward click coords to map click handler
         if (isPlacingRef.current && onMapClickRef.current) {
           onMapClickRef.current(event.latLng?.lat(), event.latLng?.lng());
           return;
@@ -748,7 +1013,9 @@ export default function GoogleMap({
     });
   }, [mapReady, geojsonLayers]);
 
-  // Route polyline (encoded)
+  // ==========================================================================
+  // ROUTE POLYLINES
+  // ==========================================================================
   const routeLineRef = useRef(null);
   useEffect(() => {
     if (!mapReady) return;
@@ -765,7 +1032,6 @@ export default function GoogleMap({
         strokeWeight: 4,
         zIndex: 5,
       });
-      // Auto-fit bounds to show entire route
       if (path.length > 1) {
         const bounds = new window.google.maps.LatLngBounds();
         path.forEach(p => bounds.extend(p));
@@ -776,7 +1042,6 @@ export default function GoogleMap({
     }
   }, [mapReady, routePolyline]);
 
-  // Route edit path (raw points for highway route editor)
   const routeEditLineRef = useRef(null);
   useEffect(() => {
     if (!mapReady) return;
@@ -794,27 +1059,55 @@ export default function GoogleMap({
     });
   }, [mapReady, routeEditPath]);
 
-  // Station marker
+  // ==========================================================================
+  // STATION MARKER
+  // ==========================================================================
   useEffect(() => {
     if (!mapReady || !showStation || !stationCoords) return;
-    if (stationMarkerRef.current) stationMarkerRef.current.setMap(null);
+    
+    // Clear old marker
+    if (stationMarkerRef.current) {
+      if (useModernMarkers) {
+        stationMarkerRef.current.map = null;
+      } else {
+        stationMarkerRef.current.setMap(null);
+      }
+    }
 
-    stationMarkerRef.current = new window.google.maps.Marker({
-      position: { lat: parseFloat(stationCoords.lat), lng: parseFloat(stationCoords.lng) },
-      map: mapInstanceRef.current,
-      title: 'Station',
-      icon: {
-        path: window.google.maps.SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: '#2563EB',
-        fillOpacity: 1,
-        strokeColor: '#fff',
-        strokeWeight: 2,
-      },
-      zIndex: 1000,
-    });
-  }, [mapReady, showStation, stationCoords?.lat, stationCoords?.lng]);
+    const position = { lat: parseFloat(stationCoords.lat), lng: parseFloat(stationCoords.lng) };
 
+    if (useModernMarkers && markerLibRef.current) {
+      const { AdvancedMarkerElement } = markerLibRef.current;
+      const content = createMarkerContent(createStationMarkerSvg(16), 16);
+      
+      stationMarkerRef.current = new AdvancedMarkerElement({
+        map: mapInstanceRef.current,
+        position,
+        title: 'Station',
+        content,
+        zIndex: 1000,
+      });
+    } else {
+      stationMarkerRef.current = new window.google.maps.Marker({
+        position,
+        map: mapInstanceRef.current,
+        title: 'Station',
+        icon: {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 8,
+          fillColor: '#2563EB',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+        },
+        zIndex: 1000,
+      });
+    }
+  }, [mapReady, showStation, stationCoords?.lat, stationCoords?.lng, useModernMarkers]);
+
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
   if (error) {
     return (
       <div style={{

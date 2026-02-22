@@ -247,8 +247,12 @@ async def get_map_config(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Failed to load map layers: {e}")
     
+    # Check for Map ID (required for AdvancedMarkerElement, optional with fallback)
+    google_map_id = get_setting_value(db, 'location', 'google_map_id', None)
+    
     return {
         "google_api_key_configured": bool(get_google_api_key(db)),
+        "google_map_id_configured": bool(google_map_id and str(google_map_id).strip()),
         "enabled_features": enabled_features,
         "station_lat": station_lat,
         "station_lng": station_lng,
