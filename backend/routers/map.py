@@ -2221,6 +2221,7 @@ class HighwayRouteCreate(BaseModel):
     miles_decrease_toward: str  # NB, SB, EB, WB
     mm_point_index: int  # which point is the MM anchor
     mm_value: float  # mile marker value at anchor
+    mm_digits: Optional[int] = 3  # digits before decimal (3 for PA TPKE: 3037->303.7)
     aliases: List[str] = []
     points: List[HighwayRoutePoint]
 
@@ -2233,6 +2234,7 @@ class HighwayRouteUpdate(BaseModel):
     miles_decrease_toward: Optional[str] = None
     mm_point_index: Optional[int] = None
     mm_value: Optional[float] = None
+    mm_digits: Optional[int] = None  # digits before decimal (3 for PA TPKE: 3037->303.7)
     aliases: Optional[List[str]] = None
     points: Optional[List[HighwayRoutePoint]] = None
 
@@ -2255,7 +2257,7 @@ async def list_highway_routes(db: Session = Depends(get_db)):
         # Get routes
         routes_result = db.execute(text("""
             SELECT id, name, bidirectional, direction, limited_access,
-                   miles_decrease_toward, mm_point_index, mm_value,
+                   miles_decrease_toward, mm_point_index, mm_value, mm_digits,
                    created_at, updated_at
             FROM highway_routes
             ORDER BY name
@@ -2295,8 +2297,9 @@ async def list_highway_routes(db: Session = Depends(get_db)):
                 "miles_decrease_toward": row[5],
                 "mm_point_index": row[6],
                 "mm_value": float(row[7]) if row[7] else None,
-                "created_at": row[8].isoformat() if row[8] else None,
-                "updated_at": row[9].isoformat() if row[9] else None,
+                "mm_digits": row[8],
+                "created_at": row[9].isoformat() if row[9] else None,
+                "updated_at": row[10].isoformat() if row[10] else None,
                 "points": points,
                 "aliases": aliases,
             })
@@ -2313,7 +2316,7 @@ async def get_highway_route(route_id: int, db: Session = Depends(get_db)):
     try:
         route = db.execute(text("""
             SELECT id, name, bidirectional, direction, limited_access,
-                   miles_decrease_toward, mm_point_index, mm_value,
+                   miles_decrease_toward, mm_point_index, mm_value, mm_digits,
                    created_at, updated_at
             FROM highway_routes
             WHERE id = :id
@@ -2352,8 +2355,9 @@ async def get_highway_route(route_id: int, db: Session = Depends(get_db)):
             "miles_decrease_toward": route[5],
             "mm_point_index": route[6],
             "mm_value": float(route[7]) if route[7] else None,
-            "created_at": route[8].isoformat() if route[8] else None,
-            "updated_at": route[9].isoformat() if route[9] else None,
+            "mm_digits": route[8],
+            "created_at": route[9].isoformat() if route[9] else None,
+            "updated_at": route[10].isoformat() if route[10] else None,
             "points": points,
             "aliases": aliases,
         }
@@ -2381,10 +2385,10 @@ async def create_highway_route(
         result = db.execute(text("""
             INSERT INTO highway_routes 
                 (name, bidirectional, direction, limited_access, 
-                 miles_decrease_toward, mm_point_index, mm_value)
+                 miles_decrease_toward, mm_point_index, mm_value, mm_digits)
             VALUES 
                 (:name, :bidirectional, :direction, :limited_access,
-                 :miles_decrease_toward, :mm_point_index, :mm_value)
+                 :miles_decrease_toward, :mm_point_index, :mm_value, :mm_digits)
             RETURNING id
         """), {
             "name": route.name,
@@ -2394,6 +2398,7 @@ async def create_highway_route(
             "miles_decrease_toward": route.miles_decrease_toward,
             "mm_point_index": route.mm_point_index,
             "mm_value": route.mm_value,
+            "mm_digits": route.mm_digits,
         })
         route_id = result.fetchone()[0]
         
@@ -2476,6 +2481,9 @@ async def update_highway_route(
         if update.mm_value is not None:
             set_clauses.append("mm_value = :mm_value")
             params["mm_value"] = update.mm_value
+        if update.mm_digits is not None:
+            set_clauses.append("mm_digits = :mm_digits")
+            params["mm_digits"] = update.mm_digits
         
         db.execute(
             text(f"UPDATE highway_routes SET {', '.join(set_clauses)} WHERE id = :id"),

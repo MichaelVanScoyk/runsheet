@@ -48,6 +48,63 @@ def haversine_miles(lat1: float, lng1: float, lat2: float, lng2: float) -> float
     return R * c
 
 
+def _normalize_mile_marker_number(num_str: str, mm_digits: Optional[int] = None) -> Optional[float]:
+    """
+    Normalize mile marker number, handling CAD formats without decimals.
+    
+    CAD sometimes sends "3037 WB PA TPKE" instead of "303.7 WB PA TPKE".
+    Uses mm_digits from the route to know where to insert the decimal.
+    
+    Args:
+        num_str: The mile marker number as string (e.g., "3037" or "303.7")
+        mm_digits: Number of digits before decimal (from route config).
+                   3 = PA Turnpike style (3037 -> 303.7)
+                   2 = shorter highways (235 -> 23.5)
+                   1 = very short (45 -> 4.5)
+                   None = no conversion, must have decimal
+    
+    Returns:
+        Float mile marker value, or None if can't parse
+    """
+    # If it already has a decimal, just return it
+    if '.' in num_str:
+        try:
+            return float(num_str)
+        except ValueError:
+            return None
+    
+    # No decimal in input - need mm_digits to know where to insert it
+    if mm_digits is None:
+        # No conversion configured, try parsing as-is (whole number)
+        try:
+            return float(num_str)
+        except ValueError:
+            return None
+    
+    # Insert decimal based on mm_digits
+    # mm_digits tells us how many digits are BEFORE the decimal
+    # So for mm_digits=3: "3037" -> "303.7", "303" -> "303.0"
+    if not num_str.isdigit():
+        return None
+    
+    if len(num_str) == mm_digits + 1:
+        # Normal case: 4 digits for mm_digits=3
+        converted = float(num_str[:mm_digits] + '.' + num_str[mm_digits:])
+        logger.info(f"Converted mile marker {num_str} -> {converted} (mm_digits={mm_digits})")
+        return converted
+    elif len(num_str) == mm_digits:
+        # Whole number: 3 digits for mm_digits=3 means .0
+        return float(num_str)
+    elif len(num_str) < mm_digits:
+        # Shorter than expected - treat as whole number
+        return float(num_str)
+    else:
+        # Longer than expected - try inserting decimal anyway
+        converted = float(num_str[:mm_digits] + '.' + num_str[mm_digits:])
+        logger.info(f"Converted mile marker {num_str} -> {converted} (mm_digits={mm_digits}, longer than expected)")
+        return converted
+
+
 def parse_mile_marker_address(address: str) -> Optional[dict]:
     """
     Parse a mile marker address string.
@@ -73,21 +130,21 @@ def parse_mile_marker_address(address: str) -> Optional[dict]:
             # Pattern 1: mile, direction, road
             if re.match(r'\d', groups[0]):
                 return {
-                    "mile": float(groups[0]),
+                    "mile_raw": groups[0],  # Keep raw for later normalization with mm_digits
                     "direction": groups[1].upper() if groups[1] else None,
                     "road": groups[2].strip(),
                 }
             # Pattern 2: direction, mile, road
             elif groups[0] in ('NB', 'SB', 'EB', 'WB'):
                 return {
-                    "mile": float(groups[1]),
+                    "mile_raw": groups[1],
                     "direction": groups[0].upper(),
                     "road": groups[2].strip(),
                 }
             # Pattern 3: road, direction, mile
             else:
                 return {
-                    "mile": float(groups[2]),
+                    "mile_raw": groups[2],
                     "direction": groups[1].upper() if groups[1] else None,
                     "road": groups[0].strip(),
                 }
@@ -119,7 +176,7 @@ def find_route_by_alias(db: Session, alias: str) -> Optional[dict]:
     # Find route by alias (case-insensitive)
     result = db.execute(text("""
         SELECT hr.id, hr.name, hr.bidirectional, hr.direction, hr.limited_access,
-               hr.miles_decrease_toward, hr.mm_point_index, hr.mm_value
+               hr.miles_decrease_toward, hr.mm_point_index, hr.mm_value, hr.mm_digits
         FROM highway_routes hr
         JOIN highway_route_aliases hra ON hra.route_id = hr.id
         WHERE UPPER(hra.alias) = UPPER(:alias)
@@ -151,6 +208,7 @@ def find_route_by_alias(db: Session, alias: str) -> Optional[dict]:
         "miles_decrease_toward": result[5],
         "mm_point_index": result[6],
         "mm_value": float(result[7]) if result[7] else None,
+        "mm_digits": result[8],  # Can be None
         "points": points,
     }
 
@@ -237,17 +295,25 @@ def geocode_mile_marker(
     if not parsed:
         return None
     
-    mile = parsed["mile"]
+    mile_raw = parsed["mile_raw"]
     direction = parsed["direction"]
     road = parsed["road"]
     
-    logger.info(f"Mile marker parse: mile={mile}, direction={direction}, road='{road}'")
+    logger.info(f"Mile marker parse: mile_raw={mile_raw}, direction={direction}, road='{road}'")
     
     # Find route by alias
     route = find_route_by_alias(db, road)
     if not route:
         logger.info(f"No highway route found for alias '{road}'")
         return None
+    
+    # Normalize mile marker number using route's mm_digits setting
+    mile = _normalize_mile_marker_number(mile_raw, route.get("mm_digits"))
+    if mile is None:
+        logger.warning(f"Failed to parse mile marker number: {mile_raw}")
+        return None
+    
+    logger.info(f"Normalized mile marker: {mile_raw} -> {mile} (mm_digits={route.get('mm_digits')})")
     
     points = route["points"]
     if len(points) < 2:

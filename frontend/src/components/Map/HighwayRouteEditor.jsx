@@ -43,6 +43,7 @@ export default function HighwayRouteEditor({
   // Mile marker
   const [mmPointIndex, setMmPointIndex] = useState(null);
   const [mmValue, setMmValue] = useState('');
+  const [mmDigits, setMmDigits] = useState(3); // Default 3 for PA Turnpike style (3037 -> 303.7)
 
   // UI state
   const [mode, setMode] = useState('trace'); // 'trace' | 'draw' | 'setMM'
@@ -74,6 +75,7 @@ export default function HighwayRouteEditor({
       setMmPointIndex(existingRoute.mm_point_index);
       onMmPointChange?.(existingRoute.mm_point_index);
       setMmValue(existingRoute.mm_value?.toString() || '');
+      setMmDigits(existingRoute.mm_digits ?? 3);
       setAliases(existingRoute.aliases || []);
       if (existingRoute.points && onSetPoints) {
         onSetPoints(existingRoute.points);
@@ -88,6 +90,7 @@ export default function HighwayRouteEditor({
       setMilesDecreaseToward('');
       setMmPointIndex(null);
       setMmValue('');
+      setMmDigits(3);
       setAliases([]);
       setMode('trace'); // new route starts in trace mode
       traceStartRef.current = null;
@@ -257,6 +260,7 @@ export default function HighwayRouteEditor({
       miles_decrease_toward: milesDecreaseToward,
       mm_point_index: mmPointIndex,
       mm_value: parseFloat(mmValue),
+      mm_digits: mmDigits,
       aliases,
       points: points.map((p, i) => ({
         sequence: i,
@@ -622,6 +626,33 @@ export default function HighwayRouteEditor({
               />
             </div>
           )}
+
+          {/* MM Digits - for CAD format conversion */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#555', marginBottom: '4px' }}>
+              MM Digits (before decimal)
+            </label>
+            <p style={{ fontSize: '0.75rem', color: '#888', margin: '0 0 8px 0' }}>
+              If CAD sends "3037" instead of "303.7", set to 3
+            </p>
+            <select
+              value={mmDigits ?? ''}
+              onChange={(e) => setMmDigits(e.target.value ? parseInt(e.target.value) : null)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '0.9rem',
+                boxSizing: 'border-box',
+              }}
+            >
+              <option value="">No conversion (CAD includes decimal)</option>
+              <option value="1">1 digit (4.5 → 45)</option>
+              <option value="2">2 digits (23.5 → 235)</option>
+              <option value="3">3 digits (303.7 → 3037) - PA Turnpike</option>
+            </select>
+          </div>
 
           {/* Miles decrease toward */}
           <div>
