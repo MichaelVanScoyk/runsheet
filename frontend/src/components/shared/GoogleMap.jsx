@@ -51,10 +51,19 @@ async function loadGoogleMapsModern(apiKey, mapId) {
     return googleMapsPromise;
   }
 
+  // If legacy script already loaded, we can't switch to modern mode
+  // Fall back to legacy markers (with console warnings)
+  if (window.google?.maps && !window.google.maps.importLibrary) {
+    console.warn('Google Maps already loaded without async mode - using legacy markers');
+    loadingMode = 'legacy';
+    googleMapsLoaded = true;
+    return { google: window.google, markerLib: null };
+  }
+
   loadingMode = 'modern';
   googleMapsPromise = (async () => {
-    // Load the bootstrap script
-    if (!window.google?.maps?.importLibrary) {
+    // Load the bootstrap script with loading=async parameter
+    if (!window.google?.maps) {
       const script = document.createElement('script');
       script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&loading=async`;
       script.async = true;
@@ -340,28 +349,37 @@ export default function GoogleMap({
     const initMap = async () => {
       try {
         let map;
+        let useModern = false;
         
         if (resolvedMapId) {
-          // Modern mode with AdvancedMarkerElement
-          const { google, markerLib } = await loadGoogleMapsModern(resolvedKey, resolvedMapId);
-          markerLibRef.current = markerLib;
-          setUseModernMarkers(true);
+          // Try modern mode with AdvancedMarkerElement
+          const result = await loadGoogleMapsModern(resolvedKey, resolvedMapId);
+          markerLibRef.current = result.markerLib;
           
-          map = new google.maps.Map(mapRef.current, {
-            center: { lat: parseFloat(startCenter.lat), lng: parseFloat(startCenter.lng) },
-            zoom,
-            mapId: resolvedMapId,
-            disableDefaultUI: !interactive,
-            zoomControl: interactive,
-            scrollwheel: interactive,
-            draggable: interactive,
-            mapTypeControl: interactive,
-            streetViewControl: false,
-            fullscreenControl: interactive,
-          });
-        } else {
+          // If markerLib is null, legacy script was already loaded - fall back
+          useModern = result.markerLib !== null;
+          
+          if (useModern) {
+            map = new window.google.maps.Map(mapRef.current, {
+              center: { lat: parseFloat(startCenter.lat), lng: parseFloat(startCenter.lng) },
+              zoom,
+              mapId: resolvedMapId,
+              disableDefaultUI: !interactive,
+              zoomControl: interactive,
+              scrollwheel: interactive,
+              draggable: interactive,
+              mapTypeControl: interactive,
+              streetViewControl: false,
+              fullscreenControl: interactive,
+            });
+          }
+        }
+        
+        if (!useModern) {
           // Legacy mode (fallback)
-          await loadGoogleMapsLegacy(resolvedKey);
+          if (!window.google?.maps) {
+            await loadGoogleMapsLegacy(resolvedKey);
+          }
           setUseModernMarkers(false);
           
           map = new window.google.maps.Map(mapRef.current, {
@@ -379,6 +397,8 @@ export default function GoogleMap({
               { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
             ],
           });
+        } else {
+          setUseModernMarkers(true);
         }
 
         map.addListener('click', (e) => {
