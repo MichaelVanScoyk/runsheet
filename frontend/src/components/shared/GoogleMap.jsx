@@ -331,8 +331,11 @@ export default function GoogleMap({
         };
         
         // Add mapId if we have it (required for AdvancedMarkerElement)
+        // Disable fractional zoom - vector maps enable it by default, but we need integer zoom
+        // for server-side clustering to work correctly
         if (resolvedMapId) {
           mapOptions.mapId = resolvedMapId;
+          mapOptions.isFractionalZoomEnabled = false;
         } else {
           // Legacy styling when no mapId
           mapOptions.mapTypeId = 'roadmap';
