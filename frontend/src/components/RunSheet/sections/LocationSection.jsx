@@ -17,8 +17,7 @@ export default function LocationSection() {
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeResult, setGeocodeResult] = useState(null);
   const [manualCoords, setManualCoords] = useState(null);
-  const [manualPolyline, setManualPolyline] = useState(null);
-  const [hasManualGeocode, setHasManualGeocode] = useState(false); // Track if user triggered re-geocode
+  const [manualPolyline, setManualPolyline] = useState(undefined); // undefined = not set, null = explicitly no route
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerMatches, setPickerMatches] = useState([]);
   const [pickerLoading, setPickerLoading] = useState(false);
@@ -128,12 +127,11 @@ export default function LocationSection() {
       if (data.success) {
         setManualCoords({ lat: data.latitude, lng: data.longitude });
         setGeocodeResult({ success: true, address: data.matched_address, distance: data.distance_km });
-        setHasManualGeocode(true); // Mark that user triggered geocode
-        // Fetch updated incident to get route (or lack thereof for limited_access)
+        // Fetch updated incident to get route (or null if limited_access)
         try {
           const incRes = await fetch(`/api/incidents/${incident.id}`);
           const incData = await incRes.json();
-          // Set to the new value (null if limited_access, polyline if normal road)
+          // Backend clears route for limited_access, so this will be null
           setManualPolyline(incData.route_polyline || null);
         } catch {
           setManualPolyline(null);
@@ -260,7 +258,7 @@ export default function LocationSection() {
           <IncidentMap
             incidentCoords={incidentCoords}
             stationCoords={locationConfig ? { lat: locationConfig.station_latitude, lng: locationConfig.station_longitude } : null}
-            routePolyline={hasManualGeocode ? manualPolyline : (manualPolyline || liveIncident?.route_polyline)}
+            routePolyline={manualPolyline !== undefined ? manualPolyline : liveIncident?.route_polyline}
             height="300px"
           />
           {geocodeResult?.success && (

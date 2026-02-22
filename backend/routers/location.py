@@ -108,13 +108,16 @@ async def geocode_incident_endpoint(
     """
     Geocode an incident by ID. Reads the address from the incident,
     geocodes it, and updates the incident with lat/lng + geocode data.
+    
+    This ALWAYS clears existing location data first and re-geocodes fresh.
+    Used for manual re-geocode button and ensures clean state.
     """
     if not is_location_enabled(db):
         raise HTTPException(status_code=403, detail="Location services not enabled")
     
     # Get the incident
     incident = db.execute(
-        text("SELECT id, address, latitude, longitude FROM incidents WHERE id = :id"),
+        text("SELECT id, address FROM incidents WHERE id = :id AND deleted_at IS NULL"),
         {"id": incident_id}
     ).fetchone()
     
@@ -124,6 +127,28 @@ async def geocode_incident_endpoint(
     address = incident[1]
     if not address:
         raise HTTPException(status_code=400, detail="Incident has no address")
+    
+    # =================================================================
+    # STEP 1: Clear ALL existing location data first
+    # This ensures a clean slate - no stale routes, coords, or snapshots
+    # =================================================================
+    db.execute(
+        text("""
+            UPDATE incidents 
+            SET latitude = NULL,
+                longitude = NULL,
+                route_polyline = NULL,
+                route_geometry = NULL,
+                map_snapshot = NULL,
+                geocode_data = NULL,
+                geocode_needs_review = false,
+                updated_at = NOW()
+            WHERE id = :id
+        """),
+        {"id": incident_id}
+    )
+    db.commit()
+    logger.info(f"Cleared all location data for incident {incident_id} before re-geocode")
     
     from services.location.mile_marker import geocode_with_mile_marker_fallback
     
@@ -143,7 +168,12 @@ async def geocode_incident_endpoint(
     )
     
     if result:
-        # Update incident with geocode results
+        is_limited_access = result.get("limited_access", False)
+        
+        # =================================================================
+        # STEP 2: Write new geocode results
+        # Route/geometry already cleared in step 1, will be populated below if needed
+        # =================================================================
         db.execute(
             text("""
                 UPDATE incidents 
@@ -166,12 +196,9 @@ async def geocode_incident_endpoint(
         logger.info(f"Geocoded incident {incident_id}: {result.get('matched_address')} ({result.get('provider')})")
         
         # =================================================================
-        # DRIVING ROUTE — Station → Incident
-        # Cached as encoded polyline (frontend) + PostGIS geometry (spatial queries)
-        # Skip routing for limited_access locations (highways, turnpikes)
+        # STEP 3: Fetch driving route (if not limited_access)
+        # Skip routing for highways/turnpikes - no meaningful road route
         # =================================================================
-        is_limited_access = result.get("limited_access", False)
-        
         if is_limited_access:
             logger.info(f"Skipping route for incident {incident_id}: limited_access location (highway/turnpike)")
         else:
@@ -205,9 +232,7 @@ async def geocode_incident_endpoint(
                 logger.warning(f"Route caching failed for incident {incident_id}: {e}")
         
         # =================================================================
-        # PROXIMITY SNAPSHOT — Phase 2 Map Platform
-        # After geocoding succeeds, run proximity queries and store snapshot.
-        # Reuses incident weather data for flood/wildfire conditional alerts.
+        # STEP 4: Build proximity snapshot (nearby hydrants, hazards, etc.)
         # =================================================================
         try:
             from services.location.proximity import build_proximity_snapshot
