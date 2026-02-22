@@ -68,6 +68,7 @@ export default function GoogleMap({
   onFeatureClick,
   isPlacing = false,
   routePolyline,
+  routeEditPath, // [{lat, lng}, ...] for route editing polyline
   height = '400px',
   interactive = true,
   showStation = false,
@@ -198,12 +199,38 @@ export default function GoogleMap({
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
 
-    markers.forEach(m => {
+    // Helper to create numbered/colored marker icon
+    function createMarkerIcon(label, color) {
+      const size = 28;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${color}" stroke="#fff" stroke-width="2"/>
+        <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="12" font-weight="600" font-family="Arial,sans-serif">${label}</text>
+      </svg>`;
+      return {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+        scaledSize: new window.google.maps.Size(size, size),
+        anchor: new window.google.maps.Point(size / 2, size / 2),
+      };
+    }
+
+    markers.forEach((m, idx) => {
+      // Determine icon: use custom icon, or numbered circle with color
+      let markerIcon;
+      if (m.icon) {
+        markerIcon = { url: m.icon, scaledSize: new window.google.maps.Size(32, 32) };
+      } else if (m.color) {
+        // Numbered marker with color - use index + 1 as label (unless title suggests otherwise)
+        const label = m.label || (idx + 1).toString();
+        markerIcon = createMarkerIcon(label, m.color);
+      }
+      // else: default Google marker
+
       const marker = new window.google.maps.Marker({
         position: { lat: parseFloat(m.lat), lng: parseFloat(m.lng) },
         map: mapInstanceRef.current,
         title: m.title || '',
-        icon: m.icon ? { url: m.icon, scaledSize: new window.google.maps.Size(32, 32) } : undefined,
+        icon: markerIcon,
+        zIndex: m.zIndex || 10,
       });
       if (m.title) {
         const iw = new window.google.maps.InfoWindow({ content: m.title });
@@ -712,7 +739,7 @@ export default function GoogleMap({
     });
   }, [mapReady, geojsonLayers]);
 
-  // Route polyline
+  // Route polyline (encoded)
   const routeLineRef = useRef(null);
   useEffect(() => {
     if (!mapReady) return;
@@ -739,6 +766,24 @@ export default function GoogleMap({
       console.warn('Failed to decode route polyline:', e);
     }
   }, [mapReady, routePolyline]);
+
+  // Route edit path (raw points for highway route editor)
+  const routeEditLineRef = useRef(null);
+  useEffect(() => {
+    if (!mapReady) return;
+    if (routeEditLineRef.current) { routeEditLineRef.current.setMap(null); routeEditLineRef.current = null; }
+    if (!routeEditPath || routeEditPath.length < 2) return;
+
+    const path = routeEditPath.map(p => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }));
+    routeEditLineRef.current = new window.google.maps.Polyline({
+      path,
+      map: mapInstanceRef.current,
+      strokeColor: '#2563EB',
+      strokeOpacity: 0.9,
+      strokeWeight: 4,
+      zIndex: 5,
+    });
+  }, [mapReady, routeEditPath]);
 
   // Station marker
   useEffect(() => {

@@ -27,6 +27,9 @@ export default function HighwayRouteEditor({
   points = [],
   onSetPoints,
   onClearPoints,
+  mapClickHandler, // Ref to expose click handler to parent
+  onTraceStartChange, // Callback when trace start point changes (for map marker)
+  onMmPointChange, // Callback when MM anchor point changes (for special marker color)
 }) {
   // Route metadata
   const [name, setName] = useState('');
@@ -42,7 +45,9 @@ export default function HighwayRouteEditor({
   const [mmValue, setMmValue] = useState('');
 
   // UI state
-  const [mode, setMode] = useState('draw'); // 'draw' | 'setMM'
+  const [mode, setMode] = useState('trace'); // 'trace' | 'draw' | 'setMM'
+  const [traceStart, setTraceStart] = useState(null); // first click for trace
+  const [tracing, setTracing] = useState(false); // API call in progress
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showHelp, setShowHelp] = useState(() => {
@@ -64,11 +69,13 @@ export default function HighwayRouteEditor({
       setLimitedAccess(existingRoute.limited_access ?? false);
       setMilesDecreaseToward(existingRoute.miles_decrease_toward || '');
       setMmPointIndex(existingRoute.mm_point_index);
+      onMmPointChange?.(existingRoute.mm_point_index);
       setMmValue(existingRoute.mm_value?.toString() || '');
       setAliases(existingRoute.aliases || []);
       if (existingRoute.points && onSetPoints) {
         onSetPoints(existingRoute.points);
       }
+      setMode('draw'); // existing route goes to draw mode
     } else {
       // Reset for new route
       setName('');
@@ -79,16 +86,94 @@ export default function HighwayRouteEditor({
       setMmPointIndex(null);
       setMmValue('');
       setAliases([]);
-      setMode('draw');
+      setMode('trace'); // new route starts in trace mode
+      setTraceStart(null);
+      onMmPointChange?.(null);
       if (onClearPoints) onClearPoints();
     }
-  }, [existingRoute, isOpen]);
+  }, [existingRoute, isOpen, onMmPointChange, onClearPoints, onSetPoints]);
 
   // Handle clicking existing point to set as MM
   const handleSetMmPoint = useCallback((index) => {
     setMmPointIndex(index);
+    onMmPointChange?.(index);
     setMode('draw');
-  }, []);
+  }, [onMmPointChange]);
+
+  // Handle map click in trace mode
+  const handleTraceClick = useCallback(async (lat, lng) => {
+    if (!traceStart) {
+      // First click - set start point
+      setTraceStart({ lat, lng });
+      onTraceStartChange?.({ lat, lng });
+      return;
+    }
+    
+    // Second click - trace the road
+    setTracing(true);
+    setError('');
+    
+    try {
+      const res = await fetch('/api/map/highway-routes/trace-road', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          start_lat: traceStart.lat,
+          start_lng: traceStart.lng,
+          end_lat: lat,
+          end_lng: lng,
+        }),
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Failed to trace road');
+      }
+      
+      const data = await res.json();
+      
+      // Set the points from the traced road
+      if (onSetPoints && data.points?.length > 0) {
+        onSetPoints(data.points);
+      }
+      
+      // Switch to draw mode for fine-tuning
+      setMode('draw');
+      setTraceStart(null);
+      onTraceStartChange?.(null);
+      
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setTracing(false);
+    }
+  }, [traceStart, onSetPoints, onTraceStartChange]);
+
+  // Cancel trace mode
+  const handleCancelTrace = useCallback(() => {
+    setTraceStart(null);
+    onTraceStartChange?.(null);
+  }, [onTraceStartChange]);
+
+  // Handle any map click - route to appropriate handler based on mode
+  const handleMapClick = useCallback((lat, lng) => {
+    if (mode === 'trace') {
+      handleTraceClick(lat, lng);
+    } else if (mode === 'draw') {
+      // Add point in draw mode
+      if (onSetPoints) {
+        onSetPoints([...points, { lat, lng }]);
+      }
+    }
+    // setMM mode doesn't respond to map clicks
+  }, [mode, handleTraceClick, onSetPoints, points]);
+
+  // Expose handleMapClick to parent via ref
+  useEffect(() => {
+    if (mapClickHandler) {
+      mapClickHandler.current = handleMapClick;
+    }
+  }, [mapClickHandler, handleMapClick]);
 
   // Remove point
   const handleRemovePoint = useCallback((index) => {
@@ -100,11 +185,14 @@ export default function HighwayRouteEditor({
     if (mmPointIndex !== null) {
       if (index === mmPointIndex) {
         setMmPointIndex(null);
+        onMmPointChange?.(null);
       } else if (index < mmPointIndex) {
-        setMmPointIndex(mmPointIndex - 1);
+        const newIndex = mmPointIndex - 1;
+        setMmPointIndex(newIndex);
+        onMmPointChange?.(newIndex);
       }
     }
-  }, [points, mmPointIndex, onSetPoints]);
+  }, [points, mmPointIndex, onSetPoints, onMmPointChange]);
 
   // Add alias
   const handleAddAlias = () => {
@@ -225,14 +313,15 @@ export default function HighwayRouteEditor({
               📍 Creating a Mile Marker Road
             </h3>
             <ol style={{ margin: '0 0 16px 0', paddingLeft: '20px', lineHeight: '1.6' }}>
-              <li>Click points along the road to trace it</li>
+              <li><strong>Trace:</strong> Click start point, then end point to auto-trace the road</li>
+              <li>Or use "Manual Draw" to click points yourself</li>
               <li>Click a point in the list, then "Set as Mile Marker"</li>
-              <li>Enter the mile marker value</li>
+              <li>Enter the mile marker value at that point</li>
               <li>Set which direction miles decrease</li>
               <li>Add names CAD might use for this road</li>
             </ol>
             <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: '#666' }}>
-              <strong>Tip:</strong> More points on curves = better accuracy
+              <strong>Tip:</strong> Trace mode follows the road perfectly!
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <button
@@ -338,16 +427,59 @@ export default function HighwayRouteEditor({
           {/* Mode indicator */}
           <div style={{
             padding: '12px',
-            background: mode === 'setMM' ? '#dcfce7' : '#dbeafe',
+            background: mode === 'setMM' ? '#dcfce7' : mode === 'trace' ? '#fef3c7' : '#dbeafe',
             borderRadius: '6px',
             fontSize: '0.85rem',
-            color: mode === 'setMM' ? '#166534' : '#1e40af',
+            color: mode === 'setMM' ? '#166534' : mode === 'trace' ? '#92400e' : '#1e40af',
           }}>
-            {mode === 'setMM'
-              ? '📍 Click a point below to set as mile marker'
-              : '🖱️ Click on the map to add points along the road'
-            }
+            {mode === 'setMM' && '📍 Click a point below to set as mile marker'}
+            {mode === 'draw' && '🖱️ Click on the map to add points along the road'}
+            {mode === 'trace' && !traceStart && '🛣️ Click the START of the road you want to trace'}
+            {mode === 'trace' && traceStart && (tracing 
+              ? '⏳ Tracing road...' 
+              : '🛣️ Click the END of the road to complete trace')}
           </div>
+
+          {/* Trace mode controls */}
+          {mode === 'trace' && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {traceStart && (
+                <button
+                  onClick={handleCancelTrace}
+                  disabled={tracing}
+                  style={{
+                    flex: 1,
+                    padding: '8px',
+                    background: '#f3f4f6',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setMode('draw');
+                  setTraceStart(null);
+                  onTraceStartChange?.(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  background: '#e5e7eb',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                }}
+              >
+                Manual Draw Instead
+              </button>
+            </div>
+          )}
 
           {/* Points list */}
           <div>

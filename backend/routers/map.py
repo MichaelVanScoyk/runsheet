@@ -2531,6 +2531,129 @@ async def update_highway_route(
         raise HTTPException(status_code=500, detail=f"Failed to update highway route: {str(e)}")
 
 
+class TraceRoadRequest(BaseModel):
+    """Request to trace a road between two points using Directions API."""
+    start_lat: float
+    start_lng: float
+    end_lat: float
+    end_lng: float
+
+
+@router.post("/highway-routes/trace-road")
+async def trace_road(
+    request: TraceRoadRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Trace a road between two points using Google Directions API.
+    Returns the polyline decoded into lat/lng points for route creation.
+    
+    This is a UX helper - instead of clicking 27 points manually,
+    user clicks start and end, we get the perfect road geometry.
+    """
+    google_key = get_google_api_key(db)
+    if not google_key:
+        raise HTTPException(status_code=400, detail="Google API key not configured")
+    
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                "https://maps.googleapis.com/maps/api/directions/json",
+                params={
+                    "origin": f"{request.start_lat},{request.start_lng}",
+                    "destination": f"{request.end_lat},{request.end_lng}",
+                    "mode": "driving",
+                    "key": google_key,
+                }
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        
+        if data.get("status") != "OK":
+            error_msg = data.get("error_message", data.get("status", "Unknown error"))
+            raise HTTPException(status_code=400, detail=f"Directions API error: {error_msg}")
+        
+        routes = data.get("routes", [])
+        if not routes:
+            raise HTTPException(status_code=404, detail="No route found between points")
+        
+        # Get the overview polyline from the first route
+        overview_polyline = routes[0].get("overview_polyline", {}).get("points")
+        if not overview_polyline:
+            raise HTTPException(status_code=500, detail="No polyline in response")
+        
+        # Decode the polyline
+        points = _decode_polyline(overview_polyline)
+        
+        # Get route info
+        leg = routes[0].get("legs", [{}])[0]
+        distance_meters = leg.get("distance", {}).get("value", 0)
+        distance_miles = distance_meters / 1609.34
+        
+        logger.info(f"Traced road: {len(points)} points, {distance_miles:.2f} miles")
+        
+        return {
+            "points": points,
+            "point_count": len(points),
+            "distance_miles": round(distance_miles, 2),
+            "distance_meters": distance_meters,
+        }
+    
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Directions API HTTP error: {e}")
+        raise HTTPException(status_code=502, detail="Failed to reach Google Directions API")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Trace road failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to trace road: {str(e)}")
+
+
+def _decode_polyline(encoded: str) -> list:
+    """
+    Decode a Google encoded polyline string into a list of {lat, lng} points.
+    Algorithm: https://developers.google.com/maps/documentation/utilities/polylinealgorithm
+    """
+    points = []
+    index = 0
+    lat = 0
+    lng = 0
+    
+    while index < len(encoded):
+        # Decode latitude
+        shift = 0
+        result = 0
+        while True:
+            b = ord(encoded[index]) - 63
+            index += 1
+            result |= (b & 0x1f) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        dlat = ~(result >> 1) if result & 1 else result >> 1
+        lat += dlat
+        
+        # Decode longitude
+        shift = 0
+        result = 0
+        while True:
+            b = ord(encoded[index]) - 63
+            index += 1
+            result |= (b & 0x1f) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        dlng = ~(result >> 1) if result & 1 else result >> 1
+        lng += dlng
+        
+        points.append({
+            "lat": lat / 1e5,
+            "lng": lng / 1e5,
+        })
+    
+    return points
+
+
 @router.delete("/highway-routes/{route_id}")
 async def delete_highway_route(route_id: int, db: Session = Depends(get_db)):
     """Delete a highway route and its points/aliases (cascades)."""

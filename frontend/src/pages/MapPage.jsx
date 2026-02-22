@@ -16,7 +16,7 @@
  *   - Frontend only holds ~50-200 markers regardless of dataset size
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import GoogleMap from '../components/shared/GoogleMap';
 import LayerToggle from '../components/Map/LayerToggle';
 import FeatureDetail from '../components/Map/FeatureDetail';
@@ -52,6 +52,9 @@ export default function MapPage({ userSession }) {
   const [editingRoute, setEditingRoute] = useState(null);
   const [routePoints, setRoutePoints] = useState([]);
   const [highwayRoutes, setHighwayRoutes] = useState([]);
+  const [traceStartMarker, setTraceStartMarker] = useState(null); // for showing trace start point
+  const [mmPointIndex, setMmPointIndex] = useState(null); // MM anchor point index for special marker color
+  const routeEditorClickHandler = useRef(null); // ref to get click handler from editor
 
   // Load map config
   useEffect(() => {
@@ -145,8 +148,10 @@ export default function MapPage({ userSession }) {
 
   const handleMapClick = useCallback((lat, lng) => {
     if (isRouteEditorOpen) {
-      // Add point to route
-      setRoutePoints(prev => [...prev, { lat, lng }]);
+      // Delegate to route editor's click handler (handles trace vs draw mode)
+      if (routeEditorClickHandler.current) {
+        routeEditorClickHandler.current(lat, lng);
+      }
     } else if (isPlacing) {
       setPlacementCoords({ lat, lng });
     } else {
@@ -205,6 +210,8 @@ export default function MapPage({ userSession }) {
     setIsRouteEditorOpen(false);
     setEditingRoute(null);
     setRoutePoints([]);
+    setTraceStartMarker(null);
+    setMmPointIndex(null);
     setSidebarOpen(true);
   }, []);
 
@@ -232,21 +239,30 @@ export default function MapPage({ userSession }) {
   // Build markers for route points while editing
   const routeEditMarkers = useMemo(() => {
     if (!isRouteEditorOpen) return [];
-    return routePoints.map((p, i) => ({
-      lat: p.lat,
-      lng: p.lng,
-      title: `Point ${i + 1}`,
-      color: '#2563eb',
-    }));
-  }, [isRouteEditorOpen, routePoints]);
-
-  // Build polyline path for route while editing
-  const routeEditPolyline = useMemo(() => {
-    if (!isRouteEditorOpen || routePoints.length < 2) return null;
-    // Create encoded polyline from points (or we could pass raw path)
-    // For now, just return null and handle rendering differently
-    return null;
-  }, [isRouteEditorOpen, routePoints]);
+    const markers = routePoints.map((p, i) => {
+      const isMmPoint = mmPointIndex === i;
+      return {
+        lat: p.lat,
+        lng: p.lng,
+        title: isMmPoint ? `MM Point ${i + 1}` : `Point ${i + 1}`,
+        color: isMmPoint ? '#16a34a' : '#2563eb', // green for MM, blue for others
+        label: (i + 1).toString(),
+        zIndex: isMmPoint ? 100 : 10,
+      };
+    });
+    // Add trace start marker if in trace mode
+    if (traceStartMarker) {
+      markers.push({
+        lat: traceStartMarker.lat,
+        lng: traceStartMarker.lng,
+        title: 'Trace Start',
+        color: '#f59e0b', // amber
+        label: 'S',
+        zIndex: 50,
+      });
+    }
+    return markers;
+  }, [isRouteEditorOpen, routePoints, traceStartMarker, mmPointIndex]);
 
   if (!config) {
     return <div style={{ padding: '2rem', color: '#888' }}>Loading map configuration...</div>;
@@ -411,6 +427,7 @@ export default function MapPage({ userSession }) {
           stationCoords={stationCenter}
           viewportLayers={isRouteEditorOpen ? [] : viewportLayers}
           markers={routeEditMarkers}
+          routeEditPath={isRouteEditorOpen ? routePoints : null}
           onFeatureClick={handleFeatureClick}
           onMapClick={handleMapClick}
           isPlacing={isPlacing || isRouteEditorOpen}
@@ -481,6 +498,9 @@ export default function MapPage({ userSession }) {
         points={routePoints}
         onSetPoints={setRoutePoints}
         onClearPoints={() => setRoutePoints([])}
+        mapClickHandler={routeEditorClickHandler}
+        onTraceStartChange={setTraceStartMarker}
+        onMmPointChange={setMmPointIndex}
       />
     </div>
   );
