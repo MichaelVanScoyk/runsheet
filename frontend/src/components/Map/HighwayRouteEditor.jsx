@@ -60,6 +60,8 @@ export default function HighwayRouteEditor({
   });
 
   // Load existing route if editing
+  // NOTE: Callbacks (onMmPointChange, onClearPoints, onSetPoints) intentionally excluded
+  // from deps to prevent infinite loops when parent doesn't memoize them
   useEffect(() => {
     if (!isOpen) return;
     
@@ -93,7 +95,8 @@ export default function HighwayRouteEditor({
       onMmPointChange?.(null);
       if (onClearPoints) onClearPoints();
     }
-  }, [existingRoute, isOpen, onMmPointChange, onClearPoints, onSetPoints]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingRoute, isOpen]);
 
   // Handle clicking existing point to set as MM
   const handleSetMmPoint = useCallback((index) => {
