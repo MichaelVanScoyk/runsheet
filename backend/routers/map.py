@@ -1047,6 +1047,27 @@ def _query_incident_layer(
                 },
             })
 
+        # Offset co-located incidents: newest stays at real position,
+        # older ones shift 5m north and 5m east per step
+        # 5 meters ≈ 0.000045 degrees latitude, ≈ 0.000055 degrees longitude at 40°N
+        OFFSET_LAT = 0.000045  # ~5m north
+        OFFSET_LNG = 0.000055  # ~5m east
+        
+        coord_groups = {}
+        for item in items:
+            key = (item["lat"], item["lng"])
+            if key not in coord_groups:
+                coord_groups[key] = []
+            coord_groups[key].append(item)
+        
+        for key, group in coord_groups.items():
+            if len(group) > 1:
+                # Already sorted by incident_date DESC, so index 0 is newest
+                for i, item in enumerate(group):
+                    if i > 0:
+                        item["lat"] = key[0] + (OFFSET_LAT * i)
+                        item["lng"] = key[1] + (OFFSET_LNG * i)
+
         return {
             "layer_id": layer_key,
             "layer_type": layer_def["layer_type"],
