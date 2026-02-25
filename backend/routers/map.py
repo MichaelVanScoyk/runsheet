@@ -1047,26 +1047,42 @@ def _query_incident_layer(
                 },
             })
 
-        # Offset co-located incidents: newest stays at real position,
-        # older ones shift 5m north and 5m east per step
-        # 5 meters ≈ 0.000045 degrees latitude, ≈ 0.000055 degrees longitude at 40°N
-        OFFSET_LAT = 0.000045  # ~5m north
-        OFFSET_LNG = 0.000055  # ~5m east
-        
+        # Per-layer base offset: spreads different incident categories apart at shared coords.
+        # 1m ≈ 0.000009 degrees latitude, ≈ 0.000011 degrees longitude at ~40°N
+        # incident_fire (1st layer): 1m north  — base offset from true geocoded point
+        # incident_ems  (2nd layer): 1m east   — base offset from true geocoded point
+        # incident_*    (3rd layer): 1m south  — base offset from true geocoded point
+        _BASE_OFFSETS = {
+            "incident_fire": (0.000009, 0.0),        # 1m north
+            "incident_ems":  (0.0,      0.000011),   # 1m east
+        }
+        _DEFAULT_BASE_OFFSET = (-0.000009, 0.0)      # 1m south for any future 3rd layer
+        base_dlat, base_dlng = _BASE_OFFSETS.get(layer_key, _DEFAULT_BASE_OFFSET)
+
+        # Apply base offset to every item in this layer
+        for item in items:
+            item["lat"] += base_dlat
+            item["lng"] += base_dlng
+
+        # Cascade: same-category co-located incidents step 1m NE per additional incident
+        # 1 meter NE ≈ 0.000009 lat, 0.000011 lng at ~40°N
+        CASCADE_LAT = 0.000009  # ~1m north per step
+        CASCADE_LNG = 0.000011  # ~1m east per step
+
         coord_groups = {}
         for item in items:
             key = (item["lat"], item["lng"])
             if key not in coord_groups:
                 coord_groups[key] = []
             coord_groups[key].append(item)
-        
+
         for key, group in coord_groups.items():
             if len(group) > 1:
                 # Already sorted by incident_date DESC, so index 0 is newest
                 for i, item in enumerate(group):
                     if i > 0:
-                        item["lat"] = key[0] + (OFFSET_LAT * i)
-                        item["lng"] = key[1] + (OFFSET_LNG * i)
+                        item["lat"] = key[0] + (CASCADE_LAT * i)
+                        item["lng"] = key[1] + (CASCADE_LNG * i)
 
         return {
             "layer_id": layer_key,
