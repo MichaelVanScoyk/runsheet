@@ -168,20 +168,38 @@ async def fetch_arcgis_features(
 async def fetch_arcgis_preview(
     url: str,
     sample_count: int = 5,
+    where: str = "1=1",
 ) -> dict:
     """
     Fetch a small sample of features for the import wizard preview.
     Returns metadata + sample features so admin can see field values.
+    The where clause is applied to both the count and sample fetch so the
+    feature_count returned matches what will actually be imported.
     """
     metadata = await fetch_arcgis_metadata(url)
     rest_url = metadata["url"]
 
-    # Fetch small sample
+    # Override the unfiltered count with the filtered count when a filter is active
+    effective_where = (where or "1=1").strip()
+    if effective_where and effective_where != "1=1":
+        try:
+            async with httpx.AsyncClient(timeout=ARCGIS_TIMEOUT) as client:
+                count_resp = await client.get(
+                    f"{rest_url}/query",
+                    params={"where": effective_where, "returnCountOnly": "true", "f": "json"},
+                )
+                count_resp.raise_for_status()
+                count_data = count_resp.json()
+            metadata["feature_count"] = count_data.get("count", 0)
+        except Exception:
+            pass  # Fall back to unfiltered count from metadata
+
+    # Fetch small sample using the same filter
     async with httpx.AsyncClient(timeout=ARCGIS_TIMEOUT) as client:
         resp = await client.get(
             f"{rest_url}/query",
             params={
-                "where": "1=1",
+                "where": effective_where,
                 "outFields": "*",
                 "f": "geojson",
                 "resultRecordCount": str(sample_count),

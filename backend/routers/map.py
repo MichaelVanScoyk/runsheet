@@ -1636,6 +1636,7 @@ async def delete_address_note(
 
 class ArcGISPreviewRequest(BaseModel):
     url: str
+    filter_expression: Optional[str] = None
 
 class ArcGISFetchValuesRequest(BaseModel):
     url: str
@@ -1713,7 +1714,8 @@ async def arcgis_preview(request: ArcGISPreviewRequest):
     from services.location.gis_import import fetch_arcgis_preview
 
     try:
-        result = await fetch_arcgis_preview(request.url, sample_count=5)
+        where = (request.filter_expression or "1=1").strip() or "1=1"
+        result = await fetch_arcgis_preview(request.url, sample_count=5, where=where)
         return result
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=502, detail=f"ArcGIS server returned {e.response.status_code}")

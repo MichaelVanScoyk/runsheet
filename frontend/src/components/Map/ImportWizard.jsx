@@ -99,7 +99,7 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
       const res = await fetch('/api/map/gis/arcgis/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: url.trim(), filter_expression: filterExpression.trim() || null }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -517,6 +517,17 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
                   Example: https://services.arcgis.com/.../FeatureServer/0
                 </div>
               </div>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '4px' }}>
+                  Filter Expression <span style={{ color: '#aaa', fontWeight: 400 }}>(optional)</span>
+                </label>
+                <input type="text" value={filterExpression} onChange={(e) => setFilterExpression(e.target.value)}
+                  style={{ width: '100%', padding: '8px', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                  onKeyDown={(e) => e.key === 'Enter' && !duplicateConfig && handlePreview()} />
+                <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '4px' }}>
+                  SQL WHERE clause applied before preview &amp; import. Example: CTY_CODE='15'
+                </div>
+              </div>
               {duplicateConfig && (
                 <div style={{ padding: '8px 12px', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: '4px', marginBottom: '12px', fontSize: '0.8rem', color: '#92400E' }}>
                   This source is already imported as <strong>"{duplicateConfig.name}"</strong> into {duplicateConfig.layer_name}. You can still import into a different layer, or use Refresh to update existing data.
@@ -831,17 +842,10 @@ export default function ImportWizard({ layers = [], onImportComplete, userRole }
           </div>
         </details>
 
-        {/* Manual filter expression — ArcGIS only, hidden when picker is active */}
-        {sourceType === 'arcgis' && !isPolygonArcgis && (
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ fontSize: '0.8rem', color: '#555', display: 'block', marginBottom: '4px' }}>
-              Filter Expression (optional)
-            </label>
-            <input type="text" value={filterExpression} onChange={(e) => setFilterExpression(e.target.value)}
-              style={{ width: '100%', padding: '5px', fontSize: '0.85rem', boxSizing: 'border-box' }} />
-            <div style={{ fontSize: '0.7rem', color: '#999', marginTop: '2px' }}>
-              ArcGIS SQL WHERE clause. Example: MUNI_NUM=60
-            </div>
+        {/* Filter expression — ArcGIS only, shown read-only if one was entered in Step 1 */}
+        {sourceType === 'arcgis' && !isPolygonArcgis && filterExpression.trim() && (
+          <div style={{ marginBottom: '12px', padding: '6px 10px', background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: '4px', fontSize: '0.8rem', color: '#166534' }}>
+            Filter active: <code style={{ fontFamily: 'monospace' }}>{filterExpression.trim()}</code>
           </div>
         )}
 
