@@ -12,6 +12,7 @@ import PrintLayoutTab from './PrintLayoutTab';
 import AVAlertsTab from './AVAlertsTab';
 import DetailTypesTab from './DetailTypesTab';
 import HelpAdminTab from './HelpAdminTab';
+import MutualAidTab from './MutualAidTab';
 import ImportWizard from '../components/Map/ImportWizard';
 import { useHelp } from '../contexts/HelpContext';
 
@@ -2909,6 +2910,12 @@ function AdminPage({ userSession }) {
           🚀 Features
         </button>
         <button 
+          className={activeTab === 'mutual_aid' ? 'active' : ''} 
+          onClick={() => setActiveTab('mutual_aid')}
+        >
+          🤝 Mutual Aid
+        </button>
+        <button 
           className={activeTab === 'gis_import' ? 'active' : ''} 
           onClick={() => setActiveTab('gis_import')}
         >
@@ -2939,6 +2946,7 @@ function AdminPage({ userSession }) {
         {activeTab === 'avalerts' && <AVAlertsTab />}
         {activeTab === 'cad' && <CADSettingsTab />}
         {activeTab === 'features' && <FeaturesTab />}
+        {activeTab === 'mutual_aid' && <MutualAidTab />}
         {activeTab === 'gis_import' && <GISImportTab userRole={userSession?.role} />}
         {activeTab === 'help' && <HelpAdminTab />}
       </div>
