@@ -12,6 +12,9 @@ from sqlalchemy import text
 from typing import Optional, List
 from pydantic import BaseModel
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 from database import get_db
 from services.tts_preprocessing import tts_preprocessor
@@ -252,8 +255,9 @@ async def create_unit_mapping(
         "apparatus_id": apparatus_id,
     })
     
+    new_id = result.fetchone()[0]
     db.commit()
-    return {"status": "ok", "id": result.fetchone()[0]}
+    return {"status": "ok", "id": new_id}
 
 
 @router.delete("/units/{unit_id}")
@@ -788,22 +792,28 @@ async def create_abbreviation(
     if existing:
         raise HTTPException(status_code=400, detail="Abbreviation already exists for this category")
     
-    result = db.execute(text("""
-        INSERT INTO tts_abbreviations (category, abbreviation, spoken_as)
-        VALUES (:category, :abbr, :spoken)
-        RETURNING id
-    """), {
-        "category": data.category,
-        "abbr": abbreviation,
-        "spoken": data.spoken_as.strip(),
-    })
-    
-    db.commit()
+    try:
+        result = db.execute(text("""
+            INSERT INTO tts_abbreviations (category, abbreviation, spoken_as)
+            VALUES (:category, :abbr, :spoken)
+            RETURNING id
+        """), {
+            "category": data.category,
+            "abbr": abbreviation,
+            "spoken": data.spoken_as.strip(),
+        })
+        
+        new_id = result.fetchone()[0]
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to create abbreviation {abbreviation}: {e}")
+        raise HTTPException(status_code=500, detail="Database error creating abbreviation")
     
     # Clear the cache so changes take effect
     tts_preprocessor.clear_cache()
     
-    return {"status": "ok", "id": result.fetchone()[0]}
+    return {"status": "ok", "id": new_id}
 
 
 @router.put("/abbreviations/{abbr_id}")

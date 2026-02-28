@@ -49,7 +49,6 @@ function AVAlertsTab() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState(null);
   const [uploading, setUploading] = useState(null);
   const [previewText, setPreviewText] = useState('');
   const [previewAudioUrl, setPreviewAudioUrl] = useState(null);
@@ -84,7 +83,53 @@ function AVAlertsTab() {
   const [availableVoices, setAvailableVoices] = useState([]);
   const [voicesLoading, setVoicesLoading] = useState(false);
   
+  // Section-local feedback messages (inline, auto-clearing)
+  const [soundsMessage, setSoundsMessage] = useState(null);
+  const [contentMessage, setContentMessage] = useState(null);
+  const [voiceMessage, setVoiceMessage] = useState(null);
+  const [unitMessage, setUnitMessage] = useState(null);
+  const [abbrMessage, setAbbrMessage] = useState(null);
+  const [previewMessage, setPreviewMessage] = useState(null);
+  
   const fileInputRefs = useRef({});
+
+  // Auto-clear helper: sets message then clears after delay
+  const showLocalMessage = (setter, type, text, duration = 3000) => {
+    setter({ type, text });
+    if (type !== 'error') {
+      setTimeout(() => setter(null), duration);
+    }
+  };
+
+  // Inline message banner component
+  const InlineMessage = ({ msg, onDismiss }) => {
+    if (!msg) return null;
+    const colors = {
+      success: { bg: '#f0fdf4', border: '#86efac', text: '#166534' },
+      error: { bg: '#fef2f2', border: '#fca5a5', text: '#991b1b' },
+      info: { bg: '#eff6ff', border: '#93c5fd', text: '#1e40af' },
+    };
+    const c = colors[msg.type] || colors.info;
+    return (
+      <div style={{
+        padding: '0.4rem 0.75rem',
+        marginBottom: '0.5rem',
+        borderRadius: '4px',
+        fontSize: '0.8rem',
+        background: c.bg,
+        border: `1px solid ${c.border}`,
+        color: c.text,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <span>{msg.text}</span>
+        {msg.type === 'error' && onDismiss && (
+          <button onClick={onDismiss} style={{ background: 'none', border: 'none', cursor: 'pointer', color: c.text, fontSize: '0.9rem', padding: '0 0.25rem' }}>✕</button>
+        )}
+      </div>
+    );
+  };
 
   // Load preview using real last incident data and generate server-side audio
   // Always clears cached audio to force regeneration with current settings
@@ -120,7 +165,6 @@ function AVAlertsTab() {
       }
     } catch (err) {
       console.error('Failed to load AV alerts settings:', err);
-      setMessage({ type: 'error', text: 'Failed to load settings' });
     } finally {
       setLoading(false);
     }
@@ -183,7 +227,7 @@ function AVAlertsTab() {
   // Seed unit pronunciations from recent incidents
   const seedFromIncidents = async () => {
     setSeedingUnits(true);
-    setMessage(null);
+    setUnitMessage(null);
     try {
       const res = await fetch(`${API_BASE}/api/tts/units/seed-from-incidents?count=10`, {
         method: 'POST',
@@ -191,21 +235,18 @@ function AVAlertsTab() {
       if (res.ok) {
         const data = await res.json();
         if (data.units_created > 0) {
-          setMessage({ 
-            type: 'success', 
-            text: `Found ${data.units_found} units, created ${data.units_created} new mappings` 
-          });
+          showLocalMessage(setUnitMessage, 'success', `Found ${data.units_found} units, created ${data.units_created} new mappings`);
         } else if (data.units_found > 0) {
-          setMessage({ type: 'info', text: `All ${data.units_found} units already configured` });
+          showLocalMessage(setUnitMessage, 'info', `All ${data.units_found} units already configured`);
         } else {
-          setMessage({ type: 'info', text: 'No units found in recent incidents' });
+          showLocalMessage(setUnitMessage, 'info', 'No units found in recent incidents');
         }
         loadUnitMappings();
       } else {
         throw new Error('Seed failed');
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to seed units from incidents' });
+      showLocalMessage(setUnitMessage, 'error', 'Failed to seed units from incidents');
     } finally {
       setSeedingUnits(false);
     }
@@ -225,8 +266,15 @@ function AVAlertsTab() {
   }, [showOnlyReview, unitSearch]);
 
   const updateSetting = async (key, value) => {
+    // Route feedback to the correct section
+    const ttsContentKeys = ['tts_field_order', 'tts_announce_all_units'];
+    const ttsVoiceKeys = ['tts_pause_style', 'tts_speed', 'tts_voice'];
+    const msgSetter = ttsContentKeys.includes(key) ? setContentMessage
+                    : ttsVoiceKeys.includes(key) ? setVoiceMessage
+                    : setSoundsMessage;
+    
     setSaving(true);
-    setMessage(null);
+    msgSetter(null);
     
     try {
       const res = await fetch(`${API_BASE}/api/settings/av-alerts`, {
@@ -237,17 +285,16 @@ function AVAlertsTab() {
       
       if (res.ok) {
         setSettings(prev => ({ ...prev, [key]: value }));
-        setMessage({ type: 'success', text: 'Setting saved' });
+        showLocalMessage(msgSetter, 'success', 'Saved');
         // Reload preview after any TTS-related change
         if (key === 'tts_field_order' || key === 'tts_pause_style' || key === 'tts_speed' || key === 'tts_announce_all_units' || key === 'tts_voice') {
-          // Small delay to let server process the setting, then regenerate preview
           setTimeout(loadPreview, 300);
         }
       } else {
         throw new Error('Save failed');
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to save setting' });
+      showLocalMessage(msgSetter, 'error', 'Failed to save setting');
     } finally {
       setSaving(false);
     }
@@ -312,17 +359,17 @@ function AVAlertsTab() {
     if (!file) return;
     
     if (!['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/flac'].includes(file.type)) {
-      setMessage({ type: 'error', text: 'Please select an MP3, WAV, OGG, or FLAC audio file' });
+      showLocalMessage(setSoundsMessage, 'error', 'Please select an MP3, WAV, OGG, or FLAC audio file');
       return;
     }
     
     if (file.size > 1024 * 1024) {
-      setMessage({ type: 'error', text: 'Audio file must be under 1MB' });
+      showLocalMessage(setSoundsMessage, 'error', 'Audio file must be under 1MB');
       return;
     }
     
     setUploading(soundType);
-    setMessage(null);
+    setSoundsMessage(null);
     
     try {
       const reader = new FileReader();
@@ -336,7 +383,7 @@ function AVAlertsTab() {
         });
         
         if (res.ok) {
-          setMessage({ type: 'success', text: `Uploaded ${file.name}` });
+          showLocalMessage(setSoundsMessage, 'success', `Uploaded ${file.name}`);
           await loadSettings();
         } else {
           const err = await res.json();
@@ -345,12 +392,12 @@ function AVAlertsTab() {
         setUploading(null);
       };
       reader.onerror = () => {
-        setMessage({ type: 'error', text: 'Failed to read file' });
+        showLocalMessage(setSoundsMessage, 'error', 'Failed to read file');
         setUploading(null);
       };
       reader.readAsDataURL(file);
     } catch (err) {
-      setMessage({ type: 'error', text: err.message });
+      showLocalMessage(setSoundsMessage, 'error', err.message);
       setUploading(null);
     }
   };
@@ -359,7 +406,7 @@ function AVAlertsTab() {
     if (!confirm('Revert to default sound?')) return;
     
     setUploading(soundType);
-    setMessage(null);
+    setSoundsMessage(null);
     
     try {
       const res = await fetch(`${API_BASE}/api/settings/av-alerts/sound/${soundType}`, {
@@ -367,13 +414,13 @@ function AVAlertsTab() {
       });
       
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Reverted to default sound' });
+        showLocalMessage(setSoundsMessage, 'success', 'Reverted to default sound');
         await loadSettings();
       } else {
         throw new Error('Delete failed');
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to delete custom sound' });
+      showLocalMessage(setSoundsMessage, 'error', 'Failed to delete custom sound');
     } finally {
       setUploading(null);
     }
@@ -390,7 +437,7 @@ function AVAlertsTab() {
     audio.currentTime = 0;
     audio.play().catch(err => {
       console.warn('Audio playback failed:', err);
-      setMessage({ type: 'error', text: 'Failed to play sound.' });
+      showLocalMessage(setSoundsMessage, 'error', 'Failed to play sound.');
     });
   }, [settings]);
 
@@ -417,7 +464,7 @@ function AVAlertsTab() {
   // Replay a real incident alert to all devices
   const replayIncident = async (incident, eventType = 'dispatch') => {
     setReplayingId(incident.id);
-    setMessage(null);
+    setPreviewMessage(null);
     try {
       const res = await fetch(`${API_BASE}/api/test-alerts/replay-incident`, {
         method: 'POST',
@@ -430,13 +477,13 @@ function AVAlertsTab() {
       
       if (res.ok) {
         const data = await res.json();
-        setMessage({ type: 'success', text: `Replayed ${eventType} for ${data.incident_number} to all devices` });
+        showLocalMessage(setPreviewMessage, 'success', `Replayed ${eventType} for ${data.incident_number} to all devices`);
       } else {
         const err = await res.json();
         throw new Error(err.detail || 'Failed to replay alert');
       }
     } catch (err) {
-      setMessage({ type: 'error', text: err.message });
+      showLocalMessage(setPreviewMessage, 'error', err.message);
     } finally {
       setReplayingId(null);
     }
@@ -444,7 +491,7 @@ function AVAlertsTab() {
 
   // Send test alert to all connected devices
   const sendTestAlert = async (soundType) => {
-    setMessage(null);
+    setPreviewMessage(null);
     
     // Map sound type to test alert parameters
     let eventType, callCategory;
@@ -472,13 +519,13 @@ function AVAlertsTab() {
       });
       
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Test alert sent to all connected devices' });
+        showLocalMessage(setPreviewMessage, 'success', 'Test alert sent to all connected devices');
       } else {
         const err = await res.json();
         throw new Error(err.detail || 'Failed to send test alert');
       }
     } catch (err) {
-      setMessage({ type: 'error', text: err.message });
+      showLocalMessage(setPreviewMessage, 'error', err.message);
     }
   };
 
@@ -497,20 +544,20 @@ function AVAlertsTab() {
           audio.onended = () => setPlayingPreview(false);
           audio.onerror = () => {
             setPlayingPreview(false);
-            setMessage({ type: 'error', text: 'Failed to play audio' });
+            showLocalMessage(setPreviewMessage, 'error', 'Failed to play audio');
           };
           audio.play();
           setPreviewAudioUrl(data.audio_url);
         } else {
-          setMessage({ type: 'error', text: 'No audio available' });
+          showLocalMessage(setPreviewMessage, 'error', 'No audio available');
           setPlayingPreview(false);
         }
       } else {
-        setMessage({ type: 'error', text: 'Failed to generate preview' });
+        showLocalMessage(setPreviewMessage, 'error', 'Failed to generate preview');
         setPlayingPreview(false);
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to generate preview' });
+      showLocalMessage(setPreviewMessage, 'error', 'Failed to generate preview');
       setPlayingPreview(false);
     }
   };
@@ -518,12 +565,12 @@ function AVAlertsTab() {
   // Preview custom announcement locally (uses server TTS)
   const previewAnnouncement = async () => {
     if (!customMessage.trim()) {
-      setMessage({ type: 'error', text: 'Please enter a message' });
+      showLocalMessage(setPreviewMessage, 'error', 'Please enter a message');
       return;
     }
     
     setPreviewingAnnouncement(true);
-    setMessage(null);
+    setPreviewMessage(null);
     
     try {
       const res = await fetch(`${API_BASE}/api/test-alerts/tts-preview`, {
@@ -539,31 +586,31 @@ function AVAlertsTab() {
           audio.onended = () => setPreviewingAnnouncement(false);
           audio.onerror = () => {
             setPreviewingAnnouncement(false);
-            setMessage({ type: 'error', text: 'Failed to play audio' });
+            showLocalMessage(setPreviewMessage, 'error', 'Failed to play audio');
           };
           audio.play();
         } else {
-          setMessage({ type: 'error', text: 'TTS generation failed' });
+          showLocalMessage(setPreviewMessage, 'error', 'TTS generation failed');
           setPreviewingAnnouncement(false);
         }
       } else {
-        setMessage({ type: 'error', text: 'TTS generation failed' });
+        showLocalMessage(setPreviewMessage, 'error', 'TTS generation failed');
         setPreviewingAnnouncement(false);
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to generate preview' });
+      showLocalMessage(setPreviewMessage, 'error', 'Failed to generate preview');
       setPreviewingAnnouncement(false);
     }
   };
 
   const sendAnnouncement = async () => {
     if (!customMessage.trim()) {
-      setMessage({ type: 'error', text: 'Please enter a message' });
+      showLocalMessage(setPreviewMessage, 'error', 'Please enter a message');
       return;
     }
     
     setSendingAnnouncement(true);
-    setMessage(null);
+    setPreviewMessage(null);
     
     try {
       const res = await fetch(`${API_BASE}/api/test-alerts/announce`, {
@@ -573,14 +620,14 @@ function AVAlertsTab() {
       });
       
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Announcement sent to all devices' });
+        showLocalMessage(setPreviewMessage, 'success', 'Announcement sent to all devices');
         setCustomMessage('');
       } else {
         const err = await res.json();
         throw new Error(err.detail || 'Failed to send announcement');
       }
     } catch (err) {
-      setMessage({ type: 'error', text: err.message });
+      showLocalMessage(setPreviewMessage, 'error', err.message);
     } finally {
       setSendingAnnouncement(false);
     }
@@ -610,7 +657,7 @@ function AVAlertsTab() {
 
   const saveAbbreviation = async (abbrId) => {
     if (!editingAbbrSpoken.trim()) {
-      setMessage({ type: 'error', text: 'Pronunciation cannot be empty' });
+      showLocalMessage(setAbbrMessage, 'error', 'Pronunciation cannot be empty');
       return;
     }
     
@@ -622,7 +669,7 @@ function AVAlertsTab() {
       });
       
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Abbreviation saved' });
+        showLocalMessage(setAbbrMessage, 'success', 'Abbreviation saved');
         setEditingAbbr(null);
         setEditingAbbrSpoken('');
         loadAbbreviations();
@@ -630,7 +677,7 @@ function AVAlertsTab() {
         throw new Error('Save failed');
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to save abbreviation' });
+      showLocalMessage(setAbbrMessage, 'error', 'Failed to save abbreviation');
     }
   };
 
@@ -643,19 +690,19 @@ function AVAlertsTab() {
       });
       
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Abbreviation deleted' });
+        showLocalMessage(setAbbrMessage, 'success', 'Abbreviation deleted');
         loadAbbreviations();
       } else {
         throw new Error('Delete failed');
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to delete abbreviation' });
+      showLocalMessage(setAbbrMessage, 'error', 'Failed to delete abbreviation');
     }
   };
 
   const addAbbreviation = async () => {
     if (!newAbbr.abbreviation.trim() || !newAbbr.spoken_as.trim()) {
-      setMessage({ type: 'error', text: 'Both fields are required' });
+      showLocalMessage(setAbbrMessage, 'error', 'Both fields are required');
       return;
     }
     
@@ -667,7 +714,7 @@ function AVAlertsTab() {
       });
       
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Abbreviation added' });
+        showLocalMessage(setAbbrMessage, 'success', 'Abbreviation added');
         setNewAbbr({ category: newAbbr.category, abbreviation: '', spoken_as: '' });
         setShowAddAbbr(false);
         loadAbbreviations();
@@ -676,7 +723,7 @@ function AVAlertsTab() {
         throw new Error(err.detail || 'Add failed');
       }
     } catch (err) {
-      setMessage({ type: 'error', text: err.message });
+      showLocalMessage(setAbbrMessage, 'error', err.message);
     }
   };
 
@@ -687,7 +734,7 @@ function AVAlertsTab() {
 
   const saveUnitPronunciation = async (cadUnitId) => {
     if (!editingSpoken.trim()) {
-      setMessage({ type: 'error', text: 'Pronunciation cannot be empty' });
+      showLocalMessage(setUnitMessage, 'error', 'Pronunciation cannot be empty');
       return;
     }
     
@@ -699,16 +746,16 @@ function AVAlertsTab() {
       });
       
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Pronunciation saved' });
+        showLocalMessage(setUnitMessage, 'success', 'Pronunciation saved');
         setEditingUnit(null);
         setEditingSpoken('');
         loadUnitMappings();
-        loadPreview(); // Refresh preview with new pronunciation
+        loadPreview();
       } else {
         throw new Error('Save failed');
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to save pronunciation' });
+      showLocalMessage(setUnitMessage, 'error', 'Failed to save pronunciation');
     }
   };
 
@@ -721,12 +768,12 @@ function AVAlertsTab() {
       if (res.ok) {
         const data = await res.json();
         setEditingSpoken(data.spoken_as);
-        setMessage({ type: 'success', text: `Regenerated: "${data.spoken_as}"` });
+        showLocalMessage(setUnitMessage, 'success', `Regenerated: "${data.spoken_as}"`);
       } else {
         throw new Error('Regenerate failed');
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to regenerate pronunciation' });
+      showLocalMessage(setUnitMessage, 'error', 'Failed to regenerate pronunciation');
     }
   };
 
@@ -740,13 +787,13 @@ function AVAlertsTab() {
       
       if (res.ok) {
         const data = await res.json();
-        setMessage({ type: 'success', text: `Marked ${data.count} units as reviewed` });
+        showLocalMessage(setUnitMessage, 'success', `Marked ${data.count} units as reviewed`);
         loadUnitMappings();
       } else {
         throw new Error('Failed');
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to mark units as reviewed' });
+      showLocalMessage(setUnitMessage, 'error', 'Failed to mark units as reviewed');
     }
   };
 
@@ -761,12 +808,6 @@ function AVAlertsTab() {
         Configure alert sounds and text-to-speech announcements for dispatch events.
         Settings apply to both browser alerts and StationBell devices.
       </p>
-
-      {message && (
-        <div className={`message ${message.type}`} style={{ marginBottom: '1rem' }}>
-          {message.text}
-        </div>
-      )}
 
       {/* 1. Master Toggles */}
       <div style={{ 
@@ -835,6 +876,7 @@ function AVAlertsTab() {
         <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
           Choose the klaxon/tone that plays before the announcement.
         </p>
+        <InlineMessage msg={soundsMessage} onDismiss={() => setSoundsMessage(null)} />
         
         {SOUND_TYPES.map(({ key, label, description }) => (
           <div 
@@ -924,6 +966,7 @@ function AVAlertsTab() {
         <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
           Select and order the fields to include in TTS announcements. Drag to reorder.
         </p>
+        <InlineMessage msg={contentMessage} onDismiss={() => setContentMessage(null)} />
         
         {/* Enabled fields - ordered list */}
         <div style={{ marginBottom: '1rem' }}>
@@ -1057,6 +1100,7 @@ function AVAlertsTab() {
         <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
           Adjust how the TTS voice sounds.
         </p>
+        <InlineMessage msg={voiceMessage} onDismiss={() => setVoiceMessage(null)} />
         
         {/* Voice Selection */}
         <div style={{ marginBottom: '1rem' }}>
@@ -1206,6 +1250,7 @@ function AVAlertsTab() {
         <p style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
           Configure how unit IDs from CAD are spoken. New units are auto-detected and flagged for review.
         </p>
+        <InlineMessage msg={unitMessage} onDismiss={() => setUnitMessage(null)} />
         
         {/* Search and filter */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
@@ -1435,6 +1480,9 @@ function AVAlertsTab() {
         
         {abbreviationsExpanded && (
           <div style={{ padding: '0 1rem 1rem 1rem', borderTop: '1px solid #e0e0e0' }}>
+            <div style={{ marginTop: '0.75rem' }}>
+              <InlineMessage msg={abbrMessage} onDismiss={() => setAbbrMessage(null)} />
+            </div>
             {/* Add new button */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem', marginBottom: '0.5rem' }}>
               <button
@@ -1613,6 +1661,7 @@ function AVAlertsTab() {
         <p style={{ color: '#4a6785', fontSize: '0.85rem', marginBottom: '1rem' }}>
           Hear how your announcement will sound with current settings.
         </p>
+        <InlineMessage msg={previewMessage} onDismiss={() => setPreviewMessage(null)} />
         
         <div style={{ 
           background: '#fff', 

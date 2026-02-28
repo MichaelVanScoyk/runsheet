@@ -224,6 +224,7 @@ def get_db(request: Request):
     try:
         yield db
     finally:
+        db.rollback()  # Clean up any uncommitted/errored transaction state for PgBouncer
         db.close()
 
 
@@ -274,6 +275,7 @@ def get_db_for_tenant(tenant_slug: str):
     try:
         yield db
     finally:
+        db.rollback()  # Clean up any uncommitted/errored transaction state for PgBouncer
         db.close()
 
 
