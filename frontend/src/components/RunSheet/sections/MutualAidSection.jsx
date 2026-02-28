@@ -272,31 +272,45 @@ export default function MutualAidSection() {
 
           {deptLoading ? (
             <div className="text-sm text-theme-hint">Loading...</div>
+          ) : selectedIds.length > 0 ? (
+            /* Show selected department with change/clear */
+            (() => {
+              const selected = departments.find(d => d.id === selectedIds[0]);
+              return selected ? (
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="px-3 py-1.5 bg-green-600 text-white rounded text-sm font-medium">
+                    {getDeptDisplay(selected)}
+                  </span>
+                  <button type="button" onClick={() => handleChange('mutual_aid_department_ids', [])}
+                    className="text-xs text-red-600 hover:underline">✕ Clear</button>
+                </div>
+              ) : null;
+            })()
           ) : (
-            <div className="flex flex-wrap gap-2 mb-2">
-              {departments.map(dept => (
-                <button
-                  key={dept.id}
-                  type="button"
-                  onClick={() => selectGivenDept(dept.id)}
-                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors border ${
-                    selectedIds.includes(dept.id)
-                      ? 'bg-green-600 text-white border-green-600'
-                      : 'bg-white text-theme-primary border-theme hover:bg-gray-100'
-                  }`}
-                >
-                  {getDeptDisplay(dept)}
-                </button>
-              ))}
+            /* Dropdown to pick */
+            <div className="mb-2">
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value === '__add__') {
+                    setAddingStation('manual'); setAddName(''); setAddStationNum('');
+                  } else if (e.target.value) {
+                    selectGivenDept(Number(e.target.value));
+                  }
+                }}
+                className="w-full md:w-80 bg-white border border-theme rounded px-3 py-2 text-theme-primary focus:border-primary-color focus:outline-none"
+              >
+                <option value="">Select station...</option>
+                {departments.map(dept => (
+                  <option key={dept.id} value={dept.id}>{getDeptDisplay(dept)}</option>
+                ))}
+                <option value="__add__">+ Add station not in list...</option>
+              </select>
             </div>
           )}
 
-          {/* Add station not in list */}
-          {addingStation === null ? (
-            <button type="button" onClick={() => { setAddingStation('manual'); setAddName(''); setAddStationNum(''); }} className="text-xs text-blue-600 hover:underline mt-1">
-              + Add station not in list
-            </button>
-          ) : (
+          {/* Inline add form */}
+          {addingStation === 'manual' && selectedIds.length === 0 && (
             <div className="flex items-end gap-2 mt-2 p-3 bg-white border border-theme rounded">
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-theme-muted">Name *</label>
