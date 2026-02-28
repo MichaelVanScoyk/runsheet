@@ -352,6 +352,7 @@ async def get_incident(
         "neris_aid_direction": getattr(incident, 'neris_aid_direction', None),
         "neris_aid_type": getattr(incident, 'neris_aid_type', None),
         "neris_aid_departments": getattr(incident, 'neris_aid_departments', None),
+        "mutual_aid_department_ids": getattr(incident, 'mutual_aid_department_ids', None),
         "neris_people_present": getattr(incident, 'neris_people_present', None),
         "neris_displaced_number": getattr(incident, 'neris_displaced_number', None),
         "neris_risk_reduction": getattr(incident, 'neris_risk_reduction', None),

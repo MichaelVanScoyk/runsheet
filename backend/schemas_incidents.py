@@ -178,7 +178,8 @@ class IncidentUpdate(BaseModel):
     # Mutual aid
     neris_aid_direction: Optional[str] = None  # GIVEN, RECEIVED, NONE
     neris_aid_type: Optional[str] = None       # AUTOMATIC, MUTUAL, OTHER
-    neris_aid_departments: Optional[List[str]] = None
+    neris_aid_departments: Optional[List[str]] = None  # Legacy: station numbers
+    mutual_aid_department_ids: Optional[List[int]] = None  # Row IDs from neris_mutual_aid_departments
     
     # People present
     neris_people_present: Optional[bool] = None

@@ -502,7 +502,8 @@ class Incident(Base):
     # =========================================================================
     neris_aid_direction = Column(Text)       # "GIVEN", "RECEIVED", "NONE"
     neris_aid_type = Column(Text)            # "AUTOMATIC", "MUTUAL", "OTHER"
-    neris_aid_departments = Column(ARRAY(Text))  # Department names
+    neris_aid_departments = Column(ARRAY(Text))  # Legacy: station numbers
+    mutual_aid_department_ids = Column(ARRAY(Integer))  # Row IDs from neris_mutual_aid_departments
     
     # =========================================================================
     # NERIS ADDITIONAL DATA
