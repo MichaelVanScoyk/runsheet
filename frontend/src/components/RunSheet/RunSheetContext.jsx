@@ -709,6 +709,28 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
     if (!incident?.id) return;
     setRestoreLoading(true);
     try {
+      // Check for manual CAD unit overrides before showing preview
+      let overrideWarning = null;
+      try {
+        const overrideRes = await fetch(`/api/incidents/${incident.id}/cad-units/overrides`);
+        const overrideData = await overrideRes.json();
+        if (overrideData.has_overrides) {
+          const unitList = overrideData.overrides.map(o => `${o.unit_id} (${o.description})`).join(', ');
+          const proceed = await confirm(
+            `⚠️ This incident has manual CAD unit edits:\n\n${unitList}\n\nReparsing from CAD will overwrite these changes. Continue to preview?`,
+            { confirmText: 'Continue', danger: true }
+          );
+          if (!proceed) {
+            setRestoreLoading(false);
+            return;
+          }
+          overrideWarning = overrideData.overrides;
+        }
+      } catch (err) {
+        // Override check failed - continue anyway, not critical
+        console.warn('Failed to check CAD unit overrides:', err);
+      }
+
       const response = await fetch(`/api/backup/preview-restore/${incident.id}`);
       const data = await response.json();
       if (data.error) {
@@ -728,6 +750,7 @@ export function RunSheetProvider({ incident, onSave, onClose, onNavigate, childr
         ...data,
         changes,
         unitChanges: data.unit_config_changes || [],
+        overrideWarning,  // Pass through for modal to display
       });
       setRestoreComplete(false);  // Reset completion state
       setShowRestoreModal(true);

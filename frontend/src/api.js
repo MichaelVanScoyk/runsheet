@@ -123,6 +123,14 @@ export const duplicateIncident = (id, targetCategory, editedBy = null) => {
   return api.post(`/incidents/${id}/duplicate`, { target_category: targetCategory }, { params });
 };
 
+// CAD Units admin editing
+export const updateCadUnits = (id, cadUnits, editedBy) => {
+  const params = { edited_by: editedBy };
+  return api.put(`/incidents/${id}/cad-units`, cadUnits, { params });
+};
+
+export const checkCadUnitOverrides = (id) => api.get(`/incidents/${id}/cad-units/overrides`);
+
 // ============================================================================
 // ATTENDANCE RECORDS (DETAIL category)
 // ============================================================================
