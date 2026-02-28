@@ -91,75 +91,98 @@ function localPartsToUtc(dateStr, timeStr) {
 }
 
 /**
- * Inline time editor: shows "MM/DD/YYYY [HH:MM:SS]"
- * Date is static label, time is editable text input.
+ * Inline time editor: shows "[MM/DD/YYYY] [HH:MM:SS]"
+ * Both date and time are editable text inputs.
+ * Date is pre-filled from existing value or incident date, rarely needs changing.
  */
 function TimeEditCell({ value, incidentDate, onChange }) {
   const localParts = utcToLocalParts(value);
-  // Use incident date as fallback when no value exists
-  const displayDate = localParts.date || incidentDate || '';
+  const defaultDate = localParts.date || incidentDate || '';
   
+  const [dateText, setDateText] = useState(defaultDate);
   const [timeText, setTimeText] = useState(localParts.time);
-  const [isValid, setIsValid] = useState(true);
+  const [dateValid, setDateValid] = useState(true);
+  const [timeValid, setTimeValid] = useState(true);
   
-  const handleBlur = () => {
-    const trimmed = timeText.trim();
+  const commitValue = (dText, tText) => {
+    const trimDate = dText.trim();
+    const trimTime = tText.trim();
     
-    // Empty = clear the time
-    if (!trimmed) {
-      if (value) onChange(null); // Only fire if was set
-      setIsValid(true);
+    // Both empty = clear
+    if (!trimTime) {
+      if (value) onChange(null);
+      setTimeValid(true);
+      setDateValid(true);
       return;
     }
     
-    // Validate format
-    const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-    if (!match) {
-      setIsValid(false);
-      return;
-    }
+    // Validate time: HH:MM:SS or HH:MM
+    const tMatch = trimTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (!tMatch) { setTimeValid(false); return; }
+    const h = parseInt(tMatch[1]), m = parseInt(tMatch[2]), s = parseInt(tMatch[3] || '0');
+    if (h > 23 || m > 59 || s > 59) { setTimeValid(false); return; }
     
-    const h = parseInt(match[1]);
-    const m = parseInt(match[2]);
-    const s = parseInt(match[3] || '0');
-    if (h > 23 || m > 59 || s > 59) {
-      setIsValid(false);
-      return;
-    }
+    // Validate date: MM/DD/YYYY
+    const dMatch = trimDate.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!dMatch) { setDateValid(false); return; }
+    const mo = parseInt(dMatch[1]), dy = parseInt(dMatch[2]);
+    if (mo < 1 || mo > 12 || dy < 1 || dy > 31) { setDateValid(false); return; }
     
-    // Normalize display to HH:MM:SS
-    const normalized = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    setTimeText(normalized);
-    setIsValid(true);
+    // Normalize displays
+    const normTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    setTimeText(normTime);
+    setTimeValid(true);
+    setDateValid(true);
     
-    // Convert to UTC using the date portion
-    const dateForConvert = displayDate;
-    const utc = localPartsToUtc(dateForConvert, normalized);
+    const utc = localPartsToUtc(trimDate, normTime);
     if (utc) {
       onChange(utc);
     } else {
-      setIsValid(false);
+      setTimeValid(false);
+    }
+  };
+  
+  const handleTimeBlur = () => commitValue(dateText, timeText);
+  const handleDateBlur = () => {
+    if (timeText.trim()) commitValue(dateText, timeText);
+    else {
+      const trimDate = dateText.trim();
+      if (trimDate) {
+        const dMatch = trimDate.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        setDateValid(!!dMatch);
+      } else {
+        setDateValid(true);
+      }
     }
   };
   
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      e.target.blur();
-    }
+    if (e.key === 'Enter') e.target.blur();
   };
   
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-[10px] text-gray-400 whitespace-nowrap">{displayDate}</span>
+    <div className="flex items-center gap-0.5">
+      <input
+        type="text"
+        value={dateText}
+        onChange={(e) => { setDateText(e.target.value); setDateValid(true); }}
+        onBlur={handleDateBlur}
+        onKeyDown={handleKeyDown}
+        className={`text-[10px] border rounded px-1 py-0.5 w-[76px] text-center font-mono text-gray-500
+          ${dateValid ? 'border-gray-200 bg-gray-50' : 'border-red-400 bg-red-50'}`}
+        maxLength={10}
+        title="Date (MM/DD/YYYY)"
+      />
       <input
         type="text"
         value={timeText}
-        onChange={(e) => { setTimeText(e.target.value); setIsValid(true); }}
-        onBlur={handleBlur}
+        onChange={(e) => { setTimeText(e.target.value); setTimeValid(true); }}
+        onBlur={handleTimeBlur}
         onKeyDown={handleKeyDown}
         className={`text-xs border rounded px-1.5 py-0.5 w-20 text-center font-mono
-          ${isValid ? 'border-gray-300 bg-white' : 'border-red-400 bg-red-50'}`}
+          ${timeValid ? 'border-gray-300 bg-white' : 'border-red-400 bg-red-50'}`}
         maxLength={8}
+        title="Time (HH:MM:SS)"
       />
     </div>
   );
