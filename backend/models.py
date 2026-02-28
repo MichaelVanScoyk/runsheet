@@ -281,6 +281,11 @@ class Incident(Base):
     # Structure: [{"unit_id": "ENG481", "time_dispatched": "...", "is_mutual_aid": false}]
     cad_units = Column(JSONB, default=[])
     
+    # Snapshot of original dispatch units - write-once at incident creation
+    # Never overwritten by update dispatches or clear reports
+    # Used for TTS preview and replaying original dispatch announcements
+    dispatched_units = Column(JSONB, default=[])
+    
     # Parsed CAD event comments with detected tactical timestamps
     # Structure: {comments: [], detected_timestamps: [], unit_crew_counts: [], parsed_at, parser_version}
     cad_event_comments = Column(JSONB, default={})

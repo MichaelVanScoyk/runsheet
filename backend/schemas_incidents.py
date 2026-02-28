@@ -258,6 +258,9 @@ class IncidentUpdate(BaseModel):
     
     # CAD units
     cad_units: Optional[List[Dict[str, Any]]] = None
+    
+    # Original dispatch units snapshot (write-once, set at incident creation)
+    dispatched_units: Optional[List[Dict[str, Any]]] = None
 
 
 # =============================================================================

@@ -525,6 +525,7 @@ class CADListener:
                     'caller_name': report.get('caller_name'),
                     'caller_phone': report.get('caller_phone'),
                     'cad_units': cad_units,
+                    'dispatched_units': cad_units,  # Write-once snapshot of original dispatch units
                 }
                 
                 if report.get('dispatch_time'):
@@ -882,6 +883,7 @@ class CADListener:
             'caller_name': report.get('caller_name'),
             'caller_phone': report.get('caller_phone'),
             'cad_units': cad_units,
+            'dispatched_units': cad_units,  # Write-once snapshot (best we have from clear)
         }
         
         if cad_units:

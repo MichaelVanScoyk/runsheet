@@ -156,7 +156,8 @@ async def get_recent_incidents_for_test(request: Request, limit: int = 5):
         results = db.execute(text("""
             SELECT id, internal_incident_number, call_category,
                    cad_event_type, cad_event_subtype, address,
-                   cross_streets, esz_box, municipality_code, cad_units,
+                   cross_streets, esz_box, municipality_code,
+                   dispatched_units, cad_units,
                    incident_date
             FROM incidents 
             WHERE cad_event_type IS NOT NULL AND deleted_at IS NULL
@@ -166,9 +167,9 @@ async def get_recent_incidents_for_test(request: Request, limit: int = 5):
         
         incidents = []
         for r in results:
-            # Extract unit IDs from cad_units JSONB
+            # Extract unit IDs from dispatched_units (original dispatch) or fall back to cad_units
             units = []
-            cad_units_raw = r[9]
+            cad_units_raw = r[9] if r[9] else r[10]
             if cad_units_raw:
                 try:
                     unit_list = cad_units_raw if isinstance(cad_units_raw, list) else __import__('json').loads(cad_units_raw)
@@ -187,7 +188,7 @@ async def get_recent_incidents_for_test(request: Request, limit: int = 5):
                 "box": r[7],
                 "municipality": r[8],
                 "units": units,
-                "incident_date": r[10].isoformat() if r[10] else None,
+                "incident_date": r[11].isoformat() if r[11] else None,
             })
         
         return {"incidents": incidents}
@@ -227,7 +228,8 @@ async def replay_incident_alert(
         db = next(get_db_for_tenant(tenant_slug))
         result = db.execute(text("""
             SELECT id, call_category, cad_event_type, cad_event_subtype,
-                   address, cross_streets, esz_box, municipality_code, cad_units,
+                   address, cross_streets, esz_box, municipality_code,
+                   dispatched_units, cad_units,
                    internal_incident_number
             FROM incidents 
             WHERE id = :incident_id AND deleted_at IS NULL
@@ -236,9 +238,12 @@ async def replay_incident_alert(
         if not result:
             raise HTTPException(status_code=404, detail="Incident not found")
         
-        # Extract unit IDs from cad_units JSONB
+        # For dispatch replay, use dispatched_units (original); for close replay, use cad_units (final)
         units = []
-        cad_units_raw = result[8]
+        if data.event_type == 'dispatch':
+            cad_units_raw = result[8] if result[8] else result[9]
+        else:
+            cad_units_raw = result[9]
         if cad_units_raw:
             try:
                 unit_list = cad_units_raw if isinstance(cad_units_raw, list) else __import__('json').loads(cad_units_raw)
@@ -246,7 +251,7 @@ async def replay_incident_alert(
             except Exception:
                 pass
         
-        incident_number = result[9]
+        incident_number = result[10]
         
     except HTTPException:
         raise
@@ -316,7 +321,7 @@ async def send_test_alert(
             db = next(get_db_for_tenant(tenant_slug))
             result = db.execute(text("""
                 SELECT cad_event_type, cad_event_subtype, address, cross_streets, 
-                       esz_box, cad_units
+                       esz_box, dispatched_units, cad_units
                 FROM incidents 
                 WHERE cad_event_type IS NOT NULL AND deleted_at IS NULL
                 ORDER BY created_at DESC 
@@ -331,7 +336,8 @@ async def send_test_alert(
                 box = box or result[4]
                 
                 if not units_due:
-                    cad_units_raw = result[5]
+                    # Use dispatched_units (original dispatch) or fall back to cad_units
+                    cad_units_raw = result[5] if result[5] else result[6]
                     if cad_units_raw:
                         try:
                             unit_list = cad_units_raw if isinstance(cad_units_raw, list) else __import__('json').loads(cad_units_raw)
@@ -478,9 +484,10 @@ async def preview_tts_settings(request: Request):
             # Actual columns: cad_event_type, cad_event_subtype, address, cross_streets, esz_box, cad_units (jsonb)
             logger.info(f"Loading recent incident for preview from tenant {tenant_slug}")
             result = db.execute(text("""
-                SELECT id, cad_event_type, cad_event_subtype, address, cross_streets, esz_box, cad_units
+                SELECT id, cad_event_type, cad_event_subtype, address, cross_streets, esz_box,
+                       dispatched_units, cad_units
                 FROM incidents 
-                WHERE cad_event_type IS NOT NULL 
+                WHERE cad_event_type IS NOT NULL AND deleted_at IS NULL
                 ORDER BY created_at DESC 
                 LIMIT 1
             """)).fetchone()
@@ -494,9 +501,9 @@ async def preview_tts_settings(request: Request):
                 cross_streets = result[4]
                 box = result[5]
                 
-                # Parse cad_units - it's a JSONB array of unit objects
-                # Format: [{"unit_id": "ENG481", ...}, ...]
-                cad_units_raw = result[6]
+                # Use dispatched_units (original dispatch snapshot) for preview
+                # Fall back to cad_units if dispatched_units not populated yet
+                cad_units_raw = result[6] if result[6] else result[7]
                 if cad_units_raw:
                     try:
                         if isinstance(cad_units_raw, list):
