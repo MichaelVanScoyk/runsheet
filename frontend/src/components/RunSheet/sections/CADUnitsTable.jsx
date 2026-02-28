@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useRunSheet } from '../RunSheetContext';
 import { useBranding } from '../../../contexts/BrandingContext';
-import { formatTimeLocal, formatDateTimeLocal } from '../../../utils/timeUtils';
+import { formatTimeLocal, formatDateTimeLocal, getStationTimezone } from '../../../utils/timeUtils';
 import { updateCadUnits } from '../../../api';
 import { useToast } from '../../../contexts/ToastContext';
 
@@ -20,24 +20,19 @@ function SortIndicator({ active, direction }) {
 }
 
 /**
- * Convert a datetime-local input value (station local) to UTC ISO string.
- * datetime-local gives us "YYYY-MM-DDTHH:MM" in the browser's local time,
- * but we need it in station timezone → UTC.
+ * Convert a datetime-local input value + seconds to UTC ISO string.
+ * datetime-local gives "YYYY-MM-DDTHH:MM", seconds provided separately.
  */
-function localInputToUtc(localValue, stationTimezone = 'America/New_York') {
+function localInputToUtc(localValue, seconds = 0) {
   if (!localValue) return null;
   
-  // Build a date string that's explicitly in the station timezone
-  // datetime-local gives us "2025-01-15T14:23" format
+  const stationTimezone = getStationTimezone();
   const parts = localValue.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
   if (!parts) return null;
   
   const [, year, month, day, hour, minute] = parts;
+  const sec = Math.max(0, Math.min(59, parseInt(seconds) || 0));
   
-  // Create date in station timezone using Intl to find the UTC offset
-  const stationDate = new Date(`${year}-${month}-${day}T${hour}:${minute}:00`);
-  
-  // Use a trick: format the same instant in both UTC and station TZ to find offset
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: stationTimezone,
     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -45,14 +40,12 @@ function localInputToUtc(localValue, stationTimezone = 'America/New_York') {
     hour12: false,
   });
   
-  // Try different UTC times until the station-local representation matches
-  // Simple approach: assume the input IS in station time, compute UTC
+  // Start with UTC guess, then correct for timezone offset
   const tempDate = new Date(Date.UTC(
     parseInt(year), parseInt(month) - 1, parseInt(day),
-    parseInt(hour), parseInt(minute), 0
+    parseInt(hour), parseInt(minute), sec
   ));
   
-  // Get what this UTC time looks like in station timezone
   const stationParts = formatter.formatToParts(tempDate);
   const get = (type) => stationParts.find(p => p.type === type)?.value || '00';
   const stationHour = parseInt(get('hour'));
@@ -60,38 +53,39 @@ function localInputToUtc(localValue, stationTimezone = 'America/New_York') {
   const inputHour = parseInt(hour);
   const inputMinute = parseInt(minute);
   
-  // Calculate the offset (station_displayed - input_desired = adjustment needed)
   let hourDiff = stationHour - inputHour;
-  // Handle day boundary
   if (hourDiff > 12) hourDiff -= 24;
   if (hourDiff < -12) hourDiff += 24;
   
-  // Adjust: subtract the difference to get the correct UTC
   const corrected = new Date(tempDate.getTime() - hourDiff * 3600000 - (stationMinute - inputMinute) * 60000);
   
   return corrected.toISOString();
 }
 
 /**
- * Convert UTC ISO string to datetime-local input value in station timezone.
+ * Convert UTC ISO string to {dateTime, seconds} for the split inputs.
+ * Returns { dateTime: "YYYY-MM-DDTHH:MM", seconds: "SS" }
  */
-function utcToLocalInput(isoString, stationTimezone = 'America/New_York') {
-  if (!isoString) return '';
+function utcToLocalParts(isoString) {
+  if (!isoString) return { dateTime: '', seconds: '00' };
   const date = new Date(isoString);
-  if (isNaN(date)) return '';
+  if (isNaN(date)) return { dateTime: '', seconds: '00' };
   
+  const stationTimezone = getStationTimezone();
   const options = {
     timeZone: stationTimezone,
     year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
     hour12: false,
   };
   
   const parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(date);
   const get = (type) => parts.find(p => p.type === type)?.value || '00';
   
-  // datetime-local format: YYYY-MM-DDTHH:MM
-  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
+  return {
+    dateTime: `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`,
+    seconds: get('second'),
+  };
 }
 
 
@@ -188,12 +182,10 @@ export default function CADUnitsTable() {
   
   const handleUnlockToggle = () => {
     if (!isEditing) {
-      // Opening edit: clone current units
       setEditedUnits(JSON.parse(JSON.stringify(formData.cad_units || [])));
       setShowAddRow(false);
       setNewUnitId('');
     } else {
-      // Closing edit: discard changes
       setEditedUnits(null);
       setShowAddRow(false);
       setNewUnitId('');
@@ -201,12 +193,42 @@ export default function CADUnitsTable() {
     toggleUnlock('cad_units');
   };
   
-  const handleTimeChange = (unitIndex, field, localValue) => {
+  /**
+   * Handle datetime-local change (date + HH:MM portion).
+   * Preserves existing seconds from the current value.
+   */
+  const handleDateTimeChange = (unitIndex, field, localValue) => {
     if (!editedUnits) return;
     const updated = [...editedUnits];
+    const currentParts = utcToLocalParts(updated[unitIndex][field]);
+    const seconds = currentParts.seconds || '00';
+    
     updated[unitIndex] = {
       ...updated[unitIndex],
-      [field]: localValue ? localInputToUtc(localValue) : null,
+      [field]: localValue ? localInputToUtc(localValue, parseInt(seconds)) : null,
+      source: updated[unitIndex].source === 'ADMIN_OVERRIDE' 
+        ? 'ADMIN_OVERRIDE' 
+        : 'ADMIN_TIMES_MODIFIED',
+    };
+    setEditedUnits(updated);
+  };
+  
+  /**
+   * Handle seconds change. Preserves existing date/HH:MM from the current value.
+   */
+  const handleSecondsChange = (unitIndex, field, secondsValue) => {
+    if (!editedUnits) return;
+    const updated = [...editedUnits];
+    const currentParts = utcToLocalParts(updated[unitIndex][field]);
+    
+    // If no datetime set yet, can't just set seconds alone
+    if (!currentParts.dateTime) return;
+    
+    const sec = Math.max(0, Math.min(59, parseInt(secondsValue) || 0));
+    
+    updated[unitIndex] = {
+      ...updated[unitIndex],
+      [field]: localInputToUtc(currentParts.dateTime, sec),
       source: updated[unitIndex].source === 'ADMIN_OVERRIDE' 
         ? 'ADMIN_OVERRIDE' 
         : 'ADMIN_TIMES_MODIFIED',
@@ -223,14 +245,13 @@ export default function CADUnitsTable() {
   const handleAddUnit = () => {
     if (!newUnitId || !editedUnits) return;
     
-    // Look up apparatus info
     const app = apparatus.find(a => a.unit_designator === newUnitId);
     
     const newUnit = {
       unit_id: newUnitId,
       station: null,
       agency: null,
-      is_mutual_aid: app ? false : true,  // If found in our apparatus, it's ours
+      is_mutual_aid: app ? false : true,
       apparatus_id: app?.id || null,
       unit_category: app?.unit_category || null,
       counts_for_response_times: app?.counts_for_response_times ?? false,
@@ -254,10 +275,8 @@ export default function CADUnitsTable() {
     try {
       await updateCadUnits(incident.id, editedUnits, userSession.personnel_id);
       
-      // Update formData with new units
       setFormData(prev => ({ ...prev, cad_units: editedUnits }));
       
-      // Re-fetch incident to get recalculated times
       const response = await fetch(`/api/incidents/${incident.id}`);
       const refreshed = await response.json();
       
@@ -270,7 +289,6 @@ export default function CADUnitsTable() {
         time_last_cleared: refreshed.time_last_cleared || '',
       }));
       
-      // Exit edit mode
       setEditedUnits(null);
       toggleUnlock('cad_units');
       toast.success('CAD units updated');
@@ -288,7 +306,6 @@ export default function CADUnitsTable() {
     return JSON.stringify(editedUnits) !== JSON.stringify(formData.cad_units || []);
   }, [editedUnits, formData.cad_units]);
   
-  // Get apparatus options for "Add Unit" dropdown (exclude already-present units)
   const availableApparatus = useMemo(() => {
     const presentIds = new Set(displayUnits.map(u => u.unit_id));
     return apparatus
@@ -311,7 +328,6 @@ export default function CADUnitsTable() {
       <div className="flex items-center justify-between mb-2">
         <h4 className="text-accent-red text-sm font-semibold flex items-center gap-1.5">
           CAD Units ({displayUnits.length})
-          {/* Lock/unlock for admin */}
           {incident && (
             isAdmin ? (
               <button
@@ -328,7 +344,6 @@ export default function CADUnitsTable() {
           )}
         </h4>
         <div className="flex items-center gap-2">
-          {/* Add Unit button - only when editing */}
           {isEditing && (
             <button
               type="button"
@@ -339,20 +354,16 @@ export default function CADUnitsTable() {
               +
             </button>
           )}
-          {/* Save / Cancel when editing with changes */}
           {isEditing && hasChanges && (
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="text-xs bg-blue-600 text-white px-2.5 py-0.5 rounded hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50"
-              >
-                {saving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="text-xs bg-blue-600 text-white px-2.5 py-0.5 rounded hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
           )}
-          {/* Sort controls */}
           {sortingEnabled && sortConfig.field && (
             <button
               onClick={() => setSortConfig({ field: null, direction: 'asc' })}
@@ -423,7 +434,6 @@ export default function CADUnitsTable() {
                   </span>
                 </th>
               ))}
-              {/* Delete column when editing */}
               {isEditing && <th className="px-2 py-1.5 border-b border-theme w-8"></th>}
             </tr>
           </thead>
@@ -436,20 +446,15 @@ export default function CADUnitsTable() {
               const isLastCleared = timesMatch(unit.time_cleared, formData.time_last_cleared);
               const highlightClass = 'text-green-700 font-semibold';
               
-              // Override indicator
               const isOverride = unit.source === 'ADMIN_OVERRIDE' || unit.source === 'ADMIN_TIMES_MODIFIED';
               
-              // Row styling
               let rowClass = unit.is_mutual_aid 
                 ? 'bg-blue-50 border-x-2 border-blue-400' 
                 : 'bg-green-50 border-x-2 border-green-400';
               if (isOverride) {
-                rowClass = unit.is_mutual_aid
-                  ? 'bg-yellow-50 border-x-2 border-yellow-400'
-                  : 'bg-yellow-50 border-x-2 border-yellow-400';
+                rowClass = 'bg-yellow-50 border-x-2 border-yellow-400';
               }
               
-              // Find actual index in editedUnits (may differ from sorted display)
               const editIndex = isEditing && editedUnits
                 ? editedUnits.findIndex(u => u.unit_id === unit.unit_id)
                 : idx;
@@ -470,7 +475,6 @@ export default function CADUnitsTable() {
                     )}
                   </td>
                   
-                  {/* Time cells: editable when unlocked, display when locked */}
                   {['time_dispatched', 'time_enroute', 'time_arrived', 'time_cleared'].map(field => {
                     const isHighlight = (
                       (field === 'time_dispatched' && isFirstDispatch) ||
@@ -480,15 +484,29 @@ export default function CADUnitsTable() {
                     );
                     
                     if (isEditing) {
+                      const localParts = utcToLocalParts(unit[field]);
                       return (
                         <td key={field} className="px-1 py-1 border-b border-theme">
-                          <input
-                            type="datetime-local"
-                            value={utcToLocalInput(unit[field])}
-                            onChange={(e) => handleTimeChange(editIndex, field, e.target.value)}
-                            className="text-xs w-full border border-gray-300 rounded px-1 py-0.5 bg-white"
-                            step="60"
-                          />
+                          <div className="flex items-center gap-0.5">
+                            <input
+                              type="datetime-local"
+                              value={localParts.dateTime}
+                              onChange={(e) => handleDateTimeChange(editIndex, field, e.target.value)}
+                              className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white min-w-0 flex-1"
+                              step="60"
+                            />
+                            <span className="text-xs text-gray-400">:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="59"
+                              value={localParts.dateTime ? parseInt(localParts.seconds) : ''}
+                              onChange={(e) => handleSecondsChange(editIndex, field, e.target.value)}
+                              disabled={!localParts.dateTime}
+                              className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white w-10 text-center disabled:opacity-30"
+                              title="Seconds"
+                            />
+                          </div>
                         </td>
                       );
                     }
@@ -507,7 +525,6 @@ export default function CADUnitsTable() {
                     {unit.is_mutual_aid ? 'Mutual Aid' : `Station ${branding.stationNumber || ''}`}
                   </td>
                   
-                  {/* Delete button when editing */}
                   {isEditing && (
                     <td className="px-1 py-1.5 border-b border-theme text-center">
                       <button
