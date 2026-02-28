@@ -165,42 +165,8 @@ class GisImportConfig(Base):
 
 
 # =============================================================================
-# MUTUAL AID STATIONS
+# MUTUAL AID STATIONS — REMOVED
+# Table dropped in migration 002_neris_mutual_aid.sql
+# Replaced by neris_mutual_aid_departments + neris_mutual_aid_units
+# See models_mutual_aid.py
 # =============================================================================
-
-class MutualAidStation(Base):
-    """
-    Neighboring fire/EMS stations used as routing origins in the route planner.
-    
-    Populated from USGS/HIFLD fire station dataset (tenant picks relevant ones)
-    and/or manual entry. The mutual_aid_station entry in map_layers provides
-    display config (icon, color, visibility toggle) only — no features are stored
-    in map_features for this layer type. This table is the single source of truth.
-    
-    Apparatus JSONB stores known units with physical specs for route hazard checks:
-    [{"name": "Engine 33", "type": "engine", "clearance_height_ft": 11.0, "gross_weight_tons": 30.0}]
-    When empty, route checks use conservative defaults per apparatus type.
-    
-    Relationship types: 'mutual_aid', 'automatic_aid', 'special_service', 'other'
-    """
-    __tablename__ = "mutual_aid_stations"
-
-    id = Column(Integer, primary_key=True)
-    name = Column(Text, nullable=False)                 # "Elverson Fire Co Station 33"
-    department = Column(Text)
-    station_number = Column(Text)
-    address = Column(Text)
-    latitude = Column(Numeric, nullable=False)
-    longitude = Column(Numeric, nullable=False)
-    # geometry column exists in DB as GEOMETRY(Point, 4326)
-    # Accessed via raw SQL for spatial operations
-    dispatch_phone = Column(Text)
-    radio_channel = Column(Text)
-    apparatus = Column(JSONB, default=[])
-    external_id = Column(Text)                          # HIFLD/USGS feature ID for dedup
-    import_source = Column(Text)                        # "hifld", "usgs", "manual"
-    relationship = Column(Text, default='mutual_aid')
-    notes = Column(Text)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
-    updated_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())

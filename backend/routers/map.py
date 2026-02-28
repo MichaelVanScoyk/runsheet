@@ -10,7 +10,6 @@ Phase 3 - Layers & Features (read):
     GET  /api/map/layers                 - List layers with feature counts
     GET  /api/map/layers/{id}/features   - List features in a layer (bbox filter)
     GET  /api/map/layers/{id}/features/geojson - GeoJSON FeatureCollection for map
-    GET  /api/map/mutual-aid/stations    - List mutual aid stations
 
 Phase 4 - Feature CRUD & Address Notes:
     POST   /api/map/layers/{id}/features - Create feature
@@ -1147,54 +1146,10 @@ async def get_batch_clustered_features(
 
 
 # =============================================================================
-# MUTUAL AID STATIONS — READ ONLY (Phase 3, display on map)
-# Full CRUD in Phase 6
+# MUTUAL AID STATIONS — REMOVED
+# Table dropped in migration 002_neris_mutual_aid.sql
+# Replaced by neris_mutual_aid router (routers/neris_mutual_aid.py)
 # =============================================================================
-
-@router.get("/mutual-aid/stations")
-async def list_mutual_aid_stations(
-    active_only: bool = True,
-    db: Session = Depends(get_db),
-):
-    """List mutual aid stations for map display."""
-    active_filter = "WHERE is_active = true" if active_only else ""
-
-    try:
-        result = db.execute(text(f"""
-            SELECT id, name, department, station_number, address,
-                   latitude, longitude, dispatch_phone, radio_channel,
-                   apparatus, external_id, import_source, relationship,
-                   notes, is_active, created_at
-            FROM mutual_aid_stations
-            {active_filter}
-            ORDER BY name
-        """))
-
-        stations = []
-        for row in result:
-            stations.append({
-                "id": row[0],
-                "name": row[1],
-                "department": row[2],
-                "station_number": row[3],
-                "address": row[4],
-                "latitude": float(row[5]) if row[5] else None,
-                "longitude": float(row[6]) if row[6] else None,
-                "dispatch_phone": row[7],
-                "radio_channel": row[8],
-                "apparatus": row[9] or [],
-                "external_id": row[10],
-                "import_source": row[11],
-                "relationship": row[12],
-                "notes": row[13],
-                "is_active": row[14],
-                "created_at": row[15].isoformat() if row[15] else None,
-            })
-
-        return {"stations": stations}
-    except Exception as e:
-        logger.error(f"Failed to list mutual aid stations: {e}")
-        raise HTTPException(status_code=500, detail="Failed to load stations")
 
 
 # =============================================================================

@@ -56,6 +56,7 @@ from routers import analytics_personnel, alert_audio, tts, devices
 from routers import help as help_router
 from routers import location as location_router
 from routers import map as map_router
+from routers import neris_mutual_aid as neris_mutual_aid_router
 from routers.reports import router as reports_router
 from database import engine, Base
 from master_database import MasterSessionLocal
@@ -449,6 +450,7 @@ app.include_router(devices.router, prefix="/api/av-alerts", tags=["Devices"])  #
 app.include_router(help_router.router, prefix="/api/help", tags=["Help"])  # Help system: /api/help
 app.include_router(location_router.router, prefix="/api/location", tags=["Location"])  # Location services: /api/location
 app.include_router(map_router.router, prefix="/api/map", tags=["Map"])  # Map platform: /api/map
+app.include_router(neris_mutual_aid_router.router, prefix="/api/admin/neris-mutual-aid", tags=["NERIS Mutual Aid"])  # Mutual aid: /api/admin/neris-mutual-aid
 
 @app.get("/")
 async def root():
