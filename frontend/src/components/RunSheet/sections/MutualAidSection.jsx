@@ -254,84 +254,83 @@ export default function MutualAidSection() {
       {/* ================================================================= */}
       {direction === 'GIVEN' && (
         <div className="pt-3 border-t border-theme-light">
-          <div className="mb-4">
-            <label className="text-theme-muted text-xs">Aid Type</label>
-            <select
-              value={formData.neris_aid_type || ''}
-              onChange={(e) => handleChange('neris_aid_type', e.target.value || null)}
-              className="w-full md:w-64 bg-white border border-theme rounded px-3 py-2 text-theme-primary focus:border-primary-color focus:outline-none"
-            >
-              <option value="">Select type...</option>
-              <option value="AUTOMATIC">Automatic Aid</option>
-              <option value="MUTUAL">Mutual Aid</option>
-              <option value="OTHER">Other</option>
-            </select>
-          </div>
-
-          <label className="text-theme-muted text-xs mb-2 block">Station We Assisted</label>
-
-          {deptLoading ? (
-            <div className="text-sm text-theme-hint">Loading...</div>
-          ) : selectedIds.length > 0 ? (
-            /* Show selected department with change/clear */
-            (() => {
-              const selected = departments.find(d => d.id === selectedIds[0]);
-              return selected ? (
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-3 py-1.5 bg-green-600 text-white rounded text-sm font-medium">
-                    {getDeptDisplay(selected)}
-                  </span>
-                  <button type="button" onClick={() => handleChange('mutual_aid_department_ids', [])}
-                    className="text-xs text-red-600 hover:underline">✕ Clear</button>
-                </div>
-              ) : null;
-            })()
-          ) : (
-            /* Dropdown to pick */
-            <div className="mb-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-theme-muted text-xs">Aid Type</label>
               <select
-                value=""
-                onChange={(e) => {
-                  if (e.target.value === '__add__') {
-                    setAddingStation('manual'); setAddName(''); setAddStationNum('');
-                  } else if (e.target.value) {
-                    selectGivenDept(Number(e.target.value));
-                  }
-                }}
-                className="w-full md:w-80 bg-white border border-theme rounded px-3 py-2 text-theme-primary focus:border-primary-color focus:outline-none"
+                value={formData.neris_aid_type || ''}
+                onChange={(e) => handleChange('neris_aid_type', e.target.value || null)}
+                className="w-full bg-white border border-theme rounded px-3 py-1.5 text-sm text-theme-primary focus:border-primary-color focus:outline-none"
               >
-                <option value="">Select station...</option>
-                {departments.map(dept => (
-                  <option key={dept.id} value={dept.id}>{getDeptDisplay(dept)}</option>
-                ))}
-                <option value="__add__">+ Add station not in list...</option>
+                <option value="">Select type...</option>
+                <option value="AUTOMATIC">Automatic Aid</option>
+                <option value="MUTUAL">Mutual Aid</option>
+                <option value="OTHER">Other</option>
               </select>
             </div>
-          )}
+
+            <div>
+              <label className="text-theme-muted text-xs">Station We Assisted</label>
+              {deptLoading ? (
+                <div className="text-sm text-theme-hint py-1">Loading...</div>
+              ) : selectedIds.length > 0 ? (
+                (() => {
+                  const selected = departments.find(d => d.id === selectedIds[0]);
+                  return selected ? (
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1.5 bg-green-600 text-white rounded text-sm font-medium">
+                        {getDeptDisplay(selected)}
+                      </span>
+                      <button type="button" onClick={() => handleChange('mutual_aid_department_ids', [])}
+                        className="text-xs text-red-600 hover:underline">✕</button>
+                    </div>
+                  ) : null;
+                })()
+              ) : (
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value === '__add__') {
+                      setAddingStation('manual'); setAddName(''); setAddStationNum('');
+                    } else if (e.target.value) {
+                      selectGivenDept(Number(e.target.value));
+                    }
+                  }}
+                  className="w-full bg-white border border-theme rounded px-3 py-1.5 text-sm text-theme-primary focus:border-primary-color focus:outline-none"
+                >
+                  <option value="">Select station...</option>
+                  {departments.map(dept => (
+                    <option key={dept.id} value={dept.id}>{getDeptDisplay(dept)}</option>
+                  ))}
+                  <option value="__add__">+ Add station not in list...</option>
+                </select>
+              )}
+            </div>
+          </div>
 
           {/* Inline add form */}
           {addingStation === 'manual' && selectedIds.length === 0 && (
-            <div className="flex items-end gap-2 mt-2 p-3 bg-white border border-theme rounded">
+            <div className="flex flex-wrap items-end gap-2 mt-2 p-2 bg-white border border-theme rounded text-sm">
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-theme-muted">Name *</label>
                 <input value={addName} onChange={(e) => setAddName(e.target.value)}
-                  className="bg-white border border-theme rounded px-2 py-1 text-sm w-48 focus:border-primary-color focus:outline-none" />
+                  className="bg-white border border-theme rounded px-2 py-1 text-sm w-44 focus:border-primary-color focus:outline-none" />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-theme-muted">Station #</label>
+                <label className="text-xs text-theme-muted">Stn #</label>
                 <input value={addStationNum} onChange={(e) => setAddStationNum(e.target.value)}
-                  className="bg-white border border-theme rounded px-2 py-1 text-sm w-20 focus:border-primary-color focus:outline-none" />
+                  className="bg-white border border-theme rounded px-2 py-1 text-sm w-16 focus:border-primary-color focus:outline-none" />
               </div>
               <button type="button" onClick={handleAddStation} disabled={!addName.trim() || addSaving}
-                className="px-3 py-1 bg-blue-600 text-white text-sm rounded disabled:opacity-50">
-                {addSaving ? '...' : 'Add & Select'}
+                className="px-2 py-1 bg-blue-600 text-white text-sm rounded disabled:opacity-50">
+                {addSaving ? '...' : 'Add'}
               </button>
               <button type="button" onClick={() => setAddingStation(null)}
-                className="px-3 py-1 text-sm text-theme-muted hover:text-theme-primary">Cancel</button>
+                className="px-2 py-1 text-xs text-theme-muted hover:text-theme-primary">Cancel</button>
             </div>
           )}
 
-          <p className="text-xs text-theme-hint mt-3">✓ We assisted another station - they track damage for their report</p>
+          <p className="text-xs text-theme-hint mt-2">✓ We assisted another station - they track damage for their report</p>
         </div>
       )}
 
