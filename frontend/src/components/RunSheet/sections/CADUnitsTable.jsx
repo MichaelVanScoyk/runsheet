@@ -1,7 +1,7 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { useRunSheet } from '../RunSheetContext';
 import { useBranding } from '../../../contexts/BrandingContext';
-import { formatTimeLocal, formatDateTimeLocal, getStationTimezone } from '../../../utils/timeUtils';
+import { formatTimeLocal, getStationTimezone } from '../../../utils/timeUtils';
 import { updateCadUnits } from '../../../api';
 import { useToast } from '../../../contexts/ToastContext';
 
@@ -20,72 +20,149 @@ function SortIndicator({ active, direction }) {
 }
 
 /**
- * Convert a datetime-local input value + seconds to UTC ISO string.
- * datetime-local gives "YYYY-MM-DDTHH:MM", seconds provided separately.
+ * Convert UTC ISO string to station-local parts: { date: "MM/DD/YYYY", time: "HH:MM:SS" }
  */
-function localInputToUtc(localValue, seconds = 0) {
-  if (!localValue) return null;
+function utcToLocalParts(isoString) {
+  if (!isoString) return { date: '', time: '' };
+  const date = new Date(isoString);
+  if (isNaN(date)) return { date: '', time: '' };
   
-  const stationTimezone = getStationTimezone();
-  const parts = localValue.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
-  if (!parts) return null;
+  const tz = getStationTimezone();
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
   
-  const [, year, month, day, hour, minute] = parts;
-  const sec = Math.max(0, Math.min(59, parseInt(seconds) || 0));
+  const get = (type) => parts.find(p => p.type === type)?.value || '00';
   
+  return {
+    date: `${get('month')}/${get('day')}/${get('year')}`,
+    time: `${get('hour')}:${get('minute')}:${get('second')}`,
+  };
+}
+
+/**
+ * Convert a date string (MM/DD/YYYY) + time string (HH:MM:SS) in station timezone to UTC ISO.
+ */
+function localPartsToUtc(dateStr, timeStr) {
+  if (!dateStr || !timeStr) return null;
+  
+  // Parse time - accept HH:MM:SS or HH:MM
+  const timeParts = timeStr.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!timeParts) return null;
+  
+  const [, hStr, mStr, sStr] = timeParts;
+  const h = parseInt(hStr);
+  const m = parseInt(mStr);
+  const s = parseInt(sStr || '0');
+  if (h > 23 || m > 59 || s > 59) return null;
+  
+  // Parse date
+  const dateParts = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!dateParts) return null;
+  const [, mo, dy, yr] = dateParts;
+  
+  const tz = getStationTimezone();
   const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: stationTimezone,
+    timeZone: tz,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
     hour12: false,
   });
   
-  // Start with UTC guess, then correct for timezone offset
+  // Start with UTC guess, correct for offset
   const tempDate = new Date(Date.UTC(
-    parseInt(year), parseInt(month) - 1, parseInt(day),
-    parseInt(hour), parseInt(minute), sec
+    parseInt(yr), parseInt(mo) - 1, parseInt(dy), h, m, s
   ));
   
   const stationParts = formatter.formatToParts(tempDate);
   const get = (type) => stationParts.find(p => p.type === type)?.value || '00';
   const stationHour = parseInt(get('hour'));
   const stationMinute = parseInt(get('minute'));
-  const inputHour = parseInt(hour);
-  const inputMinute = parseInt(minute);
   
-  let hourDiff = stationHour - inputHour;
+  let hourDiff = stationHour - h;
   if (hourDiff > 12) hourDiff -= 24;
   if (hourDiff < -12) hourDiff += 24;
   
-  const corrected = new Date(tempDate.getTime() - hourDiff * 3600000 - (stationMinute - inputMinute) * 60000);
-  
+  const corrected = new Date(tempDate.getTime() - hourDiff * 3600000 - (stationMinute - m) * 60000);
   return corrected.toISOString();
 }
 
 /**
- * Convert UTC ISO string to {dateTime, seconds} for the split inputs.
- * Returns { dateTime: "YYYY-MM-DDTHH:MM", seconds: "SS" }
+ * Inline time editor: shows "MM/DD/YYYY [HH:MM:SS]"
+ * Date is static label, time is editable text input.
  */
-function utcToLocalParts(isoString) {
-  if (!isoString) return { dateTime: '', seconds: '00' };
-  const date = new Date(isoString);
-  if (isNaN(date)) return { dateTime: '', seconds: '00' };
+function TimeEditCell({ value, incidentDate, onChange }) {
+  const localParts = utcToLocalParts(value);
+  // Use incident date as fallback when no value exists
+  const displayDate = localParts.date || incidentDate || '';
   
-  const stationTimezone = getStationTimezone();
-  const options = {
-    timeZone: stationTimezone,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false,
+  const [timeText, setTimeText] = useState(localParts.time);
+  const [isValid, setIsValid] = useState(true);
+  
+  const handleBlur = () => {
+    const trimmed = timeText.trim();
+    
+    // Empty = clear the time
+    if (!trimmed) {
+      if (value) onChange(null); // Only fire if was set
+      setIsValid(true);
+      return;
+    }
+    
+    // Validate format
+    const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (!match) {
+      setIsValid(false);
+      return;
+    }
+    
+    const h = parseInt(match[1]);
+    const m = parseInt(match[2]);
+    const s = parseInt(match[3] || '0');
+    if (h > 23 || m > 59 || s > 59) {
+      setIsValid(false);
+      return;
+    }
+    
+    // Normalize display to HH:MM:SS
+    const normalized = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    setTimeText(normalized);
+    setIsValid(true);
+    
+    // Convert to UTC using the date portion
+    const dateForConvert = displayDate;
+    const utc = localPartsToUtc(dateForConvert, normalized);
+    if (utc) {
+      onChange(utc);
+    } else {
+      setIsValid(false);
+    }
   };
   
-  const parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(date);
-  const get = (type) => parts.find(p => p.type === type)?.value || '00';
-  
-  return {
-    dateTime: `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`,
-    seconds: get('second'),
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.target.blur();
+    }
   };
+  
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-[10px] text-gray-400 whitespace-nowrap">{displayDate}</span>
+      <input
+        type="text"
+        value={timeText}
+        onChange={(e) => { setTimeText(e.target.value); setIsValid(true); }}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className={`text-xs border rounded px-1.5 py-0.5 w-20 text-center font-mono
+          ${isValid ? 'border-gray-300 bg-white' : 'border-red-400 bg-red-50'}`}
+        maxLength={8}
+      />
+    </div>
+  );
 }
 
 
@@ -97,7 +174,7 @@ export default function CADUnitsTable() {
   const branding = useBranding();
   const toast = useToast();
   const [sortConfig, setSortConfig] = useState({ field: null, direction: 'asc' });
-  const [editedUnits, setEditedUnits] = useState(null); // null = not editing
+  const [editedUnits, setEditedUnits] = useState(null);
   const [saving, setSaving] = useState(false);
   const [showAddRow, setShowAddRow] = useState(false);
   const [newUnitId, setNewUnitId] = useState('');
@@ -105,12 +182,10 @@ export default function CADUnitsTable() {
   const isAdmin = userSession?.role === 'ADMIN';
   const isEditing = unlockedFields['cad_units'] === true;
   
-  // Units to display: edited copy when editing, formData when not
   const displayUnits = isEditing && editedUnits !== null ? editedUnits : (formData.cad_units || []);
   
   if (displayUnits.length === 0 && !isEditing) return null;
   
-  // Enable sorting when more than 3 units and not editing
   const sortingEnabled = displayUnits.length > 3 && !isEditing;
   
   const formatTime = (isoString) => {
@@ -118,7 +193,20 @@ export default function CADUnitsTable() {
     return formatTimeLocal(isoString, true) || '-';
   };
   
-  // Check if a unit's time matches the incident metric time
+  // Get incident date in MM/DD/YYYY format for the edit cells
+  const incidentDate = useMemo(() => {
+    // Try to get from first unit's dispatch time, or from incident_date
+    const firstDispatch = (formData.cad_units || []).find(u => u.time_dispatched);
+    if (firstDispatch) {
+      return utcToLocalParts(firstDispatch.time_dispatched).date;
+    }
+    if (formData.incident_date) {
+      const parts = formData.incident_date.split('-');
+      if (parts.length === 3) return `${parts[1]}/${parts[2]}/${parts[0]}`;
+    }
+    return '';
+  }, [formData.cad_units, formData.incident_date]);
+  
   const timesMatch = (unitTime, metricTime) => {
     if (!unitTime || !metricTime) return false;
     const normalizeTime = (t) => {
@@ -132,7 +220,6 @@ export default function CADUnitsTable() {
     return normalizeTime(unitTime) === normalizeTime(metricTime);
   };
   
-  // Handle sort
   const handleSort = (field) => {
     if (!sortingEnabled) return;
     setSortConfig(prev => {
@@ -144,7 +231,6 @@ export default function CADUnitsTable() {
     });
   };
   
-  // Sorted units
   const sortedUnits = useMemo(() => {
     if (!sortConfig.field || !sortingEnabled) return displayUnits;
     
@@ -193,42 +279,12 @@ export default function CADUnitsTable() {
     toggleUnlock('cad_units');
   };
   
-  /**
-   * Handle datetime-local change (date + HH:MM portion).
-   * Preserves existing seconds from the current value.
-   */
-  const handleDateTimeChange = (unitIndex, field, localValue) => {
+  const handleTimeChange = (unitIndex, field, utcValue) => {
     if (!editedUnits) return;
     const updated = [...editedUnits];
-    const currentParts = utcToLocalParts(updated[unitIndex][field]);
-    const seconds = currentParts.seconds || '00';
-    
     updated[unitIndex] = {
       ...updated[unitIndex],
-      [field]: localValue ? localInputToUtc(localValue, parseInt(seconds)) : null,
-      source: updated[unitIndex].source === 'ADMIN_OVERRIDE' 
-        ? 'ADMIN_OVERRIDE' 
-        : 'ADMIN_TIMES_MODIFIED',
-    };
-    setEditedUnits(updated);
-  };
-  
-  /**
-   * Handle seconds change. Preserves existing date/HH:MM from the current value.
-   */
-  const handleSecondsChange = (unitIndex, field, secondsValue) => {
-    if (!editedUnits) return;
-    const updated = [...editedUnits];
-    const currentParts = utcToLocalParts(updated[unitIndex][field]);
-    
-    // If no datetime set yet, can't just set seconds alone
-    if (!currentParts.dateTime) return;
-    
-    const sec = Math.max(0, Math.min(59, parseInt(secondsValue) || 0));
-    
-    updated[unitIndex] = {
-      ...updated[unitIndex],
-      [field]: localInputToUtc(currentParts.dateTime, sec),
+      [field]: utcValue,
       source: updated[unitIndex].source === 'ADMIN_OVERRIDE' 
         ? 'ADMIN_OVERRIDE' 
         : 'ADMIN_TIMES_MODIFIED',
@@ -238,13 +294,11 @@ export default function CADUnitsTable() {
   
   const handleRemoveUnit = (unitIndex) => {
     if (!editedUnits) return;
-    const updated = editedUnits.filter((_, i) => i !== unitIndex);
-    setEditedUnits(updated);
+    setEditedUnits(editedUnits.filter((_, i) => i !== unitIndex));
   };
   
   const handleAddUnit = () => {
     if (!newUnitId || !editedUnits) return;
-    
     const app = apparatus.find(a => a.unit_designator === newUnitId);
     
     const newUnit = {
@@ -294,8 +348,7 @@ export default function CADUnitsTable() {
       toast.success('CAD units updated');
     } catch (err) {
       console.error('Failed to save CAD units:', err);
-      const msg = err.response?.data?.detail || 'Failed to save CAD units';
-      toast.error(msg);
+      toast.error(err.response?.data?.detail || 'Failed to save CAD units');
     } finally {
       setSaving(false);
     }
@@ -313,7 +366,6 @@ export default function CADUnitsTable() {
       .sort((a, b) => a.unit_designator.localeCompare(b.unit_designator));
   }, [apparatus, displayUnits]);
   
-  // Column definitions
   const columns = [
     { key: 'unit_id', label: 'Unit' },
     { key: 'time_dispatched', label: 'Dispatched' },
@@ -375,7 +427,6 @@ export default function CADUnitsTable() {
         </div>
       </div>
       
-      {/* Add Unit row */}
       {isEditing && showAddRow && (
         <div className="flex items-center gap-2 mb-2 p-2 bg-yellow-50 border border-yellow-300 rounded text-sm">
           <label className="text-xs text-gray-600 font-medium">Add Unit:</label>
@@ -484,29 +535,13 @@ export default function CADUnitsTable() {
                     );
                     
                     if (isEditing) {
-                      const localParts = utcToLocalParts(unit[field]);
                       return (
                         <td key={field} className="px-1 py-1 border-b border-theme">
-                          <div className="flex items-center gap-0.5">
-                            <input
-                              type="datetime-local"
-                              value={localParts.dateTime}
-                              onChange={(e) => handleDateTimeChange(editIndex, field, e.target.value)}
-                              className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white min-w-0 flex-1"
-                              step="60"
-                            />
-                            <span className="text-xs text-gray-400">:</span>
-                            <input
-                              type="number"
-                              min="0"
-                              max="59"
-                              value={localParts.dateTime ? parseInt(localParts.seconds) : ''}
-                              onChange={(e) => handleSecondsChange(editIndex, field, e.target.value)}
-                              disabled={!localParts.dateTime}
-                              className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white w-10 text-center disabled:opacity-30"
-                              title="Seconds"
-                            />
-                          </div>
+                          <TimeEditCell
+                            value={unit[field]}
+                            incidentDate={incidentDate}
+                            onChange={(utcVal) => handleTimeChange(editIndex, field, utcVal)}
+                          />
                         </td>
                       );
                     }
