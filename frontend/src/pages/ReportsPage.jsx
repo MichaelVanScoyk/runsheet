@@ -663,7 +663,7 @@ function MonthlyReportView({ report, category, s, colors }) {
             <div style={{ padding: 0 }}>
               <table style={s.table}>
                 <thead>
-                  <tr><th style={s.th}>Station</th><th style={{ ...s.th, textAlign: 'right' }}>Count</th></tr>
+                  <tr><th style={s.th}>Department</th><th style={{ ...s.th, textAlign: 'right' }}>Count</th></tr>
                 </thead>
                 <tbody>
                   {(report.mutual_aid || []).map((ma, i) => (

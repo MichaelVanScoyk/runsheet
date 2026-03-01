@@ -75,6 +75,16 @@ def _load_incident_context(db: Session, incident_id: int) -> tuple:
         
         personnel_assignments[unit_designator] = slots
     
+    # Look up mutual aid department names from IDs
+    ma_dept_ids = inc.get('mutual_aid_department_ids') or []
+    if ma_dept_ids:
+        dept_rows = db.execute(text(
+            "SELECT id, name, station_number FROM neris_mutual_aid_departments WHERE id = ANY(:ids)"
+        ), {"ids": ma_dept_ids}).fetchall()
+        inc['_mutual_aid_dept_names'] = [
+            f"{r[1]} (Stn {r[2]})" if r[2] else r[1] for r in dept_rows
+        ]
+
     return inc, personnel_lookup, apparatus_list, personnel_assignments, municipality_lookup
 
 

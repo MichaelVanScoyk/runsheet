@@ -755,10 +755,15 @@ def r_neris_aid_direction(ctx: RenderContext, block: dict) -> str:
 
 
 def r_neris_aid_departments(ctx: RenderContext, block: dict) -> str:
+    # Use department names from context if loaded, otherwise fall back to legacy field
+    dept_names = ctx.incident.get('_mutual_aid_dept_names') or []
+    if dept_names:
+        return f'<div class="field"><span class="label">Mutual Aid Departments:</span> {esc(", ".join(dept_names))}</div>'
+    # Legacy fallback
     v = ctx.get('neris_aid_departments') or []
     if not v:
         return ''
-    return f'<div class="field"><span class="label">Aid Departments:</span> {esc(", ".join(v))}</div>'
+    return f'<div class="field"><span class="label">Mutual Aid Departments:</span> {esc(", ".join(v))}</div>'
 
 
 def r_neris_incident_types(ctx: RenderContext, block: dict) -> str:

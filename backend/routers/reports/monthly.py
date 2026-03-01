@@ -196,13 +196,29 @@ async def get_monthly_chiefs_report(year: int = Query(...), month: int = Query(.
     
     mutual_aid = []
     if is_fire_report:
+        # Try new mutual_aid_department_ids first, fall back to legacy neris_aid_departments
         ma_result = db.execute(text(f"""
-            SELECT unnest(neris_aid_departments), COUNT(*) FROM incidents i
+            SELECT d.name, d.station_number, COUNT(*)
+            FROM incidents i,
+                 unnest(i.mutual_aid_department_ids) AS dept_id
+            JOIN neris_mutual_aid_departments d ON d.id = dept_id
             WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
-              AND i.deleted_at IS NULL AND i.neris_aid_direction = 'GIVEN' AND i.neris_aid_departments IS NOT NULL {prefix_filter}
-            GROUP BY unnest(neris_aid_departments) ORDER BY COUNT(*) DESC
+              AND i.deleted_at IS NULL AND i.neris_aid_direction = 'GIVEN'
+              AND i.mutual_aid_department_ids IS NOT NULL AND array_length(i.mutual_aid_department_ids, 1) > 0
+              {prefix_filter}
+            GROUP BY d.name, d.station_number ORDER BY COUNT(*) DESC
         """), {"start_date": start_date, "end_date": end_date})
-        mutual_aid = [{"station": row[0], "count": row[1]} for row in ma_result]
+        mutual_aid = [{"station": f"{row[0]} (Stn {row[1]})" if row[1] else row[0], "count": row[2]} for row in ma_result]
+
+        # Fall back to legacy field for older incidents
+        if not mutual_aid:
+            legacy_result = db.execute(text(f"""
+                SELECT unnest(neris_aid_departments), COUNT(*) FROM incidents i
+                WHERE COALESCE(i.incident_date, i.created_at::date) BETWEEN :start_date AND :end_date
+                  AND i.deleted_at IS NULL AND i.neris_aid_direction = 'GIVEN' AND i.neris_aid_departments IS NOT NULL {prefix_filter}
+                GROUP BY unnest(neris_aid_departments) ORDER BY COUNT(*) DESC
+            """), {"start_date": start_date, "end_date": end_date})
+            mutual_aid = [{"station": row[0], "count": row[1]} for row in legacy_result]
     
     # EMS: Units assisted — mutual aid units that arrived on EMS calls where our units went enroute
     units_assisted = []
@@ -263,7 +279,7 @@ async def get_monthly_html_report(year: int = Query(...), month: int = Query(...
     mutual_aid_section = ''
     if is_fire_report:
         ma_rows = '\n'.join([f'<tr><td>{ma["station"]}</td><td class="text-center">{ma["count"]}</td></tr>' for ma in report.get('mutual_aid', [])]) or '<tr><td colspan="2" class="text-center">None</td></tr>'
-        mutual_aid_section = f'<div class="section"><div class="section-title">Mutual Aid Given</div><table><thead><tr><th>Station</th><th class="text-center">Count</th></tr></thead><tbody>{ma_rows}</tbody></table></div>'
+        mutual_aid_section = f'<div class="section"><div class="section-title">Mutual Aid Given</div><table><thead><tr><th>Department</th><th class="text-center">Count</th></tr></thead><tbody>{ma_rows}</tbody></table></div>'
     else:
         ua_rows = '\n'.join([f'<tr><td>{ua["unit"]}</td><td class="text-center">{ua["count"]}</td></tr>' for ua in report.get('units_assisted', [])]) or '<tr><td colspan="2" class="text-center">None</td></tr>'
         mutual_aid_section = f'<div class="section"><div class="section-title">Units Assisted</div><table><thead><tr><th>Unit</th><th class="text-center">Count</th></tr></thead><tbody>{ua_rows}</tbody></table></div>'
