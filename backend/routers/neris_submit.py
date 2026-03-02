@@ -238,3 +238,30 @@ async def get_neris_status(incident_id: int, db: Session = Depends(get_db)):
         "last_validated_at": incident.neris_last_validated_at.isoformat() if incident.neris_last_validated_at else None,
         "validation_errors": incident.neris_validation_errors,
     }
+
+
+# Pydantic model for PSAP timestamp updates
+from pydantic import BaseModel
+from typing import Optional
+
+class PsapTimestampUpdate(BaseModel):
+    psap_call_arrival: Optional[str] = None
+    psap_call_answered: Optional[str] = None
+
+
+@router.patch("/psap/{incident_id}")
+async def update_psap(incident_id: int, data: PsapTimestampUpdate, db: Session = Depends(get_db)):
+    """Update PSAP timestamps on an incident. Values are ISO 8601 strings or null to clear."""
+    incident = db.query(Incident).filter(Incident.id == incident_id).first()
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    from datetime import datetime as dt
+
+    if data.psap_call_arrival is not None:
+        incident.psap_call_arrival = dt.fromisoformat(data.psap_call_arrival) if data.psap_call_arrival else None
+    if data.psap_call_answered is not None:
+        incident.psap_call_answered = dt.fromisoformat(data.psap_call_answered) if data.psap_call_answered else None
+
+    db.commit()
+    return {"success": True}
