@@ -578,34 +578,28 @@ function OverviewTab({ preview, incident, incidentId, expandedSections, toggleSe
 
 
 // ============================================================================
-// PSAP TIMESTAMP EDITOR — inline editing for call_arrival and call_answered
+// PSAP TIMESTAMP EDITOR — always-editable, defaults to call_create when null
 // ============================================================================
 
 function PsapTimestampEditor({ incidentId, incident, callArrival, callAnswered, callCreate, incidentClear, onSaved }) {
-  const [editing, setEditing] = useState(false);
+  const defaultVal = callCreate ? toLocalDatetimeStr(callCreate) : '';
+  const [arrivalVal, setArrivalVal] = useState(incident.psap_call_arrival ? toLocalDatetimeStr(incident.psap_call_arrival) : defaultVal);
+  const [answeredVal, setAnsweredVal] = useState(incident.psap_call_answered ? toLocalDatetimeStr(incident.psap_call_answered) : defaultVal);
   const [saving, setSaving] = useState(false);
-  const [arrivalVal, setArrivalVal] = useState('');
-  const [answeredVal, setAnsweredVal] = useState('');
   const [saveError, setSaveError] = useState(null);
-
-  const startEditing = () => {
-    // Pre-fill with existing values if available, formatted as local datetime
-    setArrivalVal(incident.psap_call_arrival ? toLocalDatetimeStr(incident.psap_call_arrival) : '');
-    setAnsweredVal(incident.psap_call_answered ? toLocalDatetimeStr(incident.psap_call_answered) : '');
-    setSaveError(null);
-    setEditing(true);
-  };
+  const [saved, setSaved] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
+    setSaved(false);
     try {
-      const body = {};
-      // Send ISO strings or empty string to clear
-      body.psap_call_arrival = arrivalVal ? new Date(arrivalVal).toISOString() : '';
-      body.psap_call_answered = answeredVal ? new Date(answeredVal).toISOString() : '';
-      await api.patch(`/neris/psap/${incidentId}`, body);
-      setEditing(false);
+      await api.patch(`/neris/psap/${incidentId}`, {
+        psap_call_arrival: arrivalVal ? new Date(arrivalVal).toISOString() : '',
+        psap_call_answered: answeredVal ? new Date(answeredVal).toISOString() : '',
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
       if (onSaved) onSaved();
     } catch (err) {
       setSaveError(err.response?.data?.detail || 'Failed to save PSAP timestamps');
@@ -614,79 +608,35 @@ function PsapTimestampEditor({ incidentId, incident, callArrival, callAnswered, 
     }
   };
 
-  if (!editing) {
-    return (
-      <div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
-          <div style={{ fontSize: '0.8rem' }}>
-            <div style={{ color: '#6b7280', fontSize: '0.7rem' }}>PSAP Call Arrival Time (call_arrival)</div>
-            <div style={{ color: callArrival ? '#1f2937' : '#991b1b', fontWeight: 500 }}>
-              {callArrival ? formatTs(callArrival) : '— NOT SET'}
-            </div>
-          </div>
-          <div style={{ fontSize: '0.8rem' }}>
-            <div style={{ color: '#6b7280', fontSize: '0.7rem' }}>PSAP Call Answered Time (call_answered)</div>
-            <div style={{ color: callAnswered ? '#1f2937' : '#991b1b', fontWeight: 500 }}>
-              {callAnswered ? formatTs(callAnswered) : '— NOT SET'}
-            </div>
-          </div>
-          <div style={{ fontSize: '0.8rem' }}>
-            <div style={{ color: '#6b7280', fontSize: '0.7rem' }}>Call Create / Dispatch Time (call_create)</div>
-            <div style={{ color: '#1f2937', fontWeight: 500 }}>{formatTs(callCreate)}</div>
-          </div>
-          <div style={{ fontSize: '0.8rem' }}>
-            <div style={{ color: '#6b7280', fontSize: '0.7rem' }}>Incident Clear Time (incident_clear)</div>
-            <div style={{ color: '#1f2937', fontWeight: 500 }}>{formatTs(incidentClear)}</div>
-          </div>
-        </div>
-        <button onClick={startEditing} style={{ marginTop: '0.5rem', ...btnStyle('#f3f4f6', '#374151', '#d1d5db'), fontSize: '0.75rem' }}>
-          Edit PSAP Timestamps
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ padding: '0.5rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px' }}>
+    <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', alignItems: 'end' }}>
         <div>
-          <label style={{ display: 'block', fontSize: '0.7rem', color: '#92400e', fontWeight: 600, marginBottom: '2px' }}>
-            PSAP Call Arrival Time (call_arrival)
-          </label>
-          <input
-            type="datetime-local"
-            step="1"
-            value={arrivalVal}
-            onChange={e => setArrivalVal(e.target.value)}
-            style={{ width: '100%', padding: '4px 6px', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: '4px' }}
-          />
+          <label style={{ display: 'block', fontSize: '0.7rem', color: '#374151', fontWeight: 600, marginBottom: '2px' }}>PSAP Call Arrival Time (call_arrival)</label>
+          <input type="datetime-local" step="1" value={arrivalVal} onChange={e => setArrivalVal(e.target.value)}
+            style={{ width: '100%', padding: '4px 6px', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: '4px' }} />
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: '0.7rem', color: '#92400e', fontWeight: 600, marginBottom: '2px' }}>
-            PSAP Call Answered Time (call_answered)
-          </label>
-          <input
-            type="datetime-local"
-            step="1"
-            value={answeredVal}
-            onChange={e => setAnsweredVal(e.target.value)}
-            style={{ width: '100%', padding: '4px 6px', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: '4px' }}
-          />
+          <label style={{ display: 'block', fontSize: '0.7rem', color: '#374151', fontWeight: 600, marginBottom: '2px' }}>PSAP Call Answered Time (call_answered)</label>
+          <input type="datetime-local" step="1" value={answeredVal} onChange={e => setAnsweredVal(e.target.value)}
+            style={{ width: '100%', padding: '4px 6px', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: '4px' }} />
         </div>
-        <div style={{ fontSize: '0.8rem' }}>
-          <div style={{ color: '#6b7280', fontSize: '0.7rem' }}>Call Create / Dispatch Time (read-only)</div>
-          <div style={{ color: '#1f2937', fontWeight: 500, padding: '4px 0' }}>{formatTs(callCreate)}</div>
+        <div>
+          <label style={{ display: 'block', fontSize: '0.7rem', color: '#374151', fontWeight: 600, marginBottom: '2px' }}>Call Create / Dispatch Time (call_create) — read-only</label>
+          <div style={{ color: '#1f2937', fontWeight: 500, padding: '5px 6px', fontSize: '0.8rem' }}>{formatTs(callCreate)}</div>
         </div>
-        <div style={{ display: 'flex', gap: '0.35rem' }}>
-          <button onClick={handleSave} disabled={saving} style={btnStyle('#2563eb', '#fff', '#1d4ed8')}>
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-          <button onClick={() => setEditing(false)} style={btnStyle('#f3f4f6', '#374151', '#d1d5db')}>
-            Cancel
-          </button>
+        <div>
+          <label style={{ display: 'block', fontSize: '0.7rem', color: '#374151', fontWeight: 600, marginBottom: '2px' }}>Incident Clear Time (incident_clear) — read-only</label>
+          <div style={{ color: '#1f2937', fontWeight: 500, padding: '5px 6px', fontSize: '0.8rem' }}>{formatTs(incidentClear)}</div>
         </div>
       </div>
-      {saveError && <div style={{ fontSize: '0.8rem', color: '#991b1b', marginTop: '0.35rem' }}>{saveError}</div>}
+      <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <button onClick={handleSave} disabled={saving} style={btnStyle('#2563eb', '#fff', '#1d4ed8')}>
+          {saving ? 'Saving...' : 'Save PSAP Timestamps'}
+        </button>
+        {saved && <span style={{ fontSize: '0.8rem', color: '#059669', fontWeight: 500 }}>✓ Saved</span>}
+        {saveError && <span style={{ fontSize: '0.8rem', color: '#991b1b' }}>{saveError}</span>}
+      </div>
     </div>
   );
 }
