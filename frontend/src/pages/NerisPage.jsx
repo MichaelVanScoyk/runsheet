@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../../api';
-import { formatTimeLocal } from '../../utils/timeUtils';
-import { useBranding } from '../../contexts/BrandingContext';
+import api from '../api';
+import { formatTimeLocal } from '../utils/timeUtils';
+import { useBranding } from '../contexts/BrandingContext';
 
 /**
  * NERIS Incident View Page
