@@ -31,6 +31,7 @@ import AdminPage from './pages/AdminPage';
 import ReportsPage from './pages/ReportsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import MapPage from './pages/MapPage';
+import NerisPage from './pages/NerisPage';
 import AcceptInvitePage from './pages/AcceptInvitePage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import TenantLogin from './components/TenantLogin';
@@ -720,6 +721,7 @@ function AppContentInner({
           <Route path="/personnel" element={<PersonnelPage />} />
           <Route path="/apparatus" element={<ApparatusPage />} />
           <Route path="/municipalities" element={<MunicipalitiesPage />} />
+          <Route path="/neris/:id" element={<NerisPage />} />
           <Route path="/admin" element={
             userSession && (userSession.role === 'OFFICER' || userSession.role === 'ADMIN')
               ? <AdminPage userSession={userSession} />

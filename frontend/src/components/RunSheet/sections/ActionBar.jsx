@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRunSheet } from '../RunSheetContext';
+import { useNavigate } from 'react-router-dom';
 import { getAdjacentIncidents, deleteIncident, checkDuplicateStatus, duplicateIncident } from '../../../api';
 import { useToast } from '../../../contexts/ToastContext';
 
 export default function ActionBar() {
   const toast = useToast();
+  const navigate = useNavigate();
   const { 
     incident, 
     formData, 
@@ -314,6 +316,18 @@ export default function ActionBar() {
             data-help-id="btn_print"
           >
             Print
+          </button>
+        )}
+        
+        {/* NERIS Review button */}
+        {incident?.id && isAdmin && (
+          <button 
+            type="button" 
+            className="btn btn-secondary"
+            onClick={() => navigate(`/neris/${incident.id}`)}
+            title="Review NERIS payload and submit to sandbox"
+          >
+            NERIS
           </button>
         )}
         

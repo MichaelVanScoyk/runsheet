@@ -291,6 +291,14 @@ class Incident(Base):
     cad_event_comments = Column(JSONB, default={})
     
     # =========================================================================
+    # TIMES - PSAP (NERIS dispatch required)
+    # NERIS requires: call_arrival <= call_answered <= call_create(time_dispatched)
+    # Real data from PSAP or derived upstream with conservative offsets
+    # =========================================================================
+    psap_call_arrival = Column(TIMESTAMP(timezone=True))
+    psap_call_answered = Column(TIMESTAMP(timezone=True))
+    
+    # =========================================================================
     # LOCATION - Display Fields
     # =========================================================================
     address = Column(String(200))              # 123 Main St (display)
