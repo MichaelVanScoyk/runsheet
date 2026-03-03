@@ -47,8 +47,8 @@ def build_unit_response(cad_unit: dict, crew_count: int | None = None) -> dict:
         resp["reported_unit_id"] = unit_id
 
     # Staffing from incident_units (personnel assignments)
-    if crew_count is not None:
-        resp["staffing"] = crew_count
+    # Default to 1 if no crew count — a unit that responded had at least 1 person
+    resp["staffing"] = crew_count if crew_count is not None else 1
 
     # Timestamps — read directly from cad_units JSONB
     ts_map = {
