@@ -298,7 +298,7 @@ function OverviewTab({ preview, incident, incidentId, expandedSections, toggleSe
           </FieldGrid>
         ) : (
           <div style={{ fontSize: '0.8rem', color: '#991b1b', fontStyle: 'italic' }}>
-            No NERIS location data populated. The neris_location JSONB field on this incident is empty. Address components must be parsed into NERIS NG911 format.
+            No NERIS location data populated. This incident has no geocode data — geocode the address on the run sheet to populate location fields.
           </div>
         )}
 
