@@ -269,56 +269,50 @@ function OverviewTab({ preview, incident, incidentId, expandedSections, toggleSe
 
       {/* NERIS Location — NG911 CLDXF Format */}
       <PayloadSection title="NERIS Location — NG911 Civic Address (mod_civic_location)" expanded={expandedSections['location'] !== false} onToggle={() => toggleSection('location')}>
-        {/* Show actual address from incident for context */}
-        <div style={{ fontSize: '0.8rem', color: '#374151', marginBottom: '0.5rem', padding: '0.4rem 0.6rem', background: '#f9fafb', borderRadius: '4px' }}>
-          <span style={{ color: '#6b7280' }}>Run Sheet Address: </span>
-          <span style={{ fontWeight: 500 }}>{incident.address || '—'}</span>
-          {incident.cross_streets && <span style={{ color: '#6b7280' }}> (Cross: {incident.cross_streets})</span>}
-        </div>
-        
-        {/* NERIS location fields */}
         {payload.base?.location && Object.keys(payload.base.location).length > 0 ? (
-          <FieldGrid>
-            <Field label="Street Number (number)" value={payload.base.location.number} />
-            <Field label="Street Name (street)" value={payload.base.location.street} />
-            <Field label="Street Suffix (street_postfix)" value={payload.base.location.street_postfix} />
-            <Field label="Street Prefix Direction (street_prefix_direction)" value={payload.base.location.street_prefix_direction} />
-            <Field label="Street Postfix Direction (street_postfix_direction)" value={payload.base.location.street_postfix_direction} />
-            <Field label="Incorporated Municipality (incorporated_municipality)" value={payload.base.location.incorporated_municipality} />
-            <Field label="Postal Community (postal_community)" value={payload.base.location.postal_community} />
-            <Field label="County (county)" value={payload.base.location.county} />
-            <Field label="State (state)" value={payload.base.location.state} />
-            <Field label="ZIP Code (postal_code)" value={payload.base.location.postal_code} />
-            <Field label="Country (country)" value={payload.base.location.country} />
-            <Field label="Floor (floor)" value={payload.base.location.floor} />
-            <Field label="Unit/Apt (unit_value)" value={payload.base.location.unit_value} />
-            <Field label="Room (room)" value={payload.base.location.room} />
-            <Field label="Site Name (site)" value={payload.base.location.site} />
-            <Field label="Place Type (place_type)" value={payload.base.location.place_type} />
-          </FieldGrid>
+          <div>
+            {/* Row 1: Street address fields */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem 1.25rem', marginBottom: '0.35rem' }}>
+              <Field label="number" value={payload.base.location.number} />
+              <Field label="street_prefix_direction" value={payload.base.location.street_prefix_direction} />
+              <Field label="street" value={payload.base.location.street} />
+              <Field label="street_postfix" value={payload.base.location.street_postfix} />
+              <Field label="street_postfix_direction" value={payload.base.location.street_postfix_direction} />
+            </div>
+            {/* Row 2: Jurisdiction fields */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem 1.25rem', marginBottom: '0.35rem' }}>
+              <Field label="postal_community" value={payload.base.location.postal_community} />
+              <Field label="county" value={payload.base.location.county} />
+              <Field label="state" value={payload.base.location.state} />
+              <Field label="postal_code" value={payload.base.location.postal_code} />
+              <Field label="country" value={payload.base.location.country} />
+            </div>
+            {/* Row 3: Sub-address & place (only if present) */}
+            {(payload.base.location.floor || payload.base.location.unit_value || payload.base.location.room || payload.base.location.site || payload.base.location.place_type || payload.base.location.incorporated_municipality) && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem 1.25rem', marginBottom: '0.35rem' }}>
+                <Field label="incorporated_municipality" value={payload.base.location.incorporated_municipality} />
+                <Field label="floor" value={payload.base.location.floor} />
+                <Field label="unit_value" value={payload.base.location.unit_value} />
+                <Field label="room" value={payload.base.location.room} />
+                <Field label="site" value={payload.base.location.site} />
+                <Field label="place_type" value={payload.base.location.place_type} />
+              </div>
+            )}
+            {/* Row 4: GPS + cross streets */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem 1.25rem', paddingTop: '0.25rem', borderTop: '1px solid #f3f4f6' }}>
+              <Field label="latitude" value={incident.latitude} />
+              <Field label="longitude" value={incident.longitude} />
+              {incident.cross_streets && <Field label="cross_streets" value={incident.cross_streets} />}
+            </div>
+            {payload.base?.point && (
+              <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.15rem' }}>
+                CRS: {payload.base.point.crs} · [{payload.base.point.geometry?.coordinates?.[0]}, {payload.base.point.geometry?.coordinates?.[1]}]
+              </div>
+            )}
+          </div>
         ) : (
           <div style={{ fontSize: '0.8rem', color: '#991b1b', fontStyle: 'italic' }}>
-            No NERIS location data populated. This incident has no geocode data — geocode the address on the run sheet to populate location fields.
-          </div>
-        )}
-
-        {/* GPS Point */}
-        <div style={{ marginTop: '0.5rem' }}>
-          <FieldGrid>
-            <Field label="Latitude (incident_point)" value={incident.latitude} />
-            <Field label="Longitude (incident_point)" value={incident.longitude} />
-          </FieldGrid>
-          {payload.base?.point && (
-            <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-              GeoJSON CRS: {payload.base.point.crs} — Coordinates: [{payload.base.point.geometry?.coordinates?.[0]}, {payload.base.point.geometry?.coordinates?.[1]}] (lon, lat)
-            </div>
-          )}
-        </div>
-
-        {/* Cross Streets */}
-        {incident.cross_streets && (
-          <div style={{ marginTop: '0.5rem' }}>
-            <Field label="Cross Streets (cross_streets)" value={incident.cross_streets} />
+            No geocode data — geocode the address on the run sheet to populate location fields.
           </div>
         )}
       </PayloadSection>
