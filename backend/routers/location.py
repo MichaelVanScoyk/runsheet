@@ -196,6 +196,51 @@ async def geocode_incident_endpoint(
         logger.info(f"Geocoded incident {incident_id}: {result.get('matched_address')} ({result.get('provider')})")
         
         # =================================================================
+        # STEP 2b: Reverse geocode if address fields missing
+        # If geocode result is missing county/state/zip/city (e.g. mile marker,
+        # intersection), reverse geocode the lat/lng to fill them in.
+        # =================================================================
+        if google_key:
+            has_county = bool(result.get("county"))
+            has_state = bool(result.get("state"))
+            has_zip = bool(result.get("zip_code"))
+            has_city = bool(result.get("city"))
+
+            if not (has_county and has_state and has_zip and has_city):
+                logger.info(
+                    f"Incident {incident_id}: geocode missing address fields "
+                    f"(county={has_county}, state={has_state}, zip={has_zip}, city={has_city}) "
+                    f"\u2014 running reverse geocode"
+                )
+                from services.location.geocoding import reverse_geocode_google
+
+                reverse_result = reverse_geocode_google(
+                    result["latitude"], result["longitude"], google_key
+                )
+                if reverse_result:
+                    updated = False
+                    for field in ("city", "state", "zip_code", "county", "county_subdivision",
+                                  "street_number", "street_name", "street_suffix", "street_prefix"):
+                        if not result.get(field) and reverse_result.get(field):
+                            result[field] = reverse_result[field]
+                            updated = True
+                    if updated:
+                        db.execute(
+                            text("""
+                                UPDATE incidents
+                                SET geocode_data = :data, updated_at = NOW()
+                                WHERE id = :id
+                            """),
+                            {"data": json.dumps(result), "id": incident_id}
+                        )
+                        db.commit()
+                        logger.info(
+                            f"Reverse geocode enriched incident {incident_id}: "
+                            f"{reverse_result.get('city')}, {reverse_result.get('county')} Co, "
+                            f"{reverse_result.get('state')} {reverse_result.get('zip_code')}"
+                        )
+
+        # =================================================================
         # STEP 3: Fetch driving route (if not limited_access)
         # Skip routing for highways/turnpikes - no meaningful road route
         # =================================================================

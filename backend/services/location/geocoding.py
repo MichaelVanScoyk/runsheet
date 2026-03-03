@@ -353,6 +353,78 @@ def _geocode_geocodio(
     return best
 
 
+def reverse_geocode_google(
+    latitude: float,
+    longitude: float,
+    api_key: str,
+) -> Optional[dict]:
+    """
+    Reverse geocode a lat/lng to get address components (city, county, state, zip).
+    Uses Google's reverse geocoding API. Returns the first (most specific) result
+    normalized to the same field names as forward geocoding.
+
+    Returns dict with:
+        city, state, zip_code, county, county_subdivision,
+        street_number, street_name, street_suffix,
+        matched_address, provider='google_reverse'
+    Or None if the call fails.
+    """
+    params = {
+        "latlng": f"{latitude},{longitude}",
+        "key": api_key,
+    }
+
+    try:
+        with httpx.Client(timeout=GOOGLE_TIMEOUT) as client:
+            response = client.get(GOOGLE_BASE, params=params)
+            response.raise_for_status()
+            data = response.json()
+    except httpx.TimeoutException:
+        logger.warning(f"Google reverse geocode timeout for: {latitude},{longitude}")
+        return None
+    except Exception as e:
+        logger.error(f"Google reverse geocode error for {latitude},{longitude}: {e}")
+        return None
+
+    status = data.get("status", "")
+    if status != "OK":
+        logger.info(f"Google reverse: status '{status}' for {latitude},{longitude}")
+        return None
+
+    results = data.get("results", [])
+    if not results:
+        logger.info(f"Google reverse: no results for {latitude},{longitude}")
+        return None
+
+    # Take the first (most specific) result
+    r = results[0]
+    components = {}
+    for comp in r.get("address_components", []):
+        for t in comp.get("types", []):
+            components[t] = comp
+
+    result = {
+        "city": components.get("locality", {}).get("long_name", ""),
+        "state": components.get("administrative_area_level_1", {}).get("short_name", ""),
+        "zip_code": components.get("postal_code", {}).get("long_name", ""),
+        "county": components.get("administrative_area_level_2", {}).get("long_name", "").replace(" County", ""),
+        "county_subdivision": components.get("administrative_area_level_3", {}).get("long_name", ""),
+        "street_number": components.get("street_number", {}).get("long_name", ""),
+        "street_name": components.get("route", {}).get("long_name", ""),
+        "street_suffix": "",
+        "street_prefix": "",
+        "matched_address": r.get("formatted_address", ""),
+        "provider": "google_reverse",
+    }
+
+    logger.info(
+        f"Google reverse: {latitude},{longitude} -> "
+        f"{result.get('city')}, {result.get('county')} Co, {result.get('state')} {result.get('zip_code')}"
+    )
+
+    return result
+
+
 def geocode_incident(
     address: str,
     station_lat: float,

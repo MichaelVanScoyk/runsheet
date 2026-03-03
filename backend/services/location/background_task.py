@@ -160,6 +160,13 @@ def _process(db, incident_id: int):
     lat_f = float(latitude)
     lng_f = float(longitude)
 
+    # ── Step 1b: Reverse geocode if address fields missing ───────────
+    # If we have coords but geocode_data is missing key address fields
+    # (e.g. mile marker geocode, intersection, or incomplete result),
+    # reverse geocode the lat/lng to fill in county, state, zip, city.
+    if google_key:
+        _maybe_reverse_geocode(db, incident_id, lat_f, lng_f, google_key)
+
     # ── Step 2: Route if needed ─────────────────────────────────────────
     if not has_route and google_key and station_lat is not None:
         try:
@@ -230,3 +237,61 @@ def _process(db, incident_id: int):
             logger.warning(f"Proximity snapshot failed for incident {incident_id}: {e}")
 
     logger.info(f"Location processing complete for incident {incident_id}")
+
+
+def _maybe_reverse_geocode(db, incident_id: int, lat: float, lng: float, google_key: str):
+    """
+    Check if geocode_data is missing key address fields (county, state, zip, city).
+    If so, reverse geocode the lat/lng via Google and merge the results.
+    """
+    row = db.execute(text(
+        "SELECT geocode_data FROM incidents WHERE id = :id"
+    ), {"id": incident_id}).fetchone()
+
+    if not row or not row[0]:
+        return
+
+    geocode_data = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+
+    # Check if key fields are already populated
+    has_county = bool(geocode_data.get("county"))
+    has_state = bool(geocode_data.get("state"))
+    has_zip = bool(geocode_data.get("zip_code"))
+    has_city = bool(geocode_data.get("city"))
+
+    if has_county and has_state and has_zip and has_city:
+        return  # All fields present, nothing to do
+
+    logger.info(
+        f"Incident {incident_id}: geocode_data missing address fields "
+        f"(county={has_county}, state={has_state}, zip={has_zip}, city={has_city}) "
+        f"— running reverse geocode"
+    )
+
+    from services.location.geocoding import reverse_geocode_google
+
+    result = reverse_geocode_google(lat, lng, google_key)
+    if not result:
+        logger.warning(f"Reverse geocode failed for incident {incident_id} at {lat},{lng}")
+        return
+
+    # Merge: only fill in fields that are currently empty
+    updated = False
+    for field in ("city", "state", "zip_code", "county", "county_subdivision",
+                  "street_number", "street_name", "street_suffix", "street_prefix"):
+        if not geocode_data.get(field) and result.get(field):
+            geocode_data[field] = result[field]
+            updated = True
+
+    if updated:
+        db.execute(text("""
+            UPDATE incidents
+            SET geocode_data = :data, updated_at = NOW()
+            WHERE id = :id
+        """), {"data": json.dumps(geocode_data), "id": incident_id})
+        db.commit()
+        logger.info(
+            f"Reverse geocode enriched incident {incident_id}: "
+            f"{result.get('city')}, {result.get('county')} Co, "
+            f"{result.get('state')} {result.get('zip_code')}"
+        )
