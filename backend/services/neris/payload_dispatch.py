@@ -118,9 +118,23 @@ def build_dispatch(incident: dict, units: list) -> dict:
     crew_lookup = _build_crew_lookup(units)
 
     # Build unit responses from cad_units JSONB on the incident
+    # Filters:
+    #   1. Skip mutual aid units (is_mutual_aid=true) — those go in aids module
+    #   2. Skip units that never responded — must have time_enroute OR time_arrived
+    #      (county sometimes misses enroute but records arrived, so either counts)
     cad_units = incident.get("cad_units") or []
     unit_responses = []
     for cu in cad_units:
+        # Skip mutual aid units — not our department's response
+        if cu.get("is_mutual_aid"):
+            continue
+
+        # Skip units that never actually responded
+        has_enroute = bool(cu.get("time_enroute"))
+        has_arrived = bool(cu.get("time_arrived"))
+        if not has_enroute and not has_arrived:
+            continue
+
         # Match crew count by apparatus_id
         app_id = cu.get("apparatus_id")
         crew_count = crew_lookup.get(app_id) if app_id else None
