@@ -1,84 +1,24 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../../api';
 import { useBranding } from '../../contexts/BrandingContext';
+import { NerisProvider, useNeris } from './NerisContext';
 import { StatusBadge, TabBtn, Badge } from './shared/NerisComponents';
 import { btnStyle } from './shared/nerisUtils';
 import OverviewTab from './OverviewTab';
 import PayloadTab from './shared/PayloadTab';
 import ResponseTab from './shared/ResponseTab';
 
-export default function NerisPage() {
-  const { id } = useParams();
+function NerisPageInner() {
   const navigate = useNavigate();
   const branding = useBranding();
-  const incidentId = parseInt(id);
+  const {
+    incidentId, incident, preview, submitResult,
+    loading, previewLoading, submitLoading, error,
+    fetchPreview, handleSubmit, handleResubmit,
+  } = useNeris();
 
-  const [incident, setIncident] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [submitResult, setSubmitResult] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [submitLoading, setSubmitLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [activeSection, setActiveSection] = useState('overview');
   const [expandedSections, setExpandedSections] = useState({});
-
-  useEffect(() => {
-    if (!incidentId) return;
-    setLoading(true);
-    api.get(`/incidents/${incidentId}`)
-      .then(res => setIncident(res.data))
-      .catch(err => setError(err.response?.data?.detail || 'Failed to load incident'))
-      .finally(() => setLoading(false));
-  }, [incidentId]);
-
-  useEffect(() => {
-    if (incident) fetchPreview();
-  }, [incident?.id]);
-
-  const fetchPreview = useCallback(async () => {
-    setPreviewLoading(true);
-    setError(null);
-    try {
-      const res = await api.get(`/neris/preview/${incidentId}`);
-      setPreview(res.data);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to build preview');
-    } finally {
-      setPreviewLoading(false);
-    }
-  }, [incidentId]);
-
-  const handleSubmit = useCallback(async () => {
-    setSubmitLoading(true);
-    setError(null);
-    try {
-      const res = await api.post(`/neris/submit/${incidentId}`);
-      setSubmitResult(res.data);
-      setActiveSection('response');
-      const inc = await api.get(`/incidents/${incidentId}`);
-      setIncident(inc.data);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Submission failed');
-    } finally {
-      setSubmitLoading(false);
-    }
-  }, [incidentId]);
-
-  const handleResubmit = useCallback(async () => {
-    setSubmitLoading(true);
-    setError(null);
-    try {
-      const res = await api.post(`/neris/resubmit/${incidentId}`);
-      setSubmitResult(res.data);
-      setActiveSection('response');
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Resubmission failed');
-    } finally {
-      setSubmitLoading(false);
-    }
-  }, [incidentId]);
 
   const toggleSection = (key) => {
     setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -95,6 +35,16 @@ export default function NerisPage() {
   const warningCount = preview?.warnings?.length || 0;
   const isSubmitted = incident.neris_submission_id || submitResult?.success;
 
+  const onSubmit = async () => {
+    const tab = await handleSubmit();
+    if (tab) setActiveSection(tab);
+  };
+
+  const onResubmit = async () => {
+    const tab = await handleResubmit();
+    if (tab) setActiveSection(tab);
+  };
+
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '1rem' }}>
       {/* Header */}
@@ -107,9 +57,7 @@ export default function NerisPage() {
             <button
               onClick={() => navigate('/')}
               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', color: '#6b7280', padding: '2px 6px' }}
-            >
-              ← Incidents
-            </button>
+            >← Incidents</button>
             <span style={{ color: '#d1d5db' }}>|</span>
             <button
               onClick={() => {
@@ -119,12 +67,8 @@ export default function NerisPage() {
                 }, 100);
               }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', color: '#2563eb', padding: '2px 6px', fontWeight: 500 }}
-            >
-              ← Back to Run Sheet
-            </button>
-            <h1 style={{ margin: 0, fontSize: '1.25rem', color: '#111' }}>
-              NERIS Incident Review
-            </h1>
+            >← Back to Run Sheet</button>
+            <h1 style={{ margin: 0, fontSize: '1.25rem', color: '#111' }}>NERIS Incident Review</h1>
           </div>
           <div style={{ marginTop: '0.25rem', marginLeft: '2.1rem', fontSize: '0.85rem', color: '#6b7280' }}>
             {incident.internal_incident_number || incident.cad_event_number || `#${incident.id}`}
@@ -144,7 +88,7 @@ export default function NerisPage() {
           </button>
           {preview && !isSubmitted && (
             <button
-              onClick={handleSubmit}
+              onClick={onSubmit}
               disabled={!preview.valid || submitLoading}
               style={btnStyle(preview.valid ? '#2563eb' : '#9ca3af', '#fff', preview.valid ? '#1d4ed8' : '#9ca3af')}
               title={!preview.valid ? 'Fix validation errors before submitting' : 'Submit incident to NERIS test sandbox'}
@@ -153,7 +97,7 @@ export default function NerisPage() {
             </button>
           )}
           {isSubmitted && (
-            <button onClick={handleResubmit} disabled={submitLoading} style={btnStyle('#d97706', '#fff', '#b45309')}>
+            <button onClick={onResubmit} disabled={submitLoading} style={btnStyle('#d97706', '#fff', '#b45309')}>
               {submitLoading ? 'Resubmitting...' : 'Resubmit Update to NERIS'}
             </button>
           )}
@@ -190,12 +134,8 @@ export default function NerisPage() {
       {/* Content */}
       {activeSection === 'overview' && preview && (
         <OverviewTab
-          preview={preview}
-          incident={incident}
-          incidentId={incidentId}
           expandedSections={expandedSections}
           toggleSection={toggleSection}
-          onRefresh={fetchPreview}
         />
       )}
       {activeSection === 'payload' && preview && <PayloadTab payload={preview.payload} />}
@@ -205,5 +145,16 @@ export default function NerisPage() {
         <div style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>Loading NERIS preview...</div>
       )}
     </div>
+  );
+}
+
+export default function NerisPage() {
+  const { id } = useParams();
+  const incidentId = parseInt(id);
+
+  return (
+    <NerisProvider incidentId={incidentId}>
+      <NerisPageInner />
+    </NerisProvider>
   );
 }

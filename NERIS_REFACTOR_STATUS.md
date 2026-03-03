@@ -1,67 +1,61 @@
 # NERIS Page Refactor — Status Tracker
 
-## Last Updated: Batch 1 Complete — Extraction
+## Last Updated: Batch 2 — Editable Sections (Phase 1, 2, 5)
 
 ## Completed
 
-### Batch 1: Foundation extraction (no behavior change)
-All code extracted verbatim from the original monolithic NerisPage.jsx into modular files.
+### Batch 1: Foundation extraction
+22 files extracted from monolith. Page renders identically. Deployed and verified.
 
-**Route continuity:** `pages/NerisPage.jsx` re-exports from `pages/neris/NerisPage.jsx`. App.jsx import unchanged.
+### Batch 2: Editable sections + context
 
-**Files created:**
+**New files:**
+| File | Purpose |
+|------|---------|
+| `neris/NerisContext.jsx` | Page-level state: loads incident, reference data, dropdowns. Provides `saveFields()` which saves to incident, re-fetches, refreshes preview. |
+| `neris/shared/HierarchicalCodePicker.jsx` | Ported from NerisModal. Light theme. No RunSheetContext dependency. Handles `children` and `subtypes` data types. |
 
-| File | Contents |
-|------|----------|
-| `pages/neris/NerisPage.jsx` | Shell — incident load, preview, submit, resubmit, tabs, header |
-| `pages/neris/OverviewTab.jsx` | Assembles all sections with validation summary |
-| `pages/neris/shared/nerisUtils.js` | btnStyle, thStyle, tdStyle, toLocalDatetimeStr, formatTs, formatBool, formatLabel, formatNerisCode |
-| `pages/neris/shared/NerisComponents.jsx` | PayloadSection, FieldGrid, Field, FieldBlock, StatusBadge, TabBtn, Badge |
-| `pages/neris/shared/PayloadTab.jsx` | JSON payload viewer with copy |
-| `pages/neris/shared/ResponseTab.jsx` | NERIS API response display |
-| `pages/neris/sections/BaseInformation.jsx` | dept ID, incident number, people present, displaced, narratives |
-| `pages/neris/sections/LocationDisplay.jsx` | **UNTOUCHED** — read-only geocode display, identical to original |
-| `pages/neris/sections/LocationUse.jsx` | Location use type/subtype display |
-| `pages/neris/sections/IncidentClassification.jsx` | Incident type pills with primary star |
-| `pages/neris/sections/DispatchSection.jsx` | **UNTOUCHED** — PsapTimestampEditor + unit response table, identical to original |
-| `pages/neris/sections/TacticTimestamps.jsx` | Tactic timestamp display |
-| `pages/neris/sections/ActionsTaken.jsx` | Action/no-action display |
-| `pages/neris/sections/MutualAidDisplay.jsx` | Mutual aid from payload |
-| `pages/neris/sections/FireDetail.jsx` | Conditional fire detail display |
-| `pages/neris/sections/AlarmsAndSuppression.jsx` | Risk reduction alarm/suppression display |
-| `pages/neris/sections/MedicalDetail.jsx` | Conditional medical display |
-| `pages/neris/sections/HazmatDetail.jsx` | Conditional hazmat display |
-| `pages/neris/sections/CasualtyRescues.jsx` | Casualty/rescue list |
-| `pages/neris/sections/EmergingHazards.jsx` | EV/solar/CSST hazard display |
-| `pages/neris/sections/DispatchComments.jsx` | CAD dispatch comments |
-| `pages/NerisPage.jsx` | Re-export shim for route compatibility |
+**Editable sections (3):**
+| Section | Fields | Save mechanism |
+|---------|--------|---------------|
+| `IncidentClassification.jsx` | `neris_incident_type_codes`, `neris_incident_type_primary`, `neris_action_codes`, `neris_noaction_code` | Individual save button, dirty tracking |
+| `BaseInformation.jsx` | `neris_people_present`, `neris_displaced_number`, `neris_rescue_animal`, `neris_narrative_outcome`, `neris_narrative_impedance` | Individual save button, "Copy to NERIS" from run sheet narrative |
+| `LocationUse.jsx` | `neris_location_use` (JSONB with use_type/use_subtype) | Individual save button, picker modal |
 
-**Total: 22 files replacing 1 monolith.**
+**Updated files:**
+- `NerisPage.jsx` — wraps in `NerisProvider`, uses `useNeris()` for all state
+- `OverviewTab.jsx` — uses `useNeris()`, editable sections get data from context, read-only sections still get payload as props
 
-## NERIS API Reference (from NERIS docs)
+**Unchanged (identical to original):**
+- `DispatchSection.jsx` — PsapTimestampEditor untouched
+- `LocationDisplay.jsx` — geocode display untouched
+- All other read-only sections
 
-Three operations for incidents:
-1. `create_incident` — POST full payload → returns neris_id
-2. `validate_incident` — POST same payload → dry-run, returns errors/warnings
-3. `patch_incident` — PATCH by neris_id → updates individual sections after creation
+## How It Works
 
-Each section on NerisPage edits incident fields in our DB → payload builder assembles NERIS format → submit sends assembled payload.
+1. NerisProvider loads incident + all NERIS reference data (types, location uses, actions, dropdowns) in parallel
+2. Auto-previews after incident loads
+3. Editable sections read from `incident` via `useNeris()`, maintain local state
+4. Each section has its own Save button → calls `saveFields({...})` → saves to DB → re-fetches incident → refreshes preview
+5. Preview/validation updates automatically after each save
 
-## Next: Batch 2 — Editable sections
+## Data flow
+```
+getAllNerisDropdowns() → dropdowns.type_noaction, dropdowns.type_aid, etc.
+getIncidentTypesByCategory() → hierarchical data for code picker
+getLocationUsesByCategory() → hierarchical data for location use picker  
+getActionsTakenByCategory() → hierarchical data for actions picker
+api.get('/incidents/:id') → incident record with all neris_ fields
+saveFields() → updateIncident() → re-fetch incident → re-fetch preview
+```
 
-Priority per refactor plan:
-1. IncidentClassification — add code picker, editable types/actions/no-action
-2. BaseInformation — add editable fields for people present, displaced, narratives
-3. LocationUse — add type/subtype pickers
-4. MutualAidDisplay — display from run sheet data
-5. FireDetail — conditional, dropdowns from neris_codes
-6. AlarmsAndSuppression — conditional, field-heavy
-7. MedicalDetail — conditional, simple dropdown
-8. HazmatDetail — conditional, chemicals list
-9. Exposures, EmergingHazards, CasualtyRescues — optional sections
-
-Shared components needed for Batch 2:
-- SectionWrapper (dirty tracking, save, loading feedback)
-- NerisDropdown (fetch codes by category, render select)
-- NerisMultiSelect (multi-select for code arrays)
-- HierarchicalCodePicker (ported from NerisModal, uses branding, no RunSheetContext dependency)
+## Remaining read-only sections (future batches)
+These currently display payload data. To make editable, follow same pattern:
+- MutualAidDisplay (Phase 6)
+- FireDetail (Phase 7)  
+- AlarmsAndSuppression (Phase 8)
+- MedicalDetail (Phase 9)
+- HazmatDetail (Phase 10)
+- Exposures (Phase 11)
+- EmergingHazards (Phase 12)
+- CasualtyRescues (Phase 13)

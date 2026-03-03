@@ -1,7 +1,8 @@
+import { useNeris } from './NerisContext';
+import IncidentClassification from './sections/IncidentClassification';
 import BaseInformation from './sections/BaseInformation';
 import LocationDisplay from './sections/LocationDisplay';
 import LocationUse from './sections/LocationUse';
-import IncidentClassification from './sections/IncidentClassification';
 import DispatchSection from './sections/DispatchSection';
 import TacticTimestamps from './sections/TacticTimestamps';
 import ActionsTaken from './sections/ActionsTaken';
@@ -14,7 +15,8 @@ import CasualtyRescues from './sections/CasualtyRescues';
 import EmergingHazards from './sections/EmergingHazards';
 import DispatchComments from './sections/DispatchComments';
 
-export default function OverviewTab({ preview, incident, incidentId, expandedSections, toggleSection, onRefresh }) {
+export default function OverviewTab({ expandedSections, toggleSection }) {
+  const { incident, preview, incidentId, fetchPreview } = useNeris();
   const { payload, errors, warnings, valid } = preview;
 
   return (
@@ -41,11 +43,14 @@ export default function OverviewTab({ preview, incident, incidentId, expandedSec
         ))}
       </div>
 
-      <BaseInformation payload={payload} expanded={expandedSections['base'] !== false} onToggle={() => toggleSection('base')} />
+      {/* Editable sections */}
+      <IncidentClassification expanded={expandedSections['types'] !== false} onToggle={() => toggleSection('types')} />
+      <BaseInformation expanded={expandedSections['base'] !== false} onToggle={() => toggleSection('base')} />
+      <LocationUse expanded={expandedSections['location_use'] !== false} onToggle={() => toggleSection('location_use')} />
+
+      {/* Read-only sections from payload */}
       <LocationDisplay incident={incident} payload={payload} expanded={expandedSections['location'] !== false} onToggle={() => toggleSection('location')} />
-      <LocationUse payload={payload} expanded={expandedSections['location_use'] !== false} onToggle={() => toggleSection('location_use')} />
-      <IncidentClassification payload={payload} expanded={expandedSections['types'] !== false} onToggle={() => toggleSection('types')} />
-      <DispatchSection incidentId={incidentId} incident={incident} payload={payload} expanded={expandedSections['dispatch'] !== false} onToggle={() => toggleSection('dispatch')} onRefresh={onRefresh} />
+      <DispatchSection incidentId={incidentId} incident={incident} payload={payload} expanded={expandedSections['dispatch'] !== false} onToggle={() => toggleSection('dispatch')} onRefresh={fetchPreview} />
       <TacticTimestamps payload={payload} expanded={expandedSections['tactics'] !== false} onToggle={() => toggleSection('tactics')} />
       <ActionsTaken payload={payload} expanded={expandedSections['actions'] !== false} onToggle={() => toggleSection('actions')} />
       <MutualAidDisplay payload={payload} expanded={expandedSections['aids'] !== false} onToggle={() => toggleSection('aids')} />
