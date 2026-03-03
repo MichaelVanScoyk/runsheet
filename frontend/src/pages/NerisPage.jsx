@@ -585,26 +585,18 @@ function PsapTimestampEditor({ incidentId, incident, callArrival, callAnswered, 
   const defaultVal = callCreate ? toLocalDatetimeStr(callCreate) : '';
   const [arrivalVal, setArrivalVal] = useState(incident.psap_call_arrival ? toLocalDatetimeStr(incident.psap_call_arrival) : defaultVal);
   const [answeredVal, setAnsweredVal] = useState(incident.psap_call_answered ? toLocalDatetimeStr(incident.psap_call_answered) : defaultVal);
-  const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
-  const [saved, setSaved] = useState(false);
 
-  const handleSave = async () => {
-    setSaving(true);
+  const saveValues = async (arrival, answered) => {
     setSaveError(null);
-    setSaved(false);
     try {
       await api.patch(`/neris/psap/${incidentId}`, {
-        psap_call_arrival: arrivalVal ? new Date(arrivalVal).toISOString() : '',
-        psap_call_answered: answeredVal ? new Date(answeredVal).toISOString() : '',
+        psap_call_arrival: arrival ? new Date(arrival).toISOString() : '',
+        psap_call_answered: answered ? new Date(answered).toISOString() : '',
       });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
       if (onSaved) onSaved();
     } catch (err) {
       setSaveError(err.response?.data?.detail || 'Failed to save PSAP timestamps');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -613,12 +605,16 @@ function PsapTimestampEditor({ incidentId, incident, callArrival, callAnswered, 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', alignItems: 'end' }}>
         <div>
           <label style={{ display: 'block', fontSize: '0.7rem', color: '#374151', fontWeight: 600, marginBottom: '2px' }}>PSAP Call Arrival Time (call_arrival)</label>
-          <input type="datetime-local" step="1" value={arrivalVal} onChange={e => setArrivalVal(e.target.value)}
+          <input type="datetime-local" step="1" value={arrivalVal}
+            onChange={e => setArrivalVal(e.target.value)}
+            onBlur={e => saveValues(e.target.value, answeredVal)}
             style={{ width: '100%', padding: '4px 6px', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: '4px' }} />
         </div>
         <div>
           <label style={{ display: 'block', fontSize: '0.7rem', color: '#374151', fontWeight: 600, marginBottom: '2px' }}>PSAP Call Answered Time (call_answered)</label>
-          <input type="datetime-local" step="1" value={answeredVal} onChange={e => setAnsweredVal(e.target.value)}
+          <input type="datetime-local" step="1" value={answeredVal}
+            onChange={e => setAnsweredVal(e.target.value)}
+            onBlur={e => saveValues(arrivalVal, e.target.value)}
             style={{ width: '100%', padding: '4px 6px', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: '4px' }} />
         </div>
         <div>
@@ -630,13 +626,7 @@ function PsapTimestampEditor({ incidentId, incident, callArrival, callAnswered, 
           <div style={{ color: '#1f2937', fontWeight: 500, padding: '5px 6px', fontSize: '0.8rem' }}>{formatTs(incidentClear)}</div>
         </div>
       </div>
-      <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <button onClick={handleSave} disabled={saving} style={btnStyle('#2563eb', '#fff', '#1d4ed8')}>
-          {saving ? 'Saving...' : 'Save PSAP Timestamps'}
-        </button>
-        {saved && <span style={{ fontSize: '0.8rem', color: '#059669', fontWeight: 500 }}>✓ Saved</span>}
-        {saveError && <span style={{ fontSize: '0.8rem', color: '#991b1b' }}>{saveError}</span>}
-      </div>
+      {saveError && <div style={{ fontSize: '0.8rem', color: '#991b1b', marginTop: '0.25rem' }}>{saveError}</div>}
     </div>
   );
 }
