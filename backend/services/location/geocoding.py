@@ -396,8 +396,30 @@ def reverse_geocode_google(
         logger.info(f"Google reverse: no results for {latitude},{longitude}")
         return None
 
-    # Take the first (most specific) result
-    r = results[0]
+    # ── Pick the best result ──────────────────────────────────────────
+    # Google returns results from most specific to broadest:
+    #   [0] nearest street address (e.g. "214 Hedge Rd" — a nearby house)
+    #   [1] another nearby address
+    #   ...
+    #   [N] the road itself (type="route", e.g. "Pennsylvania Tpke")
+    #   [N+1] township, zip code, county, state, country
+    #
+    # This function only runs when forward geocoding didn't return address
+    # fields — meaning the incident is on a highway mile marker, intersection,
+    # or other non-standard location. In those cases, the "route" result is
+    # more accurate than the nearest house. For example, a turnpike incident
+    # should report "Pennsylvania Turnpike, Elverson, PA 19520" not
+    # "214 Hedge Rd, Elverson, PA 19520" (a house 100ft off the highway).
+    #
+    # Strategy: prefer a result with type="route" (any named road — street,
+    # road, highway, turnpike, etc.). Fall back to result[0] if no route found.
+    # ─────────────────────────────────────────────────────────────────────
+    r = results[0]  # default fallback
+    for candidate in results:
+        if "route" in candidate.get("types", []):
+            r = candidate
+            break
+
     components = {}
     for comp in r.get("address_components", []):
         for t in comp.get("types", []):
@@ -419,7 +441,8 @@ def reverse_geocode_google(
 
     logger.info(
         f"Google reverse: {latitude},{longitude} -> "
-        f"{result.get('city')}, {result.get('county')} Co, {result.get('state')} {result.get('zip_code')}"
+        f"{result.get('city')}, {result.get('county')} Co, {result.get('state')} {result.get('zip_code')} "
+        f"(from '{r.get('formatted_address')}', type={r.get('types')})"
     )
 
     return result
