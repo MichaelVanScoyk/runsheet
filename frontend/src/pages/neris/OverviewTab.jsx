@@ -1,18 +1,18 @@
 import { useNeris } from './NerisContext';
 import IncidentClassification from './sections/IncidentClassification';
 import BaseInformation from './sections/BaseInformation';
-import LocationDisplay from './sections/LocationDisplay';
 import LocationUse from './sections/LocationUse';
+import LocationDisplay from './sections/LocationDisplay';
 import DispatchSection from './sections/DispatchSection';
 import TacticTimestamps from './sections/TacticTimestamps';
-import ActionsTaken from './sections/ActionsTaken';
 import MutualAidDisplay from './sections/MutualAidDisplay';
 import FireDetail from './sections/FireDetail';
 import AlarmsAndSuppression from './sections/AlarmsAndSuppression';
 import MedicalDetail from './sections/MedicalDetail';
 import HazmatDetail from './sections/HazmatDetail';
-import CasualtyRescues from './sections/CasualtyRescues';
+import Exposures from './sections/Exposures';
 import EmergingHazards from './sections/EmergingHazards';
+import CasualtyRescues from './sections/CasualtyRescues';
 import DispatchComments from './sections/DispatchComments';
 
 export default function OverviewTab({ expandedSections, toggleSection }) {
@@ -47,19 +47,19 @@ export default function OverviewTab({ expandedSections, toggleSection }) {
       <IncidentClassification expanded={expandedSections['types'] !== false} onToggle={() => toggleSection('types')} />
       <BaseInformation expanded={expandedSections['base'] !== false} onToggle={() => toggleSection('base')} />
       <LocationUse expanded={expandedSections['location_use'] !== false} onToggle={() => toggleSection('location_use')} />
+      <MutualAidDisplay expanded={expandedSections['aids'] !== false} onToggle={() => toggleSection('aids')} />
+      <FireDetail expanded={expandedSections['fire'] !== false} onToggle={() => toggleSection('fire')} />
+      <AlarmsAndSuppression expanded={expandedSections['alarms'] !== false} onToggle={() => toggleSection('alarms')} />
+      <MedicalDetail expanded={expandedSections['medical'] !== false} onToggle={() => toggleSection('medical')} />
+      <HazmatDetail expanded={expandedSections['hazmat'] !== false} onToggle={() => toggleSection('hazmat')} />
+      <Exposures expanded={expandedSections['exposures'] !== false} onToggle={() => toggleSection('exposures')} />
+      <EmergingHazards expanded={expandedSections['emerging'] !== false} onToggle={() => toggleSection('emerging')} />
+      <CasualtyRescues expanded={expandedSections['casualties'] !== false} onToggle={() => toggleSection('casualties')} />
 
-      {/* Read-only sections from payload */}
+      {/* Read-only sections */}
       <LocationDisplay incident={incident} payload={payload} expanded={expandedSections['location'] !== false} onToggle={() => toggleSection('location')} />
       <DispatchSection incidentId={incidentId} incident={incident} payload={payload} expanded={expandedSections['dispatch'] !== false} onToggle={() => toggleSection('dispatch')} onRefresh={fetchPreview} />
       <TacticTimestamps payload={payload} expanded={expandedSections['tactics'] !== false} onToggle={() => toggleSection('tactics')} />
-      <ActionsTaken payload={payload} expanded={expandedSections['actions'] !== false} onToggle={() => toggleSection('actions')} />
-      <MutualAidDisplay payload={payload} expanded={expandedSections['aids'] !== false} onToggle={() => toggleSection('aids')} />
-      <FireDetail payload={payload} expanded={expandedSections['fire'] !== false} onToggle={() => toggleSection('fire')} />
-      <AlarmsAndSuppression payload={payload} expanded={expandedSections['alarms'] !== false} onToggle={() => toggleSection('alarms')} />
-      <MedicalDetail payload={payload} expanded={expandedSections['medical'] !== false} onToggle={() => toggleSection('medical')} />
-      <HazmatDetail payload={payload} expanded={expandedSections['hazmat'] !== false} onToggle={() => toggleSection('hazmat')} />
-      <CasualtyRescues payload={payload} expanded={expandedSections['casualties'] !== false} onToggle={() => toggleSection('casualties')} />
-      <EmergingHazards payload={payload} expanded={expandedSections['emerging'] !== false} onToggle={() => toggleSection('emerging')} />
       <DispatchComments payload={payload} expanded={expandedSections['comments'] !== false} onToggle={() => toggleSection('comments')} />
     </div>
   );
