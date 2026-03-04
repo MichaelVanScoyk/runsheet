@@ -16,7 +16,7 @@ Per-person record fields:
 NERIS target: CasualtyRescuePayload[], ExposurePayload[]
 """
 
-from .payload_location import build_location
+from .payload_location import build_location, build_geo_point
 
 
 def build_casualty_rescues(incident: dict) -> list | None:
@@ -123,6 +123,10 @@ def _map_person_fields(src: dict, dest: dict, is_ff: bool = False):
 def build_exposures(incident: dict) -> list | None:
     """
     Build NERIS ExposurePayload array.
+    
+    Each exposure can have geocode_data (from geocoding the exposure address).
+    When present, we use it to build a full NG911 LocationPayload + GeoPoint,
+    exactly like we do for the incident itself.
     """
     exposures = incident.get("neris_exposures") or []
     if not exposures:
@@ -144,20 +148,35 @@ def build_exposures(incident: dict) -> list | None:
             if exp.get("room"):
                 entry["location_detail"]["room"] = exp["room"]
 
-        # Location
-        loc = exp.get("location")
-        if loc and isinstance(loc, dict):
-            entry["location"] = loc
+        # Location — use geocode_data for full NG911 LocationPayload
+        geo = exp.get("geocode_data")
+        if geo and isinstance(geo, dict):
+            # Build NG911 location from geocode_data, same as incident
+            fake_incident = {"geocode_data": geo, "location_name": None}
+            entry["location"] = build_location(fake_incident)
+
+            # Build GeoPoint from geocode_data lat/lng
+            lat = geo.get("latitude")
+            lng = geo.get("longitude")
+            if lat is not None and lng is not None:
+                point = build_geo_point({"latitude": str(lat), "longitude": str(lng)})
+                if point:
+                    entry["point"] = point
         else:
-            entry["location"] = {}
+            # Fallback: pre-built location dict or empty
+            loc = exp.get("location")
+            if loc and isinstance(loc, dict):
+                entry["location"] = loc
+            else:
+                entry["location"] = {}
 
         # Damage
         if exp.get("damage") or exp.get("damage_type"):
             entry["damage_type"] = exp.get("damage_type") or exp.get("damage")
 
         # Optional
-        if exp.get("displaced") is not None:
-            entry["displacement_count"] = exp["displaced"]
+        if exp.get("displaced") is not None or exp.get("displacement_count") is not None:
+            entry["displacement_count"] = exp.get("displacement_count") or exp.get("displaced")
         if exp.get("displacement_causes"):
             entry["displacement_causes"] = exp["displacement_causes"]
         if exp.get("people_present") is not None:

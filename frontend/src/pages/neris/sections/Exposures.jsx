@@ -22,8 +22,10 @@ const DISPLACEMENT_CAUSES = [
 
 function emptyExposure() {
   return {
-    exposure_type: '',    // INTERNAL_EXPOSURE or EXTERNAL_EXPOSURE
+    exposure_type: '',
     address: '',
+    geocode_data: null,
+    geocode_status: null, // null | 'loading' | 'success' | 'failed'
     damage_type: '',
     displacement_count: null,
     displacement_causes: [],
@@ -42,7 +44,11 @@ export default function Exposures({ expanded, onToggle }) {
   if (!hasFireType) return null;
 
   const [exposures, setExposures] = useState(
-    (incident?.neris_exposures || []).map(e => ({ ...emptyExposure(), ...e }))
+    (incident?.neris_exposures || []).map(e => ({
+      ...emptyExposure(),
+      ...e,
+      geocode_status: e.geocode_data ? 'success' : null,
+    }))
   );
   const [dirty, setDirty] = useState(false);
   const [saveOk, setSaveOk] = useState(false);
@@ -53,6 +59,11 @@ export default function Exposures({ expanded, onToggle }) {
     setExposures(prev => {
       const updated = [...prev];
       updated[idx] = { ...updated[idx], [field]: value };
+      // Clear geocode if address changed
+      if (field === 'address') {
+        updated[idx].geocode_data = null;
+        updated[idx].geocode_status = null;
+      }
       return updated;
     });
     mark();
@@ -82,8 +93,54 @@ export default function Exposures({ expanded, onToggle }) {
     mark();
   };
 
+  const geocodeExposure = async (idx) => {
+    const address = exposures[idx]?.address;
+    if (!address || !address.trim()) return;
+
+    setExposures(prev => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], geocode_status: 'loading' };
+      return updated;
+    });
+
+    try {
+      const resp = await fetch('/api/location/geocode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: address.trim() }),
+      });
+
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+
+      setExposures(prev => {
+        const updated = [...prev];
+        if (data.success && data.geocode_data) {
+          updated[idx] = {
+            ...updated[idx],
+            geocode_data: data.geocode_data,
+            geocode_status: 'success',
+          };
+        } else {
+          updated[idx] = { ...updated[idx], geocode_data: null, geocode_status: 'failed' };
+        }
+        return updated;
+      });
+      mark();
+    } catch (err) {
+      console.error('Exposure geocode error:', err);
+      setExposures(prev => {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], geocode_data: null, geocode_status: 'failed' };
+        return updated;
+      });
+    }
+  };
+
   const handleSave = async () => {
-    const ok = await saveFields({ neris_exposures: exposures });
+    // Strip geocode_status before saving (UI-only field)
+    const cleanExposures = exposures.map(({ geocode_status, ...rest }) => rest);
+    const ok = await saveFields({ neris_exposures: cleanExposures });
     if (ok) {
       setDirty(false);
       setSaveOk(true);
@@ -99,7 +156,7 @@ export default function Exposures({ expanded, onToggle }) {
   return (
     <PayloadSection title="NERIS Exposures" expanded={expanded} onToggle={onToggle} badge={exposures.length}>
       <div style={{ fontSize: '0.7rem', color: '#6b7280', marginBottom: '0.5rem', fontStyle: 'italic' }}>
-        Properties affected by fire spread from the incident.
+        Properties affected by fire spread from the incident. Each exposure address is geocoded for NERIS NG911 compliance.
       </div>
 
       {exposures.map((exp, idx) => (
@@ -109,8 +166,8 @@ export default function Exposures({ expanded, onToggle }) {
             <button type="button" onClick={() => removeExposure(idx)} style={removeBtn}>×</button>
           </div>
 
-          {/* Row 1: Type, Address, Damage */}
-          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr 150px', gap: '0.5rem', marginBottom: '0.35rem' }}>
+          {/* Row 1: Type, Address + Geocode, Damage */}
+          <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 150px', gap: '0.5rem', marginBottom: '0.35rem' }}>
             <div>
               <label style={labelStyle}>Exposure Type</label>
               <select value={exp.exposure_type || ''} onChange={(e) => updateExposure(idx, 'exposure_type', e.target.value || null)} style={{ ...selectStyle, width: '100%' }}>
@@ -121,8 +178,35 @@ export default function Exposures({ expanded, onToggle }) {
             </div>
             <div>
               <label style={labelStyle}>Address</label>
-              <input type="text" value={exp.address || ''} onChange={(e) => updateExposure(idx, 'address', e.target.value)}
-                style={{ width: '100%', padding: '4px 6px', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: '4px' }} />
+              <div style={{ display: 'flex', gap: '0.35rem' }}>
+                <input type="text" value={exp.address || ''} onChange={(e) => updateExposure(idx, 'address', e.target.value)}
+                  style={{ flex: 1, padding: '4px 6px', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: '4px' }} />
+                <button type="button" onClick={() => geocodeExposure(idx)}
+                  disabled={!exp.address || exp.geocode_status === 'loading'}
+                  style={{
+                    padding: '4px 8px', fontSize: '0.75rem', fontWeight: 500,
+                    border: '1px solid #d1d5db', borderRadius: '4px', cursor: 'pointer',
+                    background: exp.geocode_status === 'success' ? '#dcfce7' :
+                                exp.geocode_status === 'failed' ? '#fef2f2' :
+                                exp.geocode_status === 'loading' ? '#fef9c3' : '#fff',
+                    color: exp.geocode_status === 'success' ? '#166534' :
+                           exp.geocode_status === 'failed' ? '#991b1b' : '#374151',
+                  }}>
+                  {exp.geocode_status === 'loading' ? '...' :
+                   exp.geocode_status === 'success' ? '✓ Geocoded' :
+                   exp.geocode_status === 'failed' ? '✗ Retry' : 'Geocode'}
+                </button>
+              </div>
+              {exp.geocode_data && (
+                <div style={{ fontSize: '0.65rem', color: '#059669', marginTop: '2px' }}>
+                  {exp.geocode_data.matched_address} ({exp.geocode_data.provider}, {exp.geocode_data.latitude?.toFixed(5)}, {exp.geocode_data.longitude?.toFixed(5)})
+                </div>
+              )}
+              {exp.geocode_status === 'failed' && (
+                <div style={{ fontSize: '0.65rem', color: '#dc2626', marginTop: '2px' }}>
+                  Geocoding failed — check address and retry
+                </div>
+              )}
             </div>
             <div>
               <label style={labelStyle}>Damage</label>
