@@ -181,16 +181,24 @@ def build_dispatch(incident: dict, units: list) -> dict:
     }
 
     # PSAP timestamps
+    # IMPORTANT: NERIS requires call_arrival <= call_answered <= call_create
+    # call_create is the LATEST — when CAD incident was formally opened (after call answered)
+    # If call_arrival or call_answered are unknown, they may equal call_create per NERIS guidance.
+    # Source: NERIS Minimum Data Requirements FAQ (neris.atlassian.net/wiki/spaces/NKB)
     call_arrival = _format_ts(incident.get("psap_call_arrival"))
     call_answered = _format_ts(incident.get("psap_call_answered"))
     call_create = _format_ts(incident.get("time_dispatched"))
 
-    if call_arrival:
-        dispatch["call_arrival"] = call_arrival
-    if call_answered:
-        dispatch["call_answered"] = call_answered
+    # Fallback: if PSAP timestamps missing, derive from call_create (acceptable per NERIS)
     if call_create:
         dispatch["call_create"] = call_create
+        dispatch["call_arrival"] = call_arrival if call_arrival else call_create
+        dispatch["call_answered"] = call_answered if call_answered else call_create
+    else:
+        if call_arrival:
+            dispatch["call_arrival"] = call_arrival
+        if call_answered:
+            dispatch["call_answered"] = call_answered
 
     clear = _format_ts(incident.get("time_last_cleared"))
     if clear:

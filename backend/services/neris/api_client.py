@@ -13,7 +13,7 @@ Endpoints (from official ulfsri/neris-api-client v1.3+):
   PATCH  /incident/{fd_neris_id}/{neris_incident_id}    — Update existing incident
   GET    /entity/{fd_neris_id}                          — Get entity info
   POST   /entity/{fd_neris_id}/station                  — Create station
-  POST   /entity/{fd_neris_id}/station/{sid}/unit       — Create unit
+  POST   /entity/{fd_neris_id}/station/{sid}/unit       — Create unit  ✓ path confirmed
 """
 
 import base64
@@ -112,6 +112,7 @@ class NerisApiClient:
         return {
             "Authorization": f"Bearer {self._access_token}",
             "Content-Type": "application/json",
+            "User-Agent": "CADReport/1.0",
         }
 
     async def _request(self, method: str, path: str, json_body: dict | None = None) -> dict:
@@ -179,4 +180,4 @@ class NerisApiClient:
 
     async def create_unit(self, neris_id_entity: str, neris_id_station: str, payload: dict) -> dict:
         """POST new unit to a station."""
-        return await self._request("POST", f"/entity/{neris_id_entity}/station/{neris_id_station}", payload)
+        return await self._request("POST", f"/entity/{neris_id_entity}/station/{neris_id_station}/unit", payload)
