@@ -9,6 +9,9 @@ export default function EmergingHazards({ expanded, onToggle }) {
   const emergHazPvIgnCodes = dropdowns.type_emerghaz_pv_ign || [];
 
   const [hazard, setHazard] = useState(incident?.neris_emerging_hazard || {});
+  const [csstIgnition, setCsstIgnition] = useState(incident?.neris_csst_ignition_source ?? null);
+  const [csstLightning, setCsstLightning] = useState(incident?.neris_csst_lightning_suspected || '');
+  const [csstGrounded, setCsstGrounded] = useState(incident?.neris_csst_grounded || '');
   const [dirty, setDirty] = useState(false);
   const [saveOk, setSaveOk] = useState(false);
 
@@ -26,6 +29,9 @@ export default function EmergingHazards({ expanded, onToggle }) {
     const hasAny = hazard.ev_battery?.present || hazard.solar_pv?.present || hazard.csst?.present;
     const ok = await saveFields({
       neris_emerging_hazard: hasAny ? hazard : null,
+      neris_csst_ignition_source: csstIgnition,
+      neris_csst_lightning_suspected: csstLightning || null,
+      neris_csst_grounded: csstGrounded || null,
     });
     if (ok) {
       setDirty(false);
@@ -91,12 +97,37 @@ export default function EmergingHazards({ expanded, onToggle }) {
           CSST Gas Lines
         </label>
         {hazard.csst?.present && (
-          <div style={{ marginTop: '0.35rem', paddingTop: '0.35rem', borderTop: '1px solid #e5e7eb' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem', color: '#374151', cursor: 'pointer' }}>
-              <input type="checkbox" checked={hazard.csst?.damage || false}
-                onChange={(e) => updateNested('csst', 'damage', e.target.checked)} />
-              Damage / Gas Leak
-            </label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', marginTop: '0.35rem', paddingTop: '0.35rem', borderTop: '1px solid #e5e7eb' }}>
+            <div>
+              <label style={labelStyle}>Ignition Source?</label>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                {[{ val: true, lbl: 'Yes' }, { val: false, lbl: 'No' }, { val: null, lbl: 'Unknown' }].map(opt => (
+                  <label key={String(opt.val)} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: '#374151', cursor: 'pointer' }}>
+                    <input type="radio" name="csst_ignition" checked={csstIgnition === opt.val}
+                      onChange={() => { setCsstIgnition(opt.val); mark(); }} />
+                    {opt.lbl}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>Lightning Suspected?</label>
+              <select value={csstLightning} onChange={(e) => { setCsstLightning(e.target.value); mark(); }} style={selectStyle}>
+                <option value="">--</option>
+                <option value="YES">Yes</option>
+                <option value="NO">No</option>
+                <option value="UNKNOWN">Unknown</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Grounded?</label>
+              <select value={csstGrounded} onChange={(e) => { setCsstGrounded(e.target.value); mark(); }} style={selectStyle}>
+                <option value="">--</option>
+                <option value="YES">Yes</option>
+                <option value="NO">No</option>
+                <option value="UNKNOWN">Unknown</option>
+              </select>
+            </div>
           </div>
         )}
       </div>

@@ -606,6 +606,11 @@ class Incident(Base):
     #   "csst": { "present": bool, "damage": bool }
     # }
     
+    # CSST hazard dedicated columns (gap 15)
+    neris_csst_ignition_source = Column(Boolean)     # Was CSST the ignition source?
+    neris_csst_lightning_suspected = Column(Text)     # YES / NO / UNKNOWN
+    neris_csst_grounded = Column(Text)                # YES / NO / UNKNOWN
+    
     # =========================================================================
     # NERIS MODULE: RISK REDUCTION DETAILS
     # Conditional detail fields based on presence selections
@@ -614,6 +619,7 @@ class Incident(Base):
     # Smoke Alarm Details (shown when smoke_alarm_presence != NONE/UNKNOWN)
     neris_rr_smoke_alarm_type = Column(JSONB, default=[])        # type_alarm_smoke (multi)
     neris_rr_smoke_alarm_working = Column(Boolean)               # Was it working?
+    neris_rr_smoke_alarm_post_action = Column(Text)              # Post-alarm action taken
     neris_rr_smoke_alarm_operation = Column(Text)                # type_alarm_operation
     neris_rr_smoke_alarm_failure = Column(Text)                  # type_alarm_failure
     neris_rr_smoke_alarm_action = Column(Text)                   # Occupant action taken

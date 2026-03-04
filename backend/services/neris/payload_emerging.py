@@ -70,8 +70,25 @@ def build_csst_hazard(incident: dict) -> dict | None:
     """
     Build NERIS CsstHazardPayload.
     
-    Our neris_emerging_hazard JSONB has csst sub-object.
+    Reads from dedicated columns first, falls back to neris_emerging_hazard JSONB.
     """
+    # Check dedicated columns first
+    ign = incident.get("neris_csst_ignition_source")
+    lightning = incident.get("neris_csst_lightning_suspected")
+    grounded = incident.get("neris_csst_grounded")
+
+    # If any dedicated column has data, use them
+    if ign is not None or lightning or grounded:
+        payload = {}
+        if ign is not None:
+            payload["ignition_source"] = ign
+        if lightning:
+            payload["lightning_suspected"] = lightning
+        if grounded:
+            payload["grounded"] = grounded
+        return payload if payload else None
+
+    # Fallback: legacy JSONB
     hazard = incident.get("neris_emerging_hazard") or {}
     csst = hazard.get("csst")
 
@@ -82,7 +99,6 @@ def build_csst_hazard(incident: dict) -> dict | None:
         return None
 
     payload = {}
-
     if csst.get("ignition_source") is not None:
         payload["ignition_source"] = csst["ignition_source"]
     if csst.get("lightning_suspected"):

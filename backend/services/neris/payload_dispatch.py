@@ -1,7 +1,9 @@
 """
 NERIS Dispatch Payload Builder
 
-Reads directly from the incident record — no intermediary tables.
+Reads from both:
+  - incidents.cad_units JSONB (CAD timestamps)
+  - incident_units table (crew assignments, staging, med_responses)
 
 Source DB fields:
   - incidents.cad_event_number
@@ -9,11 +11,11 @@ Source DB fields:
   - incidents.time_last_cleared (→ incident_clear)
   - incidents.psap_call_arrival (→ call_arrival)
   - incidents.psap_call_answered (→ call_answered)
-  - incidents.cad_units (JSONB array → unit_responses)
+  - incidents.cad_units (JSONB array → base unit timestamps)
   - incidents.cad_event_comments (JSONB → comments)
-  - incident_units (crew_count only, matched by apparatus_id)
+  - incident_units table (crew_count, staging, canceled, med_response timestamps)
 
-NERIS target: DispatchPayload, IncidentUnitResponsePayload[]
+NERIS target: DispatchPayload with unit_responses[], also top-level unit_responses[]
 """
 
 from .payload_location import build_location, build_geo_point
@@ -25,32 +27,40 @@ def _format_ts(val) -> str | None:
         return None
     if isinstance(val, str):
         return val if val else None
-    # datetime object
     return val.isoformat()
 
 
-def build_unit_response(cad_unit: dict, crew_count: int | None = None) -> dict:
+def _build_unit_lookup(incident_units: list) -> dict:
     """
-    Build one NERIS IncidentUnitResponsePayload from a cad_units JSONB entry.
+    Build lookup from apparatus_id → incident_unit dict.
+    Includes crew_count, staging, canceled, med_response timestamps.
+    """
+    lookup = {}
+    for iu in incident_units:
+        app_id = iu.get("apparatus_id")
+        if app_id:
+            lookup[app_id] = iu
+    return lookup
+
+
+def build_unit_response(cad_unit: dict, iu: dict | None = None) -> dict:
+    """
+    Build one NERIS unit response from cad_units JSONB + incident_units row.
     
-    cad_units JSONB fields:
-      unit_id, time_dispatched, time_enroute, time_arrived, time_cleared,
-      is_mutual_aid, apparatus_id, station, agency, source
-    
-    crew_count comes from incident_units matched by apparatus_id.
+    cad_units provides: unit_id, core CAD timestamps
+    incident_units provides: crew_count, staging, canceled_enroute, med_response timestamps
     """
     resp = {}
 
-    # Unit identification — use the CAD unit ID directly
     unit_id = cad_unit.get("unit_id")
     if unit_id:
         resp["reported_unit_id"] = unit_id
 
-    # Staffing from incident_units (personnel assignments)
-    # Default to 1 if no crew count — a unit that responded had at least 1 person
-    resp["staffing"] = crew_count if crew_count is not None else 1
+    # Staffing from incident_units crew_count, default 1
+    crew = iu.get("crew_count") if iu else None
+    resp["staffing"] = crew if crew is not None else 1
 
-    # Timestamps — read directly from cad_units JSONB
+    # Core timestamps from cad_units JSONB
     ts_map = {
         "time_dispatched": "dispatch",
         "time_enroute":    "enroute_to_scene",
@@ -62,29 +72,62 @@ def build_unit_response(cad_unit: dict, crew_count: int | None = None) -> dict:
         if ts:
             resp[neris_key] = ts
 
+    # Additional timestamps from incident_units
+    if iu:
+        staging = _format_ts(iu.get("time_staging"))
+        if staging:
+            resp["staging"] = staging
+
+        # Canceled enroute — boolean in NERIS, we have a timestamp
+        if iu.get("time_canceled_enroute") or iu.get("cancelled"):
+            resp["canceled_enroute"] = True
+
+        # Response mode
+        mode = iu.get("response_mode")
+        if mode:
+            resp["response_mode"] = mode
+
+        # Transport mode (EMS)
+        transport = iu.get("transport_mode")
+        if transport:
+            resp["transport_mode"] = transport
+
+        # Med responses — build array if any EMS timestamps present
+        med = _build_med_response(iu)
+        if med:
+            resp["med_responses"] = [med]
+
     return resp
 
 
-def _build_crew_lookup(incident_units: list) -> dict:
+def _build_med_response(iu: dict) -> dict | None:
     """
-    Build a lookup from apparatus_id → crew_count from incident_units.
-    This is the only data we pull from incident_units — crew assignments.
+    Build MedResponsePayload from incident_unit timestamps.
+    Only returns if at least one med timestamp exists.
     """
-    lookup = {}
-    for iu in incident_units:
-        app_id = iu.get("apparatus_id")
-        count = iu.get("crew_count")
-        if app_id and count is not None:
-            lookup[app_id] = count
-    return lookup
+    fields = {
+        "time_at_patient":       "at_patient",
+        "time_enroute_hospital": "enroute_to_hospital",
+        "time_arrived_hospital": "arrived_at_hospital",
+        "time_hospital_clear":   "hospital_cleared",
+    }
+
+    med = {}
+    for db_key, neris_key in fields.items():
+        ts = _format_ts(iu.get(db_key))
+        if ts:
+            med[neris_key] = ts
+
+    dest = iu.get("hospital_destination")
+    if dest:
+        med["hospital_destination"] = dest
+
+    return med if med else None
 
 
 def build_dispatch_comments(incident: dict) -> list | None:
     """
     Build NERIS CommentPayload array from cad_event_comments.
-    
-    Our cad_event_comments JSONB: {comments: [{text, timestamp, ...}], ...}
-    NERIS wants: [{comment: str, timestamp: datetime}, ...]
     """
     comments_data = incident.get("cad_event_comments") or {}
     comments = comments_data.get("comments")
@@ -109,36 +152,27 @@ def build_dispatch(incident: dict, units: list) -> dict:
     """
     Build NERIS DispatchPayload.
     
-    Unit data comes from incidents.cad_units JSONB (the source of truth).
-    Crew counts come from incident_units (personnel assignments).
-    
-    PSAP timestamps: call_arrival <= call_answered <= call_create
+    Unit data merges cad_units JSONB (CAD timestamps) with incident_units
+    (crew, staging, med_responses).
     """
-    # Build crew count lookup from incident_units
-    crew_lookup = _build_crew_lookup(units)
+    # Build lookup from incident_units by apparatus_id
+    unit_lookup = _build_unit_lookup(units)
 
-    # Build unit responses from cad_units JSONB on the incident
-    # Filters:
-    #   1. Skip mutual aid units (is_mutual_aid=true) — those go in aids module
-    #   2. Skip units that never responded — must have time_enroute OR time_arrived
-    #      (county sometimes misses enroute but records arrived, so either counts)
     cad_units = incident.get("cad_units") or []
     unit_responses = []
     for cu in cad_units:
-        # Skip mutual aid units — not our department's response
         if cu.get("is_mutual_aid"):
             continue
 
-        # Skip units that never actually responded
         has_enroute = bool(cu.get("time_enroute"))
         has_arrived = bool(cu.get("time_arrived"))
         if not has_enroute and not has_arrived:
             continue
 
-        # Match crew count by apparatus_id
+        # Match incident_unit row by apparatus_id
         app_id = cu.get("apparatus_id")
-        crew_count = crew_lookup.get(app_id) if app_id else None
-        unit_responses.append(build_unit_response(cu, crew_count))
+        iu = unit_lookup.get(app_id) if app_id else None
+        unit_responses.append(build_unit_response(cu, iu))
 
     dispatch = {
         "incident_number": incident.get("cad_event_number", ""),
@@ -146,7 +180,7 @@ def build_dispatch(incident: dict, units: list) -> dict:
         "unit_responses": unit_responses,
     }
 
-    # PSAP timestamps — REQUIRED by NERIS
+    # PSAP timestamps
     call_arrival = _format_ts(incident.get("psap_call_arrival"))
     call_answered = _format_ts(incident.get("psap_call_answered"))
     call_create = _format_ts(incident.get("time_dispatched"))
@@ -158,22 +192,19 @@ def build_dispatch(incident: dict, units: list) -> dict:
     if call_create:
         dispatch["call_create"] = call_create
 
-    # Incident clear
     clear = _format_ts(incident.get("time_last_cleared"))
     if clear:
         dispatch["incident_clear"] = clear
 
-    # Dispatch point
     point = build_geo_point(incident)
     if point:
         dispatch["point"] = point
 
-    # CAD comments
     comments = build_dispatch_comments(incident)
     if comments:
         dispatch["comments"] = comments
 
-    # Incident code — maps from CAD event type
+    # Incident code — from CAD event type
     incident_code = incident.get("cad_event_type")
     if incident_code:
         dispatch["incident_code"] = incident_code
@@ -199,3 +230,39 @@ def build_dispatch(incident: dict, units: list) -> dict:
         dispatch["center_id"] = center_id
 
     return dispatch
+
+
+def build_incident_unit_responses(incident: dict, units: list) -> list | None:
+    """
+    Build top-level unit_responses[] — units that ACTUALLY responded.
+    
+    NERIS has unit_responses at two levels:
+      dispatch.unit_responses = units that were DISPATCHED
+      (top-level) unit_responses = units that ACTUALLY RESPONDED
+    
+    For most incidents these are identical. A unit dispatched then
+    canceled_enroute would appear in dispatch but not top-level.
+    """
+    unit_lookup = _build_unit_lookup(units)
+
+    cad_units = incident.get("cad_units") or []
+    responded = []
+    for cu in cad_units:
+        if cu.get("is_mutual_aid"):
+            continue
+
+        # For top-level: must have actually arrived on scene
+        has_arrived = bool(cu.get("time_arrived"))
+        if not has_arrived:
+            continue
+
+        app_id = cu.get("apparatus_id")
+        iu = unit_lookup.get(app_id) if app_id else None
+
+        # Skip if canceled enroute
+        if iu and (iu.get("time_canceled_enroute") or iu.get("cancelled")):
+            continue
+
+        responded.append(build_unit_response(cu, iu))
+
+    return responded if responded else None

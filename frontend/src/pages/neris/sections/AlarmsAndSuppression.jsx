@@ -28,6 +28,7 @@ export default function AlarmsAndSuppression({ expanded, onToggle }) {
   const [smokeWorking, setSmokeWorking] = useState(incident?.neris_rr_smoke_alarm_working);
   const [smokeOperation, setSmokeOperation] = useState(incident?.neris_rr_smoke_alarm_operation || '');
   const [smokeFailure, setSmokeFailure] = useState(incident?.neris_rr_smoke_alarm_failure || '');
+  const [smokePostAction, setSmokePostAction] = useState(incident?.neris_rr_smoke_alarm_post_action || '');
   const [fireAlarmType, setFireAlarmType] = useState(incident?.neris_rr_fire_alarm_type || []);
   const [fireAlarmOp, setFireAlarmOp] = useState(incident?.neris_rr_fire_alarm_operation || '');
   const [otherAlarmType, setOtherAlarmType] = useState(incident?.neris_rr_other_alarm_type || []);
@@ -56,6 +57,7 @@ export default function AlarmsAndSuppression({ expanded, onToggle }) {
       neris_rr_smoke_alarm_working: smokeWorking,
       neris_rr_smoke_alarm_operation: smokeOperation || null,
       neris_rr_smoke_alarm_failure: smokeFailure || null,
+      neris_rr_smoke_alarm_post_action: smokePostAction || null,
       neris_rr_fire_alarm_type: fireAlarmType,
       neris_rr_fire_alarm_operation: fireAlarmOp || null,
       neris_rr_other_alarm_type: otherAlarmType,
@@ -112,7 +114,7 @@ export default function AlarmsAndSuppression({ expanded, onToggle }) {
       {/* Smoke Alarm Details */}
       {rr.smoke_alarm_presence === 'PRESENT' && (
         <DetailBlock title="Smoke Alarm Details">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.5rem' }}>
             <div>
               <label style={labelStyle}>Type(s)</label>
               <select multiple value={smokeType} onChange={handleMultiChange(setSmokeType)} style={multiStyle}>
@@ -132,6 +134,18 @@ export default function AlarmsAndSuppression({ expanded, onToggle }) {
               <select value={smokeOperation} onChange={(e) => { setSmokeOperation(e.target.value); mark(); }} style={selectStyle}>
                 <option value="">--</option>
                 {alarmOperationCodes.map(c => <option key={c.value} value={c.value}>{c.description || c.value}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Post-Alarm Action</label>
+              <select value={smokePostAction} onChange={(e) => { setSmokePostAction(e.target.value); mark(); }} style={selectStyle}>
+                <option value="">--</option>
+                <option value="EVACUATED">Evacuated</option>
+                <option value="ATTEMPTED_EXTINGUISHMENT">Attempted Extinguishment</option>
+                <option value="NOTIFIED_OTHERS">Notified Others</option>
+                <option value="CALLED_911">Called 911</option>
+                <option value="NO_ACTION">No Action</option>
+                <option value="UNKNOWN">Unknown</option>
               </select>
             </div>
             <div>

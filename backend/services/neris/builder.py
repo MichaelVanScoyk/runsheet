@@ -18,7 +18,7 @@ Usage:
 """
 
 from .payload_base import build_base, build_incident_types
-from .payload_dispatch import build_dispatch
+from .payload_dispatch import build_dispatch, build_incident_unit_responses
 from .payload_timestamps import build_tactic_timestamps
 from .payload_actions import build_actions_tactics, build_aids, build_nonfd_aids
 from .payload_fire import (
@@ -59,9 +59,10 @@ def build_neris_payload(
 
     # === OPTIONAL: Unit responses at incident level ===
     # NERIS has unit_responses at both dispatch and incident level.
-    # Dispatch-level is required (built inside build_dispatch).
-    # Incident-level is optional — same data, different context.
-    # We don't duplicate for now.
+    # Dispatch-level = units DISPATCHED. Incident-level = units that ACTUALLY RESPONDED.
+    incident_units = build_incident_unit_responses(incident, units)
+    if incident_units:
+        payload["unit_responses"] = incident_units
 
     # === OPTIONAL: Tactic timestamps ===
     ts = build_tactic_timestamps(incident)

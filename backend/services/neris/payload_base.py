@@ -75,18 +75,19 @@ def build_location_use(incident: dict) -> dict | None:
         else:
             payload["secondary_use"] = sec_type
 
-    # Vacancy
-    vacancy = lu.get("use_vacancy")
-    if vacancy and vacancy != "OCCUPIED":
+    # Vacancy cause
+    vacancy = lu.get("use_vacancy") or lu.get("vacancy_cause")
+    if vacancy and vacancy not in ("OCCUPIED", ""):
         payload["vacancy_cause"] = vacancy
 
-    # In-use status
-    use_status = lu.get("use_status")
-    use_intended = lu.get("use_intended")
-    if use_status is not None:
-        in_use = {"in_use": bool(use_status)}
-        if use_intended is not None:
-            in_use["intended"] = bool(use_intended)
+    # In-use status — FLAT boolean per OpenAPI v1.4.34
+    in_use = lu.get("in_use")
+    if in_use is None:
+        # Legacy: derive from use_status
+        use_status = lu.get("use_status")
+        if use_status is not None:
+            in_use = bool(use_status)
+    if in_use is not None:
         payload["in_use"] = in_use
 
     return payload if payload else None

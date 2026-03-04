@@ -126,6 +126,11 @@ def build_smoke_alarm(incident: dict) -> dict | None:
         # Operation contains the alerted/failed/other discriminator
         present["operation"] = {"alerted_failed_other": operation}
 
+    # Post-alarm action (gap 21)
+    post_action = incident.get("neris_rr_smoke_alarm_post_action")
+    if post_action:
+        present["post_alarm_action"] = post_action
+
     return payload
 
 
