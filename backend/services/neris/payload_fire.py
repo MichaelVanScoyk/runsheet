@@ -124,7 +124,12 @@ def build_smoke_alarm(incident: dict) -> dict | None:
     operation = incident.get("neris_rr_smoke_alarm_operation")
     if operation:
         # Operation contains the alerted/failed/other discriminator
-        present["operation"] = {"alerted_failed_other": operation}
+        op_obj = {"alerted_failed_other": operation}
+        # Include failure_reason when operation indicates failure
+        failure = incident.get("neris_rr_smoke_alarm_failure")
+        if failure:
+            op_obj["failure_reason"] = failure
+        present["operation"] = op_obj
 
     # Post-alarm action (gap 21)
     post_action = incident.get("neris_rr_smoke_alarm_post_action")

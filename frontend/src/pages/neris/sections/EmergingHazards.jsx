@@ -20,6 +20,17 @@ const SOURCE_TARGET = [
   { value: 'TARGET', label: 'Target (damaged by fire)' },
 ];
 
+const ELECTRIC_SUPPRESSION_TYPES = [
+  { value: 'WATER', label: 'Water' },
+  { value: 'FOAM', label: 'Foam' },
+  { value: 'DRY_CHEMICAL', label: 'Dry Chemical' },
+  { value: 'CO2', label: 'CO2' },
+  { value: 'CLEAN_AGENT', label: 'Clean Agent' },
+  { value: 'SAND_DIRT', label: 'Sand / Dirt' },
+  { value: 'NONE', label: 'None Used' },
+  { value: 'OTHER', label: 'Other' },
+];
+
 const PV_TYPES = [
   { value: 'ROOF_MOUNTED', label: 'Roof Mounted' },
   { value: 'GROUND_MOUNTED', label: 'Ground Mounted' },
@@ -174,12 +185,33 @@ export default function EmergingHazards({ expanded, onToggle }) {
               <button type="button" onClick={() => removeElectric(idx)} style={removeBtn}>×</button>
             </div>
             {/* Fire details sub-object */}
-            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.35rem', paddingTop: '0.35rem', borderTop: '1px solid #e5e7eb' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: '#374151', cursor: 'pointer' }}>
-                <input type="checkbox" checked={eh.fire_details?.reignition || false}
-                  onChange={(e) => updateElectricFire(idx, 'reignition', e.target.checked)} />
-                Reignition
-              </label>
+            <div style={{ marginTop: '0.35rem', paddingTop: '0.35rem', borderTop: '1px solid #e5e7eb' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.25rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: '#374151', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={eh.fire_details?.reignition || false}
+                    onChange={(e) => updateElectricFire(idx, 'reignition', e.target.checked)} />
+                  Reignition
+                </label>
+              </div>
+              <div>
+                <label style={labelStyle}>Suppression Types Used</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {ELECTRIC_SUPPRESSION_TYPES.map(st => {
+                    const types = eh.fire_details?.suppression_types || [];
+                    return (
+                      <label key={st.value} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: '#374151', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={types.includes(st.value)}
+                          onChange={(e) => {
+                            const cur = eh.fire_details?.suppression_types || [];
+                            const next = e.target.checked ? [...cur, st.value] : cur.filter(v => v !== st.value);
+                            updateElectricFire(idx, 'suppression_types', next);
+                          }} />
+                        {st.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         ))}
