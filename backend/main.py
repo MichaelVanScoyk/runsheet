@@ -58,6 +58,7 @@ from routers import location as location_router
 from routers import map as map_router
 from routers import neris_mutual_aid as neris_mutual_aid_router
 from routers import neris_submit as neris_submit_router
+from routers import neris_entity as neris_entity_router
 from routers.reports import router as reports_router
 from database import engine, Base
 from master_database import MasterSessionLocal
@@ -454,6 +455,7 @@ app.include_router(location_router.router, prefix="/api/location", tags=["Locati
 app.include_router(map_router.router, prefix="/api/map", tags=["Map"])  # Map platform: /api/map
 app.include_router(neris_mutual_aid_router.router, prefix="/api/admin/neris-mutual-aid", tags=["NERIS Mutual Aid"])  # Mutual aid: /api/admin/neris-mutual-aid
 app.include_router(neris_submit_router.router, prefix="/api/neris", tags=["NERIS Submit"])  # NERIS submission: /api/neris
+app.include_router(neris_entity_router.router, prefix="/api/neris", tags=["NERIS Entity"])  # NERIS entity: /api/neris/entity
 
 @app.get("/")
 async def root():

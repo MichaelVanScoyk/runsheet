@@ -70,7 +70,12 @@ def _units_to_dicts(units) -> list:
 
 def _build_preview(incident, db: Session, settings: dict) -> dict:
     """Build and validate NERIS payload. Returns {payload, errors, warnings, valid}."""
-    department_neris_id = settings.get("department_neris_id")
+    # Read fd_neris_id from neris_entity table (authoritative source).
+    # Falls back to settings.department_neris_id for backward compatibility.
+    entity_row = db.execute(
+        text("SELECT fd_neris_id FROM neris_entity LIMIT 1")
+    ).fetchone()
+    department_neris_id = entity_row[0] if entity_row and entity_row[0] else settings.get("department_neris_id")
 
     # Load related data
     units = db.query(IncidentUnit).filter(IncidentUnit.incident_id == incident.id).all()
@@ -120,10 +125,13 @@ async def submit_to_neris(incident_id: int, db: Session = Depends(get_db)):
         )
 
     settings = _get_neris_settings(db)
-    department_neris_id = settings.get("department_neris_id")
+    entity_row = db.execute(
+        text("SELECT fd_neris_id FROM neris_entity LIMIT 1")
+    ).fetchone()
+    department_neris_id = entity_row[0] if entity_row and entity_row[0] else settings.get("department_neris_id")
 
     if not department_neris_id:
-        raise HTTPException(status_code=400, detail="department_neris_id not configured in settings.")
+        raise HTTPException(status_code=400, detail="fd_neris_id not configured in neris_entity.")
 
     # Build and validate
     result = _build_preview(incident, db, settings)
@@ -178,10 +186,13 @@ async def resubmit_to_neris(incident_id: int, db: Session = Depends(get_db)):
         )
 
     settings = _get_neris_settings(db)
-    department_neris_id = settings.get("department_neris_id")
+    entity_row = db.execute(
+        text("SELECT fd_neris_id FROM neris_entity LIMIT 1")
+    ).fetchone()
+    department_neris_id = entity_row[0] if entity_row and entity_row[0] else settings.get("department_neris_id")
 
     if not department_neris_id:
-        raise HTTPException(status_code=400, detail="department_neris_id not configured in settings.")
+        raise HTTPException(status_code=400, detail="fd_neris_id not configured in neris_entity.")
 
     # Build and validate
     result = _build_preview(incident, db, settings)
