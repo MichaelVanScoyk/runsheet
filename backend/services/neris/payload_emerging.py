@@ -6,6 +6,9 @@ Maps our DB fields → NERIS ElectricHazardPayload[], PowergenHazardPayload[],
 
 Source DB fields:
   - incidents.neris_emerging_hazard (JSONB)
+    New structure: {electric_hazards: [...], powergen_hazards: [...], csst: {present: bool}}
+    Legacy structure: {ev_battery: {...}, solar_pv: {...}, csst: {...}}
+  - incidents.neris_csst_* (dedicated columns)
 
 NERIS target: electric_hazards[], powergen_hazards[], csst_hazard
 """
@@ -15,28 +18,50 @@ def build_electric_hazards(incident: dict) -> list | None:
     """
     Build NERIS ElectricHazardPayload array.
     
-    Our neris_emerging_hazard JSONB has ev_battery sub-object.
-    NERIS wants array of electric hazard entries.
+    New format: neris_emerging_hazard.electric_hazards = array of entries
+    Legacy: neris_emerging_hazard.ev_battery = single entry
     """
     hazard = incident.get("neris_emerging_hazard") or {}
+
+    # New format — array of entries
+    entries = hazard.get("electric_hazards")
+    if entries and isinstance(entries, list):
+        result = []
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            entry = {}
+            if e.get("type"):
+                entry["type"] = e["type"]
+            if e.get("source_or_target"):
+                entry["source_or_target"] = e["source_or_target"]
+            if e.get("involved_in_crash") is not None:
+                entry["involved_in_crash"] = e["involved_in_crash"]
+            fire = e.get("fire_details")
+            if fire and isinstance(fire, dict):
+                fd = {}
+                if fire.get("reignition") is not None:
+                    fd["reignition"] = fire["reignition"]
+                if fire.get("suppression_types"):
+                    fd["suppression_types"] = fire["suppression_types"]
+                if fd:
+                    entry["fire_details"] = fd
+            if entry:
+                result.append(entry)
+        return result if result else None
+
+    # Legacy fallback
     ev = hazard.get("ev_battery")
-
-    if not ev or not isinstance(ev, dict):
-        return None
-
-    if not ev.get("present"):
+    if not ev or not isinstance(ev, dict) or not ev.get("present"):
         return None
 
     entry = {}
-
     if ev.get("type"):
         entry["type"] = ev["type"]
     if ev.get("source_or_target"):
         entry["source_or_target"] = ev["source_or_target"]
     if ev.get("involved_in_crash") is not None:
         entry["involved_in_crash"] = ev["involved_in_crash"]
-
-    # Fire details sub-object
     fire = ev.get("fire_details")
     if fire and isinstance(fire, dict):
         entry["fire_details"] = fire
@@ -48,21 +73,47 @@ def build_powergen_hazards(incident: dict) -> list | None:
     """
     Build NERIS PowergenHazardPayload array.
     
-    Our neris_emerging_hazard JSONB has solar_pv sub-object.
-    NERIS wants array with discriminated pv_other field.
+    New format: neris_emerging_hazard.powergen_hazards = array of entries
+    Legacy: neris_emerging_hazard.solar_pv = single entry
+    
+    NERIS discriminates by type:
+      SOLAR_PV → PvPowergenHazardPayload (has pv_type)
+      WIND/GENERATOR/FUEL_CELL → OtherPowergenHazardPayload
     """
     hazard = incident.get("neris_emerging_hazard") or {}
+
+    # New format — array of entries
+    entries = hazard.get("powergen_hazards")
+    if entries and isinstance(entries, list):
+        result = []
+        for pg in entries:
+            if not isinstance(pg, dict):
+                continue
+            pg_type = pg.get("type")
+            if not pg_type:
+                continue
+
+            if pg_type == "SOLAR_PV":
+                entry = {"pv_other": {"type": "SOLAR_PV"}}
+                pv = entry["pv_other"]
+                if pg.get("pv_type"):
+                    pv["pv_type"] = pg["pv_type"]
+                if pg.get("source_or_target"):
+                    pv["source_or_target"] = pg["source_or_target"]
+            else:
+                entry = {"pv_other": {"type": pg_type}}
+                if pg.get("source_or_target"):
+                    entry["pv_other"]["source_or_target"] = pg["source_or_target"]
+
+            result.append(entry)
+        return result if result else None
+
+    # Legacy fallback
     solar = hazard.get("solar_pv")
-
-    if not solar or not isinstance(solar, dict):
+    if not solar or not isinstance(solar, dict) or not solar.get("present"):
         return None
 
-    if not solar.get("present"):
-        return None
-
-    # NERIS discriminates between PV and OTHER powergen types
     entry = {"pv_other": solar}
-
     return [entry] if entry else None
 
 
@@ -77,7 +128,6 @@ def build_csst_hazard(incident: dict) -> dict | None:
     lightning = incident.get("neris_csst_lightning_suspected")
     grounded = incident.get("neris_csst_grounded")
 
-    # If any dedicated column has data, use them
     if ign is not None or lightning or grounded:
         payload = {}
         if ign is not None:
@@ -91,11 +141,7 @@ def build_csst_hazard(incident: dict) -> dict | None:
     # Fallback: legacy JSONB
     hazard = incident.get("neris_emerging_hazard") or {}
     csst = hazard.get("csst")
-
-    if not csst or not isinstance(csst, dict):
-        return None
-
-    if not csst.get("present"):
+    if not csst or not isinstance(csst, dict) or not csst.get("present"):
         return None
 
     payload = {}
