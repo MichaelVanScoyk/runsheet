@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import api from '../../../api';
+import { useNeris } from '../NerisContext';
 import { PayloadSection, Field, FieldGrid } from '../shared/NerisComponents';
 import { formatTs, toLocalDatetimeStr, thStyle, tdStyle } from '../shared/nerisUtils';
 
@@ -54,6 +55,35 @@ function PsapTimestampEditor({ incidentId, incident, callArrival, callAnswered, 
 }
 
 export default function DispatchSection({ incidentId, incident, payload, expanded, onToggle, onRefresh }) {
+  const { saveFields, saving } = useNeris();
+
+  const [determinantCode, setDeterminantCode] = useState(incident?.neris_dispatch_determinant_code || '');
+  const [automaticAlarm, setAutomaticAlarm] = useState(incident?.neris_dispatch_automatic_alarm ?? null);
+  const [disposition, setDisposition] = useState(incident?.neris_dispatch_disposition || '');
+  const [centerId, setCenterId] = useState(incident?.neris_dispatch_center_id || '');
+  const [dirty, setDirty] = useState(false);
+  const [saveOk, setSaveOk] = useState(false);
+
+  const mark = () => setDirty(true);
+
+  const handleSave = async () => {
+    const ok = await saveFields({
+      neris_dispatch_determinant_code: determinantCode || null,
+      neris_dispatch_automatic_alarm: automaticAlarm,
+      neris_dispatch_disposition: disposition || null,
+      neris_dispatch_center_id: centerId || null,
+    });
+    if (ok) {
+      setDirty(false);
+      setSaveOk(true);
+      setTimeout(() => setSaveOk(false), 2000);
+    }
+  };
+
+  const labelStyle = { fontSize: '0.7rem', color: '#374151', fontWeight: 600, display: 'block', marginBottom: '2px' };
+  const inputStyle = { width: '100%', padding: '4px 6px', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: '4px' };
+  const checkStyle = { display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: '#374151', cursor: 'pointer' };
+
   return (
     <PayloadSection
       title="NERIS Dispatch (mod_dispatch)"
@@ -78,7 +108,79 @@ export default function DispatchSection({ incidentId, incident, payload, expande
       />
 
       <div style={{ marginTop: '0.5rem' }}>
-        <Field label="CAD Event Number (incident_number)" value={payload.dispatch?.incident_number} />
+        <FieldGrid>
+          <Field label="CAD Event Number (incident_number)" value={payload.dispatch?.incident_number} />
+          <Field label="Incident Code (incident_code)" value={payload.dispatch?.incident_code} />
+        </FieldGrid>
+      </div>
+
+      {/* Editable dispatch fields */}
+      <div style={{ marginTop: '0.75rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem 1rem' }}>
+        <div>
+          <label style={labelStyle}>Determinant Code (EMD/EFD)</label>
+          <input
+            type="text"
+            value={determinantCode}
+            onChange={(e) => { setDeterminantCode(e.target.value); mark(); }}
+            placeholder="e.g. 17-D-5"
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <label style={labelStyle}>Automatic Alarm?</label>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            {[{ val: true, lbl: 'Yes' }, { val: false, lbl: 'No' }, { val: null, lbl: 'Unknown' }].map(opt => (
+              <label key={String(opt.val)} style={checkStyle}>
+                <input
+                  type="radio"
+                  name="automatic_alarm"
+                  checked={automaticAlarm === opt.val}
+                  onChange={() => { setAutomaticAlarm(opt.val); mark(); }}
+                />
+                {opt.lbl}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label style={labelStyle}>Disposition</label>
+          <input
+            type="text"
+            value={disposition}
+            onChange={(e) => { setDisposition(e.target.value); mark(); }}
+            placeholder="Call resolution"
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <label style={labelStyle}>Center ID (PSAP)</label>
+          <input
+            type="text"
+            value={centerId}
+            onChange={(e) => { setCenterId(e.target.value); mark(); }}
+            placeholder="PSAP identifier"
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      {/* Save dispatch fields */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingTop: '0.5rem', marginTop: '0.5rem', borderTop: '1px solid #f3f4f6' }}>
+        <button
+          onClick={handleSave}
+          disabled={!dirty || saving}
+          style={{
+            padding: '0.35rem 0.85rem', fontSize: '0.8rem', fontWeight: 500,
+            background: dirty ? '#2563eb' : '#e5e7eb', color: dirty ? '#fff' : '#9ca3af',
+            border: 'none', borderRadius: '5px', cursor: dirty ? 'pointer' : 'default'
+          }}
+        >
+          {saving ? 'Saving...' : saveOk ? '✓ Saved' : 'Save Dispatch Fields'}
+        </button>
+        {dirty && <span style={{ fontSize: '0.7rem', color: '#f59e0b' }}>Unsaved changes</span>}
       </div>
 
       {payload.dispatch?.unit_responses?.length > 0 && (

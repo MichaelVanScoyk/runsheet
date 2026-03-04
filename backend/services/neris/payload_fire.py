@@ -28,9 +28,18 @@ def build_fire_detail(incident: dict) -> dict | None:
     structure_cause = incident.get("neris_fire_structure_cause")
     outside_cause = incident.get("neris_fire_outside_cause")
 
+    # Determine fire sub-type from incident type codes
+    type_codes = incident.get("neris_incident_type_codes") or []
+    has_structure = any(t and "STRUCTURE_FIRE" in t for t in type_codes)
+    has_outside = any(t and "OUTSIDE_FIRE" in t for t in type_codes)
+    has_transport = any(t and "TRANSPORTATION_FIRE" in t for t in type_codes)
+
     if not structure_cause and not outside_cause:
         # Check if any fire detail fields exist at all
-        if not incident.get("neris_fire_investigation_need"):
+        has_any = (incident.get("neris_fire_investigation_need")
+                   or incident.get("neris_fire_water_supply")
+                   or incident.get("neris_fire_suppression_appliances"))
+        if not has_any:
             return None
 
     # Common fields
@@ -45,14 +54,13 @@ def build_fire_detail(incident: dict) -> dict | None:
     else:
         fire["investigation_types"] = []
 
-    # Water supply — from neris_additional_data
-    additional = incident.get("neris_additional_data") or {}
-    water = additional.get("water_supply")
+    # Water supply
+    water = incident.get("neris_fire_water_supply")
     if water:
         fire["water_supply"] = water
 
     # Suppression appliances
-    appliances = additional.get("suppression_appliances")
+    appliances = incident.get("neris_fire_suppression_appliances") or []
     if appliances:
         fire["suppression_appliances"] = appliances
 
@@ -71,9 +79,8 @@ def build_fire_detail(incident: dict) -> dict | None:
         if incident.get("neris_fire_structure_room"):
             detail["room_of_origin_type"] = incident["neris_fire_structure_room"]
         # Optional
-        additional = incident.get("neris_additional_data") or {}
-        if additional.get("fire_progression_evident") is not None:
-            detail["progression_evident"] = additional["fire_progression_evident"]
+        if incident.get("neris_fire_progression_evident") is not None:
+            detail["progression_evident"] = incident["neris_fire_progression_evident"]
 
         fire["location_detail"] = detail
 

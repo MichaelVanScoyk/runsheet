@@ -269,6 +269,12 @@ class Incident(Base):
     cad_event_id = Column(String(20))                                   # Internal CAD ID
     cad_event_type = Column(String(100))                                # "FIRE", "MEDICAL", "ACCIDENT"
     cad_event_subtype = Column(String(100))                             # "CHIMNEY", "HEART PROBLEMS - ALS"
+    
+    # NERIS Dispatch fields (not from CAD — manually entered or tenant config)
+    neris_dispatch_determinant_code = Column(Text)   # EMD/EFD code like "17-D-5"
+    neris_dispatch_automatic_alarm = Column(Boolean)  # Triggered by automatic alarm?
+    neris_dispatch_disposition = Column(Text)         # Call resolution from dispatch
+    neris_dispatch_center_id = Column(Text)           # PSAP center identifier
     cad_raw_dispatch = Column(Text)                                     # Raw HTML
     cad_raw_updates = Column(ARRAY(Text))
     cad_raw_clear = Column(Text)
@@ -512,6 +518,7 @@ class Incident(Base):
     neris_aid_type = Column(Text)            # "AUTOMATIC", "MUTUAL", "OTHER"
     neris_aid_departments = Column(ARRAY(Text))  # Legacy: station numbers
     mutual_aid_department_ids = Column(ARRAY(Integer))  # Row IDs from neris_mutual_aid_departments
+    neris_nonfd_aids = Column(ARRAY(Text), default=[])  # Non-FD agencies that assisted
     
     # =========================================================================
     # NERIS ADDITIONAL DATA
@@ -553,12 +560,18 @@ class Incident(Base):
     neris_fire_structure_room = Column(Text)      # Room of origin code
     neris_fire_structure_cause = Column(Text)     # Structure fire cause
     neris_fire_outside_cause = Column(Text)       # Outside fire cause
+    neris_fire_water_supply = Column(Text)         # TypeWaterSupplyValue
+    neris_fire_suppression_appliances = Column(ARRAY(Text), default=[])  # TypeSuppressApplianceValue
+    neris_fire_progression_evident = Column(Boolean)  # Structure fires only
     
     # =========================================================================
     # NERIS CONDITIONAL MODULE: MEDICAL
     # Shown when incident type starts with MEDICAL:
     # =========================================================================
     neris_medical_patient_care = Column(Text)     # Patient evaluation/care outcome
+    neris_medical_pcr_id = Column(Text)            # Patient care report ID
+    neris_medical_transport_disposition = Column(Text)  # TypeMedicalTransportValue
+    neris_medical_patient_status = Column(Text)    # IMPROVED, UNCHANGED, WORSE
     
     # =========================================================================
     # NERIS CONDITIONAL MODULE: HAZMAT

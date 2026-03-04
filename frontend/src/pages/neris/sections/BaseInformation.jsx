@@ -22,6 +22,20 @@ const SPECIAL_MODIFIERS = [
   { value: 'VIOLENCE_AGAINST_RESPONDER', label: 'Violence Against Responder' },
 ];
 
+const NONFD_AIDS = [
+  { value: 'LAW_ENFORCEMENT', label: 'Law Enforcement' },
+  { value: 'EMS', label: 'EMS' },
+  { value: 'UTILITIES_PUBLIC_WORKS', label: 'Utilities / Public Works' },
+  { value: 'RED_CROSS', label: 'Red Cross' },
+  { value: 'CORONER_MEDICAL_EXAMINER', label: 'Coroner / Medical Examiner' },
+  { value: 'FIRE_MARSHAL', label: 'Fire Marshal' },
+  { value: 'HOUSING_SERVICES', label: 'Housing Services' },
+  { value: 'MENTAL_HEALTH', label: 'Mental Health' },
+  { value: 'SOCIAL_SERVICES', label: 'Social Services' },
+  { value: 'OTHER_GOVERNMENT', label: 'Other Government' },
+  { value: 'PRIVATE_CONTRACTOR', label: 'Private Contractor' },
+];
+
 const MED_OXYGEN_OPTIONS = [
   { val: 'PRESENT', lbl: 'Present' },
   { val: 'NOT_PRESENT', lbl: 'Not Present' },
@@ -40,6 +54,7 @@ export default function BaseInformation({ expanded, onToggle }) {
   const [outcomeNarrative, setOutcomeNarrative] = useState(incident?.neris_narrative_outcome || '');
   const [impedanceNarrative, setImpedanceNarrative] = useState(incident?.neris_narrative_impedance || '');
   const [specialModifiers, setSpecialModifiers] = useState(incident?.neris_special_modifiers || []);
+  const [nonfdAids, setNonfdAids] = useState(incident?.neris_nonfd_aids || []);
   const [medOxygenHazard, setMedOxygenHazard] = useState(incident?.neris_medical_oxygen_hazard || null);
   const [dirty, setDirty] = useState(false);
   const [saveOk, setSaveOk] = useState(false);
@@ -64,6 +79,7 @@ export default function BaseInformation({ expanded, onToggle }) {
       neris_narrative_outcome: outcomeNarrative || null,
       neris_narrative_impedance: impedanceNarrative || null,
       neris_special_modifiers: specialModifiers,
+      neris_nonfd_aids: nonfdAids,
       neris_medical_oxygen_hazard: medOxygenHazard,
     });
     if (ok) {
@@ -211,6 +227,26 @@ export default function BaseInformation({ expanded, onToggle }) {
         </div>
         {specialModifiers.length === 0 && (
           <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontStyle: 'italic' }}>None selected (typical for most incidents)</span>
+        )}
+      </div>
+
+      {/* Non-FD Aids */}
+      <div style={{ marginTop: '0.75rem' }}>
+        <label style={labelStyle}>Non-FD Agencies That Assisted</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem' }}>
+          {NONFD_AIDS.map(opt => (
+            <label key={opt.value} style={checkStyle}>
+              <input
+                type="checkbox"
+                checked={nonfdAids.includes(opt.value)}
+                onChange={() => toggleArrayValue(nonfdAids, setNonfdAids, opt.value)}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+        {nonfdAids.length === 0 && (
+          <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontStyle: 'italic' }}>None selected</span>
         )}
       </div>
 

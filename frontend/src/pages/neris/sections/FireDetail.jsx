@@ -1,13 +1,38 @@
 import { useState } from 'react';
 import { useNeris } from '../NerisContext';
 import { PayloadSection, FieldGrid, Field } from '../shared/NerisComponents';
-import { formatLabel, formatNerisCode } from '../shared/nerisUtils';
+
+const WATER_SUPPLY_OPTIONS = [
+  { value: 'HYDRANT_LESS_500', label: 'Hydrant < 500ft' },
+  { value: 'HYDRANT_GREATER_500', label: 'Hydrant > 500ft' },
+  { value: 'TANK_WATER', label: 'Tank Water' },
+  { value: 'WATER_TENDER_SHUTTLE', label: 'Water Tender Shuttle' },
+  { value: 'DRAFT_FROM_STATIC_SOURCE', label: 'Draft from Static Source' },
+  { value: 'NURSE_OTHER_APPARATUS', label: 'Nurse Other Apparatus' },
+  { value: 'SUPPLY_FROM_FIRE_BOAT', label: 'Supply from Fire Boat' },
+  { value: 'FOAM_ADDITIVE', label: 'Foam Additive' },
+  { value: 'NONE', label: 'None' },
+];
+
+const SUPPRESSION_APPLIANCES = [
+  { value: 'SMALL_DIAMETER_FIRE_HOSE', label: 'Small Diameter Hose' },
+  { value: 'MEDIUM_DIAMETER_FIRE_HOSE', label: 'Medium Diameter Hose' },
+  { value: 'BOOSTER_FIRE_HOSE', label: 'Booster Hose' },
+  { value: 'MASTER_STREAM', label: 'Master Stream' },
+  { value: 'ELEVATED_MASTER_STREAM_STANDPIPE', label: 'Elevated Master Stream / Standpipe' },
+  { value: 'GROUND_MONITOR', label: 'Ground Monitor' },
+  { value: 'FIRE_EXTINGUISHER', label: 'Fire Extinguisher' },
+  { value: 'BUILDING_FDC', label: 'Building FDC' },
+  { value: 'BUILDING_STANDPIPE', label: 'Building Standpipe' },
+  { value: 'AIRATTACK_HELITACK', label: 'Air Attack / Helitack' },
+  { value: 'OTHER', label: 'Other' },
+  { value: 'NONE', label: 'None' },
+];
 
 export default function FireDetail({ expanded, onToggle }) {
   const { incident, preview, dropdowns, saveFields, saving } = useNeris();
   const payload = preview?.payload;
 
-  // Only show if fire types present
   const typeCodes = incident?.neris_incident_type_codes || [];
   const hasFireType = typeCodes.some(t => t && t.startsWith('FIRE'));
   const hasStructureFire = typeCodes.some(t => t && t.includes('STRUCTURE_FIRE'));
@@ -27,10 +52,22 @@ export default function FireDetail({ expanded, onToggle }) {
   const [structureRoom, setStructureRoom] = useState(incident?.neris_fire_structure_room || '');
   const [structureCause, setStructureCause] = useState(incident?.neris_fire_structure_cause || '');
   const [outsideCause, setOutsideCause] = useState(incident?.neris_fire_outside_cause || '');
+  const [waterSupply, setWaterSupply] = useState(incident?.neris_fire_water_supply || '');
+  const [suppressionAppliances, setSuppressionAppliances] = useState(incident?.neris_fire_suppression_appliances || []);
+  const [progressionEvident, setProgressionEvident] = useState(incident?.neris_fire_progression_evident ?? null);
   const [dirty, setDirty] = useState(false);
   const [saveOk, setSaveOk] = useState(false);
 
   const mark = () => setDirty(true);
+
+  const toggleArrayValue = (arr, setArr, value) => {
+    if (arr.includes(value)) {
+      setArr(arr.filter(v => v !== value));
+    } else {
+      setArr([...arr, value]);
+    }
+    mark();
+  };
 
   if (!hasFireType) return null;
 
@@ -43,6 +80,9 @@ export default function FireDetail({ expanded, onToggle }) {
       neris_fire_structure_room: structureRoom || null,
       neris_fire_structure_cause: structureCause || null,
       neris_fire_outside_cause: outsideCause || null,
+      neris_fire_water_supply: waterSupply || null,
+      neris_fire_suppression_appliances: suppressionAppliances,
+      neris_fire_progression_evident: progressionEvident,
     });
     if (ok) {
       setDirty(false);
@@ -53,6 +93,7 @@ export default function FireDetail({ expanded, onToggle }) {
 
   const selectStyle = { width: '100%', padding: '4px 6px', fontSize: '0.8rem', border: '1px solid #d1d5db', borderRadius: '4px' };
   const labelStyle = { fontSize: '0.7rem', color: '#374151', fontWeight: 600, display: 'block', marginBottom: '2px' };
+  const checkStyle = { display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: '#374151', cursor: 'pointer' };
 
   return (
     <PayloadSection title="NERIS Fire Detail (mod_fire)" expanded={expanded} onToggle={onToggle} color="#dc2626">
@@ -62,6 +103,14 @@ export default function FireDetail({ expanded, onToggle }) {
           <select value={investNeed} onChange={(e) => { setInvestNeed(e.target.value); mark(); }} style={selectStyle}>
             <option value="">Select...</option>
             {fireInvestNeedCodes.map(c => <option key={c.value} value={c.value}>{c.description || c.value}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <label style={labelStyle}>Water Supply</label>
+          <select value={waterSupply} onChange={(e) => { setWaterSupply(e.target.value); mark(); }} style={selectStyle}>
+            <option value="">Select...</option>
+            {WATER_SUPPLY_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>
         </div>
 
@@ -108,6 +157,23 @@ export default function FireDetail({ expanded, onToggle }) {
                 {fireCauseInCodes.map(c => <option key={c.value} value={c.value}>{c.description || c.value}</option>)}
               </select>
             </div>
+
+            <div>
+              <label style={labelStyle}>Progression Evident on Arrival?</label>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                {[{ val: true, lbl: 'Yes' }, { val: false, lbl: 'No' }, { val: null, lbl: 'Unknown' }].map(opt => (
+                  <label key={String(opt.val)} style={checkStyle}>
+                    <input
+                      type="radio"
+                      name="progression_evident"
+                      checked={progressionEvident === opt.val}
+                      onChange={() => { setProgressionEvident(opt.val); mark(); }}
+                    />
+                    {opt.lbl}
+                  </label>
+                ))}
+              </div>
+            </div>
           </>
         )}
 
@@ -120,6 +186,23 @@ export default function FireDetail({ expanded, onToggle }) {
             </select>
           </div>
         )}
+      </div>
+
+      {/* Suppression Appliances */}
+      <div style={{ marginTop: '0.75rem' }}>
+        <label style={labelStyle}>Suppression Appliances Used</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem' }}>
+          {SUPPRESSION_APPLIANCES.map(opt => (
+            <label key={opt.value} style={checkStyle}>
+              <input
+                type="checkbox"
+                checked={suppressionAppliances.includes(opt.value)}
+                onChange={() => toggleArrayValue(suppressionAppliances, setSuppressionAppliances, opt.value)}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
       </div>
 
       {/* Save */}

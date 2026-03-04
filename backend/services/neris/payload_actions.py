@@ -83,13 +83,12 @@ def build_nonfd_aids(incident: dict) -> list | None:
     """
     Build NERIS nonfd_aids array.
     
-    Our DB: neris_additional_data JSONB may contain nonfd_aids.
-    Values: LAW_ENFORCEMENT, SOCIAL_SERVICES, ANIMAL_SERVICES, etc.
+    Our DB: neris_nonfd_aids TEXT[] column.
+    Values: LAW_ENFORCEMENT, EMS, RED_CROSS, UTILITIES_PUBLIC_WORKS, etc.
     """
-    additional = incident.get("neris_additional_data") or {}
-    nonfd = additional.get("nonfd_aids")
+    nonfd = incident.get("neris_nonfd_aids") or []
 
-    if not nonfd or not isinstance(nonfd, list):
+    if not nonfd:
         return None
 
     return [a for a in nonfd if a]

@@ -211,31 +211,39 @@ transferred_to_facility  datetime|null
 **⚠️ CORRECTION:** Field names have NO "time_" prefix (at_patient not time_at_patient, etc.)
 **Notes:** Only relevant for transport units. Not all units will have med_responses.
 
-### Gap 25: special_modifiers 🔴
-**API location:** TOP LEVEL on IncidentPayload (SpecialModifiersPayload — exact structure needs extraction from API)
-**Values:** Active Assailant, Mass Casualty Incident, Federal Declared Disaster, State Declared Disaster, Urban Conflagration, Violence Against Responder, County or Local Declared Disaster
-**UI:** Multi-select checkboxes. Most incidents = none selected. Rare but important.
-**TODO:** Extract SpecialModifiersPayload exact fields from OpenAPI.
+### Gap 25: special_modifiers 🟢 BUILT — March 3, 2026
+**API location:** TOP LEVEL on IncidentPayload (array of TypeSpecialModifierValue strings)
+**Values:** ACTIVE_ASSAILANT, MCI, FEDERAL_DECLARED_DISASTER, STATE_DECLARED_DISASTER, COUNTY_LOCAL_DECLARED_DISASTER, URBAN_CONFLAGRATION, VIOLENCE_AGAINST_RESPONDER
+**UI:** Multi-select checkboxes in BaseInformation section. Shows "None selected" hint when empty.
+**DB column:** `neris_special_modifiers` TEXT[] DEFAULT '{}' (migration 033)
+**Model:** models.py → Incident.neris_special_modifiers
+**Payload:** builder.py → top-level `special_modifiers` array
+**Frontend:** BaseInformation.jsx → SPECIAL_MODIFIERS checkbox list
+**Notes:** Previously read from neris_additional_data JSONB. Now dedicated column. Most incidents = none selected. Rare but important.
 
 ---
 
 ## NEW GAPS FROM OPENAPI (26-35)
 
-### Gap 26: base.displacement_causes 🔴
+### Gap 26: base.displacement_causes 🟢 BUILT — March 3, 2026
 **API location:** Inside base → IncidentBasePayload (direct child). ALSO exists per-exposure inside exposures[].
 **Type:** Array of TypeDisplaceCauseValueRelIncident|null
-**Current state:** We have displacement_count (integer) but NOT the causes array. NERIS wants WHY people were displaced, not just how many.
-**UI:** Multi-select alongside existing displacement count field.
-**TODO:** Extract TypeDisplaceCauseValueRelIncident enum values from API.
+**Values:** COLLAPSE, FIRE, HAZARDOUS_SITUATION, OTHER, SMOKE, UTILITIES, WATER
+**DB column:** `neris_displacement_causes` TEXT[] DEFAULT '{}' (migration 033)
+**Model:** models.py → Incident.neris_displacement_causes
+**Payload:** payload_base.py → base.displacement_causes array
+**Frontend:** BaseInformation.jsx → DISPLACEMENT_CAUSES checkbox list, conditionally shown when displaced count > 0
+**Notes:** Per-exposure displacement_causes (in ExposurePayload) still needs to be handled separately in Gap 35 exposures rebuild.
 
-### Gap 27: medical_oxygen_hazard 🔴 NEW MODULE
+### Gap 27: medical_oxygen_hazard 🟢 BUILT — March 3, 2026
 **API location:** TOP LEVEL on IncidentPayload (MedicalOxygenHazardPayload)
-**Fields:**
-```
-presence                 string (likely PRESENT / NOT_PRESENT / UNKNOWN)
-```
-**UI:** Could be a simple yes/no/unknown in BaseInformation or its own tiny section. Possibly question-gated like emerging hazards.
-**Notes:** Entirely new — not in any of our spec docs. Was medical oxygen a hazard at the incident? Relevant on any incident type where oxygen is in use.
+**API structure:** `presence` is a discriminated object: {type: PRESENT} → MedicalOxygenHazardPresentPayload, {type: NOT_PRESENT} or {type: NOT_APPLICABLE} → MedicalOxygenHazardNotPresentPayload
+**Values:** PRESENT, NOT_PRESENT, NOT_APPLICABLE
+**DB column:** `neris_medical_oxygen_hazard` TEXT (migration 033)
+**Model:** models.py → Incident.neris_medical_oxygen_hazard
+**Payload:** builder.py → top-level `medical_oxygen_hazard: {presence: {type: <value>}}`
+**Frontend:** BaseInformation.jsx → 4-way radio (Present / Not Present / N/A / Unknown where Unknown = null)
+**Notes:** Entirely new module not in any prior spec docs. Was medical oxygen a hazard at the incident? Relevant on any incident type where oxygen is in use.
 
 ### Gap 28: dispatch.disposition 🔴
 **API location:** Inside dispatch → DispatchPayload (direct child)
@@ -430,11 +438,13 @@ water_on_fire
 ---
 
 ## RUNNING TOTAL
-- 🔴 New / no UI: 27
+- 🔴 New / no UI: 24
 - 🟡 Partial / needs verification: 4 (gaps 16, 18, 20, 22)
-- 🟢 Resolved: 4 (people_present, animals_rescued, impediment_narrative, outcome_narrative)
+- 🟢 Resolved / confirmed placement: 4 (people_present, animals_rescued, impediment_narrative, outcome_narrative)
+- 🟢 Built: 3 (gap 25 special_modifiers, gap 26 displacement_causes, gap 27 medical_oxygen_hazard)
 - 🔧 Payload builder fixes: 3 (gaps 36, 37, 38)
 - ⚠️ Field name corrections: 11 mappings
 - **Total tracked: 38 gaps + 4 resolved + 11 corrections**
+- **Built so far: 3 of 38 gaps (migration 033, March 3 2026)**
 
-*Last updated: March 3, 2026 — from OpenAPI v1.4.34*
+*Last updated: March 3, 2026 — gaps 25/26/27 built into BaseInformation section*

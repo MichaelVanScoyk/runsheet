@@ -173,4 +173,29 @@ def build_dispatch(incident: dict, units: list) -> dict:
     if comments:
         dispatch["comments"] = comments
 
+    # Incident code — maps from CAD event type
+    incident_code = incident.get("cad_event_type")
+    if incident_code:
+        dispatch["incident_code"] = incident_code
+
+    # Determinant code (EMD/EFD)
+    det_code = incident.get("neris_dispatch_determinant_code")
+    if det_code:
+        dispatch["determinant_code"] = det_code
+
+    # Automatic alarm
+    auto_alarm = incident.get("neris_dispatch_automatic_alarm")
+    if auto_alarm is not None:
+        dispatch["automatic_alarm"] = auto_alarm
+
+    # Disposition
+    disposition = incident.get("neris_dispatch_disposition")
+    if disposition:
+        dispatch["disposition"] = disposition
+
+    # Center ID (PSAP)
+    center_id = incident.get("neris_dispatch_center_id")
+    if center_id:
+        dispatch["center_id"] = center_id
+
     return dispatch

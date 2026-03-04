@@ -4,8 +4,10 @@ NERIS Medical Detail Payload Builder
 Maps our DB fields → NERIS MedicalPayload[].
 
 Source DB fields:
-  - incidents.neris_medical_patient_care
-  - incidents.neris_additional_data (JSONB — patient_status, transport, pcr_id)
+  - incidents.neris_medical_patient_care     → patient_care_evaluation (REQUIRED)
+  - incidents.neris_medical_pcr_id           → patient_care_report_id
+  - incidents.neris_medical_patient_status   → patient_status
+  - incidents.neris_medical_transport_disposition → transport_disposition
 
 NERIS target: MedicalPayload[]
 Note: NERIS accepts an ARRAY of medical details (multiple patients possible).
@@ -25,22 +27,19 @@ def build_medical_details(incident: dict) -> list | None:
     if not care:
         return None
 
-    additional = incident.get("neris_additional_data") or {}
-
     med = {
         "patient_care_evaluation": care,
     }
 
-    # Optional fields from additional_data
-    pcr_id = additional.get("patient_care_report_id")
+    pcr_id = incident.get("neris_medical_pcr_id")
     if pcr_id:
         med["patient_care_report_id"] = pcr_id
 
-    patient_status = additional.get("medical_patient_status")
+    patient_status = incident.get("neris_medical_patient_status")
     if patient_status:
         med["patient_status"] = patient_status
 
-    transport = additional.get("medical_transport_disposition")
+    transport = incident.get("neris_medical_transport_disposition")
     if transport:
         med["transport_disposition"] = transport
 
