@@ -49,6 +49,7 @@ class ApparatusUpdate(BaseModel):
     name: Optional[str] = None
     apparatus_type: Optional[str] = None
     neris_unit_type: Optional[str] = None
+    neris_unit_id: Optional[str] = None
     unit_category: Optional[str] = None
     counts_for_response_times: Optional[bool] = None
     cad_unit_id: Optional[str] = None
@@ -79,6 +80,7 @@ def apparatus_to_dict(a: Apparatus) -> dict:
         "ff_slots": a.ff_slots,
         "display_order": a.display_order,
         "active": a.active,
+        "neris_unit_id": getattr(a, 'neris_unit_id', None),
         # Computed properties
         "is_physical_unit": category == 'APPARATUS',
         "is_on_scene": category in ('APPARATUS', 'DIRECT'),
