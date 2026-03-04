@@ -126,4 +126,8 @@ def build_base(incident: dict, department_neris_id: str) -> dict:
     if incident.get("neris_displaced_number") is not None:
         base["displacement_count"] = incident["neris_displaced_number"]
 
+    causes = incident.get("neris_displacement_causes") or []
+    if causes:
+        base["displacement_causes"] = causes
+
     return base

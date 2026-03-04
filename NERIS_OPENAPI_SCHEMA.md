@@ -2,6 +2,224 @@
 # Source: https://api-test.neris.fsri.org/v1/openapi.yaml
 # Extracted: March 3, 2026
 
+## FULL PAYLOAD HIERARCHY
+
+This is the complete structure of what gets sent to NERIS when submitting an incident.
+Every field in the API lives somewhere in this tree. The spec defines the hierarchy.
+
+```
+IncidentPayload (root)
+│
+├── base (IncidentBasePayload) *** REQUIRED ***
+│   ├── department_neris_id          string REQUIRED
+│   ├── incident_number              string REQUIRED
+│   ├── location                     LocationPayload REQUIRED
+│   │   └── (NG911 civic address fields)
+│   ├── point                        GeoPoint|null
+│   ├── polygon                      GeoPolygon|null (wildfire perimeter)
+│   ├── outcome_narrative            string|null
+│   ├── impediment_narrative         string|null
+│   ├── people_present               boolean|null
+│   ├── animals_rescued              integer|null
+│   ├── displacement_count           integer|null
+│   ├── displacement_causes          array|null
+│   └── location_use                 LocationUsePayload|null
+│       ├── use_type                 string (primary use — hierarchical)
+│       ├── secondary_use            string|null
+│       ├── in_use                   boolean|null
+│       └── vacancy_cause            string|null
+│
+├── dispatch (DispatchPayload) *** REQUIRED ***
+│   ├── incident_number              string REQUIRED (CAD event number)
+│   ├── location                     LocationPayload REQUIRED
+│   ├── point                        GeoPoint|null
+│   ├── call_create                  datetime REQUIRED
+│   ├── call_answered                datetime REQUIRED
+│   ├── call_arrival                 datetime REQUIRED
+│   ├── incident_clear               datetime|null
+│   ├── incident_code                string|null (CAD nature code)
+│   ├── determinant_code             string|null (EMD/EFD code)
+│   ├── automatic_alarm              boolean|null
+│   ├── disposition                  string|null
+│   ├── center_id                    string|null (PSAP center)
+│   ├── comments                     array|null
+│   ├── tactic_timestamps            DispatchTacticTimestampsPayload|null
+│   │   ├── command_established      datetime|null
+│   │   ├── completed_sizeup         datetime|null
+│   │   ├── extrication_complete     datetime|null
+│   │   ├── fire_knocked_down        datetime|null
+│   │   ├── fire_under_control       datetime|null
+│   │   ├── primary_search_begin     datetime|null
+│   │   ├── primary_search_complete  datetime|null
+│   │   ├── suppression_complete     datetime|null
+│   │   └── water_on_fire            datetime|null
+│   └── unit_responses[]             DispatchUnitResponsePayload REQUIRED
+│       ├── unit_neris_id            string REQUIRED
+│       ├── reported_unit_id         string (E48, SQ48, etc.)
+│       ├── dispatch                 datetime|null
+│       ├── enroute_to_scene         datetime|null
+│       ├── staging                  datetime|null
+│       ├── on_scene                 datetime|null
+│       ├── unit_clear               datetime|null
+│       ├── response_mode            string (EMERGENT / NON_EMERGENT)
+│       ├── transport_mode           string|null (EMS only)
+│       ├── staffing                 integer|null
+│       ├── canceled_enroute         boolean|null
+│       ├── unable_to_dispatch       boolean
+│       ├── point                    GeoPoint|null
+│       └── med_responses[]          MedResponsePayload
+│           ├── at_patient           datetime|null
+│           ├── enroute_to_hospital  datetime|null
+│           ├── arrived_at_hospital  datetime|null
+│           ├── hospital_cleared     datetime|null
+│           ├── hospital_destination string|null
+│           ├── transferred_to_agency    datetime|null
+│           └── transferred_to_facility  datetime|null
+│
+├── incident_types[]                 IncidentTypePayload *** REQUIRED ***
+│   ├── type                         string ("FIRE||STRUCTURE_FIRE||ROOM_AND_CONTENTS_FIRE")
+│   └── primary                      boolean
+│
+├── unit_responses[]                 IncidentUnitResponsePayload
+│   └── (same fields as dispatch.unit_responses — units that ACTUALLY responded)
+│
+├── tactic_timestamps                TacticTimestampPayload|null
+│   └── (needs extraction — may differ from dispatch.tactic_timestamps)
+│
+├── actions_tactics                  ActionTacticPayload|null
+│   └── action_noaction              (ACTION/NOACTION discriminator)
+│       └── actions[]                array of action strings
+│
+├── fire_detail                      FirePayload|null (conditional: FIRE types)
+│   ├── water_supply                 string|null
+│   ├── suppression_appliances       array|null
+│   ├── investigation_needed         string (YES/NO/UNABLE_TO_DETERMINE)
+│   ├── investigation_types          array|null
+│   └── location_detail              discriminated by type:
+│       ├── [STRUCTURE] StructureFireLocationDetailPayload
+│       │   ├── type                 "STRUCTURE"
+│       │   ├── arrival_condition    string
+│       │   ├── cause                string
+│       │   ├── damage_type          string
+│       │   ├── floor_of_origin      integer|null
+│       │   ├── progression_evident  boolean|null
+│       │   └── room_of_origin_type  string|null
+│       ├── [OUTSIDE] OutsideFireLocationDetailPayload
+│       │   ├── type                 "OUTSIDE"
+│       │   ├── acres_burned         number|null
+│       │   └── cause                string
+│       └── [TRANSPORTATION] TransportationFireLocationDetailPayload
+│           └── (not yet extracted)
+│
+├── hazsit_detail                    HazsitPayload|null (conditional: HAZSIT types)
+│   ├── disposition                  string
+│   ├── evacuated                    integer|null
+│   └── chemicals[]                  ChemicalPayload
+│       ├── dot_class                string
+│       ├── name                     string
+│       ├── release_occurred         boolean|null
+│       └── release                  ReleasePayload|null
+│           ├── physical_state       string
+│           ├── release_cause        string
+│           ├── release_into         string
+│           ├── amount_est           number
+│           └── amount_units         string
+│
+├── medical_details                  MedicalPayload|null (conditional: MEDICAL types)
+│   ├── patient_care_report_id       string|null
+│   ├── patient_care_evaluation      string|null
+│   ├── patient_status               string|null
+│   └── transport_disposition        string|null
+│
+├── casualty_rescues[]               CasualtyRescuePayload
+│   ├── type                         CIVILIAN / FIREFIGHTER
+│   ├── birth_month_year             string|null
+│   ├── gender                       string|null
+│   ├── race                         string|null
+│   ├── rank                         string|null (FF only)
+│   ├── years_of_service             integer|null (FF only)
+│   ├── casualty                     CasualtyPayload|null
+│   │   └── injury_or_noninjury      discriminated
+│   │       ├── [INJURY] InjuryPayload (needs extraction)
+│   │       └── [NON_INJURY] NonInjuryPayload (needs extraction)
+│   └── rescue                       RescuePayload|null
+│       ├── mayday                   boolean|null
+│       ├── presence_known           boolean|null
+│       └── ffrescue_or_nonffrescue  discriminated
+│           ├── [FF] FfRescuePayload
+│           │   ├── type             string
+│           │   ├── actions          array|null
+│           │   ├── impediments      array|null
+│           │   └── removal_or_nonremoval  discriminated
+│           └── [NON_FF] NonFfRescuePayload
+│               └── type             string
+│
+├── electric_hazards[]               ElectricHazardPayload
+│   ├── type                         string (battery/EV/ESS type)
+│   ├── source_or_target             SOURCE / TARGET
+│   ├── involved_in_crash            boolean|null
+│   └── fire_details                 ElectricHazardFirePayload|null
+│       ├── reignition               boolean|null
+│       └── suppression_types        array|null
+│
+├── powergen_hazards[]               discriminated by type
+│   ├── [SOLAR_PV] PvPowergenHazardPayload
+│   │   ├── type                     "SOLAR_PV"
+│   │   ├── pv_type                  ROOF_MOUNTED / GROUND_MOUNTED / BUILDING_INTEGRATED
+│   │   └── source_or_target         SOURCE / TARGET / NOT_INVOLVED
+│   └── [OTHER] OtherPowergenHazardPayload
+│       └── type                     WIND / GENERATOR / FUEL_CELL
+│
+├── csst_hazard                      CsstHazardPayload|null
+│   ├── ignition_source              boolean|null
+│   ├── lightning_suspected          string YES / NO / UNKNOWN
+│   └── grounded                     string YES / NO / UNKNOWN
+│
+├── medical_oxygen_hazard            MedicalOxygenHazardPayload|null
+│   └── presence                     string
+│
+├── exposures[]                      ExposurePayload (conditional: FIRE types)
+│   ├── damage_type                  string
+│   ├── displacement_causes          array|null
+│   ├── displacement_count           integer|null
+│   ├── location                     LocationPayload (full NG911 address)
+│   ├── location_detail              discriminated
+│   │   ├── [INTERNAL] InternalExposurePayload (needs extraction)
+│   │   └── [EXTERNAL] ExternalExposurePayload (needs extraction)
+│   ├── location_use                 LocationUsePayload|null
+│   ├── people_present               boolean|null
+│   ├── point                        GeoPoint|null
+│   └── polygon                      GeoPolygon|null
+│
+├── smoke_alarm                      SmokeAlarmPayload|null
+│   └── (presence-based with detail sub-object, includes post_alarm_action)
+│
+├── fire_alarm                       FireAlarmPayload|null
+│   └── (presence-based with detail sub-object)
+│
+├── other_alarm                      OtherAlarmPayload|null
+│   └── (presence-based with detail sub-object)
+│
+├── fire_suppression                 FireSuppressionPayload|null
+│   └── (presence-based with detail sub-object)
+│
+├── cooking_fire_suppression         CookingFireSuppressionPayload|null
+│   └── (presence-based with detail sub-object)
+│
+├── aids[]                           AidPayload (interagency FD mutual aid)
+│   └── (existing module)
+│
+├── nonfd_aids[]                     array of strings
+│   └── (LAW_ENFORCEMENT, EMS, RED_CROSS, etc.)
+│
+├── special_modifiers                SpecialModifiersPayload|null
+│   └── (Active Assailant, Mass Casualty, Disasters, etc. — needs extraction)
+│
+└── (top-level tactic_timestamps — separate from dispatch.tactic_timestamps)
+```
+
+---
+
 ## TOP-LEVEL: IncidentPayload
 ```
 actions_tactics          → ActionTacticPayload

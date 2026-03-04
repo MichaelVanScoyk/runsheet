@@ -525,6 +525,10 @@ class Incident(Base):
     # Displaced (required) - number displaced from residence
     neris_displaced_number = Column(Integer, default=0)
     
+    # Displacement causes - WHY people were displaced
+    # Values: COLLAPSE, FIRE, HAZARDOUS_SITUATION, OTHER, SMOKE, UTILITIES, WATER
+    neris_displacement_causes = Column(ARRAY(Text), default=[])
+    
     # Risk reduction module (required) - smoke/fire alarms, sprinklers
     neris_risk_reduction = Column(JSONB)
     
@@ -619,6 +623,19 @@ class Incident(Base):
     # Cooking Suppression Details (shown for confined cooking fires)
     neris_rr_cooking_suppression = Column(Text)                  # type_rr_presence
     neris_rr_cooking_suppression_type = Column(JSONB, default=[])# type_suppress_cooking (multi)
+    
+    # =========================================================================
+    # NERIS SPECIAL MODIFIERS (top-level payload node)
+    # Rare incident flags: Active Assailant, MCI, Disasters, etc.
+    # =========================================================================
+    neris_special_modifiers = Column(ARRAY(Text), default=[])
+    
+    # =========================================================================
+    # NERIS MEDICAL OXYGEN HAZARD (top-level payload node)
+    # Was medical oxygen present as a hazard?
+    # Values: PRESENT, NOT_PRESENT, NOT_APPLICABLE
+    # =========================================================================
+    neris_medical_oxygen_hazard = Column(Text)
     
     # =========================================================================
     # NERIS SUBMISSION TRACKING

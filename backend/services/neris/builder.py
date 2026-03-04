@@ -83,10 +83,16 @@ def build_neris_payload(
         payload["nonfd_aids"] = nonfd
 
     # === OPTIONAL: Special modifiers ===
-    additional = incident.get("neris_additional_data") or {}
-    modifiers = additional.get("special_modifiers")
+    modifiers = incident.get("neris_special_modifiers") or []
     if modifiers:
         payload["special_modifiers"] = modifiers
+
+    # === OPTIONAL: Medical oxygen hazard ===
+    med_oxy = incident.get("neris_medical_oxygen_hazard")
+    if med_oxy:
+        payload["medical_oxygen_hazard"] = {
+            "presence": {"type": med_oxy}
+        }
 
     # === CONDITIONAL: Fire detail ===
     fire = build_fire_detail(incident)
