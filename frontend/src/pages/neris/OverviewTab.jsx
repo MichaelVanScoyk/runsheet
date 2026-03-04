@@ -15,9 +15,53 @@ import EmergingHazards from './sections/EmergingHazards';
 import CasualtyRescues from './sections/CasualtyRescues';
 import DispatchComments from './sections/DispatchComments';
 
+/*
+ * NERIS Section Visibility Decision Tree (from NERIS_V1_BUILD_SPEC.md):
+ *
+ * ALWAYS SHOWN:
+ *   - IncidentClassification (base.incident_types + actions_tactics) — REQUIRED
+ *   - BaseInformation (base.*) — REQUIRED
+ *   - LocationUse (location_use) — Highly desired
+ *   - LocationDisplay (base.location + point) — REQUIRED
+ *   - DispatchSection (dispatch.*) — REQUIRED
+ *   - MutualAidDisplay (aids) — Highly desired
+ *   - EmergingHazards (electric_hazards, powergen_hazards, csst_hazard) — any incident can have these
+ *   - CasualtyRescues (casualty_rescues) — "when rescues/casualties occurred", any incident
+ *
+ * CONDITIONAL ON INCIDENT TYPE:
+ *   - FireDetail — only if any type starts with FIRE||
+ *   - AlarmsAndSuppression — only if FIRE||STRUCTURE_FIRE or CONFINED_COOKING present
+ *   - MedicalDetail — only if any type starts with MEDICAL||
+ *   - HazmatDetail — only if any type starts with HAZSIT||
+ *   - Exposures — only if any type starts with FIRE|| ("when fire spread to other properties")
+ *
+ * CONDITIONAL ON FIELD VALUES (sub-panels within sections):
+ *   - Smoke alarm details — only if smoke_alarm_presence = PRESENT
+ *   - Fire alarm details — only if fire_alarm_presence = PRESENT
+ *   - Other alarm details — only if other_alarm = PRESENT
+ *   - Sprinkler details — only if fire_suppression_presence = PRESENT
+ *   - Cooking suppression — only if CONFINED_COOKING type present
+ *
+ * READ-ONLY (from payload, not editable here):
+ *   - TacticTimestamps — from dispatch module
+ *   - DispatchComments — from CAD comments
+ */
+
+// Sections that start collapsed by default (optional/situational)
+const DEFAULT_COLLAPSED = new Set([
+  'emerging', 'casualties', 'exposures', 'aids',
+  'tactics', 'comments',
+]);
+
 export default function OverviewTab({ expandedSections, toggleSection }) {
   const { incident, preview, incidentId, fetchPreview } = useNeris();
   const { payload, errors, warnings, valid } = preview;
+
+  // Helper: sections not explicitly toggled use default expand state
+  const isExpanded = (key) => {
+    if (key in expandedSections) return expandedSections[key];
+    return !DEFAULT_COLLAPSED.has(key);
+  };
 
   return (
     <div>
@@ -43,24 +87,33 @@ export default function OverviewTab({ expandedSections, toggleSection }) {
         ))}
       </div>
 
-      {/* Editable sections */}
-      <IncidentClassification expanded={expandedSections['types'] !== false} onToggle={() => toggleSection('types')} />
-      <BaseInformation expanded={expandedSections['base'] !== false} onToggle={() => toggleSection('base')} />
-      <LocationUse expanded={expandedSections['location_use'] !== false} onToggle={() => toggleSection('location_use')} />
-      <MutualAidDisplay expanded={expandedSections['aids'] !== false} onToggle={() => toggleSection('aids')} />
-      <FireDetail expanded={expandedSections['fire'] !== false} onToggle={() => toggleSection('fire')} />
-      <AlarmsAndSuppression expanded={expandedSections['alarms'] !== false} onToggle={() => toggleSection('alarms')} />
-      <MedicalDetail expanded={expandedSections['medical'] !== false} onToggle={() => toggleSection('medical')} />
-      <HazmatDetail expanded={expandedSections['hazmat'] !== false} onToggle={() => toggleSection('hazmat')} />
-      <Exposures expanded={expandedSections['exposures'] !== false} onToggle={() => toggleSection('exposures')} />
-      <EmergingHazards expanded={expandedSections['emerging'] !== false} onToggle={() => toggleSection('emerging')} />
-      <CasualtyRescues expanded={expandedSections['casualties'] !== false} onToggle={() => toggleSection('casualties')} />
+      {/* === ALWAYS SHOWN — REQUIRED/DESIRED === */}
+      <IncidentClassification expanded={isExpanded('types')} onToggle={() => toggleSection('types')} />
+      <BaseInformation expanded={isExpanded('base')} onToggle={() => toggleSection('base')} />
+      <LocationUse expanded={isExpanded('location_use')} onToggle={() => toggleSection('location_use')} />
+      <LocationDisplay incident={incident} payload={payload} expanded={isExpanded('location')} onToggle={() => toggleSection('location')} />
+      <DispatchSection incidentId={incidentId} incident={incident} payload={payload} expanded={isExpanded('dispatch')} onToggle={() => toggleSection('dispatch')} onRefresh={fetchPreview} />
+      <MutualAidDisplay expanded={isExpanded('aids')} onToggle={() => toggleSection('aids')} />
 
-      {/* Read-only sections */}
-      <LocationDisplay incident={incident} payload={payload} expanded={expandedSections['location'] !== false} onToggle={() => toggleSection('location')} />
-      <DispatchSection incidentId={incidentId} incident={incident} payload={payload} expanded={expandedSections['dispatch'] !== false} onToggle={() => toggleSection('dispatch')} onRefresh={fetchPreview} />
-      <TacticTimestamps payload={payload} expanded={expandedSections['tactics'] !== false} onToggle={() => toggleSection('tactics')} />
-      <DispatchComments payload={payload} expanded={expandedSections['comments'] !== false} onToggle={() => toggleSection('comments')} />
+      {/* === CONDITIONAL ON INCIDENT TYPE === */}
+      {/* FireDetail: only if FIRE|| type present */}
+      <FireDetail expanded={isExpanded('fire')} onToggle={() => toggleSection('fire')} />
+      {/* AlarmsAndSuppression: only if STRUCTURE_FIRE or CONFINED_COOKING */}
+      <AlarmsAndSuppression expanded={isExpanded('alarms')} onToggle={() => toggleSection('alarms')} />
+      {/* Exposures: only if any FIRE|| type */}
+      <Exposures expanded={isExpanded('exposures')} onToggle={() => toggleSection('exposures')} />
+      {/* MedicalDetail: only if MEDICAL|| type present */}
+      <MedicalDetail expanded={isExpanded('medical')} onToggle={() => toggleSection('medical')} />
+      {/* HazmatDetail: only if HAZSIT|| type present */}
+      <HazmatDetail expanded={isExpanded('hazmat')} onToggle={() => toggleSection('hazmat')} />
+
+      {/* === ALWAYS AVAILABLE — OPTIONAL (collapsed by default) === */}
+      <EmergingHazards expanded={isExpanded('emerging')} onToggle={() => toggleSection('emerging')} />
+      <CasualtyRescues expanded={isExpanded('casualties')} onToggle={() => toggleSection('casualties')} />
+
+      {/* === READ-ONLY FROM PAYLOAD === */}
+      <TacticTimestamps payload={payload} expanded={isExpanded('tactics')} onToggle={() => toggleSection('tactics')} />
+      <DispatchComments payload={payload} expanded={isExpanded('comments')} onToggle={() => toggleSection('comments')} />
     </div>
   );
 }

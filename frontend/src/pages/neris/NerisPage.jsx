@@ -20,8 +20,14 @@ function NerisPageInner() {
   const [activeSection, setActiveSection] = useState('overview');
   const [expandedSections, setExpandedSections] = useState({});
 
+  // Sections collapsed by default (must match OverviewTab DEFAULT_COLLAPSED)
+  const DEFAULT_COLLAPSED = new Set(['emerging', 'casualties', 'exposures', 'aids', 'tactics', 'comments']);
+
   const toggleSection = (key) => {
-    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+    setExpandedSections(prev => {
+      const current = key in prev ? prev[key] : !DEFAULT_COLLAPSED.has(key);
+      return { ...prev, [key]: !current };
+    });
   };
 
   if (loading) {

@@ -5,10 +5,12 @@ import { PayloadSection } from '../shared/NerisComponents';
 export default function Exposures({ expanded, onToggle }) {
   const { incident, dropdowns, saveFields, saving } = useNeris();
 
+  // Per NERIS: exposures are for "when fire spread to other properties"
+  // Show for any FIRE type, not just structure fire
   const typeCodes = incident?.neris_incident_type_codes || [];
-  const hasStructureFire = typeCodes.some(t => t && t.includes('STRUCTURE_FIRE'));
+  const hasFireType = typeCodes.some(t => t && t.startsWith('FIRE'));
 
-  if (!hasStructureFire) return null;
+  if (!hasFireType) return null;
 
   const exposureLocCodes = dropdowns.type_exposure_loc || [];
   const exposureItemCodes = dropdowns.type_exposure_item || [];
