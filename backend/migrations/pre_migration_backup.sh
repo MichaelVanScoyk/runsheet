@@ -23,6 +23,7 @@
 
 DB_NAME="runsheet_db"
 DB_USER="dashboard"
+DB_PASSWORD="dashboard"
 DB_HOST="localhost"
 DB_PORT="6432"
 BACKUP_DIR="/opt/runsheet/backups"
@@ -66,24 +67,24 @@ if [ "$1" == "restore" ]; then
 
     echo ""
     echo "Dropping existing database..."
-    PGPASSWORD="" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres \
+    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres \
         -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid();" \
         2>/dev/null
-    PGPASSWORD="" dropdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME"
+    PGPASSWORD="$DB_PASSWORD" dropdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME"
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to drop database. Check connections."
         exit 1
     fi
 
     echo "Creating fresh database..."
-    PGPASSWORD="" createdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME"
+    PGPASSWORD="$DB_PASSWORD" createdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME"
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to create database."
         exit 1
     fi
 
     echo "Restoring dump..."
-    PGPASSWORD="" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$RESTORE_FILE"
+    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$RESTORE_FILE"
     if [ $? -ne 0 ]; then
         echo "ERROR: Restore failed. Check output above."
         exit 1
@@ -123,7 +124,7 @@ echo ""
 
 # Run pg_dump
 echo "Running pg_dump..."
-PGPASSWORD="" pg_dump \
+PGPASSWORD="$DB_PASSWORD" pg_dump \
     -h "$DB_HOST" \
     -p "$DB_PORT" \
     -U "$DB_USER" \
@@ -160,7 +161,7 @@ ln -sf "$DUMP_FILE" "$LATEST_LINK"
 # Count rows in key tables for verification
 echo ""
 echo "Verifying key table row counts..."
-PGPASSWORD="" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -A -c "
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -A -c "
     SELECT 'incidents: ' || COUNT(*) FROM incidents
     UNION ALL
     SELECT 'incident_units: ' || COUNT(*) FROM incident_units
