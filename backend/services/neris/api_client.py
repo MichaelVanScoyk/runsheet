@@ -166,8 +166,42 @@ class NerisApiClient:
 
     # ---- Entity endpoints ----
 
+    async def search_entities(
+        self,
+        name: str | None = None,
+        neris_id: str | None = None,
+        state: str | None = None,
+        page_size: int = 20,
+    ) -> dict:
+        """
+        GET /entity — list entities with optional filters.
+
+        Query params per spec:
+          name      — case-insensitive substring, min 3 chars
+          neris_id  — substring of NERIS ID, min 2 chars
+          state     — two-letter state abbreviation
+          page_size — max 100, default 10; we use 20
+
+        Returns ListEntitiesSummaryInfoResponse.
+
+        NOTE: The spec marks this endpoint as AuthPassword (OAuth2 password
+        flow). Vendor client_credentials may not have access. If NERIS returns
+        401/403, the caller surfaces that error to the admin.
+        """
+        params: list[str] = []
+        if name:
+            params.append(f"name={name}")
+        if neris_id:
+            params.append(f"neris_id={neris_id}")
+        if state:
+            params.append(f"state={state}")
+        params.append(f"page_size={page_size}")
+        params.append("entity_class=FIRE_DEPARTMENT")  # always filter to FDs
+        query = "&".join(params)
+        return await self._request("GET", f"/entity?{query}")
+
     async def get_entity(self, neris_id: str) -> dict:
-        """GET department entity info."""
+        """GET /entity/{neris_id} — full department payload with stations and units."""
         return await self._request("GET", f"/entity/{neris_id}")
 
     # ---- Station endpoints ----

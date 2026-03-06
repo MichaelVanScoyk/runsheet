@@ -602,6 +602,775 @@ function StationCard({ station, apparatusOptions, onChanged }) {
   );
 }
 
+// ─── SyncModal ──────────────────────────────────────────────────────────────
+
+/**
+ * SyncModal
+ *
+ * Two-phase modal:
+ *   Phase 1 (search)  — search NERIS by name or FDID, pick a result, then fetch
+ *   Phase 2 (diff)    — side-by-side comparison with per-field checkboxes
+ *
+ * Field names in diffs are 1:1 with NERIS spec (DepartmentPayload,
+ * StationPayload, UnitPayload) as returned by POST /api/neris/entity/pull.
+ */
+function SyncModal({ onClose, onApplied }) {
+  const toast = useToast();
+
+  // ---- Phase state ----
+  const [phase, setPhase]             = useState('search'); // 'search' | 'diff'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState(null); // null = not searched yet
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError]   = useState(null);
+  const [fdidInput, setFdidInput]       = useState('');
+
+  // ---- Diff state ----
+  const [diffData, setDiffData]   = useState(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+
+  // ---- Selection state (what admin has approved) ----
+  // entityChecked: Set of field names
+  const [entityChecked, setEntityChecked]     = useState(new Set());
+  // stationChecked: { [stationIdx]: Set of field names }
+  const [stationChecked, setStationChecked]   = useState({});
+  // unitChecked: { [stationIdx]: { [unitIdx]: Set of field names } }
+  const [unitChecked, setUnitChecked]         = useState({});
+  // stationImport: Set of stationIdx for neris_only stations
+  const [stationImport, setStationImport]     = useState(new Set());
+  // unitImport: { [stationIdx]: Set of unitIdx } for neris_only units
+  const [unitImport, setUnitImport]           = useState({});
+
+  const [applying, setApplying] = useState(false);
+
+  // ---- Search ----
+  const runSearch = async () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+    setSearchLoading(true);
+    setSearchError(null);
+    setSearchResults(null);
+    try {
+      const res = await fetch(`/api/neris/entity/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setSearchError(data.detail || 'Search failed');
+      } else {
+        // NERIS list response: { items: [...], total: N, ... } or array
+        const items = Array.isArray(data) ? data : (data.items || data.results || []);
+        setSearchResults(items);
+      }
+    } catch {
+      setSearchError('Network error during search');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // ---- Fetch diff by FDID (from search result click or direct FDID entry) ----
+  const fetchDiff = async (fdNerisId) => {
+    setDiffLoading(true);
+    try {
+      const res = await api.post('/api/neris/entity/pull', { fd_neris_id: fdNerisId });
+      if (res.detail) throw new Error(res.detail);
+      setDiffData(res);
+      // Pre-check all changed fields by default
+      const eChecked = new Set(
+        res.entity_diff.filter(f => f.changed).map(f => f.field)
+      );
+      setEntityChecked(eChecked);
+      const sChecked = {};
+      const uChecked = {};
+      const sImport  = new Set();
+      const uImport  = {};
+      res.stations_diff.forEach((s, si) => {
+        if (s.match === 'neris_only') {
+          sImport.add(si);
+        } else if (s.match === 'matched') {
+          sChecked[si] = new Set(s.fields.filter(f => f.changed).map(f => f.field));
+        }
+        uChecked[si] = {};
+        uImport[si]  = new Set();
+        s.units.forEach((u, ui) => {
+          if (u.match === 'neris_only') {
+            uImport[si].add(ui);
+          } else if (u.match === 'matched') {
+            uChecked[si][ui] = new Set(u.fields.filter(f => f.changed).map(f => f.field));
+          }
+        });
+      });
+      setStationChecked(sChecked);
+      setUnitChecked(uChecked);
+      setStationImport(sImport);
+      setUnitImport(uImport);
+      setPhase('diff');
+    } catch (e) {
+      toast.error(e.message || 'Failed to fetch NERIS data');
+    } finally {
+      setDiffLoading(false);
+    }
+  };
+
+  // ---- Accept All ----
+  const acceptAll = () => {
+    if (!diffData) return;
+    setEntityChecked(new Set(
+      diffData.entity_diff.filter(f => f.changed).map(f => f.field)
+    ));
+    const sChecked = {};
+    const uChecked = {};
+    const sImport  = new Set();
+    const uImport  = {};
+    diffData.stations_diff.forEach((s, si) => {
+      if (s.match === 'neris_only') {
+        sImport.add(si);
+      } else if (s.match === 'matched') {
+        sChecked[si] = new Set(s.fields.filter(f => f.changed).map(f => f.field));
+      }
+      uChecked[si] = {};
+      uImport[si]  = new Set();
+      s.units.forEach((u, ui) => {
+        if (u.match === 'neris_only') {
+          uImport[si].add(ui);
+        } else if (u.match === 'matched') {
+          uChecked[si][ui] = new Set(u.fields.filter(f => f.changed).map(f => f.field));
+        }
+      });
+    });
+    setStationChecked(sChecked);
+    setUnitChecked(uChecked);
+    setStationImport(sImport);
+    setUnitImport(uImport);
+  };
+
+  // ---- Build and submit apply payload ----
+  const applySelections = async () => {
+    if (!diffData) return;
+    setApplying(true);
+
+    // Build entity_values from NERIS diff for approved fields
+    const nerisEntityObj = diffData.neris || {};
+    const entity_values = {};
+    entityChecked.forEach(field => {
+      entity_values[field] = nerisEntityObj[field] ?? null;
+    });
+
+    // Build stations array
+    const stations = [];
+    diffData.stations_diff.forEach((s, si) => {
+      if (s.match === 'local_only') return; // nothing to do
+
+      if (s.match === 'neris_only' && stationImport.has(si)) {
+        // Import entire station + its neris_only units
+        const units = [];
+        s.units.forEach((u, ui) => {
+          if (u.match === 'neris_only' && (uImport[si] || new Set()).has(ui)) {
+            units.push({
+              action: 'import',
+              local_id: null,
+              neris_station_neris_id: s.neris?.neris_id || '',
+              neris_unit: u.neris || {},
+              fields: _UNIT_DIFF_FIELDS_CLIENT,
+            });
+          }
+        });
+        stations.push({
+          action: 'import',
+          local_id: null,
+          neris_station: s.neris || {},
+          fields: _STATION_DIFF_FIELDS_CLIENT,
+          units,
+        });
+        return;
+      }
+
+      if (s.match === 'matched') {
+        const approvedFields = Array.from(stationChecked[si] || []);
+        const units = [];
+        s.units.forEach((u, ui) => {
+          if (u.match === 'local_only') return;
+          if (u.match === 'neris_only' && (uImport[si] || new Set()).has(ui)) {
+            units.push({
+              action: 'import',
+              local_id: null,
+              neris_station_neris_id: s.neris?.neris_id || '',
+              neris_unit: u.neris || {},
+              fields: _UNIT_DIFF_FIELDS_CLIENT,
+            });
+          } else if (u.match === 'matched') {
+            const uFields = Array.from((uChecked[si] || {})[ui] || []);
+            if (uFields.length) {
+              units.push({
+                action: 'update',
+                local_id: u.local_id,
+                neris_station_neris_id: s.neris?.neris_id || '',
+                neris_unit: u.neris || {},
+                fields: uFields,
+              });
+            }
+          }
+        });
+        if (approvedFields.length || units.length) {
+          stations.push({
+            action: 'update',
+            local_id: s.local_id,
+            neris_station: s.neris || {},
+            fields: approvedFields,
+            units,
+          });
+        }
+      }
+    });
+
+    try {
+      const res = await api.post('/api/neris/entity/pull/apply', {
+        entity_fields: Array.from(entityChecked),
+        entity_values,
+        stations,
+      });
+      if (res.detail) throw new Error(res.detail);
+      const a = res.applied || {};
+      const parts = [];
+      if (a.entity_fields)    parts.push(`${a.entity_fields} entity field${a.entity_fields !== 1 ? 's' : ''}`);
+      if (a.stations_updated) parts.push(`${a.stations_updated} station${a.stations_updated !== 1 ? 's' : ''} updated`);
+      if (a.stations_imported) parts.push(`${a.stations_imported} station${a.stations_imported !== 1 ? 's' : ''} imported`);
+      if (a.units_updated)    parts.push(`${a.units_updated} unit${a.units_updated !== 1 ? 's' : ''} updated`);
+      if (a.units_imported)   parts.push(`${a.units_imported} unit${a.units_imported !== 1 ? 's' : ''} imported`);
+      toast.success(parts.length ? `Applied: ${parts.join(', ')}` : 'Nothing to apply');
+      onApplied();
+      onClose();
+    } catch (e) {
+      toast.error(e.message || 'Apply failed');
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  // Field lists mirroring backend whitelists (client-side, for import payloads)
+  const _STATION_DIFF_FIELDS_CLIENT = [
+    'station_id', 'internal_id', 'address_line_1', 'address_line_2',
+    'city', 'state', 'zip_code', 'staffing', 'location',
+  ];
+  const _UNIT_DIFF_FIELDS_CLIENT = [
+    'cad_designation_1', 'cad_designation_2', 'type',
+    'staffing', 'dedicated_staffing', 'neris_id',
+  ];
+
+  // ---- Render helpers ----
+  const fieldLabel = (f) => f.replace(/_/g, ' ');
+  const renderVal  = (v) => {
+    if (v === null || v === undefined) return <span style={{ color: '#9ca3af' }}>—</span>;
+    if (typeof v === 'boolean')        return v ? 'Yes' : 'No';
+    if (Array.isArray(v))              return v.join(', ') || <span style={{ color: '#9ca3af' }}>—</span>;
+    if (typeof v === 'object')         return <span style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>{JSON.stringify(v)}</span>;
+    return String(v);
+  };
+
+  const overlayStyle = {
+    position: 'fixed', inset: 0,
+    background: 'rgba(0,0,0,0.45)',
+    display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+    zIndex: 1000, padding: '2rem 1rem', overflowY: 'auto',
+  };
+  const modalStyle = {
+    background: '#fff', borderRadius: 8, width: '100%', maxWidth: 860,
+    boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+    display: 'flex', flexDirection: 'column',
+    maxHeight: '90vh',
+  };
+  const headerStyle = {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    padding: '0.85rem 1.1rem', borderBottom: '1px solid #e5e7eb',
+    background: '#f8fafc', borderRadius: '8px 8px 0 0',
+    flexShrink: 0,
+  };
+  const bodyStyle   = { padding: '1rem 1.1rem', overflowY: 'auto', flex: 1 };
+  const footerStyle = {
+    display: 'flex', justifyContent: 'flex-end', gap: '0.6rem',
+    padding: '0.75rem 1.1rem', borderTop: '1px solid #e5e7eb', flexShrink: 0,
+  };
+
+  // ------------------------------------------------------------------ RENDER
+
+  return (
+    <div style={overlayStyle} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={modalStyle}>
+
+        {/* Header */}
+        <div style={headerStyle}>
+          <div>
+            <span style={{ fontWeight: 700, color: '#1e3a5f', fontSize: '1rem' }}>
+              {phase === 'search' ? 'Sync with NERIS — Find Department' : `Sync with NERIS — ${diffData?.fd_neris_id || ''}`}
+            </span>
+            {phase === 'diff' && diffData?.summary && (
+              <span style={{ marginLeft: '0.75rem', fontSize: '0.82rem', color: '#6b7280' }}>
+                {diffData.summary.entity_changes} entity change{diffData.summary.entity_changes !== 1 ? 's' : ''}
+                {' · '}
+                {diffData.summary.station_changes} station/unit change{diffData.summary.station_changes !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            {phase === 'diff' && (
+              <>
+                <button onClick={() => setPhase('search')} style={{ fontSize: '0.82rem', padding: '0.25rem 0.65rem', border: '1px solid #d1d5db', background: '#f9fafb', borderRadius: 4, cursor: 'pointer', color: '#374151' }}>← Back</button>
+                <button onClick={acceptAll} style={{ fontSize: '0.82rem', padding: '0.25rem 0.65rem', border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 4, cursor: 'pointer', color: '#1d4ed8', fontWeight: 600 }}>Accept All</button>
+              </>
+            )}
+            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', color: '#6b7280', padding: '0.1rem 0.3rem' }}>✕</button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={bodyStyle}>
+
+          {/* ===== PHASE 1: Search ===== */}
+          {phase === 'search' && (
+            <div>
+              <p style={{ color: '#6b7280', fontSize: '0.88rem', marginBottom: '1rem' }}>
+                Search NERIS by department name (min 3 chars) or NERIS ID (e.g. <code>FD09190828</code>).
+                Select a result to preview the full diff, or enter the FDID directly below.
+              </p>
+
+              {/* Search input */}
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && runSearch()}
+                  placeholder="Department name or NERIS ID"
+                  style={{ ...inputStyle, flex: 1 }}
+                  autoFocus
+                />
+                <button
+                  onClick={runSearch}
+                  disabled={searchLoading || searchQuery.trim().length < 2}
+                  style={{ padding: '0.45rem 1rem', background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
+                >
+                  {searchLoading ? 'Searching…' : 'Search'}
+                </button>
+              </div>
+
+              {/* Search error */}
+              {searchError && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, padding: '0.6rem 0.85rem', marginBottom: '0.75rem', color: '#dc2626', fontSize: '0.85rem' }}>
+                  {searchError}
+                  {searchError.includes('access denied') && (
+                    <div style={{ marginTop: '0.35rem', color: '#b45309' }}>Use the FDID field below to fetch directly.</div>
+                  )}
+                </div>
+              )}
+
+              {/* Search results */}
+              {searchResults !== null && (
+                <div style={{ marginBottom: '1rem' }}>
+                  {searchResults.length === 0
+                    ? <p style={{ color: '#9ca3af', fontSize: '0.85rem' }}>No results found.</p>
+                    : searchResults.map((item, i) => (
+                        <div
+                          key={item.neris_id || i}
+                          onClick={() => fetchDiff(item.neris_id)}
+                          style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '0.5rem 0.75rem', border: '1px solid #e5e7eb', borderRadius: 5,
+                            marginBottom: '0.35rem', cursor: 'pointer', background: '#f9fafb',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+                          onMouseLeave={e => e.currentTarget.style.background = '#f9fafb'}
+                        >
+                          <div>
+                            <span style={{ fontWeight: 600, color: '#1e3a5f' }}>{item.name || '(unnamed)'}</span>
+                            <span style={{ marginLeft: '0.6rem', fontSize: '0.8rem', color: '#6b7280' }}>{item.city}{item.state ? `, ${item.state}` : ''}</span>
+                          </div>
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#374151' }}>{item.neris_id}</span>
+                        </div>
+                      ))
+                  }
+                </div>
+              )}
+
+              {/* Divider */}
+              <div style={{ borderTop: '1px solid #e5e7eb', margin: '1rem 0', position: 'relative' }}>
+                <span style={{ position: 'absolute', top: '-0.6rem', left: '50%', transform: 'translateX(-50%)', background: '#fff', padding: '0 0.5rem', color: '#9ca3af', fontSize: '0.78rem' }}>or enter FDID directly</span>
+              </div>
+
+              {/* Direct FDID input */}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  type="text"
+                  value={fdidInput}
+                  onChange={e => setFdidInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && fdidInput.trim() && fetchDiff(fdidInput.trim().toUpperCase())}
+                  placeholder="e.g. FD09190828"
+                  style={{ ...inputStyle, flex: 1, fontFamily: 'monospace' }}
+                />
+                <button
+                  onClick={() => fetchDiff(fdidInput.trim().toUpperCase())}
+                  disabled={diffLoading || !fdidInput.trim()}
+                  style={{ padding: '0.45rem 1rem', background: '#0369a1', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
+                >
+                  {diffLoading ? 'Fetching…' : 'Fetch'}
+                </button>
+              </div>
+
+              {diffLoading && (
+                <p style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '0.75rem' }}>Fetching from NERIS…</p>
+              )}
+            </div>
+          )}
+
+          {/* ===== PHASE 2: Diff ===== */}
+          {phase === 'diff' && diffData && (
+            <div>
+
+              {/* --- Entity fields diff --- */}
+              <DiffSection
+                title="Department Fields"
+                changeCount={diffData.entity_diff.filter(f => f.changed).length}
+                defaultOpen
+              >
+                <DiffTable
+                  rows={diffData.entity_diff}
+                  checked={entityChecked}
+                  onToggle={(field) => setEntityChecked(prev => {
+                    const next = new Set(prev);
+                    next.has(field) ? next.delete(field) : next.add(field);
+                    return next;
+                  })}
+                  onToggleAll={(fields, check) => setEntityChecked(prev => {
+                    const next = new Set(prev);
+                    fields.forEach(f => check ? next.add(f) : next.delete(f));
+                    return next;
+                  })}
+                />
+              </DiffSection>
+
+              {/* --- Stations diff --- */}
+              {diffData.stations_diff.length > 0 && (
+                <DiffSection
+                  title="Stations & Units"
+                  changeCount={diffData.stations_diff.filter(s => s.has_changes).length}
+                >
+                  {diffData.stations_diff.map((s, si) => (
+                    <StationDiff
+                      key={si}
+                      station={s}
+                      si={si}
+                      stationChecked={stationChecked[si] || new Set()}
+                      unitChecked={unitChecked[si] || {}}
+                      stationImport={stationImport.has(si)}
+                      unitImport={unitImport[si] || new Set()}
+                      onToggleStation={(field) => setStationChecked(prev => {
+                        const next = { ...prev };
+                        const s = new Set(next[si] || []);
+                        s.has(field) ? s.delete(field) : s.add(field);
+                        next[si] = s;
+                        return next;
+                      })}
+                      onToggleImportStation={(checked) => setStationImport(prev => {
+                        const next = new Set(prev);
+                        checked ? next.add(si) : next.delete(si);
+                        return next;
+                      })}
+                      onToggleUnit={(ui, field) => setUnitChecked(prev => {
+                        const next = { ...prev };
+                        const su = { ...(next[si] || {}) };
+                        const u = new Set(su[ui] || []);
+                        u.has(field) ? u.delete(field) : u.add(field);
+                        su[ui] = u;
+                        next[si] = su;
+                        return next;
+                      })}
+                      onToggleImportUnit={(ui, checked) => setUnitImport(prev => {
+                        const next = { ...prev };
+                        const su = new Set(next[si] || []);
+                        checked ? su.add(ui) : su.delete(ui);
+                        next[si] = su;
+                        return next;
+                      })}
+                    />
+                  ))}
+                </DiffSection>
+              )}
+
+            </div>
+          )}
+
+        </div>{/* end body */}
+
+        {/* Footer */}
+        <div style={footerStyle}>
+          <button onClick={onClose} style={{ padding: '0.45rem 1rem', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 4, cursor: 'pointer', color: '#374151' }}>Cancel</button>
+          {phase === 'diff' && (
+            <button
+              onClick={applySelections}
+              disabled={applying}
+              style={{ padding: '0.45rem 1.25rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
+            >
+              {applying ? 'Applying…' : 'Apply Selected'}
+            </button>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+// ---- DiffSection: collapsible wrapper with change count badge ----
+function DiffSection({ title, changeCount, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, marginBottom: '0.75rem', overflow: 'hidden' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '0.55rem 0.85rem', background: open ? '#f0f9ff' : '#f9fafb',
+          border: 'none', cursor: 'pointer', textAlign: 'left',
+          borderBottom: open ? '1px solid #e5e7eb' : 'none',
+        }}
+      >
+        <span style={{ fontWeight: 600, color: '#1e40af', fontSize: '0.9rem' }}>{title}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {changeCount > 0 && (
+            <span style={{ fontSize: '0.75rem', background: '#fef3c7', color: '#92400e', padding: '0.1rem 0.45rem', borderRadius: 10, fontWeight: 600 }}>
+              {changeCount} change{changeCount !== 1 ? 's' : ''}
+            </span>
+          )}
+          {changeCount === 0 && (
+            <span style={{ fontSize: '0.75rem', background: '#f0fdf4', color: '#15803d', padding: '0.1rem 0.45rem', borderRadius: 10 }}>No changes</span>
+          )}
+          <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>{open ? '▲' : '▼'}</span>
+        </div>
+      </button>
+      {open && <div style={{ padding: '0.75rem 0.85rem' }}>{children}</div>}
+    </div>
+  );
+}
+
+// ---- DiffTable: renders a list of field diff rows ----
+function DiffTable({ rows, checked, onToggle, onToggleAll }) {
+  const changedRows = rows.filter(r => r.changed);
+  const allChecked  = changedRows.length > 0 && changedRows.every(r => checked.has(r.field));
+
+  const renderVal = (v) => {
+    if (v === null || v === undefined) return <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>—</span>;
+    if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+    if (Array.isArray(v)) return v.length ? v.join(', ') : <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>—</span>;
+    if (typeof v === 'object') return <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#374151' }}>{JSON.stringify(v)}</span>;
+    return String(v);
+  };
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+      <thead>
+        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+          <th style={{ padding: '0.3rem 0.4rem', textAlign: 'left', color: '#64748b', fontWeight: 600, width: 28 }}>
+            <input
+              type="checkbox"
+              checked={allChecked}
+              onChange={e => onToggleAll(changedRows.map(r => r.field), e.target.checked)}
+              disabled={changedRows.length === 0}
+              title="Select/deselect all changed fields"
+            />
+          </th>
+          <th style={{ padding: '0.3rem 0.4rem', textAlign: 'left', color: '#64748b', fontWeight: 600, width: 160 }}>Field</th>
+          <th style={{ padding: '0.3rem 0.4rem', textAlign: 'left', color: '#64748b', fontWeight: 600 }}>Local</th>
+          <th style={{ padding: '0.3rem 0.4rem', textAlign: 'left', color: '#64748b', fontWeight: 600 }}>NERIS</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(row => (
+          <tr
+            key={row.field}
+            style={{
+              background: row.changed ? (checked.has(row.field) ? '#fffbeb' : '#fff') : '#fafafa',
+              opacity: row.changed ? 1 : 0.55,
+              borderBottom: '1px solid #f1f5f9',
+            }}
+          >
+            <td style={{ padding: '0.3rem 0.4rem' }}>
+              {row.changed && (
+                <input
+                  type="checkbox"
+                  checked={checked.has(row.field)}
+                  onChange={() => onToggle(row.field)}
+                />
+              )}
+            </td>
+            <td style={{ padding: '0.3rem 0.4rem', fontWeight: 500, color: '#374151', fontFamily: 'monospace', fontSize: '0.78rem' }}>
+              {row.field}
+            </td>
+            <td style={{ padding: '0.3rem 0.4rem', color: '#374151', maxWidth: 200, wordBreak: 'break-word' }}>
+              {renderVal(row.local)}
+            </td>
+            <td style={{ padding: '0.3rem 0.4rem', maxWidth: 200, wordBreak: 'break-word' }}>
+              <span style={{ color: row.changed ? '#b45309' : '#374151', fontWeight: row.changed ? 600 : 400 }}>
+                {renderVal(row.neris)}
+              </span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// ---- StationDiff: renders one station entry with nested units ----
+function StationDiff({
+  station, si,
+  stationChecked, unitChecked, stationImport, unitImport,
+  onToggleStation, onToggleImportStation,
+  onToggleUnit, onToggleImportUnit,
+}) {
+  const [open, setOpen] = useState(station.has_changes);
+
+  const matchBadge = {
+    matched:    { label: 'matched',    bg: '#f0fdf4', color: '#15803d' },
+    neris_only: { label: 'NERIS only', bg: '#fef3c7', color: '#92400e' },
+    local_only: { label: 'local only', bg: '#f3f4f6', color: '#6b7280' },
+  }[station.match];
+
+  const stationLabel = station.neris?.station_id
+    ? `Station ${station.neris.station_id}`
+    : station.local?.station_id
+    ? `Station ${station.local.station_id}`
+    : `Station #${si + 1}`;
+
+  const displayName = station.neris?.station_name || station.local?.station_name || stationLabel;
+
+  const renderVal = (v) => {
+    if (v === null || v === undefined) return <span style={{ color: '#9ca3af' }}>—</span>;
+    if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+    if (Array.isArray(v)) return v.join(', ');
+    if (typeof v === 'object') return <span style={{ fontSize: '0.73rem', fontFamily: 'monospace' }}>{JSON.stringify(v)}</span>;
+    return String(v);
+  };
+
+  return (
+    <div style={{ border: '1px solid #d1d5db', borderRadius: 5, marginBottom: '0.6rem', overflow: 'hidden' }}>
+
+      {/* Station header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0.7rem', background: '#f8fafc', borderBottom: open ? '1px solid #d1d5db' : 'none' }}>
+        <button onClick={() => setOpen(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, color: '#1e3a5f', fontSize: '0.88rem', padding: 0 }}>
+          {open ? '▼' : '▶'} {displayName}
+        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontSize: '0.73rem', background: matchBadge.bg, color: matchBadge.color, padding: '0.1rem 0.45rem', borderRadius: 10, fontWeight: 600 }}>
+            {matchBadge.label}
+          </span>
+          {station.match === 'neris_only' && (
+            <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', color: '#92400e', fontWeight: 600 }}>
+              <input type="checkbox" checked={stationImport} onChange={e => onToggleImportStation(e.target.checked)} />
+              Import
+            </label>
+          )}
+        </div>
+      </div>
+
+      {open && (
+        <div style={{ padding: '0.6rem 0.7rem' }}>
+
+          {/* local_only: no action message */}
+          {station.match === 'local_only' && (
+            <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: 0 }}>Not found in NERIS — no action available.</p>
+          )}
+
+          {/* matched or neris_only: show field table */}
+          {(station.match === 'matched' || station.match === 'neris_only') && station.fields.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+              <thead>
+                <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
+                  <th style={{ width: 24, padding: '0.25rem 0.35rem' }} />
+                  <th style={{ padding: '0.25rem 0.35rem', textAlign: 'left', color: '#64748b', fontWeight: 600, width: 140 }}>Field</th>
+                  <th style={{ padding: '0.25rem 0.35rem', textAlign: 'left', color: '#64748b', fontWeight: 600 }}>Local</th>
+                  <th style={{ padding: '0.25rem 0.35rem', textAlign: 'left', color: '#64748b', fontWeight: 600 }}>NERIS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {station.fields.map(row => (
+                  <tr key={row.field} style={{ background: row.changed ? '#fffbeb' : '#fafafa', opacity: row.changed ? 1 : 0.5, borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '0.25rem 0.35rem' }}>
+                      {row.changed && station.match === 'matched' && (
+                        <input type="checkbox" checked={stationChecked.has(row.field)} onChange={() => onToggleStation(row.field)} />
+                      )}
+                    </td>
+                    <td style={{ padding: '0.25rem 0.35rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#374151' }}>{row.field}</td>
+                    <td style={{ padding: '0.25rem 0.35rem', color: '#374151', maxWidth: 160, wordBreak: 'break-word' }}>{renderVal(row.local)}</td>
+                    <td style={{ padding: '0.25rem 0.35rem', maxWidth: 160, wordBreak: 'break-word' }}>
+                      <span style={{ color: row.changed ? '#b45309' : '#374151', fontWeight: row.changed ? 600 : 400 }}>{renderVal(row.neris)}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {/* Units */}
+          {station.units.length > 0 && (
+            <div style={{ marginTop: '0.4rem' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#64748b', marginBottom: '0.3rem' }}>Units</div>
+              {station.units.map((u, ui) => {
+                const uMatchBadge = {
+                  matched:    { label: 'matched',    bg: '#f0fdf4', color: '#15803d' },
+                  neris_only: { label: 'NERIS only', bg: '#fef3c7', color: '#92400e' },
+                  local_only: { label: 'local only', bg: '#f3f4f6', color: '#6b7280' },
+                }[u.match];
+                const uLabel = u.neris?.cad_designation_1 || u.local?.cad_designation_1 || `Unit #${ui + 1}`;
+                const uImportChecked = (unitImport || new Set()).has(ui);
+                const uChecked = (unitChecked || {})[ui] || new Set();
+
+                return (
+                  <div key={ui} style={{ border: '1px solid #e5e7eb', borderRadius: 4, marginBottom: '0.4rem', overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.3rem 0.55rem', background: '#f9fafb' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#374151', fontFamily: 'monospace' }}>{uLabel}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.7rem', background: uMatchBadge.bg, color: uMatchBadge.color, padding: '0.08rem 0.4rem', borderRadius: 10, fontWeight: 600 }}>
+                          {uMatchBadge.label}
+                        </span>
+                        {u.match === 'neris_only' && (
+                          <label style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.2rem', cursor: 'pointer', color: '#92400e', fontWeight: 600 }}>
+                            <input type="checkbox" checked={uImportChecked} onChange={e => onToggleImportUnit(ui, e.target.checked)} />
+                            Import
+                          </label>
+                        )}
+                        {u.match === 'local_only' && (
+                          <span style={{ fontSize: '0.73rem', color: '#9ca3af' }}>Not in NERIS</span>
+                        )}
+                      </div>
+                    </div>
+                    {u.match === 'matched' && u.fields.some(f => f.changed) && (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                        <tbody>
+                          {u.fields.filter(f => f.changed).map(row => (
+                            <tr key={row.field} style={{ borderBottom: '1px solid #f1f5f9', background: '#fffbeb' }}>
+                              <td style={{ padding: '0.2rem 0.55rem', width: 22 }}>
+                                <input type="checkbox" checked={uChecked.has(row.field)} onChange={() => onToggleUnit(ui, row.field)} />
+                              </td>
+                              <td style={{ padding: '0.2rem 0.35rem', fontFamily: 'monospace', fontSize: '0.73rem', color: '#374151', width: 140 }}>{row.field}</td>
+                              <td style={{ padding: '0.2rem 0.35rem', color: '#374151', maxWidth: 120, wordBreak: 'break-word' }}>{renderVal(row.local)}</td>
+                              <td style={{ padding: '0.2rem 0.35rem', maxWidth: 120, wordBreak: 'break-word' }}>
+                                <span style={{ color: '#b45309', fontWeight: 600 }}>{renderVal(row.neris)}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Entity sub-tab ───────────────────────────────────────────────────────────
 
 function EntityTab() {
@@ -612,6 +1381,7 @@ function EntityTab() {
   const [apparatusOptions, setApparatusOptions] = useState([]);
   const [validationResult, setValidationResult] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);  // SyncModal open/close
 
   const load = useCallback(async () => {
     try {
@@ -1003,8 +1773,14 @@ function EntityTab() {
         </button>
       </Section>
 
-      {/* Validate + Submit */}
+      {/* Validate + Submit + Sync */}
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
+        <button
+          onClick={() => setSyncOpen(true)}
+          style={{ padding: '0.5rem 1.1rem', background: '#f0fdf4', border: '1px solid #86efac', color: '#15803d', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
+        >
+          ↓ Sync with NERIS
+        </button>
         <button
           onClick={validate}
           style={{ padding: '0.5rem 1.25rem', background: '#f0f9ff', border: '1px solid #7dd3fc', color: '#0369a1', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
@@ -1025,6 +1801,14 @@ function EntityTab() {
           </span>
         )}
       </div>
+
+      {/* NERIS Sync Modal — rendered at entity level to overlay the full page */}
+      {syncOpen && (
+        <SyncModal
+          onClose={() => setSyncOpen(false)}
+          onApplied={load}
+        />
+      )}
     </div>
   );
 }

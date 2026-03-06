@@ -1,7 +1,7 @@
 # NERIS Schema Migration Handoff
 **Date:** 2026-03-05  
-**Status:** ✅ COMPLETE — migration 044 executed, all code deployed  
-**Next action:** Test the NERIS Entity tab in the UI
+**Status:** ✅ Migration 044 complete. Field definitions file created. Entity tab updated with hints and choice descriptions.
+**Next action:** Continue NERIS entity data entry and testing. Next major task: production API cutover + vendor badge certification.
 
 ---
 
