@@ -31,7 +31,6 @@ function ApparatusPage({ embedded = false }) {
   const toast = useToast();
   const confirmAction = useConfirm();
   const [units, setUnits] = useState([]);
-  const [apparatusTypes, setApparatusTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -39,7 +38,6 @@ function ApparatusPage({ embedded = false }) {
     unit_designator: '',
     name: '',
     apparatus_type: '',
-    neris_unit_type: '',
     unit_category: 'APPARATUS',
     counts_for_response_times: true,
     cad_unit_id: '',
@@ -51,7 +49,6 @@ function ApparatusPage({ embedded = false }) {
 
   useEffect(() => {
     loadData();
-    loadApparatusTypes();
   }, []);
 
   const loadData = async () => {
@@ -66,19 +63,6 @@ function ApparatusPage({ embedded = false }) {
     }
   };
 
-  const loadApparatusTypes = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/lookups/neris/unit-types`);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setApparatusTypes(data);
-      }
-    } catch (err) {
-      console.error('Failed to load NERIS unit types:', err);
-      setApparatusTypes([]);
-    }
-  };
-
   // Group units by category
   const apparatusUnits = units.filter(u => (u.unit_category || 'APPARATUS') === 'APPARATUS');
   const directUnits = units.filter(u => u.unit_category === 'DIRECT');
@@ -90,13 +74,10 @@ function ApparatusPage({ embedded = false }) {
     // Set defaults based on category
     const isPhysical = category === 'APPARATUS';
     
-    const defaultType = apparatusTypes.find(t => t.value === 'ENGINE_STRUCT') || apparatusTypes[0];
-    
     setFormData({
       unit_designator: '',
       name: '',
-      apparatus_type: isPhysical ? (defaultType?.description || 'Engine') : '',
-      neris_unit_type: isPhysical ? (defaultType?.value || '') : '',
+      apparatus_type: '',
       unit_category: category,
       counts_for_response_times: isPhysical,  // APPARATUS counts by default
       cad_unit_id: '',
@@ -116,7 +97,6 @@ function ApparatusPage({ embedded = false }) {
       unit_designator: item.unit_designator,
       name: item.name,
       apparatus_type: item.apparatus_type || '',
-      neris_unit_type: item.neris_unit_type || '',
       unit_category: item.unit_category || 'APPARATUS',
       counts_for_response_times: item.counts_for_response_times ?? true,
       cad_unit_id: item.cad_unit_id || item.unit_designator,
@@ -448,27 +428,6 @@ function ApparatusPage({ embedded = false }) {
                   <p className="text-xs text-gray-500 mt-1">
                     For dispatch centers using inconsistent unit IDs
                   </p>
-                </div>
-              )}
-
-              {/* NERIS Type (for physical units) */}
-              {isPhysicalUnit && (
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">NERIS Type</label>
-                  <select
-                    className="w-full bg-dark-hover border border-dark-border rounded px-3 py-2 text-white"
-                    value={formData.neris_unit_type}
-                    onChange={(e) => {
-                      const selectedType = apparatusTypes.find(t => t.value === e.target.value);
-                      handleChange('neris_unit_type', e.target.value);
-                      handleChange('apparatus_type', selectedType?.description || '');
-                    }}
-                  >
-                    <option value="">-- Select Type --</option>
-                    {apparatusTypes.map(t => (
-                      <option key={t.value} value={t.value}>{t.description}</option>
-                    ))}
-                  </select>
                 </div>
               )}
 

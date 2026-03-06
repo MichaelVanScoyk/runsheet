@@ -32,7 +32,6 @@ class ApparatusCreate(BaseModel):
     unit_designator: str
     name: str
     apparatus_type: Optional[str] = None
-    neris_unit_type: Optional[str] = None
     is_virtual: bool = False  # DEPRECATED - use unit_category
     unit_category: str = 'APPARATUS'
     counts_for_response_times: Optional[bool] = None  # None = use category default
@@ -48,7 +47,6 @@ class ApparatusUpdate(BaseModel):
     unit_designator: Optional[str] = None
     name: Optional[str] = None
     apparatus_type: Optional[str] = None
-    neris_unit_type: Optional[str] = None
     neris_unit_id: Optional[str] = None
     unit_category: Optional[str] = None
     counts_for_response_times: Optional[bool] = None
@@ -69,7 +67,6 @@ def apparatus_to_dict(a: Apparatus) -> dict:
         "unit_designator": a.unit_designator,
         "name": a.name,
         "apparatus_type": a.apparatus_type,
-        "neris_unit_type": a.neris_unit_type,
         "is_virtual": a.is_virtual,  # DEPRECATED but kept for backward compat
         "unit_category": category,
         "counts_for_response_times": getattr(a, 'counts_for_response_times', True),
@@ -270,7 +267,6 @@ async def create_apparatus(
         unit_designator=data.unit_designator,
         name=data.name,
         apparatus_type=data.apparatus_type,
-        neris_unit_type=data.neris_unit_type,
         is_virtual=is_virtual,
         unit_category=category,
         counts_for_response_times=counts_for_response,

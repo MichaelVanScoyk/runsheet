@@ -107,10 +107,6 @@ class Apparatus(Base):
     active = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
     
-    # NERIS: Unit type from type_unit lookup
-    # Values: "ENGINE", "LADDER", "QUINT", "RESCUE", "AMBULANCE_ALS", "AMBULANCE_BLS", etc.
-    neris_unit_type = Column(Text)
-    
     # Unit Management (added in migration 002)
     # Categories:
     #   APPARATUS - Physical CAD units (engines, trucks, chief vehicles) with configurable crew slots
