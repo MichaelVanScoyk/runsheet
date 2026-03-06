@@ -4,171 +4,47 @@
  * NERIS Entity Editor — department profile, stations, and units.
  *
  * Sub-tabs:
- *   🏛️ Entity       — department profile, stations, units
+ *   🏛️ Entity       — department profile (sections 1–8), stations, units
  *   ⚙️ Credentials  — client_id, client_secret, environment
  *
- * Entity sections (collapsible):
- *   1. Identification    — fd_neris_id, name, internal_id, time_zone
- *   2. Address           — address_line_1/2, city, state, zip_code, location
- *   3. Contact           — email, website
- *   4. Classification    — department_type, entity_type, fips_code, continue_edu
- *   5. Services          — fire_services, ems_services, investigation_services
- *   6. Dispatch / PSAP   — dispatch JSONB (center_id, cad_software, avl_usage, protocols, etc.)
- *   7. Staffing          — staffing JSONB (career/volunteer/ems/civilian counts)
- *   8. Assessment        — assessment JSONB (iso_rating, cpse_accredited, caas_accredited)
- *   9. Stations & Units  — station cards, each with unit table
+ * All field labels, hints, and enum choices are imported from:
+ *   src/constants/nerisFieldDefs.js
  *
- * All field names, enum values, and required fields sourced exclusively from:
- *   https://api.neris.fsri.org/v1/openapi.json (v1.4.35, fetched 2026-03-05)
+ * That file is the single source of truth — sourced from:
+ *   core_mod_entity_fd.csv (ulfsri/neris-framework, retrieved 2026-03-05)
+ *   https://api.neris.fsri.org/v1/openapi.json (v1.4.35)
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../contexts/ToastContext';
+import {
+  ENTITY_FIELD_DEFS,
+  STATION_FIELD_DEFS,
+  UNIT_FIELD_DEFS,
+  DEPT_TYPES,
+  ENTITY_TYPES,
+  UNIT_TYPES,
+  FIRE_SERVICES,
+  EMS_SERVICES,
+  INVESTIGATION_SERVICES,
+  PSAP_TYPES,
+  PSAP_CAPABILITIES,
+  PSAP_DISCIPLINES,
+  PSAP_JURISDICTIONS,
+  DISPATCH_PROTOCOLS,
+  US_STATES,
+} from '../constants/nerisFieldDefs';
 
 const API_BASE = '';
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 const api = {
-  get:  (path)        => fetch(`${API_BASE}${path}`).then(r => r.json()),
-  put:  (path, body)  => fetch(`${API_BASE}${path}`, { method: 'PUT',    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
-  post: (path, body)  => fetch(`${API_BASE}${path}`, { method: 'POST',   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
-  del:  (path)        => fetch(`${API_BASE}${path}`, { method: 'DELETE' }).then(r => r.json()),
+  get:  (path)       => fetch(`${API_BASE}${path}`).then(r => r.json()),
+  put:  (path, body) => fetch(`${API_BASE}${path}`, { method: 'PUT',    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+  post: (path, body) => fetch(`${API_BASE}${path}`, { method: 'POST',   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+  del:  (path)       => fetch(`${API_BASE}${path}`, { method: 'DELETE' }).then(r => r.json()),
 };
-
-// ─── NERIS enum values — sourced from openapi.json 2026-03-05 ─────────────────
-
-// TypeDeptValue
-const DEPT_TYPES = [
-  { value: 'CAREER',      label: 'Career' },
-  { value: 'COMBINATION', label: 'Combination (Career + Volunteer)' },
-  { value: 'VOLUNTEER',   label: 'Volunteer' },
-];
-
-// TypeEntityValue
-const ENTITY_TYPES = [
-  { value: 'CONTRACT',      label: 'Contract' },
-  { value: 'FEDERAL',       label: 'Federal' },
-  { value: 'LOCAL',         label: 'Local' },
-  { value: 'OTHER',         label: 'Other' },
-  { value: 'PRIVATE',       label: 'Private' },
-  { value: 'STATE',         label: 'State' },
-  { value: 'TRANSPORTATION', label: 'Transportation' },
-  { value: 'TRIBAL',        label: 'Tribal' },
-];
-
-// TypeUnitValue — all 49 values
-const UNIT_TYPES = [
-  { value: 'AIR_EMS',           label: 'Air EMS' },
-  { value: 'AIR_LIGHT',         label: 'Air Light' },
-  { value: 'AIR_RECON',         label: 'Air Recon' },
-  { value: 'AIR_TANKER',        label: 'Air Tanker' },
-  { value: 'ALS_AMB',           label: 'ALS Ambulance' },
-  { value: 'ARFF',              label: 'ARFF' },
-  { value: 'ATV_EMS',           label: 'ATV EMS' },
-  { value: 'ATV_FIRE',          label: 'ATV Fire' },
-  { value: 'BLS_AMB',           label: 'BLS Ambulance' },
-  { value: 'BOAT',              label: 'Boat' },
-  { value: 'BOAT_LARGE',        label: 'Boat (Large)' },
-  { value: 'CHIEF_STAFF_COMMAND', label: 'Chief / Staff / Command' },
-  { value: 'CREW',              label: 'Crew' },
-  { value: 'CREW_TRANS',        label: 'Crew Transport' },
-  { value: 'DECON',             label: 'Decon' },
-  { value: 'DOZER',             label: 'Dozer' },
-  { value: 'EMS_NOTRANS',       label: 'EMS (No Transport)' },
-  { value: 'EMS_SUPV',          label: 'EMS Supervisor' },
-  { value: 'ENGINE_STRUCT',     label: 'Engine (Structural)' },
-  { value: 'ENGINE_WUI',        label: 'Engine (WUI)' },
-  { value: 'FOAM',              label: 'Foam Unit' },
-  { value: 'HAZMAT',            label: 'HazMat' },
-  { value: 'HELO_FIRE',         label: 'Helicopter (Fire)' },
-  { value: 'HELO_GENERAL',      label: 'Helicopter (General)' },
-  { value: 'HELO_RESCUE',       label: 'Helicopter (Rescue)' },
-  { value: 'INVEST',            label: 'Investigation' },
-  { value: 'LADDER_QUINT',      label: 'Ladder / Quint' },
-  { value: 'LADDER_SMALL',      label: 'Ladder (Small)' },
-  { value: 'LADDER_TALL',       label: 'Ladder (Tall)' },
-  { value: 'LADDER_TILLER',     label: 'Ladder (Tiller)' },
-  { value: 'MAB',               label: 'MAB' },
-  { value: 'MOBILE_COMMS',      label: 'Mobile Communications' },
-  { value: 'MOBILE_ICP',        label: 'Mobile ICP' },
-  { value: 'OTHER_GROUND',      label: 'Other Ground' },
-  { value: 'PLATFORM',          label: 'Platform' },
-  { value: 'PLATFORM_QUINT',    label: 'Platform Quint' },
-  { value: 'POV',               label: 'POV' },
-  { value: 'QUINT_TALL',        label: 'Quint (Tall)' },
-  { value: 'REHAB',             label: 'Rehab' },
-  { value: 'RESCUE_HEAVY',      label: 'Rescue (Heavy)' },
-  { value: 'RESCUE_LIGHT',      label: 'Rescue (Light)' },
-  { value: 'RESCUE_MEDIUM',     label: 'Rescue (Medium)' },
-  { value: 'RESCUE_USAR',       label: 'Rescue (USAR)' },
-  { value: 'RESCUE_WATER',      label: 'Rescue (Water)' },
-  { value: 'SCBA',              label: 'SCBA' },
-  { value: 'TENDER',            label: 'Tender' },
-  { value: 'UAS_FIRE',          label: 'UAS (Fire)' },
-  { value: 'UAS_RECON',         label: 'UAS (Recon)' },
-  { value: 'UTIL',              label: 'Utility' },
-];
-
-// TypeServFdValue
-const FIRE_SERVICES = [
-  'ANIMAL_TECHRESCUE', 'ARFF_FIREFIGHTING', 'CAUSE_ORIGIN', 'CAVE_SAR',
-  'COLLAPSE_RESCUE', 'CONFINED_SPACE', 'DIVE_SAR', 'FLOOD_SAR',
-  'HAZMAT_OPS', 'HAZMAT_TECHNICIAN', 'HELO_SAR', 'HIGHRISE_FIREFIGHTING',
-  'ICE_RESCUE', 'MACHINERY_RESCUE', 'MARINE_FIREFIGHTING', 'MINE_SAR',
-  'PETROCHEM_FIREFIGHTING', 'REHABILITATION', 'ROPE_RESCUE',
-  'RRD_EXISTING', 'RRD_NEWCONST', 'RRD_PLANS', 'RRD_PUBLICED',
-  'STRUCTURAL_FIREFIGHTING', 'SURF_RESCUE', 'SWIFTWATER_SAR', 'TOWER_SAR',
-  'TRAINING_DRIVER', 'TRAINING_ELF', 'TRAINING_OD', 'TRAINING_VETFF',
-  'TRENCH_RESCUE', 'VEHICLE_RESCUE', 'WATERCRAFT_RESCUE', 'WATER_SAR',
-  'WILDERNESS_SAR', 'WILDLAND_FIREFIGHTING',
-];
-
-// TypeServEmsValue
-const EMS_SERVICES = [
-  'AERO_TRANSPORT', 'ALS_NO_TRANSPORT', 'ALS_TRANSPORT',
-  'BLS_NO_TRANSPORT', 'BLS_TRANSPORT', 'COMMUNITY_MED', 'NO_MEDICAL',
-];
-
-// TypeServInvestValue
-const INVESTIGATION_SERVICES = [
-  'COMPANY_LEVEL', 'DEDICATED', 'K9_DETECT', 'LAW_ENFORCEMENT', 'YOUTH_FIRESETTER',
-];
-
-// DepartmentDispatchPayload — TypePsapType
-const PSAP_TYPES = [
-  { value: 'PRIMARY',   label: 'Primary' },
-  { value: 'SECONDARY', label: 'Secondary' },
-];
-
-// DepartmentDispatchPayload — TypePsapCapability
-const PSAP_CAPABILITIES = [
-  { value: 'LEGACY', label: 'Legacy' },
-  { value: 'NG911',  label: 'NG911' },
-];
-
-// DepartmentDispatchPayload — TypePsapDiscipline / TypePsapJurisdiction
-const PSAP_MULTI = [
-  { value: 'MULTIPLE', label: 'Multiple' },
-  { value: 'SINGLE',   label: 'Single' },
-];
-
-// DepartmentDispatchPayload — TypeProtocolValue
-const DISPATCH_PROTOCOLS = [
-  { value: 'APCO',  label: 'APCO' },
-  { value: 'IAED',  label: 'IAED' },
-  { value: 'OTHER', label: 'Other' },
-  { value: 'PROQA', label: 'ProQA' },
-];
-
-// US states for address fields
-const US_STATES = [
-  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
-  'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
-  'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
-  'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
-  'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY',
-];
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
@@ -183,14 +59,27 @@ const selectStyle = { ...inputStyle };
 
 // ─── Primitive field components ───────────────────────────────────────────────
 
-function Field({ label, hint, children, required }) {
+/**
+ * Field wrapper — renders label, children, and hint text.
+ * Hint text is sourced from nerisFieldDefs.js definitions.
+ */
+function Field({ def, children }) {
+  // def can be a definition object { label, hint, required } or plain props
+  const label    = def?.label    ?? '';
+  const hint     = def?.hint     ?? null;
+  const required = def?.required ?? false;
+
   return (
     <div style={{ marginBottom: '0.85rem' }}>
       <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#555', marginBottom: '0.2rem' }}>
         {label}{required && <span style={{ color: '#dc2626', marginLeft: 2 }}>*</span>}
       </label>
       {children}
-      {hint && <small style={{ display: 'block', color: '#888', fontSize: '0.75rem', marginTop: '0.15rem' }}>{hint}</small>}
+      {hint && (
+        <small style={{ display: 'block', color: '#888', fontSize: '0.73rem', marginTop: '0.2rem', lineHeight: '1.35' }}>
+          {hint}
+        </small>
+      )}
     </div>
   );
 }
@@ -210,10 +99,10 @@ function TextInput({ value, onChange, onBlur, placeholder, type = 'text', maxLen
   );
 }
 
-function SelectInput({ value, onChange, onBlur, options, placeholder, disabled }) {
+function SelectInput({ value, onChange, onBlur, options, disabled }) {
   return (
     <select value={value ?? ''} onChange={e => onChange(e.target.value)} onBlur={onBlur} disabled={disabled} style={selectStyle}>
-      {placeholder && <option value="">{placeholder}</option>}
+      <option value=""></option>
       {options.map(opt =>
         typeof opt === 'string'
           ? <option key={opt} value={opt}>{opt}</option>
@@ -223,7 +112,7 @@ function SelectInput({ value, onChange, onBlur, options, placeholder, disabled }
   );
 }
 
-function NumberInput({ value, onChange, onBlur, min, max, placeholder, disabled, width = '120px' }) {
+function NumberInput({ value, onChange, onBlur, min, max, disabled, width = '120px' }) {
   return (
     <input
       type="number"
@@ -232,7 +121,6 @@ function NumberInput({ value, onChange, onBlur, min, max, placeholder, disabled,
       onBlur={onBlur}
       min={min}
       max={max}
-      placeholder={placeholder}
       disabled={disabled}
       style={{ ...inputStyle, width }}
     />
@@ -241,24 +129,29 @@ function NumberInput({ value, onChange, onBlur, min, max, placeholder, disabled,
 
 function CheckboxInput({ label, value, onChange }) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', cursor: 'pointer', color: '#222' }}>
+    <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', cursor: 'pointer', color: '#222', marginTop: '0.2rem' }}>
       <input type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)} />
-      {label}
+      {label || 'Yes'}
     </label>
   );
 }
 
-function MultiCheckbox({ values = [], options, onChange }) {
+/**
+ * Multi-select checkboxes.
+ * choices: array of { value, label }
+ * values:  currently selected values array
+ */
+function MultiCheckbox({ values = [], choices, onChange }) {
   const toggle = (val) => {
     const next = values.includes(val) ? values.filter(v => v !== val) : [...values, val];
     onChange(next);
   };
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1.25rem' }}>
-      {options.map(opt => (
-        <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem', cursor: 'pointer' }}>
-          <input type="checkbox" checked={values.includes(opt)} onChange={() => toggle(opt)} />
-          {opt.replace(/_/g, ' ')}
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem 1.25rem', marginTop: '0.15rem' }}>
+      {choices.map(opt => (
+        <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem', cursor: 'pointer' }}>
+          <input type="checkbox" checked={values.includes(opt.value)} onChange={() => toggle(opt.value)} />
+          {opt.label}
         </label>
       ))}
     </div>
@@ -348,7 +241,7 @@ function UnitRow({ unit, apparatusOptions, onSaved, onDeleted }) {
     }
   };
 
-  const td = { padding: '0.35rem 0.4rem', verticalAlign: 'middle' };
+  const td = { padding: '0.35rem 0.4rem', verticalAlign: 'top' };
 
   return (
     <tr style={{ background: dirty ? '#fffbeb' : 'transparent' }}>
@@ -358,6 +251,7 @@ function UnitRow({ unit, apparatusOptions, onSaved, onDeleted }) {
           value={data.apparatus_id ?? ''}
           onChange={e => selectApparatus(e.target.value)}
           style={{ ...selectStyle, width: '130px', fontSize: '0.82rem' }}
+          title={UNIT_FIELD_DEFS.apparatus_id.hint}
         >
           <option value="">— none —</option>
           {apparatusOptions.map(a => (
@@ -366,24 +260,26 @@ function UnitRow({ unit, apparatusOptions, onSaved, onDeleted }) {
         </select>
       </td>
 
-      {/* cad_designation_1 — must match CAD exactly */}
+      {/* cad_designation_1 */}
       <td style={td}>
         <input
           type="text"
           value={data.cad_designation_1 ?? ''}
           onChange={e => update('cad_designation_1', e.target.value)}
           style={{ ...inputStyle, width: '90px', fontSize: '0.82rem', fontFamily: 'monospace' }}
+          title={UNIT_FIELD_DEFS.cad_designation_1.hint}
           placeholder="E48"
         />
       </td>
 
-      {/* cad_designation_2 — optional alternate CAD ID */}
+      {/* cad_designation_2 */}
       <td style={td}>
         <input
           type="text"
           value={data.cad_designation_2 ?? ''}
           onChange={e => update('cad_designation_2', e.target.value)}
           style={{ ...inputStyle, width: '90px', fontSize: '0.82rem', fontFamily: 'monospace' }}
+          title={UNIT_FIELD_DEFS.cad_designation_2.hint}
         />
       </td>
 
@@ -392,7 +288,8 @@ function UnitRow({ unit, apparatusOptions, onSaved, onDeleted }) {
         <select
           value={data.type ?? ''}
           onChange={e => update('type', e.target.value || null)}
-          style={{ ...selectStyle, width: '170px', fontSize: '0.82rem' }}
+          style={{ ...selectStyle, width: '185px', fontSize: '0.82rem' }}
+          title={UNIT_FIELD_DEFS.type.hint}
         >
           <option value="">— select —</option>
           {UNIT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -407,21 +304,23 @@ function UnitRow({ unit, apparatusOptions, onSaved, onDeleted }) {
           onChange={e => update('staffing', e.target.value === '' ? null : Number(e.target.value))}
           style={{ ...inputStyle, width: '60px', fontSize: '0.82rem' }}
           min={0}
+          title={UNIT_FIELD_DEFS.staffing.hint}
         />
       </td>
 
       {/* dedicated_staffing */}
-      <td style={td}>
+      <td style={{ ...td, textAlign: 'center' }}>
         <input
           type="checkbox"
           checked={!!data.dedicated_staffing}
           onChange={e => update('dedicated_staffing', e.target.checked)}
+          title={UNIT_FIELD_DEFS.dedicated_staffing.hint}
         />
       </td>
 
-      {/* neris_id — read only, assigned by NERIS after entity submission */}
+      {/* neris_id — read only */}
       <td style={td}>
-        <span style={{ fontSize: '0.75rem', color: '#6b7280', fontFamily: 'monospace' }}>
+        <span style={{ fontSize: '0.75rem', color: '#6b7280', fontFamily: 'monospace' }} title={UNIT_FIELD_DEFS.neris_id.hint}>
           {data.neris_id || '—'}
         </span>
       </td>
@@ -501,7 +400,7 @@ function StationCard({ station, apparatusOptions, onChanged }) {
   };
 
   const addUnit = async () => {
-    if (!newUnit.cad_designation_1) { toast.error('CAD Designation 1 is required'); return; }
+    if (!newUnit.cad_designation_1) { toast.error('CAD ID is required'); return; }
     try {
       await api.post(`/api/neris/stations/${station.id}/units`, {
         ...newUnit,
@@ -515,6 +414,8 @@ function StationCard({ station, apparatusOptions, onChanged }) {
       toast.error('Failed to add unit');
     }
   };
+
+  const F = STATION_FIELD_DEFS;
 
   return (
     <div style={{ border: '1px solid #d1d5db', borderRadius: 6, marginBottom: '0.75rem', overflow: 'hidden' }}>
@@ -535,34 +436,49 @@ function StationCard({ station, apparatusOptions, onChanged }) {
       {open && (
         <div style={{ padding: '0.75rem' }}>
 
-          {/* Station fields — names match neris_stations columns after migration 044 */}
+          {/* Station fields */}
           <Row cols={2}>
-            <Field label="Station ID" hint="e.g. 001 — used in NERIS unit_neris_id path" required>
+            <Field def={F.station_id}>
               <TextInput value={data.station_id} onChange={v => update('station_id', v)} />
             </Field>
-            <Field label="Station Name" hint="Local display only">
+            <Field def={F.station_name}>
               <TextInput value={data.station_name} onChange={v => update('station_name', v)} />
             </Field>
           </Row>
+          <Field def={F.address_line_1}>
+            <TextInput value={data.address_line_1} onChange={v => update('address_line_1', v)} />
+          </Field>
           <Row cols={3}>
-            <Field label="Address">
-              <TextInput value={data.address_line_1} onChange={v => update('address_line_1', v)} />
-            </Field>
-            <Field label="City">
+            <Field def={F.city}>
               <TextInput value={data.city} onChange={v => update('city', v)} />
             </Field>
-            <Field label="State">
-              <SelectInput value={data.state} onChange={v => update('state', v)} options={US_STATES} placeholder="—" />
+            <Field def={F.state}>
+              <SelectInput value={data.state} onChange={v => update('state', v)} options={US_STATES} />
             </Field>
-          </Row>
-          <Row cols={2}>
-            <Field label="ZIP">
+            <Field def={F.zip_code}>
               <TextInput value={data.zip_code} onChange={v => update('zip_code', v)} maxLength={10} />
             </Field>
-            <Field label="Min. Staffing">
+          </Row>
+          <Row cols={3}>
+            <Field def={F.location_lat}>
+              <TextInput
+                value={data.location?.lat ?? ''}
+                onChange={v => update('location', { ...(data.location || {}), lat: v })}
+              />
+            </Field>
+            <Field def={F.location_lng}>
+              <TextInput
+                value={data.location?.lng ?? ''}
+                onChange={v => update('location', { ...(data.location || {}), lng: v })}
+              />
+            </Field>
+            <Field def={F.staffing}>
               <NumberInput value={data.staffing} onChange={v => update('staffing', v)} min={0} width="100px" />
             </Field>
           </Row>
+          <Field def={F.internal_id}>
+            <TextInput value={data.internal_id} onChange={v => update('internal_id', v)} />
+          </Field>
 
           {dirty && (
             <button
@@ -574,7 +490,7 @@ function StationCard({ station, apparatusOptions, onChanged }) {
             </button>
           )}
 
-          {/* Units */}
+          {/* Units table */}
           <div style={{ marginTop: '0.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#374151' }}>Units</span>
@@ -591,8 +507,17 @@ function StationCard({ station, apparatusOptions, onChanged }) {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead>
                     <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                      {['Apparatus', 'CAD ID *', 'Alt ID', 'Type *', 'Staffing *', 'Dedicated', 'NERIS ID', ''].map(h => (
-                        <th key={h} style={{ padding: '0.3rem 0.4rem', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', fontSize: '0.8rem' }}>{h}</th>
+                      {[
+                        [UNIT_FIELD_DEFS.apparatus_id.label,       UNIT_FIELD_DEFS.apparatus_id.hint],
+                        [UNIT_FIELD_DEFS.cad_designation_1.label + ' *', UNIT_FIELD_DEFS.cad_designation_1.hint],
+                        [UNIT_FIELD_DEFS.cad_designation_2.label,  UNIT_FIELD_DEFS.cad_designation_2.hint],
+                        [UNIT_FIELD_DEFS.type.label,               UNIT_FIELD_DEFS.type.hint],
+                        [UNIT_FIELD_DEFS.staffing.label + ' *',    UNIT_FIELD_DEFS.staffing.hint],
+                        [UNIT_FIELD_DEFS.dedicated_staffing.label, UNIT_FIELD_DEFS.dedicated_staffing.hint],
+                        [UNIT_FIELD_DEFS.neris_id.label,           UNIT_FIELD_DEFS.neris_id.hint],
+                        ['', ''],
+                      ].map(([h, title]) => (
+                        <th key={h} title={title} style={{ padding: '0.3rem 0.4rem', textAlign: 'left', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', fontSize: '0.8rem', cursor: title ? 'help' : 'default' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -637,7 +562,7 @@ function StationCard({ station, apparatusOptions, onChanged }) {
                           <select
                             value={newUnit.type ?? ''}
                             onChange={e => setNewUnit(p => ({ ...p, type: e.target.value || null }))}
-                            style={{ ...selectStyle, width: '170px', fontSize: '0.82rem' }}
+                            style={{ ...selectStyle, width: '185px', fontSize: '0.82rem' }}
                           >
                             <option value="">— select —</option>
                             {UNIT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -703,7 +628,7 @@ function EntityTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Update local state and immediately persist single field
+  // Update local state and immediately persist a single top-level field
   const saveField = async (field, value) => {
     setEntity(p => ({ ...p, [field]: value }));
     try {
@@ -713,22 +638,28 @@ function EntityTab() {
     }
   };
 
-  // Update local state only (used with onBlur to batch)
+  // Update local state only — persist on blur
   const updateField = (field, value) => setEntity(p => ({ ...p, [field]: value }));
-
-  // Persist on blur
   const blurSave = (field) => () => api.put('/api/neris/entity', { [field]: entity[field] }).catch(() => toast.error(`Failed to save ${field}`));
 
-  // Update a JSONB sub-field and persist entire JSONB object
+  // Update a JSONB sub-field and persist the entire JSONB object
   const saveJsonField = async (jsonKey, subKey, value) => {
-    const current = entity[jsonKey] || {};
-    const updated = { ...current, [subKey]: value };
+    const updated = { ...(entity[jsonKey] || {}), [subKey]: value };
     setEntity(p => ({ ...p, [jsonKey]: updated }));
     try {
       await api.put('/api/neris/entity', { [jsonKey]: updated });
     } catch {
       toast.error(`Failed to save ${jsonKey}.${subKey}`);
     }
+  };
+
+  // Update a JSONB sub-field locally — persist on blur
+  const updateJsonField = (jsonKey, subKey, value) => {
+    setEntity(p => ({ ...p, [jsonKey]: { ...(p[jsonKey] || {}), [subKey]: value } }));
+  };
+  const blurSaveJson = (jsonKey, subKey) => () => {
+    const updated = entity[jsonKey] || {};
+    api.put('/api/neris/entity', { [jsonKey]: updated }).catch(() => toast.error(`Failed to save ${jsonKey}.${subKey}`));
   };
 
   const addStation = async () => {
@@ -776,12 +707,17 @@ function EntityTab() {
 
   if (loading) return <div style={{ padding: '1rem', color: '#666' }}>Loading entity data…</div>;
 
+  // Shorthand references to JSONB sub-objects
   const dispatch   = entity.dispatch   || {};
   const staffing   = entity.staffing   || {};
   const assessment = entity.assessment || {};
+  const shift      = entity.shift      || {};
+
+  // Field def shorthand
+  const F = ENTITY_FIELD_DEFS;
 
   return (
-    <div style={{ maxWidth: 720 }}>
+    <div style={{ maxWidth: 740 }}>
 
       {/* Validation banner */}
       {validationResult && (
@@ -793,7 +729,7 @@ function EntityTab() {
           {validationResult.valid
             ? <span style={{ color: '#15803d', fontWeight: 600 }}>✓ Entity complete — ready to submit</span>
             : <>
-                <div style={{ color: '#dc2626', fontWeight: 600, marginBottom: '0.4rem' }}>✗ {validationResult.errors?.length} error(s) must be fixed</div>
+                <div style={{ color: '#dc2626', fontWeight: 600, marginBottom: '0.4rem' }}>✗ {validationResult.errors?.length} error(s) must be fixed before submitting</div>
                 {validationResult.errors?.map((e, i) => <div key={i} style={{ color: '#dc2626', fontSize: '0.85rem' }}>• {e}</div>)}
               </>
           }
@@ -808,75 +744,101 @@ function EntityTab() {
       {/* 1. Identification */}
       <Section title="1. Identification" defaultOpen>
         <Row cols={2}>
-          <Field label="NERIS Department ID" required hint="Assigned by NERIS — e.g. FD42029593">
+          <Field def={F.fd_neris_id}>
             <TextInput value={entity.fd_neris_id} onChange={v => updateField('fd_neris_id', v)} onBlur={blurSave('fd_neris_id')} />
           </Field>
-          <Field label="Internal / Legacy ID" hint="NFIRS or state ID if applicable">
+          <Field def={F.internal_id}>
             <TextInput value={entity.internal_id} onChange={v => updateField('internal_id', v)} onBlur={blurSave('internal_id')} />
           </Field>
         </Row>
-        <Field label="Department Name" required>
+        <Field def={F.name}>
           <TextInput value={entity.name} onChange={v => updateField('name', v)} onBlur={blurSave('name')} />
         </Field>
         <Row cols={2}>
-          <Field label="Time Zone" required hint="IANA format — e.g. America/New_York">
-            <TextInput value={entity.time_zone} onChange={v => updateField('time_zone', v)} onBlur={blurSave('time_zone')} placeholder="America/New_York" />
+          <Field def={F.time_zone}>
+            <TextInput value={entity.time_zone} onChange={v => updateField('time_zone', v)} onBlur={blurSave('time_zone')} placeholder={F.time_zone.placeholder} />
           </Field>
-          <Field label="FIPS Code">
+          <Field def={F.fips_code}>
             <TextInput value={entity.fips_code} onChange={v => updateField('fips_code', v)} onBlur={blurSave('fips_code')} />
           </Field>
         </Row>
       </Section>
 
-      {/* 2. Address */}
+      {/* 2. Physical Address */}
       <Section title="2. Physical Address">
         <Row cols={2}>
-          <Field label="Street Address" required>
+          <Field def={F.address_line_1}>
             <TextInput value={entity.address_line_1} onChange={v => updateField('address_line_1', v)} onBlur={blurSave('address_line_1')} />
           </Field>
-          <Field label="Suite / Apt">
+          <Field def={F.address_line_2}>
             <TextInput value={entity.address_line_2} onChange={v => updateField('address_line_2', v)} onBlur={blurSave('address_line_2')} />
           </Field>
         </Row>
         <Row cols={3}>
-          <Field label="City" required>
+          <Field def={F.city}>
             <TextInput value={entity.city} onChange={v => updateField('city', v)} onBlur={blurSave('city')} />
           </Field>
-          <Field label="State" required>
-            <SelectInput value={entity.state} onChange={v => saveField('state', v)} options={US_STATES} placeholder="—" />
+          <Field def={F.state}>
+            <SelectInput value={entity.state} onChange={v => saveField('state', v)} options={US_STATES} />
           </Field>
-          <Field label="ZIP" required>
+          <Field def={F.zip_code}>
             <TextInput value={entity.zip_code} onChange={v => updateField('zip_code', v)} onBlur={blurSave('zip_code')} maxLength={10} />
           </Field>
         </Row>
         <Row cols={2}>
-          <Field label="Latitude" hint="Decimal degrees">
+          <Field def={F.location_lat}>
             <TextInput
               value={entity.location?.lat ?? ''}
-              onChange={v => { const loc = { ...(entity.location || {}), lat: v }; setEntity(p => ({ ...p, location: loc })); }}
+              onChange={v => setEntity(p => ({ ...p, location: { ...(p.location || {}), lat: v } }))}
               onBlur={() => api.put('/api/neris/entity', { location: entity.location }).catch(() => toast.error('Failed to save location'))}
-              placeholder="39.9526"
+              placeholder={F.location_lat.placeholder}
             />
           </Field>
-          <Field label="Longitude" hint="Decimal degrees">
+          <Field def={F.location_lng}>
             <TextInput
               value={entity.location?.lng ?? ''}
-              onChange={v => { const loc = { ...(entity.location || {}), lng: v }; setEntity(p => ({ ...p, location: loc })); }}
+              onChange={v => setEntity(p => ({ ...p, location: { ...(p.location || {}), lng: v } }))}
               onBlur={() => api.put('/api/neris/entity', { location: entity.location }).catch(() => toast.error('Failed to save location'))}
-              placeholder="-75.1652"
+              placeholder={F.location_lng.placeholder}
             />
           </Field>
         </Row>
+
+        {/* Mailing address — collapsed sub-section */}
+        <details style={{ marginTop: '0.5rem' }}>
+          <summary style={{ fontSize: '0.85rem', color: '#6b7280', cursor: 'pointer', userSelect: 'none' }}>Mailing Address (if different from physical)</summary>
+          <div style={{ marginTop: '0.75rem' }}>
+            <Row cols={2}>
+              <Field def={F.mail_address_line_1}>
+                <TextInput value={entity.mail_address_line_1} onChange={v => updateField('mail_address_line_1', v)} onBlur={blurSave('mail_address_line_1')} />
+              </Field>
+              <Field def={F.mail_address_line_2}>
+                <TextInput value={entity.mail_address_line_2} onChange={v => updateField('mail_address_line_2', v)} onBlur={blurSave('mail_address_line_2')} />
+              </Field>
+            </Row>
+            <Row cols={3}>
+              <Field def={F.mail_city}>
+                <TextInput value={entity.mail_city} onChange={v => updateField('mail_city', v)} onBlur={blurSave('mail_city')} />
+              </Field>
+              <Field def={F.mail_state}>
+                <SelectInput value={entity.mail_state} onChange={v => saveField('mail_state', v)} options={US_STATES} />
+              </Field>
+              <Field def={F.mail_zip_code}>
+                <TextInput value={entity.mail_zip_code} onChange={v => updateField('mail_zip_code', v)} onBlur={blurSave('mail_zip_code')} maxLength={10} />
+              </Field>
+            </Row>
+          </div>
+        </details>
       </Section>
 
       {/* 3. Contact */}
       <Section title="3. Contact">
         <Row cols={2}>
-          <Field label="Email">
-            <TextInput value={entity.email} onChange={v => updateField('email', v)} onBlur={blurSave('email')} type="email" />
+          <Field def={F.email}>
+            <TextInput type="email" value={entity.email} onChange={v => updateField('email', v)} onBlur={blurSave('email')} />
           </Field>
-          <Field label="Website">
-            <TextInput value={entity.website} onChange={v => updateField('website', v)} onBlur={blurSave('website')} placeholder="https://..." />
+          <Field def={F.website}>
+            <TextInput value={entity.website} onChange={v => updateField('website', v)} onBlur={blurSave('website')} placeholder={F.website.placeholder} />
           </Field>
         </Row>
       </Section>
@@ -884,116 +846,97 @@ function EntityTab() {
       {/* 4. Classification */}
       <Section title="4. Classification">
         <Row cols={2}>
-          <Field label="Department Type" hint="TypeDeptValue">
-            <SelectInput value={entity.department_type} onChange={v => saveField('department_type', v)} options={DEPT_TYPES} placeholder="— select —" />
+          <Field def={F.department_type}>
+            <SelectInput value={entity.department_type} onChange={v => saveField('department_type', v)} options={DEPT_TYPES} />
           </Field>
-          <Field label="Entity Type" hint="TypeEntityValue">
-            <SelectInput value={entity.entity_type} onChange={v => saveField('entity_type', v)} options={ENTITY_TYPES} placeholder="— select —" />
+          <Field def={F.entity_type}>
+            <SelectInput value={entity.entity_type} onChange={v => saveField('entity_type', v)} options={ENTITY_TYPES} />
           </Field>
         </Row>
         <Row cols={2}>
-          <Field label="RMS Software">
+          <Field def={F.rms_software}>
             <TextInput value={entity.rms_software} onChange={v => updateField('rms_software', v)} onBlur={blurSave('rms_software')} />
           </Field>
-          <Field label="Continuing Education" hint="Whether department participates">
-            <CheckboxInput label="Yes" value={entity.continue_edu} onChange={v => saveField('continue_edu', v)} />
+          <Field def={F.continue_edu}>
+            <CheckboxInput value={entity.continue_edu} onChange={v => saveField('continue_edu', v)} />
           </Field>
         </Row>
       </Section>
 
       {/* 5. Services */}
       <Section title="5. Services Provided">
-        <Field label="Fire Services (TypeServFdValue)">
-          <MultiCheckbox
-            values={entity.fire_services || []}
-            options={FIRE_SERVICES}
-            onChange={v => saveField('fire_services', v)}
-          />
+        <Field def={F.fire_services}>
+          <MultiCheckbox values={entity.fire_services || []} choices={FIRE_SERVICES} onChange={v => saveField('fire_services', v)} />
         </Field>
-        <Field label="EMS Services (TypeServEmsValue)">
-          <MultiCheckbox
-            values={entity.ems_services || []}
-            options={EMS_SERVICES}
-            onChange={v => saveField('ems_services', v)}
-          />
+        <Field def={F.ems_services}>
+          <MultiCheckbox values={entity.ems_services || []} choices={EMS_SERVICES} onChange={v => saveField('ems_services', v)} />
         </Field>
-        <Field label="Investigation Services (TypeServInvestValue)">
-          <MultiCheckbox
-            values={entity.investigation_services || []}
-            options={INVESTIGATION_SERVICES}
-            onChange={v => saveField('investigation_services', v)}
-          />
+        <Field def={F.investigation_services}>
+          <MultiCheckbox values={entity.investigation_services || []} choices={INVESTIGATION_SERVICES} onChange={v => saveField('investigation_services', v)} />
         </Field>
       </Section>
 
-      {/* 6. Dispatch — DepartmentDispatchPayload */}
+      {/* 6. Dispatch / PSAP */}
       <Section title="6. Dispatch / PSAP">
         <Row cols={2}>
-          <Field label="PSAP Center ID (FCC)" hint="dispatch.center_id — e.g. PA1234567890">
-            <TextInput
-              value={dispatch.center_id}
-              onChange={v => setEntity(p => ({ ...p, dispatch: { ...p.dispatch, center_id: v } }))}
-              onBlur={() => saveJsonField('dispatch', 'center_id', dispatch.center_id)}
-            />
+          <Field def={F.dispatch_center_id}>
+            <TextInput value={dispatch.center_id} onChange={v => updateJsonField('dispatch', 'center_id', v)} onBlur={blurSaveJson('dispatch', 'center_id')} placeholder={F.dispatch_center_id.placeholder} />
           </Field>
-          <Field label="CAD Software" hint="dispatch.cad_software">
-            <TextInput
-              value={dispatch.cad_software}
-              onChange={v => setEntity(p => ({ ...p, dispatch: { ...p.dispatch, cad_software: v } }))}
-              onBlur={() => saveJsonField('dispatch', 'cad_software', dispatch.cad_software)}
-            />
+          <Field def={F.dispatch_cad_software}>
+            <TextInput value={dispatch.cad_software} onChange={v => updateJsonField('dispatch', 'cad_software', v)} onBlur={blurSaveJson('dispatch', 'cad_software')} />
           </Field>
         </Row>
         <Row cols={2}>
-          <Field label="AVL Usage" hint="dispatch.avl_usage">
-            <CheckboxInput label="Yes" value={dispatch.avl_usage} onChange={v => saveJsonField('dispatch', 'avl_usage', v)} />
+          <Field def={F.dispatch_psap_type}>
+            <SelectInput value={dispatch.psap_type} onChange={v => saveJsonField('dispatch', 'psap_type', v)} options={PSAP_TYPES} />
           </Field>
-          <Field label="PSAP Type" hint="dispatch.psap_type">
-            <SelectInput value={dispatch.psap_type} onChange={v => saveJsonField('dispatch', 'psap_type', v)} options={PSAP_TYPES} placeholder="— select —" />
-          </Field>
-        </Row>
-        <Row cols={2}>
-          <Field label="PSAP Capability" hint="dispatch.psap_capability">
-            <SelectInput value={dispatch.psap_capability} onChange={v => saveJsonField('dispatch', 'psap_capability', v)} options={PSAP_CAPABILITIES} placeholder="— select —" />
-          </Field>
-          <Field label="PSAP Discipline" hint="dispatch.psap_discipline">
-            <SelectInput value={dispatch.psap_discipline} onChange={v => saveJsonField('dispatch', 'psap_discipline', v)} options={PSAP_MULTI} placeholder="— select —" />
+          <Field def={F.dispatch_psap_capability}>
+            <SelectInput value={dispatch.psap_capability} onChange={v => saveJsonField('dispatch', 'psap_capability', v)} options={PSAP_CAPABILITIES} />
           </Field>
         </Row>
         <Row cols={2}>
-          <Field label="PSAP Jurisdiction" hint="dispatch.psap_jurisdiction">
-            <SelectInput value={dispatch.psap_jurisdiction} onChange={v => saveJsonField('dispatch', 'psap_jurisdiction', v)} options={PSAP_MULTI} placeholder="— select —" />
+          <Field def={F.dispatch_psap_discipline}>
+            <SelectInput value={dispatch.psap_discipline} onChange={v => saveJsonField('dispatch', 'psap_discipline', v)} options={PSAP_DISCIPLINES} />
+          </Field>
+          <Field def={F.dispatch_psap_jurisdiction}>
+            <SelectInput value={dispatch.psap_jurisdiction} onChange={v => saveJsonField('dispatch', 'psap_jurisdiction', v)} options={PSAP_JURISDICTIONS} />
           </Field>
         </Row>
         <Row cols={2}>
-          <Field label="Fire Dispatch Protocol" hint="dispatch.protocol_fire">
-            <SelectInput value={dispatch.protocol_fire} onChange={v => saveJsonField('dispatch', 'protocol_fire', v)} options={DISPATCH_PROTOCOLS} placeholder="— select —" />
+          <Field def={F.dispatch_protocol_fire}>
+            <SelectInput value={dispatch.protocol_fire} onChange={v => saveJsonField('dispatch', 'protocol_fire', v)} options={DISPATCH_PROTOCOLS} />
           </Field>
-          <Field label="Medical Dispatch Protocol" hint="dispatch.protocol_med">
-            <SelectInput value={dispatch.protocol_med} onChange={v => saveJsonField('dispatch', 'protocol_med', v)} options={DISPATCH_PROTOCOLS} placeholder="— select —" />
+          <Field def={F.dispatch_protocol_med}>
+            <SelectInput value={dispatch.protocol_med} onChange={v => saveJsonField('dispatch', 'protocol_med', v)} options={DISPATCH_PROTOCOLS} />
           </Field>
         </Row>
+        <Field def={F.dispatch_avl_usage}>
+          <CheckboxInput value={dispatch.avl_usage} onChange={v => saveJsonField('dispatch', 'avl_usage', v)} />
+        </Field>
       </Section>
 
-      {/* 7. Staffing — StaffingPayload */}
+      {/* 7. Staffing */}
       <Section title="7. Staffing">
+        <p style={{ color: '#6b7280', fontSize: '0.82rem', marginBottom: '0.75rem' }}>
+          Active personnel only. Total is computed automatically by NERIS from the sum of the nine fields below — do not submit a total separately.
+        </p>
         <Row cols={3}>
           {[
-            ['active_firefighters_career_ft',    'FF Career FT'],
-            ['active_firefighters_career_pt',    'FF Career PT'],
-            ['active_firefighters_volunteer',     'FF Volunteer'],
-            ['active_ems_only_career_ft',         'EMS Only Career FT'],
-            ['active_ems_only_career_pt',         'EMS Only Career PT'],
-            ['active_ems_only_volunteer',         'EMS Only Volunteer'],
-            ['active_civilians_career_ft',        'Civilians Career FT'],
-            ['active_civilians_career_pt',        'Civilians Career PT'],
-            ['active_civilians_volunteer',        'Civilians Volunteer'],
-          ].map(([key, label]) => (
-            <Field key={key} label={label}>
+            ['active_firefighters_career_ft', 'staff_ff_career_ft'],
+            ['active_firefighters_career_pt', 'staff_ff_career_pt'],
+            ['active_firefighters_volunteer',  'staff_ff_volunteer'],
+            ['active_ems_only_career_ft',      'staff_ems_career_ft'],
+            ['active_ems_only_career_pt',      'staff_ems_career_pt'],
+            ['active_ems_only_volunteer',      'staff_ems_volunteer'],
+            ['active_civilians_career_ft',     'staff_civ_career_ft'],
+            ['active_civilians_career_pt',     'staff_civ_career_pt'],
+            ['active_civilians_volunteer',     'staff_civ_volunteer'],
+          ].map(([apiKey, defKey]) => (
+            <Field key={apiKey} def={F[defKey]}>
               <NumberInput
-                value={staffing[key]}
-                onChange={v => setEntity(p => ({ ...p, staffing: { ...(p.staffing || {}), [key]: v } }))}
-                onBlur={() => saveJsonField('staffing', key, staffing[key])}
+                value={staffing[apiKey]}
+                onChange={v => updateJsonField('staffing', apiKey, v)}
+                onBlur={blurSaveJson('staffing', apiKey)}
                 min={0}
                 width="100px"
               />
@@ -1002,32 +945,48 @@ function EntityTab() {
         </Row>
       </Section>
 
-      {/* 8. Assessment — AssessmentPayload */}
+      {/* 8. Assessment */}
       <Section title="8. Assessment">
         <Row cols={3}>
-          <Field label="ISO Rating" hint="assessment.iso_rating (1–10)">
+          <Field def={F.assessment_iso_rating}>
             <NumberInput
               value={assessment.iso_rating}
-              onChange={v => setEntity(p => ({ ...p, assessment: { ...(p.assessment || {}), iso_rating: v } }))}
-              onBlur={() => saveJsonField('assessment', 'iso_rating', assessment.iso_rating)}
+              onChange={v => updateJsonField('assessment', 'iso_rating', v)}
+              onBlur={blurSaveJson('assessment', 'iso_rating')}
               min={1} max={10} width="80px"
             />
           </Field>
-          <Field label="CPSE Accredited" hint="assessment.cpse_accredited">
-            <CheckboxInput label="Yes" value={assessment.cpse_accredited} onChange={v => saveJsonField('assessment', 'cpse_accredited', v)} />
+          <Field def={F.assessment_cpse}>
+            <CheckboxInput value={assessment.cpse_accredited} onChange={v => saveJsonField('assessment', 'cpse_accredited', v)} />
           </Field>
-          <Field label="CAAS Accredited" hint="assessment.caas_accredited">
-            <CheckboxInput label="Yes" value={assessment.caas_accredited} onChange={v => saveJsonField('assessment', 'caas_accredited', v)} />
+          <Field def={F.assessment_caas}>
+            <CheckboxInput value={assessment.caas_accredited} onChange={v => saveJsonField('assessment', 'caas_accredited', v)} />
           </Field>
         </Row>
       </Section>
 
+      {/* Shift — shown only for career/combination */}
+      {(entity.department_type === 'CAREER' || entity.department_type === 'COMBINATION') && (
+        <Section title="Shift Schedule">
+          <Row cols={3}>
+            <Field def={F.shift_count}>
+              <NumberInput value={shift.count} onChange={v => updateJsonField('shift', 'count', v)} onBlur={blurSaveJson('shift', 'count')} min={1} width="100px" />
+            </Field>
+            <Field def={F.shift_duration}>
+              <NumberInput value={shift.duration} onChange={v => updateJsonField('shift', 'duration', v)} onBlur={blurSaveJson('shift', 'duration')} min={1} width="100px" />
+            </Field>
+            <Field def={F.shift_signup}>
+              <NumberInput value={shift.signup} onChange={v => updateJsonField('shift', 'signup', v)} onBlur={blurSaveJson('shift', 'signup')} min={1} width="100px" />
+            </Field>
+          </Row>
+        </Section>
+      )}
+
       {/* 9. Stations & Units */}
       <Section title="9. Stations & Units" defaultOpen badge={`${stations.length} station${stations.length !== 1 ? 's' : ''}`}>
         <p style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
-          Each station needs at least one unit. <strong>CAD ID</strong> must exactly match the unit designator in your CAD system. NERIS ID is assigned after entity submission.
+          Each station must have at least one unit. <strong>CAD ID</strong> must exactly match the unit designator in the department's CAD system — this is how NERIS links dispatch data to entity units. NERIS ID is assigned automatically after the entity is submitted.
         </p>
-
         {stations.map(station => (
           <StationCard
             key={station.id}
@@ -1036,7 +995,6 @@ function EntityTab() {
             onChanged={load}
           />
         ))}
-
         <button
           onClick={addStation}
           style={{ padding: '0.4rem 1rem', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', borderRadius: 4, cursor: 'pointer', fontSize: '0.85rem', marginTop: '0.25rem' }}
@@ -1119,27 +1077,24 @@ function CredentialsTab() {
         API credentials for NERIS submission. Obtain from your NERIS vendor account.
       </p>
 
-      <Field label="Client ID" required>
+      <Field def={{ label: 'Client ID', hint: 'OAuth2 client ID from your NERIS vendor account.', required: true }}>
         <TextInput value={creds.client_id} onChange={v => setCreds(p => ({ ...p, client_id: v }))} onBlur={() => save('client_id', creds.client_id)} disabled={saving === 'client_id'} />
       </Field>
-
-      <Field label="Client Secret" required>
+      <Field def={{ label: 'Client Secret', hint: 'OAuth2 client secret from your NERIS vendor account.', required: true }}>
         <TextInput type="password" value={creds.client_secret} onChange={v => setCreds(p => ({ ...p, client_secret: v }))} onBlur={() => save('client_secret', creds.client_secret)} disabled={saving === 'client_secret'} />
       </Field>
-
-      <Field label="Environment">
+      <Field def={{ label: 'Environment', hint: 'Use Test/Sandbox during development and certification. Switch to Production only after receiving the NERIS compatibility badge.' }}>
         <SelectInput
           value={creds.environment}
           onChange={v => { setCreds(p => ({ ...p, environment: v })); save('environment', v); }}
           options={[{ value: 'test', label: 'Test / Sandbox' }, { value: 'production', label: 'Production' }]}
         />
       </Field>
-
-      <Field label="Auto-Submit">
+      <Field def={{ label: 'Auto-Submit', hint: 'When enabled, incidents are submitted to NERIS automatically on completion. When disabled, submission is manual only.' }}>
         <SelectInput
           value={creds.submission_enabled ? 'true' : 'false'}
           onChange={v => { const b = v === 'true'; setCreds(p => ({ ...p, submission_enabled: b })); save('submission_enabled', v); }}
-          options={[{ value: 'false', label: 'Disabled (manual only)' }, { value: 'true', label: 'Enabled' }]}
+          options={[{ value: 'false', label: 'Disabled — manual submission only' }, { value: 'true', label: 'Enabled — auto-submit on completion' }]}
         />
       </Field>
 

@@ -1,7 +1,7 @@
 # NERIS Schema Migration Handoff
 **Date:** 2026-03-05  
-**Status:** All code changes complete — ready to commit and deploy  
-**Next action:** git commit + push → on server: git pull → run migration 044 → ./restart.sh
+**Status:** ✅ COMPLETE — migration 044 executed, all code deployed  
+**Next action:** Test the NERIS Entity tab in the UI
 
 ---
 
