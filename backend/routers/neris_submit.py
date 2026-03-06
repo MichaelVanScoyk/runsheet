@@ -13,6 +13,7 @@ All endpoints are admin-only.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 import logging
