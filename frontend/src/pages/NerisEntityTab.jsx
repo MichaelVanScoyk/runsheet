@@ -605,16 +605,19 @@ function StationCard({ station, apparatusOptions, onChanged }) {
 // ─── SyncModal ──────────────────────────────────────────────────────────────
 
 /**
- * SyncModal
+ * SyncTab
  *
- * Two-phase modal:
+ * Two-phase inline page (rendered as a sub-tab, no modal overlay):
  *   Phase 1 (search)  — search NERIS by name or FDID, pick a result, then fetch
  *   Phase 2 (diff)    — side-by-side comparison with per-field checkboxes
  *
  * Field names in diffs are 1:1 with NERIS spec (DepartmentPayload,
  * StationPayload, UnitPayload) as returned by POST /api/neris/entity/pull.
+ *
+ * Props:
+ *   onApplied — called after a successful apply; parent switches to Entity tab
  */
-function SyncModal({ onClose, onApplied }) {
+function SyncTab({ onApplied }) {
   const toast = useToast();
 
   // ---- Phase state ----
@@ -866,63 +869,44 @@ function SyncModal({ onClose, onApplied }) {
     return String(v);
   };
 
-  const overlayStyle = {
-    position: 'fixed', inset: 0,
-    background: 'rgba(0,0,0,0.45)',
-    display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-    zIndex: 1000, padding: '2rem 1rem', overflowY: 'auto',
-  };
-  const modalStyle = {
-    background: '#fff', borderRadius: 8, width: '100%', maxWidth: 860,
-    boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-    display: 'flex', flexDirection: 'column',
-    maxHeight: '90vh',
-  };
-  const headerStyle = {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '0.85rem 1.1rem', borderBottom: '1px solid #e5e7eb',
-    background: '#f8fafc', borderRadius: '8px 8px 0 0',
-    flexShrink: 0,
-  };
-  const bodyStyle   = { padding: '1rem 1.1rem', overflowY: 'auto', flex: 1 };
-  const footerStyle = {
-    display: 'flex', justifyContent: 'flex-end', gap: '0.6rem',
-    padding: '0.75rem 1.1rem', borderTop: '1px solid #e5e7eb', flexShrink: 0,
-  };
-
   // ------------------------------------------------------------------ RENDER
 
   return (
-    <div style={overlayStyle} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={modalStyle}>
+    <div style={{ maxWidth: 860 }}>
 
-        {/* Header */}
-        <div style={headerStyle}>
-          <div>
-            <span style={{ fontWeight: 700, color: '#1e3a5f', fontSize: '1rem' }}>
-              {phase === 'search' ? 'Sync with NERIS — Find Department' : `Sync with NERIS — ${diffData?.fd_neris_id || ''}`}
+      {/* Page header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div>
+          <span style={{ fontWeight: 700, color: '#1e3a5f', fontSize: '1rem' }}>
+            {phase === 'search' ? 'Sync with NERIS — Find Department' : `Sync with NERIS — ${diffData?.fd_neris_id || ''}`}
+          </span>
+          {phase === 'diff' && diffData?.summary && (
+            <span style={{ marginLeft: '0.75rem', fontSize: '0.82rem', color: '#6b7280' }}>
+              {diffData.summary.entity_changes} entity change{diffData.summary.entity_changes !== 1 ? 's' : ''}
+              {' · '}
+              {diffData.summary.station_changes} station/unit change{diffData.summary.station_changes !== 1 ? 's' : ''}
             </span>
-            {phase === 'diff' && diffData?.summary && (
-              <span style={{ marginLeft: '0.75rem', fontSize: '0.82rem', color: '#6b7280' }}>
-                {diffData.summary.entity_changes} entity change{diffData.summary.entity_changes !== 1 ? 's' : ''}
-                {' · '}
-                {diffData.summary.station_changes} station/unit change{diffData.summary.station_changes !== 1 ? 's' : ''}
-              </span>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            {phase === 'diff' && (
-              <>
-                <button onClick={() => setPhase('search')} style={{ fontSize: '0.82rem', padding: '0.25rem 0.65rem', border: '1px solid #d1d5db', background: '#f9fafb', borderRadius: 4, cursor: 'pointer', color: '#374151' }}>← Back</button>
-                <button onClick={acceptAll} style={{ fontSize: '0.82rem', padding: '0.25rem 0.65rem', border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 4, cursor: 'pointer', color: '#1d4ed8', fontWeight: 600 }}>Accept All</button>
-              </>
-            )}
-            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', color: '#6b7280', padding: '0.1rem 0.3rem' }}>✕</button>
-          </div>
+          )}
         </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {phase === 'diff' && (
+            <>
+              <button onClick={() => setPhase('search')} style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem', border: '1px solid #d1d5db', background: '#f9fafb', borderRadius: 4, cursor: 'pointer', color: '#374151' }}>← Back</button>
+              <button onClick={acceptAll} style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem', border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 4, cursor: 'pointer', color: '#1d4ed8', fontWeight: 600 }}>Accept All</button>
+              <button
+                onClick={applySelections}
+                disabled={applying}
+                style={{ padding: '0.3rem 0.9rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem' }}
+              >
+                {applying ? 'Applying…' : 'Apply Selected'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
 
-        {/* Body */}
-        <div style={bodyStyle}>
+      {/* Page body */}
+      <div>
 
           {/* ===== PHASE 1: Search ===== */}
           {phase === 'search' && (
@@ -1381,7 +1365,6 @@ function EntityTab() {
   const [apparatusOptions, setApparatusOptions] = useState([]);
   const [validationResult, setValidationResult] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [syncOpen, setSyncOpen] = useState(false);  // SyncModal open/close
 
   const load = useCallback(async () => {
     try {
@@ -1776,12 +1759,6 @@ function EntityTab() {
       {/* Validate + Submit + Sync */}
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
         <button
-          onClick={() => setSyncOpen(true)}
-          style={{ padding: '0.5rem 1.1rem', background: '#f0fdf4', border: '1px solid #86efac', color: '#15803d', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
-        >
-          ↓ Sync with NERIS
-        </button>
-        <button
           onClick={validate}
           style={{ padding: '0.5rem 1.25rem', background: '#f0f9ff', border: '1px solid #7dd3fc', color: '#0369a1', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
         >
@@ -1802,13 +1779,6 @@ function EntityTab() {
         )}
       </div>
 
-      {/* NERIS Sync Modal — rendered at entity level to overlay the full page */}
-      {syncOpen && (
-        <SyncModal
-          onClose={() => setSyncOpen(false)}
-          onApplied={load}
-        />
-      )}
     </div>
   );
 }
@@ -1917,9 +1887,11 @@ export default function NerisEntityTab() {
     <div>
       <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '1.25rem' }}>
         {tabBtn('entity', '🏛️ Entity')}
+        {tabBtn('sync', '↓ Sync')}
         {tabBtn('credentials', '⚙️ Credentials')}
       </div>
       {subTab === 'entity'      && <EntityTab />}
+      {subTab === 'sync'        && <SyncTab onApplied={() => setSubTab('entity')} />}
       {subTab === 'credentials' && <CredentialsTab />}
     </div>
   );
