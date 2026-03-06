@@ -318,14 +318,14 @@ export const ENTITY_FIELD_DEFS = {
   // Section 4 — Classification
   department_type: {
     label: 'Department Type',
-    hint: 'Staffing model of the agency.',
+    hint: 'Staffing model of the agency. CAREER = fully paid staff. COMBINATION = mix of career and volunteer. VOLUNTEER = unpaid volunteer staff.',
     required: false,
     type: 'select',
     choices: DEPT_TYPES,
   },
   entity_type: {
     label: 'Entity Type',
-    hint: 'Legal or organizational category of the agency.',
+    hint: 'Legal or organizational category of the agency. LOCAL = municipality or county. STATE = state agency. FEDERAL = federal agency. TRIBAL = tribal nation. CONTRACT = contracted service. PRIVATE = private company. TRANSPORTATION = transit/airport/port authority. OTHER = none of the above.',
     required: false,
     type: 'select',
     choices: ENTITY_TYPES,
@@ -388,42 +388,42 @@ export const ENTITY_FIELD_DEFS = {
   },
   dispatch_psap_type: {
     label: 'PSAP Type',
-    hint: 'PRIMARY = answers initial 9-1-1 calls. SECONDARY = receives calls transferred from a primary PSAP due to jurisdictional or discipline-specific dispatching.',
+    hint: 'PRIMARY = answers initial 9-1-1 calls directly. SECONDARY = receives calls transferred from a primary PSAP (e.g. a fire/EMS-only dispatch center that receives transfers from a county 911 center).',
     required: false,
     type: 'select',
     choices: PSAP_TYPES,
   },
   dispatch_psap_capability: {
     label: 'PSAP Capability',
-    hint: 'LEGACY = uses CAMA/ISDN trunk technology, cannot process IP-based calls. NG911 = meets NENA i3 specification for Next Generation 9-1-1.',
+    hint: 'LEGACY = older PSAP using CAMA or ISDN trunk lines, cannot process IP/VoIP calls. NG911 = Next Generation 9-1-1 capable, meets NENA i3 specification for IP-based call delivery.',
     required: false,
     type: 'select',
     choices: PSAP_CAPABILITIES,
   },
   dispatch_psap_discipline: {
     label: 'PSAP Discipline',
-    hint: 'SINGLE = dispatch center handles one discipline (fire, EMS, or police). MULTIPLE = handles two or more disciplines.',
+    hint: 'SINGLE = dispatch center handles only one discipline (e.g. fire only, or EMS only, or police only). MULTIPLE = handles two or more disciplines from the same center (e.g. fire and EMS together).',
     required: false,
     type: 'select',
     choices: PSAP_DISCIPLINES,
   },
   dispatch_psap_jurisdiction: {
     label: 'PSAP Jurisdiction',
-    hint: 'SINGLE = only one city/county uses this PSAP. MULTIPLE = two or more political jurisdictions share the 9-1-1 and dispatch services.',
+    hint: 'SINGLE = the 9-1-1 center serves only one political entity (one city or one county). MULTIPLE = two or more jurisdictions share the same 9-1-1 center (e.g. a county-wide consolidated dispatch serving multiple municipalities).',
     required: false,
     type: 'select',
     choices: PSAP_JURISDICTIONS,
   },
   dispatch_protocol_fire: {
     label: 'Fire Dispatch Protocol',
-    hint: 'Procedure or protocol followed for triage of emergency fire calls.',
+    hint: 'Protocol used by the PSAP to triage emergency fire calls. APCO = Association of Public-Safety Communications Officials protocol. IAED = International Academies of Emergency Dispatch. PROQA = Priority Dispatch ProQA software. OTHER = any other protocol.',
     required: false,
     type: 'select',
     choices: DISPATCH_PROTOCOLS,
   },
   dispatch_protocol_med: {
     label: 'Medical Dispatch Protocol',
-    hint: 'Procedure or protocol followed for triage of emergency medical calls.',
+    hint: 'Protocol used by the PSAP to triage emergency medical calls. APCO = Association of Public-Safety Communications Officials protocol. IAED = International Academies of Emergency Dispatch (includes Medical Priority Dispatch System). PROQA = Priority Dispatch ProQA software. OTHER = any other protocol.',
     required: false,
     type: 'select',
     choices: DISPATCH_PROTOCOLS,
@@ -443,7 +443,8 @@ export const ENTITY_FIELD_DEFS = {
   // Section 8 — Assessment
   assessment_iso_rating: {
     label: 'ISO Rating',
-    hint: 'Current ISO Public Protection Classification (PPC) rating, 1–10. 1 = best protection, 10 = unprotected. Leave blank if not rated.',
+    hint: 'ISO Public Protection Classification (PPC) rating. 1 = exemplary protection (best), 2–8 = graded levels of protection, 9 = minimum recognized protection, 10 = unprotected/not meeting minimum criteria. Leave blank if the agency has not been rated.',
+    
     required: false,
     type: 'number',
     min: 1,
@@ -561,7 +562,7 @@ export const UNIT_FIELD_DEFS = {
   },
   type: {
     label: 'Unit Type',
-    hint: 'Type of unit (TypeUnitValue). Select the category that best describes this unit\'s primary operational function.',
+    hint: 'Type of unit. Select the category that best describes this unit\'s primary operational function. Common values: ENGINE_STRUCT = structural engine, LADDER_QUINT = ladder or quint, ALS_AMB = ALS ambulance, BLS_AMB = BLS ambulance, RESCUE_HEAVY/MEDIUM/LIGHT = rescue companies, TENDER = water tender, HAZMAT = hazmat unit, CHIEF_STAFF_COMMAND = command vehicle, UTIL = utility/support vehicle. See all 49 options in the dropdown.',
     required: false,
     type: 'select',
     choices: UNIT_TYPES,
