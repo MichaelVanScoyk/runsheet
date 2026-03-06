@@ -841,7 +841,6 @@ function SyncTab({ onApplied }) {
       if (a.units_imported)   parts.push(`${a.units_imported} unit${a.units_imported !== 1 ? 's' : ''} imported`);
       toast.success(parts.length ? `Applied: ${parts.join(', ')}` : 'Nothing to apply');
       onApplied();
-      onClose();
     } catch (e) {
       toast.error(e.message || 'Apply failed');
     } finally {
@@ -1081,23 +1080,8 @@ function SyncTab({ onApplied }) {
             </div>
           )}
 
-        </div>{/* end body */}
+      </div>{/* end body */}
 
-        {/* Footer */}
-        <div style={footerStyle}>
-          <button onClick={onClose} style={{ padding: '0.45rem 1rem', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 4, cursor: 'pointer', color: '#374151' }}>Cancel</button>
-          {phase === 'diff' && (
-            <button
-              onClick={applySelections}
-              disabled={applying}
-              style={{ padding: '0.45rem 1.25rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
-            >
-              {applying ? 'Applying…' : 'Apply Selected'}
-            </button>
-          )}
-        </div>
-
-      </div>
     </div>
   );
 }
