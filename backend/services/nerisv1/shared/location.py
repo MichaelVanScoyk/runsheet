@@ -22,10 +22,13 @@ not yet created) will translate geocode_data field names to NERIS LocationPayloa
 field names before this builder receives them. This builder never reads old
 field names — it expects NERIS-native input.
 
-TODO: cross_streets frontend sub-form (CrossStreetPayload has 15 NG911 fields each)
-TODO: location_aliases frontend string array input
-TODO: polygon (HighPrecisionGeoMultipolygon) frontend — for wildland fires, hazmat evac zones
+Sub-schema builders:
+  - cross_streets: built by shared/cross_street.py build_cross_streets()
+  - location_aliases: recursive — array of LocationPayload objects (each is a full 40-field location)
+  - additional_attributes: freeform object (e.g. {"common_name": "Eastside Walmart"})
 """
+
+from .cross_street import build_cross_streets
 
 
 def build_location(data: dict) -> dict:
@@ -176,13 +179,15 @@ def build_location(data: dict) -> dict:
         payload["marker"] = data["marker"]
 
     # --- Cross streets ---
-    # cross_streets: CrossStreetPayload[]|null (array — use is not None)
-    if data.get("cross_streets") is not None:
-        payload["cross_streets"] = data["cross_streets"]
+    # cross_streets: CrossStreetPayload[]|null
+    cross_streets = build_cross_streets(data.get("cross_streets"))
+    if cross_streets is not None:
+        payload["cross_streets"] = cross_streets
 
     # --- Location aliases ---
-    # location_aliases: array|null (use is not None)
-    if data.get("location_aliases") is not None:
-        payload["location_aliases"] = data["location_aliases"]
+    # location_aliases: LocationPayload[]|null (recursive — each alias is a full LocationPayload)
+    aliases = data.get("location_aliases")
+    if aliases is not None:
+        payload["location_aliases"] = [build_location(a) for a in aliases if a]
 
     return payload

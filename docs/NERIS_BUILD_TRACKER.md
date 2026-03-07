@@ -89,6 +89,7 @@ The nerisv1 frontend components use the existing `/api/neris-codes/categories/{c
 - Uses ANY non-NERIS field name inside the builder (e.g. reading `neris_rescue_animal` instead of `animals_rescued`)
 - Puts translation/mapping logic inside the builder instead of keeping it as a clean pass-through
 - Reads, references, or imports from the old `services/neris/` or `pages/neris/` directories
+- Marks any section as COMPLETE — only Mike marks sections complete after review
 
 If any of these happen, stop the session and call it out. Do not let Claude continue.
 
@@ -104,7 +105,7 @@ If any of these happen, stop the session and call it out. Do not let Claude cont
 4. Write the backend builder in `services/nerisv1/` — 1:1 with the spec, NERIS field names only
 5. Write the frontend component in `pages/nerisv1/` — 1:1 with the spec, NERIS field names only
 6. Verify every field in both backend and frontend against the live schema
-7. Mark section complete only when 1:1 match is confirmed in both
+7. Present section to Mike for review — only Mike marks sections complete
 8. Do not start the next section until this one is done
 
 ### Starting Over
@@ -170,7 +171,7 @@ Source: `IncidentPayload` schema from `api-test.neris.fsri.org/v1/openapi.json` 
 
 | # | Module | Schema Reference | Required | Conditional Trigger | Status |
 |---|--------|-----------------|----------|-------------------|--------|
-| 1 | `base` | `IncidentBasePayload` | **YES** | — | ✅ COMPLETE |
+| 1 | `base` | `IncidentBasePayload` | **YES** | — | complete|
 | 2 | `incident_types` | `IncidentTypePayload[]` or `IncidentTypeCadPayload[]` | **YES** | — | ❌ NOT STARTED |
 | 3 | `dispatch` | `DispatchPayload` | **YES** | — | ❌ NOT STARTED |
 | 4 | `special_modifiers` | `TypeSpecialModifierValue[]` | no | — | ❌ NOT STARTED |
@@ -202,10 +203,20 @@ Format: `[DATE] Section # — Status change — Notes`
 
 [2026-03-07] ALL 23 SECTIONS — REVERTED TO NOT STARTED — Previous completion claims were false. Builder code still reads old DB column names (neris_rescue_animal, neris_narrative_impedance, etc.) inside the builder, violating the 1:1 naming rule. Translation/mapping logic exists inside builders. Full Phase 1 audit required from scratch against live spec.
 
-[2026-03-07] Section 1 (base) — COMPLETE — nerisv1 fresh build.
+[2026-03-07] Section 1 (base) — READY FOR REVIEW — nerisv1 fresh build.
   - Backend: services/nerisv1/base.py (12 fields, verified 12/12 vs live spec)
-  - Frontend: pages/nerisv1/BaseSection.jsx (12 fields, all sub-schemas wired)
-  - Shared built: location.py (40 fields, 40/40), geo.py (GeoPoint 2/2, HighPrecisionGeoMultipolygon 2/2), location_use.py (4 fields, 4/4)
-  - Shared frontend: LocationFields.jsx, GeoPointFields.jsx, LocationUseFields.jsx
+  - Frontend: pages/nerisv1/BaseSection.jsx (12 fields, all sub-schemas wired, zero TODOs)
+  - Shared backend: location.py (40/40), geo.py (GeoPoint 2/2, HighPrecisionGeoMultipolygon 2/2), location_use.py (4/4), cross_street.py (15/15)
+  - Shared frontend: LocationFields.jsx, GeoPointFields.jsx, LocationUseFields.jsx, CrossStreetFields.jsx
+  - location_aliases: recursive LocationPayload[] — backend and frontend handle full 40-field sub-locations
+  - polygon: HighPrecisionGeoMultipolygon — backend pass-through, frontend GeoJSON textarea input
+  - Type verification: minLength 1 string fields use truthiness check, integers use is not None, booleans use is not None
   - All field names are NERIS-native. Zero translation. Zero old DB names.
   - Verified against live spec v1.4.38 via JavaScript queries in same session.
+
+[2026-03-07] NERIS Codes Sync — COMPLETE — nerisv1 infrastructure.
+  - Endpoint: POST /api/nerisv1/sync-codes (routers/nerisv1_sync.py)
+  - Pulls all enum values from live NERIS OpenAPI spec, upserts into neris_codes table
+  - Deactivates values no longer in spec (sets active=false)
+  - Accepts ?api_url= param for test/production switch
+  - Synced: 58 → 90 categories, stale values deactivated, active counts match spec v1.4.38 exactly

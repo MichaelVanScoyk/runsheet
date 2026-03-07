@@ -11,6 +11,7 @@
  *   onChange: (field, value) => void — called when any field changes
  */
 import React from 'react';
+import CrossStreetFields from './CrossStreetFields';
 
 export default function LocationFields({ data = {}, onChange }) {
   const val = (field) => data[field] ?? '';
@@ -241,18 +242,41 @@ export default function LocationFields({ data = {}, onChange }) {
           className="w-full border rounded px-2 py-1 text-sm" />
       </div>
 
-      {/* TODO (nerisv1): cross_streets — array of CrossStreetPayload objects.
-          Each CrossStreetPayload has 15 NG911 street fields (street, street_postfix,
-          street_prefix_direction, number, cross_street_modifier, etc.).
-          Needs a repeatable sub-form component. Data source: CAD cross street
-          string parsed through geocode adapter into CrossStreetPayload dicts. */}
+      {/* cross_streets: CrossStreetPayload[] */}
+      <CrossStreetFields
+        streets={data.cross_streets || []}
+        onChange={(v) => onChange('cross_streets', v)}
+      />
 
-      {/* TODO (nerisv1): location_aliases — array of strings.
-          Needs an add/remove string list input component. */}
-
-      {/* TODO (nerisv1): polygon (HighPrecisionGeoMultipolygon) lives in BaseSection,
-          not here — but noting for completeness. For wildland fires, hazmat evac zones.
-          Leverage existing geocoding API infrastructure to build. */}
+      {/* location_aliases: LocationPayload[]|null (recursive — each alias is a full LocationPayload) */}
+      <div className="space-y-2">
+        <div className="flex justify-between items-center">
+          <h5 className="text-xs font-semibold text-gray-600">location_aliases (LocationPayload[])</h5>
+          <button type="button" onClick={() => onChange('location_aliases', [...(data.location_aliases || []), {}])}
+            className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded hover:bg-blue-600">
+            + Add Alias
+          </button>
+        </div>
+        {(data.location_aliases || []).map((alias, i) => (
+          <div key={i} className="border rounded p-2 bg-gray-50">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs font-semibold text-gray-600">Alias {i + 1}</span>
+              <button type="button" onClick={() => {
+                const next = (data.location_aliases || []).filter((_, j) => j !== i);
+                onChange('location_aliases', next.length ? next : null);
+              }} className="text-xs text-red-500 hover:text-red-700">Remove</button>
+            </div>
+            <LocationFields
+              data={alias}
+              onChange={(field, value) => {
+                const next = [...(data.location_aliases || [])];
+                next[i] = { ...next[i], [field]: value };
+                onChange('location_aliases', next);
+              }}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

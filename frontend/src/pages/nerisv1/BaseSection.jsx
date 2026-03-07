@@ -130,8 +130,29 @@ export default function BaseSection({ data = {}, onChange }) {
         label="point (GeoPoint)"
       />
 
-      {/* polygon: HighPrecisionGeoMultipolygon — complex, placeholder for now */}
-      {/* TODO: Build polygon editor if needed */}
+      {/* polygon: HighPrecisionGeoMultipolygon|null */}
+      {/* Coordinates are 4-level nested arrays: [[[[lon,lat], ...]]] */}
+      {/* Input as GeoJSON — data will come from map tools, not manual coordinate entry */}
+      <div>
+        <label className="block text-xs text-gray-500">polygon (HighPrecisionGeoMultipolygon — GeoJSON)</label>
+        <textarea
+          value={data.polygon ? JSON.stringify(data.polygon, null, 2) : ''}
+          onChange={(e) => {
+            const v = e.target.value.trim();
+            if (!v) { set('polygon', null); return; }
+            try {
+              const parsed = JSON.parse(v);
+              set('polygon', parsed);
+            } catch {
+              // Invalid JSON — don't update state, let user keep editing
+            }
+          }}
+          className="w-full border rounded px-2 py-1 text-xs font-mono"
+          rows={4}
+          placeholder='{"crs": 4326, "geometry": {"type": "MultiPolygon", "coordinates": [[[[lon, lat], ...]]]}}'
+        />
+        <p className="text-xs text-gray-400 mt-1">Paste GeoJSON from map tools. For wildland fires, hazmat evac zones, flood areas.</p>
+      </div>
 
       {/* location: LocationPayload (required) */}
       <LocationFields
