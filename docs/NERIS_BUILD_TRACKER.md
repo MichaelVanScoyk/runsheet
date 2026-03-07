@@ -68,6 +68,14 @@ Frontend and backend are built together, one section at a time. Both use NERIS f
 
 **Every field in the spec is built out.** Required or optional does not matter — all fields are implemented.
 
+### NERIS Codes Infrastructure
+
+Enum values for dropdowns and validation come from the `neris_codes` table, managed by:
+- **Admin NERIS Codes page** — Browse, Import (CSV), Validate, Update Incidents. Stays untouched.
+- **Sync endpoint** (`POST /api/nerisv1/sync-codes`) — Pulls current enum values from the live NERIS OpenAPI spec and upserts into neris_codes. Run whenever the spec version changes. Accepts `?api_url=` param to switch between test and production APIs. Router: `routers/nerisv1_sync.py`.
+
+The nerisv1 frontend components use the existing `/api/neris-codes/categories/{category}` endpoint for dropdown options. Small enums may be hardcoded; large enums (location use, incident types, street types) are fetched from the codes API.
+
 ### Red Flags — Stop Immediately If Claude Does Any Of These
 - Uses phrases like "I think this field is...", "this should be...", "I believe the type is..."
 - Produces field names, types, or enum values without showing which schema definition they came from in the live spec

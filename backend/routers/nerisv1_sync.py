@@ -207,6 +207,7 @@ async def sync_codes(
         "values_added": 0,
         "values_already_existed": 0,
         "categories_not_in_spec": [],
+        "values_deactivated": 0,
         "details": [],
     }
 
@@ -268,11 +269,16 @@ async def sync_codes(
             "added": len(added),
         }
 
-        # Check for values in DB that are no longer in spec
+        # Deactivate values in DB that are no longer in spec
         removed_from_spec = existing_values - set(spec_values)
         if removed_from_spec:
-            cat_detail["no_longer_in_spec"] = sorted(removed_from_spec)
-            cat_detail["no_longer_in_spec_count"] = len(removed_from_spec)
+            for old_value in removed_from_spec:
+                db.execute(text("""
+                    UPDATE neris_codes SET active = false, updated_at = CURRENT_TIMESTAMP
+                    WHERE category = :cat AND value = :val AND active = true
+                """), {"cat": category, "val": old_value})
+            cat_detail["deactivated"] = sorted(removed_from_spec)
+            cat_detail["deactivated_count"] = len(removed_from_spec)
 
         if added:
             cat_detail["added_values"] = added
@@ -281,16 +287,19 @@ async def sync_codes(
         report["categories_synced"] += 1
         report["values_added"] += len(added)
         report["values_already_existed"] += already_existed
+        if removed_from_spec:
+            report["values_deactivated"] += len(removed_from_spec)
 
     # Record in import history
     db.execute(text("""
         INSERT INTO neris_import_history
             (category, rows_imported, rows_updated, rows_removed, source_filename, import_mode)
         VALUES
-            (:cat, :imported, 0, 0, :source, 'sync')
+            (:cat, :imported, 0, :removed, :source, 'sync')
     """), {
         "cat": f"nerisv1-sync-all:{version}",
         "imported": report["values_added"],
+        "removed": report["values_deactivated"],
         "source": spec_url,
     })
 
