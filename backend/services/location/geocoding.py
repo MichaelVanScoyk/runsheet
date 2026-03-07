@@ -13,6 +13,25 @@ Strategy:
     5. If all fail -> return None (incident flagged "needs review")
 
 All results are normalized to a common format for storage.
+
+TODO (nerisv1): This geocoder's output format needs an adapter to map to NERIS
+NG911 LocationPayload field names. The adapter lives in
+services/nerisv1/adapters/geocode_adapter.py (not yet created).
+Key mappings needed:
+  - street_number → number (as integer)
+  - street_name → street (Google needs parsing to split suffix)
+  - street_suffix → street_postfix (must match TypeLocSnPrePostValue enum)
+  - street_prefix → street_prefix_direction
+  - city → postal_community
+  - zip_code → postal_code (split zip+4 into postal_code + postal_code_extension)
+  - county → county
+  - state → state
+  - country → hardcode "US"
+  - cross_streets string → CrossStreetPayload[] (parse and decompose each)
+Census and Geocodio already return split components. Google returns combined
+street_name (e.g. "Fairview Road") that needs parsing into street + street_postfix.
+Polygon support (HighPrecisionGeoMultipolygon) for wildland fires / hazmat evac
+zones should also be built — leverage existing geocoding API infrastructure.
 """
 
 import logging
