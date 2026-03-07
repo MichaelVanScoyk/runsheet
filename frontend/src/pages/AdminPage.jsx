@@ -581,11 +581,10 @@ function NerisCodesTab() {
   const [codes, setCodes] = useState([]);
   const [loading, setLoading] = useState(false);
   
-  // Import state
-  const [importCategory, setImportCategory] = useState('');
-  const [importResult, setImportResult] = useState(null);
-  const [importMode, setImportMode] = useState('merge');
-  const fileInputRef = useRef(null);
+  // Sync state
+  const [syncUrl, setSyncUrl] = useState('https://api-test.neris.fsri.org/v1');
+  const [syncResult, setSyncResult] = useState(null);
+  const [syncing, setSyncing] = useState(false);
   
   // Validation state
   const [validationYear, setValidationYear] = useState(new Date().getFullYear());
@@ -626,30 +625,21 @@ function NerisCodesTab() {
     setLoading(false);
   };
 
-  const handleImport = async (e) => {
-    e.preventDefault();
-    const file = fileInputRef.current?.files[0];
-    if (!file || !importCategory) return;
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    setLoading(true);
-    setImportResult(null);
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
     try {
       const res = await fetch(
-        `${API_BASE}/api/neris-codes/import?category=${importCategory}&mode=${importMode}`,
-        { method: 'POST', body: formData }
+        `${API_BASE}/api/nerisv1/sync-codes?api_url=${encodeURIComponent(syncUrl)}`,
+        { method: 'POST' }
       );
       const result = await res.json();
-      setImportResult(result);
-      if (res.ok) {
-        loadCategories();
-      }
+      setSyncResult(result);
+      if (res.ok) loadCategories();
     } catch (err) {
-      setImportResult({ error: err.message });
+      setSyncResult({ error: err.message });
     }
-    setLoading(false);
+    setSyncing(false);
   };
 
   const handleValidate = async () => {
@@ -730,8 +720,8 @@ function NerisCodesTab() {
         <button className={activeSubTab === 'browse' ? 'active' : ''} onClick={() => setActiveSubTab('browse')}>
           Browse
         </button>
-        <button className={activeSubTab === 'import' ? 'active' : ''} onClick={() => setActiveSubTab('import')}>
-          Import
+        <button className={activeSubTab === 'sync' ? 'active' : ''} onClick={() => setActiveSubTab('sync')}>
+          Sync from Spec
         </button>
         <button className={activeSubTab === 'validate' ? 'active' : ''} onClick={() => setActiveSubTab('validate')}>
           Validate
@@ -816,55 +806,59 @@ function NerisCodesTab() {
         </div>
       )}
 
-      {/* IMPORT */}
-      {activeSubTab === 'import' && (
+      {/* SYNC */}
+      {activeSubTab === 'sync' && (
         <div className="neris-import">
           <p className="tab-intro">
-            Import NERIS codes from official CSV files. Download from{' '}
-            <a href="https://github.com/ulfsri/neris-framework/tree/main/core_schemas/value_sets/csv" target="_blank" rel="noreferrer" style={{color:'#4ecdc4'}}>
-              github.com/ulfsri/neris-framework
-            </a>
+            Pulls all current enum values directly from the live NERIS OpenAPI specification.
+            Adds missing values and deactivates values no longer in the spec.
           </p>
-          
-          <form onSubmit={handleImport} className="neris-import-form">
-            <div className="form-group">
-              <label>Category</label>
-              <select value={importCategory} onChange={(e) => setImportCategory(e.target.value)} required>
-                <option value="">Select category...</option>
-                <option value="type_unit">Apparatus Types (type_unit)</option>
-                <option value="type_incident">Incident Types (type_incident)</option>
-                <option value="type_location_use">Property Use (type_location_use)</option>
-                <option value="type_action_tactic">Actions Taken (type_action_tactic)</option>
-              </select>
-            </div>
-            
-            <div className="form-group">
-              <label>Import Mode</label>
-              <select value={importMode} onChange={(e) => setImportMode(e.target.value)}>
-                <option value="merge">Merge (add new, update existing)</option>
-                <option value="replace">Replace (delete all, import fresh)</option>
-              </select>
-            </div>
-            
-            <div className="form-group">
-              <label>CSV File</label>
-              <input type="file" ref={fileInputRef} accept=".csv" required />
-            </div>
-            
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Importing...' : 'Import'}
-            </button>
-          </form>
 
-          {importResult && (
-            <div className={`neris-result ${importResult.error ? 'error' : 'success'}`}>
-              {importResult.error ? (
-                <p>Error: {importResult.error}</p>
+          <div className="form-group">
+            <label>NERIS API Environment</label>
+            <select value={syncUrl} onChange={(e) => setSyncUrl(e.target.value)}>
+              <option value="https://api-test.neris.fsri.org/v1">Test — api-test.neris.fsri.org/v1</option>
+              <option value="https://api.neris.fsri.org/v1">Production — api.neris.fsri.org/v1</option>
+            </select>
+          </div>
+
+          <button className="btn btn-primary" disabled={syncing} onClick={handleSync} style={{marginTop: '1rem'}}>
+            {syncing ? 'Syncing...' : 'Sync All Codes'}
+          </button>
+
+          {syncResult && (
+            <div className={`neris-result ${syncResult.error ? 'error' : 'success'}`} style={{marginTop: '1rem'}}>
+              {syncResult.error ? (
+                <p>Error: {syncResult.error}</p>
               ) : (
                 <>
-                  <p>✓ Imported: {importResult.rows_imported}</p>
-                  <p>✓ Updated: {importResult.rows_updated}</p>
-                  {importResult.rows_removed > 0 && <p>✓ Removed: {importResult.rows_removed}</p>}
+                  <p>Spec version: <strong>{syncResult.spec_version}</strong></p>
+                  <p>Categories synced: <strong>{syncResult.categories_synced}</strong></p>
+                  <p>Values added: <strong>{syncResult.values_added}</strong></p>
+                  <p>Values deactivated: <strong>{syncResult.values_deactivated}</strong></p>
+                  <p>Already existed: {syncResult.values_already_existed}</p>
+                  {syncResult.details && syncResult.details.filter(d => d.added > 0 || d.deactivated_count > 0).length > 0 && (
+                    <div style={{marginTop: '1rem'}}>
+                      <h4>Changes</h4>
+                      <div className="table-container">
+                        <table>
+                          <thead>
+                            <tr><th>Category</th><th>Spec</th><th>Added</th><th>Deactivated</th></tr>
+                          </thead>
+                          <tbody>
+                            {syncResult.details.filter(d => d.added > 0 || d.deactivated_count > 0).map(d => (
+                              <tr key={d.category}>
+                                <td>{d.category}</td>
+                                <td>{d.spec_count}</td>
+                                <td style={{color: d.added > 0 ? '#22c55e' : '#888'}}>{d.added}</td>
+                                <td style={{color: d.deactivated_count > 0 ? '#f39c12' : '#888'}}>{d.deactivated_count || 0}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
