@@ -438,10 +438,9 @@ export default function GoogleMap({
           content = createMarkerContent(createNumberedMarkerSvg(label, m.color), 28);
         }
         
-        // Apply pulse animation and offset for open incidents
+        // Apply pulse animation with offset for open incidents
         if (m.pulse && content) {
           content.style.animation = 'cadreport-pulse 1.5s ease-in-out infinite';
-          content.style.transform = 'translateY(-10px)';
         }
         
         const marker = new AdvancedMarker({
@@ -1142,8 +1141,8 @@ export default function GoogleMap({
       <div ref={mapRef} style={{ height: '100%', borderRadius: '6px', border: '1px solid #e0e0e0' }} />
       <style>{`
         @keyframes cadreport-pulse {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.6); opacity: 0.7; }
+          0%, 100% { transform: scale(1) translateY(-10px); opacity: 1; }
+          50% { transform: scale(1.6) translateY(-10px); opacity: 0.7; }
         }
       `}</style>
     </div>
