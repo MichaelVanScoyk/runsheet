@@ -246,38 +246,39 @@ export default function ResponseOverlay({
                 {waterAll.map((w, i) => {
                   const isHighlighted = flashId && w.feature_id === flashId;
                   return (
-                  <div key={`w${i}`} id={`water-${w.feature_id}`} style={{
-                    padding: '5px 7px', marginBottom: '3px', borderRadius: '5px',
-                    background: isHighlighted ? 'rgba(59,130,246,0.5)' : (i < 3 ? 'rgba(37,99,235,0.18)' : 'rgba(255,255,255,0.04)'),
-                    borderLeft: `3px solid ${isHighlighted ? '#fff' : (i < 3 ? '#3B82F6' : '#555')}`,
-                    transition: 'background 0.3s, border-left-color 0.3s',
-                    animation: isHighlighted ? 'cadreport-flash 0.6s ease-in-out 3' : 'none',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ fontWeight: i < 3 ? '600' : '400', color: i < 3 ? '#fff' : '#ccc', flex: 1 }}>
-                        {i < 3 && <span style={{ color: '#60A5FA', marginRight: '4px' }}>#{i + 1}</span>}
-                        {w.icon || '\uD83D\uDCA7'} {w.title}
+                    <div key={`w${i}`} id={`water-${w.feature_id}`} style={{
+                      padding: '5px 7px', marginBottom: '3px', borderRadius: '5px',
+                      background: isHighlighted ? 'rgba(59,130,246,0.5)' : (i < 3 ? 'rgba(37,99,235,0.18)' : 'rgba(255,255,255,0.04)'),
+                      borderLeft: `3px solid ${isHighlighted ? '#fff' : (i < 3 ? '#3B82F6' : '#555')}`,
+                      transition: 'background 0.3s, border-left-color 0.3s',
+                      animation: isHighlighted ? 'cadreport-flash 0.6s ease-in-out 3' : 'none',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ fontWeight: i < 3 ? '600' : '400', color: i < 3 ? '#fff' : '#ccc', flex: 1 }}>
+                          {i < 3 && <span style={{ color: '#60A5FA', marginRight: '4px' }}>#{i + 1}</span>}
+                          {w.icon || '\uD83D\uDCA7'} {w.title}
+                        </div>
+                        {w.latitude && w.longitude && (
+                          <button
+                            onClick={() => window.open(
+                              `https://www.google.com/maps/dir/?api=1&destination=${w.latitude},${w.longitude}&travelmode=driving`,
+                              '_blank'
+                            )}
+                            style={{
+                              background: 'rgba(59,130,246,0.3)', border: '1px solid rgba(59,130,246,0.5)',
+                              color: '#60A5FA', borderRadius: '4px', padding: '2px 6px',
+                              fontSize: '0.62rem', cursor: 'pointer', fontWeight: '600',
+                              flexShrink: 0, marginLeft: '6px',
+                            }}
+                          >NAV</button>
+                        )}
                       </div>
-                      {w.latitude && w.longitude && (
-                        <button
-                          onClick={() => window.open(
-                            `https://www.google.com/maps/dir/?api=1&destination=${w.latitude},${w.longitude}&travelmode=driving`,
-                            '_blank'
-                          )}
-                          style={{
-                            background: 'rgba(59,130,246,0.3)', border: '1px solid rgba(59,130,246,0.5)',
-                            color: '#60A5FA', borderRadius: '4px', padding: '2px 6px',
-                            fontSize: '0.62rem', cursor: 'pointer', fontWeight: '600',
-                            flexShrink: 0, marginLeft: '6px',
-                          }}
-                        >NAV</button>
-                      )}
+                      <div style={{ fontSize: '0.66rem', color: '#999', marginTop: '1px' }}>
+                        {fmtDist(w.distance_meters)}{w.layer_type && ` \u00B7 ${w.layer_type.replace('_', ' ')}`}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.66rem', color: '#999', marginTop: '1px' }}>
-                      {fmtDist(w.distance_meters)}{w.layer_type && ` \u00B7 ${w.layer_type.replace('_', ' ')}`}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </>
             )}
 
