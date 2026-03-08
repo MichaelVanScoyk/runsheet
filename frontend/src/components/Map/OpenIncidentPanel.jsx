@@ -36,8 +36,8 @@ export default function OpenIncidentPanel({ onSelectIncident }) {
     return () => clearInterval(timerRef.current);
   }, [fetchOpenIncidents]);
 
-  // Don't render anything if no open incidents
-  if (!loading && incidents.length === 0) return null;
+  // Don't render anything if no open incidents (or still loading first fetch)
+  if (incidents.length === 0) return null;
 
   const formatElapsed = (isoTime) => {
     if (!isoTime) return '';
