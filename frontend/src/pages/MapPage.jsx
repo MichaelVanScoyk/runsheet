@@ -58,7 +58,7 @@ export default function MapPage({ userSession }) {
     return new Set();
   });
   const [selectedFeature, setSelectedFeature] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Phase 4: Edit mode state
   const isOfficerOrAdmin = userSession?.role === 'OFFICER' || userSession?.role === 'ADMIN';
