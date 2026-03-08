@@ -456,6 +456,122 @@ def evaluate_weather_alerts(zones: List[Dict], weather_data: Optional[Dict]) -> 
 
 
 # =============================================================================
+# SCENE HISTORY
+# =============================================================================
+
+def query_scene_history(
+    db: Session,
+    lat: float,
+    lng: float,
+    address: Optional[str] = None,
+    exclude_incident_id: Optional[int] = None,
+    radius_meters: int = 50,
+    limit: int = 20,
+) -> List[Dict]:
+    """
+    Find previous incidents at or near this location.
+    Matches by normalized address first, then by proximity radius.
+    Returns date, type, incident number, notes — everything the crew
+    needs to know about what's happened here before.
+    """
+    history = []
+    seen_ids = set()
+    exclude_id = exclude_incident_id or -1
+
+    # 1. Address match (exact normalized)
+    if address:
+        normalized = address.strip().upper()
+        try:
+            result = db.execute(text("""
+                SELECT id, internal_incident_number, call_category,
+                       cad_event_type, cad_event_subtype, address,
+                       incident_date, time_dispatched, status,
+                       narrative
+                FROM incidents
+                WHERE UPPER(TRIM(address)) = :address
+                  AND id != :exclude_id
+                  AND deleted_at IS NULL
+                ORDER BY incident_date DESC, time_dispatched DESC
+                LIMIT :limit
+            """), {"address": normalized, "exclude_id": exclude_id, "limit": limit})
+
+            for row in result:
+                seen_ids.add(row[0])
+                history.append({
+                    "incident_id": row[0],
+                    "incident_number": row[1],
+                    "call_category": row[2],
+                    "event_type": row[3],
+                    "event_subtype": row[4],
+                    "address": row[5],
+                    "incident_date": row[6].isoformat() if row[6] else None,
+                    "time_dispatched": row[7].isoformat() if row[7] else None,
+                    "status": row[8],
+                    "narrative": (row[9] or "")[:200],
+                    "match_type": "address",
+                })
+        except Exception as e:
+            logger.error(f"Scene history address query failed: {e}")
+
+    # 2. Proximity match (within radius, skip already-found)
+    remaining = limit - len(history)
+    if remaining > 0:
+        try:
+            result = db.execute(text("""
+                SELECT id, internal_incident_number, call_category,
+                       cad_event_type, cad_event_subtype, address,
+                       incident_date, time_dispatched, status,
+                       narrative,
+                       ST_Distance(
+                           ST_SetSRID(ST_MakePoint(longitude::float, latitude::float), 4326)::geography,
+                           ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography
+                       ) as distance_meters
+                FROM incidents
+                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                  AND latitude != '' AND longitude != ''
+                  AND id != :exclude_id
+                  AND deleted_at IS NULL
+                  AND ST_DWithin(
+                      ST_SetSRID(ST_MakePoint(longitude::float, latitude::float), 4326)::geography,
+                      ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
+                      :radius
+                  )
+                ORDER BY incident_date DESC, time_dispatched DESC
+                LIMIT :limit
+            """), {
+                "lat": lat, "lng": lng,
+                "exclude_id": exclude_id,
+                "radius": radius_meters,
+                "limit": remaining + len(seen_ids),  # over-fetch to skip dupes
+            })
+
+            for row in result:
+                if row[0] in seen_ids:
+                    continue
+                if len(history) >= limit:
+                    break
+                seen_ids.add(row[0])
+                history.append({
+                    "incident_id": row[0],
+                    "incident_number": row[1],
+                    "call_category": row[2],
+                    "event_type": row[3],
+                    "event_subtype": row[4],
+                    "address": row[5],
+                    "incident_date": row[6].isoformat() if row[6] else None,
+                    "time_dispatched": row[7].isoformat() if row[7] else None,
+                    "status": row[8],
+                    "narrative": (row[9] or "")[:200],
+                    "match_type": "proximity",
+                    "distance_meters": round(row[10], 1) if row[10] else None,
+                })
+        except Exception as e:
+            logger.error(f"Scene history proximity query failed: {e}")
+
+    return history
+
+
+# =============================================================================
 # SNAPSHOT BUILDER
 # =============================================================================
 

@@ -184,6 +184,213 @@ async def get_nearby_for_incident(
 
 
 # =============================================================================
+# OPEN INCIDENTS (for response mode overlay)
+# =============================================================================
+
+@router.get("/open-incidents")
+async def get_open_incidents(db: Session = Depends(get_db)):
+    """
+    Lightweight list of all OPEN incidents with coordinates.
+    Polled by MapPage to show pulsing markers and the open incident overlay.
+    Returns minimal data — just enough for map pins and the list panel.
+    """
+    try:
+        result = db.execute(text("""
+            SELECT i.id, i.internal_incident_number, i.call_category,
+                   i.cad_event_type, i.cad_event_subtype, i.address,
+                   i.latitude, i.longitude, i.time_dispatched, i.status,
+                   i.cad_units
+            FROM incidents i
+            WHERE i.status = 'OPEN'
+              AND i.deleted_at IS NULL
+              AND i.latitude IS NOT NULL AND i.longitude IS NOT NULL
+              AND i.latitude != '' AND i.longitude != ''
+            ORDER BY i.time_dispatched DESC
+        """))
+
+        incidents = []
+        for row in result:
+            incidents.append({
+                "id": row[0],
+                "incident_number": row[1],
+                "call_category": row[2],
+                "event_type": row[3],
+                "event_subtype": row[4],
+                "address": row[5],
+                "latitude": float(row[6]) if row[6] else None,
+                "longitude": float(row[7]) if row[7] else None,
+                "time_dispatched": row[8].isoformat() if row[8] else None,
+                "status": row[9],
+                "unit_count": len(row[10]) if row[10] else 0,
+            })
+
+        return {"incidents": incidents, "count": len(incidents)}
+    except Exception as e:
+        logger.error(f"Failed to fetch open incidents: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load open incidents")
+
+
+# =============================================================================
+# INCIDENT RESPONSE (full tactical data for response mode)
+# =============================================================================
+
+@router.get("/incident-response/{incident_id}")
+async def get_incident_response_data(
+    incident_id: int,
+    origin_lat: Optional[float] = Query(None, description="GPS lat for live routing"),
+    origin_lng: Optional[float] = Query(None, description="GPS lng for live routing"),
+    db: Session = Depends(get_db),
+):
+    """
+    One-call endpoint returning everything the response mode map needs:
+    - Incident header (number, address, type, time, units, status)
+    - Route polyline (from station or from provided GPS coords)
+    - Top 3 nearby water sources (from map_snapshot)
+    - Preplans near scene
+    - Hazards and closures
+    - Scene history (previous incidents at this location)
+    - Address notes
+
+    If origin_lat/origin_lng provided, calculates a fresh route from that
+    position (for live GPS navigation). Otherwise uses cached station route.
+    """
+    # Get incident
+    result = db.execute(text("""
+        SELECT i.id, i.internal_incident_number, i.call_category,
+               i.cad_event_type, i.cad_event_subtype, i.address,
+               i.latitude, i.longitude, i.time_dispatched, i.status,
+               i.route_polyline, i.map_snapshot, i.cad_units,
+               i.incident_date, i.time_first_on_scene, i.location_name,
+               i.dispatched_units
+        FROM incidents i
+        WHERE i.id = :id AND i.deleted_at IS NULL
+    """), {"id": incident_id}).fetchone()
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    inc = {
+        "id": result[0],
+        "incident_number": result[1],
+        "call_category": result[2],
+        "event_type": result[3],
+        "event_subtype": result[4],
+        "address": result[5],
+        "latitude": float(result[6]) if result[6] else None,
+        "longitude": float(result[7]) if result[7] else None,
+        "time_dispatched": result[8].isoformat() if result[8] else None,
+        "status": result[9],
+        "route_polyline": result[10],
+        "cad_units": result[12] or [],
+        "incident_date": result[13].isoformat() if result[13] else None,
+        "time_first_on_scene": result[14].isoformat() if result[14] else None,
+        "location_name": result[15],
+        "dispatched_units": result[16] or [],
+    }
+
+    snapshot = result[11] or {}
+    lat = inc["latitude"]
+    lng = inc["longitude"]
+
+    # --- Route ---
+    route_data = None
+    if origin_lat is not None and origin_lng is not None and lat and lng:
+        # Live GPS route: origin -> incident
+        google_key = get_google_api_key(db)
+        if google_key:
+            from services.location.route import fetch_route
+            route_data = fetch_route(origin_lat, origin_lng, lat, lng, google_key)
+    elif inc["route_polyline"]:
+        # Cached station -> incident route
+        route_data = {"polyline": inc["route_polyline"]}
+
+    # --- Water sources (top 3 from snapshot, or query live) ---
+    water_sources = snapshot.get("nearby_water", [])
+    if not water_sources and lat and lng:
+        from services.location.proximity import query_nearby_water
+        raw_water = query_nearby_water(db, lat, lng)
+        water_sources = [{
+            "alert_type": "water",
+            "icon": w.get("icon", "💧"),
+            "title": w.get("title"),
+            "distance_meters": w.get("distance_meters"),
+            "properties": w.get("properties", {}),
+            "feature_id": w.get("feature_id"),
+            "layer_type": w.get("layer_type"),
+            "latitude": None,  # will need coords
+            "longitude": None,
+        } for w in raw_water[:10]]
+
+    # Enrich water sources with coordinates (need lat/lng for map highlighting)
+    water_with_coords = []
+    for ws in water_sources[:10]:
+        fid = ws.get("feature_id")
+        if fid:
+            try:
+                coord_row = db.execute(text("""
+                    SELECT ST_Y(ST_Centroid(geometry)), ST_X(ST_Centroid(geometry))
+                    FROM map_features WHERE id = :fid
+                """), {"fid": fid}).fetchone()
+                if coord_row:
+                    ws["latitude"] = float(coord_row[0])
+                    ws["longitude"] = float(coord_row[1])
+            except Exception:
+                pass
+        water_with_coords.append(ws)
+
+    # --- Preplans ---
+    preplans = snapshot.get("preplans", [])
+    if not preplans and lat and lng:
+        from services.location.proximity import query_nearby_preplans
+        raw_preplans = query_nearby_preplans(db, lat, lng, inc["address"])
+        preplans = [{
+            "title": p.get("title"),
+            "description": p.get("description"),
+            "properties": p.get("properties", {}),
+            "distance_meters": p.get("distance_meters"),
+            "feature_id": p.get("feature_id"),
+        } for p in raw_preplans]
+
+    # --- Hazards and closures ---
+    hazards = snapshot.get("hazards", [])
+    closures = snapshot.get("closures", [])
+
+    # --- Address notes ---
+    address_notes = snapshot.get("address_notes", [])
+
+    # --- Scene history ---
+    scene_history = []
+    if lat and lng:
+        from services.location.proximity import query_scene_history
+        scene_history = query_scene_history(
+            db, lat, lng,
+            address=inc["address"],
+            exclude_incident_id=incident_id,
+            radius_meters=50,
+            limit=20,
+        )
+
+    # --- Station coords (for route origin marker) ---
+    station_lat, station_lng = get_station_coords(db)
+
+    return {
+        "incident": inc,
+        "route": route_data,
+        "water_sources": water_with_coords[:3],
+        "water_sources_all": water_with_coords,
+        "preplans": preplans,
+        "hazards": hazards,
+        "closures": closures,
+        "address_notes": address_notes,
+        "scene_history": scene_history,
+        "station": {
+            "latitude": station_lat,
+            "longitude": station_lng,
+        },
+    }
+
+
+# =============================================================================
 # MAP CONFIG
 # =============================================================================
 
@@ -889,10 +1096,11 @@ def _query_incident_layer(
     }
 
     # No clustering for incidents — always show individual markers
+    # (CLUSTER_THRESHOLD_ZOOM = 0 means we always go to the else branch)
     CLUSTER_THRESHOLD_ZOOM = 0
 
     if zoom < CLUSTER_THRESHOLD_ZOOM:
-        # --- SERVER-SIDE GRID CLUSTERING ---
+        # --- SERVER-SIDE GRID CLUSTERING (currently unreachable) ---
         cell_size = 360.0 / (2 ** zoom) / 4
         params["cell_size"] = cell_size
 

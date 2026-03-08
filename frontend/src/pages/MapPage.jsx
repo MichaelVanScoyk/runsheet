@@ -22,6 +22,8 @@ import LayerToggle from '../components/Map/LayerToggle';
 import FeatureDetail from '../components/Map/FeatureDetail';
 import FeatureEditor from '../components/Map/FeatureEditor';
 import HighwayRouteEditor from '../components/Map/HighwayRouteEditor';
+import OpenIncidentPanel from '../components/Map/OpenIncidentPanel';
+import ResponseMode from '../components/Map/ResponseMode';
 
 export default function MapPage({ userSession }) {
   const [config, setConfig] = useState(null);
@@ -46,6 +48,9 @@ export default function MapPage({ userSession }) {
   const [isPlacing, setIsPlacing] = useState(false);
   const [placingLayerId, setPlacingLayerId] = useState(null);
   const [placementCoords, setPlacementCoords] = useState(null);
+
+  // Response mode state
+  const [responseModeIncident, setResponseModeIncident] = useState(null);
 
   // Phase 5: Highway route editor state
   const [isRouteEditorOpen, setIsRouteEditorOpen] = useState(false);
@@ -418,6 +423,22 @@ export default function MapPage({ userSession }) {
 
       {/* Map area */}
       <div style={{ flex: 1, position: 'relative' }}>
+        {/* Response Mode overlay — takes over when active */}
+        {responseModeIncident && (
+          <ResponseMode
+            incident={responseModeIncident}
+            stationCoords={stationCenter}
+            onExit={() => setResponseModeIncident(null)}
+          />
+        )}
+
+        {/* Open Incident Panel — shows when incidents are OPEN and not in response mode */}
+        {!responseModeIncident && !isRouteEditorOpen && (
+          <OpenIncidentPanel
+            onSelectIncident={(inc) => setResponseModeIncident(inc)}
+          />
+        )}
+
         <GoogleMap
           center={stationCenter}
           zoom={14}
