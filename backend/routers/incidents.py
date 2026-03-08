@@ -191,7 +191,6 @@ async def list_incidents(
             "municipality_code": i.municipality_code,
             "municipality_display_name": muni_display,
             "time_dispatched": format_utc_iso(i.time_dispatched),
-            "neris_incident_type_codes": i.neris_incident_type_codes,
             "comcat_status": comcat_status,
         })
     
@@ -296,8 +295,6 @@ async def get_incident(
         "geocode_needs_review": getattr(incident, 'geocode_needs_review', None),
         "route_polyline": getattr(incident, 'route_polyline', None),
         "map_snapshot": getattr(incident, 'map_snapshot', None),
-        "neris_location": incident.neris_location,
-        
         # Core times - ALL UTC with Z suffix
         "time_dispatched": format_utc_iso(incident.time_dispatched),
         "time_first_enroute": format_utc_iso(incident.time_first_enroute),
@@ -342,75 +339,6 @@ async def get_incident(
         "fire_damages_estimate": getattr(incident, 'fire_damages_estimate', 0),
         "ff_injuries_count": getattr(incident, 'ff_injuries_count', 0),
         "civilian_injuries_count": getattr(incident, 'civilian_injuries_count', 0),
-        
-        # NERIS Classification - TEXT codes
-        "neris_incident_type_codes": incident.neris_incident_type_codes,
-        "neris_incident_type_primary": getattr(incident, 'neris_incident_type_primary', None),
-        "neris_location_use": incident.neris_location_use,
-        "neris_action_codes": incident.neris_action_codes,
-        "neris_noaction_code": getattr(incident, 'neris_noaction_code', None),
-        "neris_aid_direction": getattr(incident, 'neris_aid_direction', None),
-        "neris_aid_type": getattr(incident, 'neris_aid_type', None),
-        "neris_aid_departments": getattr(incident, 'neris_aid_departments', None),
-        "mutual_aid_department_ids": getattr(incident, 'mutual_aid_department_ids', None),
-        "neris_people_present": getattr(incident, 'neris_people_present', None),
-        "neris_displaced_number": getattr(incident, 'neris_displaced_number', None),
-        "neris_risk_reduction": getattr(incident, 'neris_risk_reduction', None),
-        "neris_rescue_ff": getattr(incident, 'neris_rescue_ff', None),
-        "neris_rescue_nonff": getattr(incident, 'neris_rescue_nonff', None),
-        "neris_rescue_animal": getattr(incident, 'neris_rescue_animal', None),
-        "neris_narrative_impedance": getattr(incident, 'neris_narrative_impedance', None),
-        "neris_narrative_outcome": getattr(incident, 'neris_narrative_outcome', None),
-        
-        # NERIS Conditional Module: Fire
-        "neris_fire_investigation_need": getattr(incident, 'neris_fire_investigation_need', None),
-        "neris_fire_investigation_type": getattr(incident, 'neris_fire_investigation_type', []),
-        "neris_fire_arrival_conditions": getattr(incident, 'neris_fire_arrival_conditions', None),
-        "neris_fire_structure_damage": getattr(incident, 'neris_fire_structure_damage', None),
-        "neris_fire_structure_floor": getattr(incident, 'neris_fire_structure_floor', None),
-        "neris_fire_structure_room": getattr(incident, 'neris_fire_structure_room', None),
-        "neris_fire_structure_cause": getattr(incident, 'neris_fire_structure_cause', None),
-        "neris_fire_outside_cause": getattr(incident, 'neris_fire_outside_cause', None),
-        
-        # NERIS Conditional Module: Medical
-        "neris_medical_patient_care": getattr(incident, 'neris_medical_patient_care', None),
-        
-        # NERIS Conditional Module: Hazmat
-        "neris_hazmat_disposition": getattr(incident, 'neris_hazmat_disposition', None),
-        "neris_hazmat_evacuated": getattr(incident, 'neris_hazmat_evacuated', 0),
-        "neris_hazmat_chemicals": getattr(incident, 'neris_hazmat_chemicals', []),
-        
-        # NERIS Module: Exposures
-        "neris_exposures": getattr(incident, 'neris_exposures', []),
-        
-        # NERIS Module: Emerging Hazards
-        "neris_emerging_hazard": getattr(incident, 'neris_emerging_hazard', None),
-        
-        # NERIS Risk Reduction Details - Smoke Alarm
-        "neris_rr_smoke_alarm_type": getattr(incident, 'neris_rr_smoke_alarm_type', []),
-        "neris_rr_smoke_alarm_working": getattr(incident, 'neris_rr_smoke_alarm_working', None),
-        "neris_rr_smoke_alarm_operation": getattr(incident, 'neris_rr_smoke_alarm_operation', None),
-        "neris_rr_smoke_alarm_failure": getattr(incident, 'neris_rr_smoke_alarm_failure', None),
-        "neris_rr_smoke_alarm_action": getattr(incident, 'neris_rr_smoke_alarm_action', None),
-        
-        # NERIS Risk Reduction Details - Fire Alarm
-        "neris_rr_fire_alarm_type": getattr(incident, 'neris_rr_fire_alarm_type', []),
-        "neris_rr_fire_alarm_operation": getattr(incident, 'neris_rr_fire_alarm_operation', None),
-        
-        # NERIS Risk Reduction Details - Other Alarm
-        "neris_rr_other_alarm": getattr(incident, 'neris_rr_other_alarm', None),
-        "neris_rr_other_alarm_type": getattr(incident, 'neris_rr_other_alarm_type', []),
-        
-        # NERIS Risk Reduction Details - Sprinkler
-        "neris_rr_sprinkler_type": getattr(incident, 'neris_rr_sprinkler_type', []),
-        "neris_rr_sprinkler_coverage": getattr(incident, 'neris_rr_sprinkler_coverage', None),
-        "neris_rr_sprinkler_operation": getattr(incident, 'neris_rr_sprinkler_operation', None),
-        "neris_rr_sprinkler_heads_activated": getattr(incident, 'neris_rr_sprinkler_heads_activated', None),
-        "neris_rr_sprinkler_failure": getattr(incident, 'neris_rr_sprinkler_failure', None),
-        
-        # NERIS Risk Reduction Details - Cooking Suppression
-        "neris_rr_cooking_suppression": getattr(incident, 'neris_rr_cooking_suppression', None),
-        "neris_rr_cooking_suppression_type": getattr(incident, 'neris_rr_cooking_suppression_type', []),
         
         # Submission status
         "neris_submitted_at": iso_or_none(incident, 'neris_submitted_at'),
@@ -1342,21 +1270,6 @@ async def validate_neris(
     if not incident.neris_id:
         errors.append({"field": "neris_id", "message": "NERIS ID not generated. Check fd_neris_id setting."})
     
-    if not incident.neris_incident_type_codes:
-        errors.append({"field": "neris_incident_type_codes", "message": "Incident type required"})
-    
-    if not incident.neris_location_use:
-        errors.append({"field": "neris_location_use", "message": "Location use required"})
-    else:
-        loc_use = incident.neris_location_use
-        if not loc_use.get('use_type'):
-            errors.append({"field": "neris_location_use.use_type", "message": "Location use type required"})
-        if not loc_use.get('use_subtype'):
-            errors.append({"field": "neris_location_use.use_subtype", "message": "Location use subtype required"})
-    
-    if not incident.neris_action_codes and not getattr(incident, 'neris_noaction_code', None):
-        errors.append({"field": "neris_action_codes", "message": "Actions taken or no-action reason required"})
-    
     if not incident.narrative:
         errors.append({"field": "narrative", "message": "Narrative/outcome required"})
     
@@ -1368,22 +1281,7 @@ async def validate_neris(
     if not incident.units and not incident.cad_units:
         warnings.append({"field": "units", "message": "No unit responses recorded"})
     
-    # Fire-specific
-    if incident.neris_incident_type_codes:
-        is_fire = any('FIRE' in code for code in incident.neris_incident_type_codes)
-        if is_fire:
-            if not incident.time_fire_under_control:
-                warnings.append({"field": "time_fire_under_control", "message": "Fire under control time recommended for fire incidents"})
-    
-    # Validate codes exist
-    if incident.neris_incident_type_codes:
-        for code in incident.neris_incident_type_codes:
-            exists = db.execute(text("""
-                SELECT 1 FROM neris_codes 
-                WHERE category = 'type_incident' AND value = :code AND active = true
-            """), {"code": code}).fetchone()
-            if not exists:
-                errors.append({"field": "neris_incident_type_codes", "message": f"Invalid code: {code}"})
+    # Note: Full NERIS validation will be handled by the nerisv1 builder/adapter layer
     
     is_valid = len(errors) == 0
     
