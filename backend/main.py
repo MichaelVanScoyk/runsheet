@@ -61,6 +61,7 @@ from routers import neris_submit as neris_submit_router
 from routers import neris_entity as neris_entity_router
 from routers import nerisv1_sync as nerisv1_sync_router
 from routers import nerisv1_mapping as nerisv1_mapping_router
+from routers import nerisv1_incident as nerisv1_incident_router
 from routers.reports import router as reports_router
 from database import engine, Base
 from master_database import MasterSessionLocal
@@ -460,6 +461,7 @@ app.include_router(neris_submit_router.router, prefix="/api/neris", tags=["NERIS
 app.include_router(neris_entity_router.router, prefix="/api/neris", tags=["NERIS Entity"])  # NERIS entity: /api/neris/entity
 app.include_router(nerisv1_sync_router.router, prefix="/api/nerisv1", tags=["NERISv1"])  # NERISv1 sync: /api/nerisv1/sync-codes
 app.include_router(nerisv1_mapping_router.router, prefix="/api/nerisv1", tags=["NERISv1"])  # NERISv1 mapping: /api/nerisv1/mapping
+app.include_router(nerisv1_incident_router.router, prefix="/api/nerisv1", tags=["NERISv1"])  # NERISv1 incident: /api/nerisv1/incident
 
 @app.get("/")
 async def root():

@@ -121,9 +121,9 @@
 ## Build Order
 
 1. ~~Mapping config table + router + UI~~ ✅ Done
-2. Migration: `nerisv1_data` JSONB column
-3. Backend adapter (read mapping config → build NERIS dict from incident)
-4. Backend load/save endpoints
+2. ~~Migration: `nerisv1_data` JSONB column~~ ✅ Done (047_nerisv1_data.sql)
+3. ~~Backend adapter (two-way: load + save)~~ ✅ Done (services/nerisv1/adapter.py)
+4. ~~Backend load/save/validate/submit endpoints~~ ✅ Done (routers/nerisv1_incident.py)
 5. Frontend NerisPage shell (route, section tabs, loads data)
 6. Wire up existing section components one by one
 7. Move MutualAidSection
