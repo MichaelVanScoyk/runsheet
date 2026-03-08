@@ -6,7 +6,7 @@
  * Collapsible as a whole unit only.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export default function ResponseOverlay({
   incident,
@@ -53,10 +53,20 @@ export default function ResponseOverlay({
 
   useEffect(() => { fetchResponseData(); }, [fetchResponseData]);
 
+  // Recalculate route when GPS position changes significantly
+  // Parent (MapPage) controls the timing — only updates gpsPosition when >100m deviation
+  const lastGpsRouteRef = useRef(null);
   useEffect(() => {
     if (!gpsEnabled || !gpsPosition || !responseData) return;
-    const timer = setTimeout(() => fetchResponseData(gpsPosition.lat, gpsPosition.lng), 30000);
-    return () => clearTimeout(timer);
+    // Quick distance check to avoid redundant API calls
+    const last = lastGpsRouteRef.current;
+    if (last) {
+      const dlat = (gpsPosition.lat - last.lat) * 111320;
+      const dlng = (gpsPosition.lng - last.lng) * 111320 * Math.cos(gpsPosition.lat * Math.PI / 180);
+      if (Math.sqrt(dlat * dlat + dlng * dlng) < 80) return; // less than 80m, skip
+    }
+    lastGpsRouteRef.current = { lat: gpsPosition.lat, lng: gpsPosition.lng };
+    fetchResponseData(gpsPosition.lat, gpsPosition.lng);
   }, [gpsEnabled, gpsPosition?.lat, gpsPosition?.lng]); // eslint-disable-line
 
   const inc = responseData?.incident || incident;
@@ -362,7 +372,7 @@ export default function ResponseOverlay({
                 background: gpsError ? 'rgba(220,38,38,0.12)' : 'rgba(22,163,74,0.12)',
                 color: gpsError ? '#F87171' : '#4ADE80',
               }}>
-                {gpsError ? `GPS: ${gpsError}` : 'GPS tracking active'}
+                {gpsError ? `GPS: ${gpsError}` : 'GPS tracking active — auto-follow on'}
               </div>
             )}
           </div>

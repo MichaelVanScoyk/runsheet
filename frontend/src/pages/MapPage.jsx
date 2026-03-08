@@ -77,12 +77,18 @@ export default function MapPage({ userSession }) {
   const gpsWatchRef = useRef(null);
 
   // GPS tracking
+  const [gpsFollowMode, setGpsFollowMode] = useState(true); // auto-follow by default when GPS on
+  const lastRouteCalcRef = useRef(0);
+  const lastRoutePositionRef = useRef(null);
+
   useEffect(() => {
     if (!gpsEnabled) {
       if (gpsWatchRef.current !== null) {
         navigator.geolocation.clearWatch(gpsWatchRef.current);
         gpsWatchRef.current = null;
       }
+      setGpsPosition(null);
+      setGpsFollowMode(true); // reset for next time
       return;
     }
     if (!navigator.geolocation) {
@@ -91,18 +97,46 @@ export default function MapPage({ userSession }) {
     }
     gpsWatchRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        setGpsPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setGpsPosition(newPos);
         setGpsError(null);
+
+        // Auto-follow: recenter map on GPS position
+        if (gpsFollowMode) {
+          setMapCenterOverride(newPos);
+        }
+
+        // Route recalculation: only when deviated >100m from last calc position
+        // and at least 15 seconds since last calc
+        const now = Date.now();
+        if (now - lastRouteCalcRef.current > 15000) {
+          const lastPos = lastRoutePositionRef.current;
+          if (!lastPos) {
+            // First GPS fix — trigger route calc
+            lastRouteCalcRef.current = now;
+            lastRoutePositionRef.current = newPos;
+          } else {
+            // Haversine-ish quick distance check (approx meters)
+            const dlat = (newPos.lat - lastPos.lat) * 111320;
+            const dlng = (newPos.lng - lastPos.lng) * 111320 * Math.cos(newPos.lat * Math.PI / 180);
+            const dist = Math.sqrt(dlat * dlat + dlng * dlng);
+            if (dist > 100) {
+              lastRouteCalcRef.current = now;
+              lastRoutePositionRef.current = newPos;
+              // ResponseOverlay will pick up the new gpsPosition and recalc
+            }
+          }
+        }
       },
       (err) => setGpsError(err.message),
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
     );
     return () => {
       if (gpsWatchRef.current !== null) {
         navigator.geolocation.clearWatch(gpsWatchRef.current);
       }
     };
-  }, [gpsEnabled]);
+  }, [gpsEnabled, gpsFollowMode]);
 
   // Clean up response mode on exit
   const exitResponseMode = useCallback(() => {
@@ -567,6 +601,7 @@ export default function MapPage({ userSession }) {
           interactive={true}
           showStation={true}
           stationCoords={stationCenter}
+          gpsPosition={gpsEnabled ? gpsPosition : null}
           viewportLayers={
             isRouteEditorOpen
               ? []

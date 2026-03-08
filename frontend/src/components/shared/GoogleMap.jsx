@@ -223,6 +223,7 @@ export default function GoogleMap({
   interactive = true,
   showStation = false,
   stationCoords,
+  gpsPosition,       // { lat, lng } — live GPS blue dot
   style = {},
   fitBounds,
   apiKey,
@@ -235,6 +236,8 @@ export default function GoogleMap({
   const dataLayersRef = useRef([]);
   const viewportMarkersRef = useRef([]);
   const stationMarkerRef = useRef(null);
+  const gpsMarkerRef = useRef(null);
+  const gpsAccuracyCircleRef = useRef(null);
   const idleListenerRef = useRef(null);
   const fetchControllerRef = useRef(null);
   const debounceTimerRef = useRef(null);
@@ -1101,6 +1104,74 @@ export default function GoogleMap({
   }, [mapReady, showStation, stationCoords?.lat, stationCoords?.lng, resolvedMapId]);
 
   // ==========================================================================
+  // GPS POSITION MARKER (blue dot with accuracy ring)
+  // ==========================================================================
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current) return;
+
+    // Clear old GPS marker
+    if (gpsMarkerRef.current) {
+      if (gpsMarkerRef.current.map !== undefined) gpsMarkerRef.current.map = null;
+      else if (gpsMarkerRef.current.setMap) gpsMarkerRef.current.setMap(null);
+      gpsMarkerRef.current = null;
+    }
+    if (gpsAccuracyCircleRef.current) {
+      gpsAccuracyCircleRef.current.setMap(null);
+      gpsAccuracyCircleRef.current = null;
+    }
+
+    if (!gpsPosition?.lat || !gpsPosition?.lng) return;
+
+    const map = mapInstanceRef.current;
+    const position = { lat: parseFloat(gpsPosition.lat), lng: parseFloat(gpsPosition.lng) };
+    const AdvancedMarker = advancedMarkerRef.current;
+
+    // Blue dot SVG
+    const gpsSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11" fill="rgba(66,133,244,0.15)" stroke="rgba(66,133,244,0.4)" stroke-width="1"/>
+      <circle cx="12" cy="12" r="7" fill="#4285F4" stroke="#fff" stroke-width="2.5"/>
+    </svg>`;
+
+    if (useAdvancedMarkers()) {
+      const content = createMarkerContent(gpsSvg, 24);
+      content.style.animation = 'cadreport-gps-pulse 2s ease-in-out infinite';
+      gpsMarkerRef.current = new AdvancedMarker({
+        map,
+        position,
+        title: 'Your Location',
+        content,
+        zIndex: 2000,
+      });
+    } else {
+      gpsMarkerRef.current = new window.google.maps.Marker({
+        position,
+        map,
+        title: 'Your Location',
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(gpsSvg),
+          scaledSize: new window.google.maps.Size(24, 24),
+          anchor: new window.google.maps.Point(12, 12),
+        },
+        zIndex: 2000,
+      });
+    }
+
+    // Accuracy circle (subtle)
+    gpsAccuracyCircleRef.current = new window.google.maps.Circle({
+      center: position,
+      radius: 30, // ~30m accuracy circle
+      map,
+      fillColor: '#4285F4',
+      fillOpacity: 0.08,
+      strokeColor: '#4285F4',
+      strokeWeight: 1,
+      strokeOpacity: 0.25,
+      clickable: false,
+      zIndex: 1,
+    });
+  }, [mapReady, gpsPosition?.lat, gpsPosition?.lng, resolvedMapId]);
+
+  // ==========================================================================
   // RENDER
   // ==========================================================================
   if (error) {
@@ -1143,6 +1214,10 @@ export default function GoogleMap({
         @keyframes cadreport-pulse {
           0%, 100% { transform: scale(1) translateY(-10px); opacity: 1; }
           50% { transform: scale(1.6) translateY(-10px); opacity: 0.7; }
+        }
+        @keyframes cadreport-gps-pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.15); opacity: 0.85; }
         }
       `}</style>
     </div>
