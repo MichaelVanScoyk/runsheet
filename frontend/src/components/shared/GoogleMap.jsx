@@ -254,7 +254,6 @@ export default function GoogleMap({
   useEffect(() => { isPlacingRef.current = isPlacing; }, [isPlacing]);
 
   const viewportLayersRef = useRef(viewportLayers);
-  useEffect(() => { viewportLayersRef.current = viewportLayers; }, [viewportLayers]);
 
   // Fetch API key and Map ID from backend
   const [resolvedKey, setResolvedKey] = useState(apiKey || null);
@@ -538,6 +537,9 @@ export default function GoogleMap({
   // VIEWPORT-BASED LOADING — server-side clustering
   // ==========================================================================
   useEffect(() => {
+    // Sync ref immediately so loadViewportData always reads current layers
+    viewportLayersRef.current = viewportLayers;
+
     const map = mapInstanceRef.current;
     if (!mapReady || !map) return;
 
@@ -933,6 +935,15 @@ export default function GoogleMap({
         window.google.maps.event.removeListener(idleListenerRef.current);
         idleListenerRef.current = null;
       }
+      // Clear all viewport markers and data layers on cleanup
+      // so toggling layers off or changing zoom doesn't leave stale markers
+      viewportMarkersRef.current.forEach(m => {
+        if (m.map !== undefined) m.map = null;
+        else if (m.setMap) m.setMap(null);
+      });
+      viewportMarkersRef.current = [];
+      dataLayersRef.current.forEach(dl => dl.setMap(null));
+      dataLayersRef.current = [];
     };
   }, [viewportLayers, mapReady, resolvedMapId]);
 
