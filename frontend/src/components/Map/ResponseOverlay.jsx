@@ -203,8 +203,7 @@ export default function ResponseOverlay({
                     {h.icon || '\u26A0\uFE0F'} {h.title}
                     {h.distance_meters && <span style={{ color: '#aaa', marginLeft: '6px', fontSize: '0.68rem' }}>{fmtDist(h.distance_meters)}</span>}
                   </div>
-                  );
-                })}
+                ))}
               </>
             )}
 
