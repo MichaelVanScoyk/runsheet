@@ -368,6 +368,7 @@ async def get_incident_response_data(
                 "icon": f.get("icon", "\u26a0\ufe0f"),
                 "title": f.get("title", ""),
                 "description": f.get("description"),
+                "address": f.get("address"),
                 "distance_meters": f.get("distance_meters"),
                 "properties": f.get("properties", {}),
                 "feature_id": f.get("feature_id"),
@@ -375,13 +376,15 @@ async def get_incident_response_data(
             }
             if lt == "hazard":
                 hazards.append(alert)
-        raw_closures = query_nearby_closures(db, lat, lng)
+        # Only show closures within 500m of the incident (not the broader 3km)
+        raw_closures = query_nearby_closures(db, lat, lng, radius_meters=500)
         for c in raw_closures:
             closures.append({
                 "alert_type": "closure",
                 "icon": c.get("icon", "\ud83d\udeab"),
                 "title": c.get("title", ""),
                 "description": c.get("description"),
+                "address": c.get("address"),
                 "distance_meters": c.get("distance_meters"),
                 "properties": c.get("properties", {}),
                 "feature_id": c.get("feature_id"),
@@ -429,6 +432,7 @@ async def get_incident_response_data(
                     "icon": row[5] or "\u26a0\ufe0f",
                     "title": row[1] or "",
                     "description": row[2],
+                    "address": row[4],
                     "distance_meters": round(row[7], 1) if row[7] else None,
                     "properties": row[3] or {},
                     "feature_id": fid,

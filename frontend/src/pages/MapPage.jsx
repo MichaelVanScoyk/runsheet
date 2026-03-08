@@ -168,6 +168,38 @@ export default function MapPage({ userSession }) {
 
   useEffect(() => { loadHighwayRoutes(); }, [loadHighwayRoutes]);
 
+  // Build response mode markers (pulsing incident pins)
+  const responseMarkers = useMemo(() => {
+    const extra = [];
+    // Pulsing markers for open incidents (normal mode)
+    if (!responseModeIncident) {
+      openIncidents.filter(i => i.latitude && i.longitude).forEach(i => {
+        extra.push({
+          lat: parseFloat(i.latitude),
+          lng: parseFloat(i.longitude),
+          title: `${i.incident_number} - ${i.address}`,
+          color: i.call_category === 'FIRE' ? '#DC2626' : '#2563EB',
+          label: '!',
+          zIndex: 999,
+          pulse: true,
+        });
+      });
+    }
+    // Response mode: incident pin (keep pulsing)
+    if (responseModeIncident) {
+      extra.push({
+        lat: parseFloat(responseModeIncident.latitude),
+        lng: parseFloat(responseModeIncident.longitude),
+        title: responseModeIncident.incident_number || 'Incident',
+        color: responseModeIncident.call_category === 'FIRE' ? '#DC2626' : '#2563EB',
+        label: '!',
+        zIndex: 999,
+        pulse: true,
+      });
+    }
+    return extra;
+  }, [responseModeIncident, openIncidents]);
+
   // Build viewportLayers — tells GoogleMap which layers to fetch via viewport API
   const viewportLayers = useMemo(() => {
     const result = [];
@@ -528,29 +560,7 @@ export default function MapPage({ userSession }) {
                   })
                 : viewportLayers
           }
-          markers={[
-            ...routeEditMarkers,
-            // Pulsing markers for open incidents (normal mode)
-            ...(!responseModeIncident ? openIncidents.filter(i => i.latitude && i.longitude).map(i => ({
-              lat: parseFloat(i.latitude),
-              lng: parseFloat(i.longitude),
-              title: `${i.incident_number} - ${i.address}`,
-              color: i.call_category === 'FIRE' ? '#DC2626' : '#2563EB',
-              label: '!',
-              zIndex: 999,
-              pulse: true,
-            })) : []),
-            // Response mode: incident pin (keep pulsing)
-            ...(responseModeIncident ? [{
-              lat: parseFloat(responseModeIncident.latitude),
-              lng: parseFloat(responseModeIncident.longitude),
-              title: responseModeIncident.incident_number || 'Incident',
-              color: responseModeIncident.call_category === 'FIRE' ? '#DC2626' : '#2563EB',
-              label: '!',
-              zIndex: 999,
-              pulse: true,
-            }] : []),
-          ]}
+          markers={[...routeEditMarkers, ...responseMarkers]}
           routeEditPath={
             isRouteEditorOpen
               ? routePoints
