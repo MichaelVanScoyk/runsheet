@@ -235,6 +235,20 @@ export default function MapPage({ userSession }) {
     return extra;
   }, [responseModeIncident, openIncidents]);
 
+  // Combined markers for GoogleMap (memoized to prevent re-render flicker)
+  const combinedMarkers = useMemo(() => {
+    return [...routeEditMarkers, ...responseMarkers];
+  }, [routeEditMarkers, responseMarkers]);
+
+  // Memoized map center to prevent re-render jitter
+  const mapCenter = useMemo(() => {
+    if (mapCenterOverride) return mapCenterOverride;
+    if (responseModeIncident) {
+      return { lat: parseFloat(responseModeIncident.latitude), lng: parseFloat(responseModeIncident.longitude) };
+    }
+    return stationCenter;
+  }, [mapCenterOverride, responseModeIncident, stationCenter]);
+
   // Response mode layers — force water sources, hazards, closures, preplans ON regardless of toggles
   const responseModeViewportLayers = useMemo(() => {
     const keepTypes = ['hydrant', 'dry_hydrant', 'draft_point', 'hazard', 'closure', 'preplan'];
@@ -590,12 +604,7 @@ export default function MapPage({ userSession }) {
         )}
 
         <GoogleMap
-          center={
-            mapCenterOverride
-              || (responseModeIncident
-                ? { lat: parseFloat(responseModeIncident.latitude), lng: parseFloat(responseModeIncident.longitude) }
-                : stationCenter)
-          }
+          center={mapCenter}
           zoom={responseModeIncident ? 15 : 14}
           height="100%"
           interactive={true}
@@ -609,7 +618,7 @@ export default function MapPage({ userSession }) {
                 ? responseModeViewportLayers
                 : viewportLayers
           }
-          markers={[...routeEditMarkers, ...responseMarkers]}
+          markers={combinedMarkers}
           routeEditPath={
             isRouteEditorOpen
               ? routePoints
