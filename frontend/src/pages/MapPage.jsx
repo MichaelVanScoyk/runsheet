@@ -500,6 +500,7 @@ export default function MapPage({ userSession }) {
             onToggleGps={() => setGpsEnabled(prev => !prev)}
             gpsPosition={gpsPosition}
             gpsError={gpsError}
+            highlightFeatureId={selectedFeature?.id}
           />
         )}
 
@@ -562,11 +563,14 @@ export default function MapPage({ userSession }) {
           isPlacing={isPlacing || isRouteEditorOpen}
         />
 
-        {/* Feature detail popup — editable for OFFICER/ADMIN */}
-        {selectedFeature && !isRouteEditorOpen && !responseModeIncident && (
+        {/* Feature detail popup — editable for OFFICER/ADMIN, also shows in response mode */}
+        {selectedFeature && !isRouteEditorOpen && (
           <div style={{
-            position: 'absolute', top: '10px', right: '10px', zIndex: 10,
-            maxHeight: 'calc(100vh - 40px)', overflow: 'auto',
+            position: 'absolute',
+            top: responseModeIncident ? '74px' : '10px',
+            right: responseModeIncident ? '290px' : '10px',
+            zIndex: 30,
+            maxHeight: 'calc(100vh - 100px)', overflow: 'auto',
             display: 'flex', flexDirection: 'column', gap: '8px',
           }}>
             <FeatureDetail

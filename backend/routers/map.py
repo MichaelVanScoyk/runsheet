@@ -304,11 +304,15 @@ async def get_incident_response_data(
         # Cached station -> incident route
         route_data = {"polyline": inc["route_polyline"]}
 
-    # --- Water sources (top 3 from snapshot, or query live) ---
+    # --- Water sources (always get at least 3, expand radius if needed) ---
     water_sources = snapshot.get("nearby_water", [])
-    if not water_sources and lat and lng:
+    if lat and lng:
         from services.location.proximity import query_nearby_water
-        raw_water = query_nearby_water(db, lat, lng)
+        # Try expanding radius until we get at least 3, up to 10km
+        for search_radius in [2000, 5000, 10000]:
+            raw_water = query_nearby_water(db, lat, lng, radius_meters=search_radius)
+            if len(raw_water) >= 3:
+                break
         water_sources = [{
             "alert_type": "water",
             "icon": w.get("icon", "💧"),
@@ -317,7 +321,7 @@ async def get_incident_response_data(
             "properties": w.get("properties", {}),
             "feature_id": w.get("feature_id"),
             "layer_type": w.get("layer_type"),
-            "latitude": None,  # will need coords
+            "latitude": None,
             "longitude": None,
         } for w in raw_water[:10]]
 
