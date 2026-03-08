@@ -158,6 +158,12 @@ class IncidentUpdate(BaseModel):
     # Call category (FIRE or EMS) - changing this reassigns incident number
     call_category: Optional[str] = None
     
+    # Mutual Aid
+    neris_aid_direction: Optional[str] = None        # NONE, GIVEN, RECEIVED
+    neris_aid_type: Optional[str] = None             # AUTOMATIC, MUTUAL, OTHER
+    neris_aid_departments: Optional[List[str]] = None  # Legacy station numbers
+    mutual_aid_department_ids: Optional[List[int]] = None  # Department table IDs
+    
     # CAD units
     cad_units: Optional[List[Dict[str, Any]]] = None
     

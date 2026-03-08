@@ -398,6 +398,15 @@ class Incident(Base):
     reviewed_by = Column(Integer, ForeignKey("personnel.id"))
     reviewed_at = Column(TIMESTAMP(timezone=True))
     out_of_sequence = Column(Boolean, default=False)
+    
+    # =========================================================================
+    # MUTUAL AID (operational + NERIS)
+    # =========================================================================
+    neris_aid_direction = Column(Text)          # NONE, GIVEN, RECEIVED
+    neris_aid_type = Column(Text)               # AUTOMATIC, MUTUAL, OTHER
+    neris_aid_departments = Column(ARRAY(Text)) # Legacy station numbers ["33", "49"]
+    mutual_aid_department_ids = Column(ARRAY(Integer))  # FK refs to neris_mutual_aid_departments.id
+    
     created_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
     updated_at = Column(TIMESTAMP(timezone=True), default=func.current_timestamp())
     deleted_at = Column(TIMESTAMP(timezone=True))  # Soft delete

@@ -169,6 +169,18 @@ The current Nerisv1Page.jsx is a throwaway skeleton. The real form needs proper 
 - User picks template on form open, fields pre-fill, user edits as needed
 - Templates don't lock anything — all fields still editable after applying
 
+**Template creation from completed forms:**
+- After filling out a NERIS form for an incident, user can hit "Save as Template"
+- System looks at which sections were filled out / expanded on that completed form
+- User names the template (e.g. "Structure Fire - Residential", "EMS BLS Lift Assist", "Auto Accident")
+- Template stores ONLY the layout — which sections should be expanded/visible when the template is applied
+- Templates do NOT pre-fill any data. The incident's own data comes from the mapping config as always.
+- When applied to a new incident, the template just opens the relevant sections. All data comes from the new incident via mappings.
+- Example: "Structure Fire" template expands Base, Dispatch, Incident Types, Fire Detail, Smoke Alarm, Fire Alarm, Other Alarm, Fire Suppression, Actions/Tactics, Tactic Timestamps. Everything else stays collapsed.
+- Example: "EMS BLS" template expands Base, Dispatch, Incident Types, Medical Details, Actions/Tactics. Fire/hazmat sections stay collapsed.
+- Templates are per-tenant, managed in admin
+- A form can show which template was applied and allow switching templates
+
 ### Required Fields (from NERIS spec)
 - base: department_neris_id, incident_number, location (always)
 - incident_types: at least 1 type with primary flag (always)

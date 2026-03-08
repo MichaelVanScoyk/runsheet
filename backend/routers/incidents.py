@@ -340,6 +340,12 @@ async def get_incident(
         "ff_injuries_count": getattr(incident, 'ff_injuries_count', 0),
         "civilian_injuries_count": getattr(incident, 'civilian_injuries_count', 0),
         
+        # Mutual Aid
+        "neris_aid_direction": getattr(incident, 'neris_aid_direction', None),
+        "neris_aid_type": getattr(incident, 'neris_aid_type', None),
+        "neris_aid_departments": getattr(incident, 'neris_aid_departments', None) or [],
+        "mutual_aid_department_ids": getattr(incident, 'mutual_aid_department_ids', None) or [],
+        
         # Submission status
         "neris_submitted_at": iso_or_none(incident, 'neris_submitted_at'),
         "neris_submission_id": getattr(incident, 'neris_submission_id', None),
