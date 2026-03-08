@@ -118,6 +118,79 @@
 
 ---
 
+## Form Design — NOT YET BUILT
+
+The current Nerisv1Page.jsx is a throwaway skeleton. The real form needs proper design.
+
+### Core Principles
+- Design from what a firefighter fills out after a call, not from NERIS section numbers
+- Required fields visually obvious (NERIS has specific required fields per section)
+- Conditional sections only appear when triggered by incident type
+- Templates for common call types pre-populate common fields
+
+### Layout: One Main Form + Conditional Sections + Rare Drawer
+
+**Always visible (every call):**
+- What happened → incident type selection (this drives what else shows)
+- Where → location/address
+- When → dispatch, on scene, cleared times
+- Who responded → units, crew counts
+- What you did → actions taken or no-action reason
+- Mutual aid → yes/no, direction, departments
+- Narratives → situation found, services provided, problems/impediments, outcome
+- Required NERIS fields clearly marked
+
+**Conditional (appear based on incident type):**
+- FIRE type → Fire Detail (structure vs outside, cause, damage, investigation)
+- FIRE||STRUCTURE_FIRE → Smoke Alarm, Fire Alarm, Other Alarm, Fire Suppression
+- FIRE||STRUCTURE_FIRE||CONFINED_COOKING → Cooking Fire Suppression
+- HAZSIT type → HazSit Detail (chemicals, evacuated, disposition)
+- MEDICAL type → Medical Details (patient care, transport, status)
+
+**Rare/edge (collapsed drawer at bottom):**
+- Casualties/Rescues
+- Exposures
+- Electric Hazards
+- Powergen Hazards
+- CSST Hazard
+- Medical Oxygen Hazard
+- Special Modifiers (MCI, active assailant, etc.)
+
+### Templates
+- Stored per-tenant in a templates table or settings JSONB
+- Admin can create/edit templates
+- Template = a set of pre-filled NERIS field values for a common call type
+- Examples:
+  - **EMS BLS**: incident_type=MEDICAL||BASIC_LIFE_SUPPORT, actions=EMERGENCY_MEDICAL_CARE||PATIENT_ASSESSMENT, no fire/hazmat sections
+  - **Auto Accident**: incident_type=RESCUE||MOTOR_VEHICLE_ACCIDENT, actions=EXTRICATION, EMERGENCY_MEDICAL_CARE
+  - **False Alarm**: incident_type=FIRE||FALSE_ALARM, noaction=NO_INCIDENT_FOUND, no fire detail needed
+  - **Structure Fire**: incident_type=FIRE||STRUCTURE_FIRE, opens all alarm/suppression sections, investigation=YES
+  - **Carbon Monoxide**: incident_type=HAZSIT||..., opens hazmat section
+- User picks template on form open, fields pre-fill, user edits as needed
+- Templates don't lock anything — all fields still editable after applying
+
+### Required Fields (from NERIS spec)
+- base: department_neris_id, incident_number, location (always)
+- incident_types: at least 1 type with primary flag (always)
+- dispatch: incident_number, call_arrival, call_answered, call_create, location, unit_responses (always)
+- fire_detail: location_detail, water_supply, investigation_needed, investigation_types (when FIRE)
+- hazsit_detail: evacuated, disposition (when HAZSIT)
+- medical_details: patient_care_evaluation (when MEDICAL)
+- smoke_alarm/fire_alarm/other_alarm/fire_suppression: presence.type (when STRUCTURE_FIRE)
+- All required fields must be visually distinct on the form
+
+### Entry Point
+- Link from incidents list or run sheet form
+- Eventually a modal overlay from RunSheetForm
+- Route: /nerisv1/:id
+
+### MutualAidSection
+- Move from RunSheetForm to NerisPage (or share)
+- Already handles GIVEN/RECEIVED/NONE, department lookup, CAD auto-detect
+- Feeds NERIS sections 5 (aids) and 6 (nonfd_aids)
+
+---
+
 ## Build Order
 
 1. ~~Mapping config table + router + UI~~ ✅ Done
