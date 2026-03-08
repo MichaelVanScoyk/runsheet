@@ -23,7 +23,7 @@ import FeatureDetail from '../components/Map/FeatureDetail';
 import FeatureEditor from '../components/Map/FeatureEditor';
 import HighwayRouteEditor from '../components/Map/HighwayRouteEditor';
 import OpenIncidentPanel from '../components/Map/OpenIncidentPanel';
-import ResponseMode from '../components/Map/ResponseMode';
+import ResponseOverlay from '../components/Map/ResponseOverlay';
 
 export default function MapPage({ userSession }) {
   const [config, setConfig] = useState(null);
@@ -51,6 +51,47 @@ export default function MapPage({ userSession }) {
 
   // Response mode state
   const [responseModeIncident, setResponseModeIncident] = useState(null);
+  const [responseData, setResponseData] = useState(null);
+  const [gpsEnabled, setGpsEnabled] = useState(false);
+  const [gpsPosition, setGpsPosition] = useState(null);
+  const [gpsError, setGpsError] = useState(null);
+  const gpsWatchRef = useRef(null);
+
+  // GPS tracking
+  useEffect(() => {
+    if (!gpsEnabled) {
+      if (gpsWatchRef.current !== null) {
+        navigator.geolocation.clearWatch(gpsWatchRef.current);
+        gpsWatchRef.current = null;
+      }
+      return;
+    }
+    if (!navigator.geolocation) {
+      setGpsError('Geolocation not supported');
+      return;
+    }
+    gpsWatchRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        setGpsPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setGpsError(null);
+      },
+      (err) => setGpsError(err.message),
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+    return () => {
+      if (gpsWatchRef.current !== null) {
+        navigator.geolocation.clearWatch(gpsWatchRef.current);
+      }
+    };
+  }, [gpsEnabled]);
+
+  // Clean up response mode on exit
+  const exitResponseMode = useCallback(() => {
+    setResponseModeIncident(null);
+    setResponseData(null);
+    setGpsEnabled(false);
+    setGpsPosition(null);
+  }, []);
 
   // Phase 5: Highway route editor state
   const [isRouteEditorOpen, setIsRouteEditorOpen] = useState(false);
@@ -423,15 +464,6 @@ export default function MapPage({ userSession }) {
 
       {/* Map area */}
       <div style={{ flex: 1, position: 'relative' }}>
-        {/* Response Mode overlay — takes over when active */}
-        {responseModeIncident && (
-          <ResponseMode
-            incident={responseModeIncident}
-            stationCoords={stationCenter}
-            onExit={() => setResponseModeIncident(null)}
-          />
-        )}
-
         {/* Open Incident Panel — shows when incidents are OPEN and not in response mode */}
         {!responseModeIncident && !isRouteEditorOpen && (
           <OpenIncidentPanel
@@ -439,18 +471,39 @@ export default function MapPage({ userSession }) {
           />
         )}
 
+        {/* Response Mode overlay panels — renders over the map */}
+        {responseModeIncident && (
+          <ResponseOverlay
+            incident={responseModeIncident}
+            onExit={exitResponseMode}
+            onDataLoaded={setResponseData}
+            gpsEnabled={gpsEnabled}
+            onToggleGps={() => setGpsEnabled(prev => !prev)}
+            gpsPosition={gpsPosition}
+            gpsError={gpsError}
+          />
+        )}
+
         <GoogleMap
-          center={stationCenter}
-          zoom={14}
+          center={
+            responseModeIncident
+              ? { lat: parseFloat(responseModeIncident.latitude), lng: parseFloat(responseModeIncident.longitude) }
+              : stationCenter
+          }
+          zoom={responseModeIncident ? 15 : 14}
           height="100%"
           interactive={true}
           showStation={true}
           stationCoords={stationCenter}
           viewportLayers={isRouteEditorOpen ? [] : viewportLayers}
           markers={routeEditMarkers}
-          routeEditPath={isRouteEditorOpen ? routePoints : null}
+          routeEditPath={
+            isRouteEditorOpen
+              ? routePoints
+              : (responseData?.route?.polyline ? '__response_route__' : null)
+          }
           onFeatureClick={handleFeatureClick}
-          onMapClick={handleMapClick}
+          onMapClick={responseModeIncident ? undefined : handleMapClick}
           isPlacing={isPlacing || isRouteEditorOpen}
         />
 
