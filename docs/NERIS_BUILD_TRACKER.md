@@ -191,9 +191,9 @@ Source: `IncidentPayload` schema from `api-test.neris.fsri.org/v1/openapi.json` 
 | 18 | `fire_suppression` | `FireSuppressionPayload` | no | Required for `FIRE\|\|STRUCTURE_FIRE` (unless SUPPORT_AID GIVEN) | complete |
 | 19 | `cooking_fire_suppression` | `CookingFireSuppressionPayload` | no | Required for `FIRE\|\|STRUCTURE_FIRE\|\|CONFINED_COOKING_APPLIANCE_FIRE` (unless SUPPORT_AID GIVEN) | complete |
 | 20 | `electric_hazards` | `ElectricHazardPayload[]` | no | — | complete |
-| 21 | `powergen_hazards` | `PvPowergenHazardPayload[]` | no | — | ❌ NOT STARTED |
-| 22 | `csst_hazard` | `CsstHazardPayload` | no | — | ❌ NOT STARTED |
-| 23 | `medical_oxygen_hazard` | `MedicalOxygenHazardPayload` | no | — | ❌ NOT STARTED |
+| 21 | `powergen_hazards` | `PvPowergenHazardPayload[]` | no | — | complete |
+| 22 | `csst_hazard` | `CsstHazardPayload` | no | — | complete |
+| 23 | `medical_oxygen_hazard` | `MedicalOxygenHazardPayload` | no | — | complete |
 
 ---
 
