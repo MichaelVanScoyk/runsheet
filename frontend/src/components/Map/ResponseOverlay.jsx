@@ -17,6 +17,7 @@ export default function ResponseOverlay({
   gpsPosition,
   gpsError,
   highlightFeatureId,
+  onRecenterMap,
 }) {
   const [responseData, setResponseData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -254,13 +255,22 @@ export default function ResponseOverlay({
                 {waterAll.map((w, i) => {
                   const isHighlighted = flashId && w.feature_id === flashId;
                   return (
-                    <div key={`w${i}`} id={`water-${w.feature_id}`} style={{
-                      padding: '5px 7px', marginBottom: '3px', borderRadius: '5px',
-                      background: isHighlighted ? 'rgba(59,130,246,0.5)' : (i < 3 ? 'rgba(37,99,235,0.18)' : 'rgba(255,255,255,0.04)'),
-                      borderLeft: `3px solid ${isHighlighted ? '#fff' : (i < 3 ? '#3B82F6' : '#555')}`,
-                      transition: 'background 0.3s, border-left-color 0.3s',
-                      animation: isHighlighted ? 'cadreport-flash 0.6s ease-in-out 3' : 'none',
-                    }}>
+                    <div key={`w${i}`} id={`water-${w.feature_id}`}
+                      onClick={() => {
+                        if (w.latitude && w.longitude && onRecenterMap) {
+                          onRecenterMap(w.latitude, w.longitude);
+                          setFlashId(w.feature_id);
+                          setTimeout(() => setFlashId(null), 3000);
+                        }
+                      }}
+                      style={{
+                        padding: '5px 7px', marginBottom: '3px', borderRadius: '5px',
+                        cursor: w.latitude ? 'pointer' : 'default',
+                        background: isHighlighted ? 'rgba(59,130,246,0.5)' : (i < 3 ? 'rgba(37,99,235,0.18)' : 'rgba(255,255,255,0.04)'),
+                        borderLeft: `3px solid ${isHighlighted ? '#fff' : (i < 3 ? '#3B82F6' : '#555')}`,
+                        transition: 'background 0.3s, border-left-color 0.3s',
+                        animation: isHighlighted ? 'cadreport-flash 0.6s ease-in-out 3' : 'none',
+                      }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div style={{ fontWeight: i < 3 ? '600' : '400', color: i < 3 ? '#fff' : '#ccc', flex: 1 }}>
                           {i < 3 && <span style={{ color: '#60A5FA', marginRight: '4px' }}>#{i + 1}</span>}

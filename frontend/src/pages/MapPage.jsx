@@ -69,6 +69,7 @@ export default function MapPage({ userSession }) {
   // Response mode state
   const [responseModeIncident, setResponseModeIncident] = useState(null);
   const [openIncidents, setOpenIncidents] = useState([]);
+  const [mapCenterOverride, setMapCenterOverride] = useState(null);
   const [responseData, setResponseData] = useState(null);
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [gpsPosition, setGpsPosition] = useState(null);
@@ -533,14 +534,16 @@ export default function MapPage({ userSession }) {
             gpsPosition={gpsPosition}
             gpsError={gpsError}
             highlightFeatureId={selectedFeature?.id}
+            onRecenterMap={(lat, lng) => setMapCenterOverride({ lat, lng })}
           />
         )}
 
         <GoogleMap
           center={
-            responseModeIncident
-              ? { lat: parseFloat(responseModeIncident.latitude), lng: parseFloat(responseModeIncident.longitude) }
-              : stationCenter
+            mapCenterOverride
+              || (responseModeIncident
+                ? { lat: parseFloat(responseModeIncident.latitude), lng: parseFloat(responseModeIncident.longitude) }
+                : stationCenter)
           }
           zoom={responseModeIncident ? 15 : 14}
           height="100%"
@@ -569,7 +572,10 @@ export default function MapPage({ userSession }) {
                 : null
           }
           onFeatureClick={handleFeatureClick}
-          onMapClick={responseModeIncident ? undefined : handleMapClick}
+          onMapClick={responseModeIncident
+            ? () => setSelectedFeature(null)  // click anywhere to dismiss popup in response mode
+            : handleMapClick
+          }
           isPlacing={isPlacing || isRouteEditorOpen}
         />
 
