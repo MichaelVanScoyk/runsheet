@@ -1007,7 +1007,7 @@ export default function GoogleMap({
   // ==========================================================================
   const routeLineRef = useRef(null);
   useEffect(() => {
-    if (!mapReady) return;
+    if (!mapReady || !mapInstanceRef.current) return;
     if (routeLineRef.current) { routeLineRef.current.setMap(null); routeLineRef.current = null; }
     if (!routePolyline) return;
 
@@ -1033,7 +1033,7 @@ export default function GoogleMap({
 
   const routeEditLineRef = useRef(null);
   useEffect(() => {
-    if (!mapReady) return;
+    if (!mapReady || !mapInstanceRef.current) return;
     if (routeEditLineRef.current) { routeEditLineRef.current.setMap(null); routeEditLineRef.current = null; }
     if (!routeEditPath || routeEditPath.length < 2) return;
 

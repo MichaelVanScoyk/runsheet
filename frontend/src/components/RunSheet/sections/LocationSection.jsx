@@ -40,11 +40,10 @@ export default function LocationSection() {
 
   const hasCoords = !!(incidentCoords.lat && incidentCoords.lng);
 
-  // After save clears coords, poll for background geocode to complete
+  // Poll for background geocode/route to complete
+  // Triggers on initial load (no coords yet) AND after save (refreshedIncident with null coords)
   useEffect(() => {
     if (!liveIncident?.id || !formData.address || hasCoords) return;
-    // Only poll if we just saved (refreshedIncident exists with null coords)
-    if (!refreshedIncident) return;
     let cancelled = false;
     let attempts = 0;
     const maxAttempts = 10;
@@ -56,13 +55,19 @@ export default function LocationSection() {
         const data = await res.json();
         if (data.latitude && data.longitude) {
           setManualCoords({ lat: data.latitude, lng: data.longitude });
-          if (data.route_polyline) setManualPolyline(data.route_polyline);
-          clearInterval(interval);
+          if (data.route_polyline) {
+            setManualPolyline(data.route_polyline);
+            clearInterval(interval);
+          } else if (attempts >= maxAttempts) {
+            // Got coords but route never arrived — stop polling, map shows pin without route
+            clearInterval(interval);
+          }
+          // else: keep polling for route to arrive
         }
       } catch {}
     }, 2000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [liveIncident?.id, formData.address, hasCoords, refreshedIncident]);
+  }, [liveIncident?.id, formData.address, hasCoords]);
 
   // Open picker: fetch all matches for current address
   const handleOpenPicker = async () => {
