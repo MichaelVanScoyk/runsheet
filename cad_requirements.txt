@@ -1,3 +1,0 @@
-# CAD Parser/Listener requirements
-beautifulsoup4>=4.9.0
-requests>=2.25.0
