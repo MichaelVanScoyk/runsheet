@@ -97,6 +97,14 @@ export default function ResponseOverlay({
 
   const headerColor = inc?.call_category === 'FIRE' ? '#DC2626' : '#2563EB';
 
+  // Check if there's any data worth showing in the side panel
+  const hasData = !loading && (
+    waterAll.length > 0 || preplans.length > 0 || sceneHistory.length > 0 ||
+    hazards.length > 0 || closures.length > 0 || addressNotes.length > 0 ||
+    (inc?.dispatched_units?.length > 0) || (inc?.cad_units?.length > 0)
+  );
+  const [panelOpen, setPanelOpen] = useState(true);
+
   return (
     <>
       {/* ===== TOP BAR — sits above map, full width ===== */}
@@ -149,13 +157,32 @@ export default function ResponseOverlay({
         </div>
       </div>
 
+      {/* ===== SIDE PANEL toggle button ===== */}
+      {!loading && (
+        <button
+          onClick={() => setPanelOpen(prev => !prev)}
+          style={{
+            position: 'absolute', top: '68px', right: panelOpen && hasData ? '280px' : '0px',
+            zIndex: 26, pointerEvents: 'auto',
+            background: '#fff', border: '1px solid #ddd', borderRight: 'none',
+            borderRadius: '4px 0 0 4px', padding: '6px 4px', cursor: 'pointer',
+            fontSize: '0.75rem', color: '#666', boxShadow: '-2px 0 4px rgba(0,0,0,0.1)',
+            transition: 'right 0.2s',
+          }}
+        >
+          {panelOpen && hasData ? '\u25B6' : '\u25C0'}
+        </button>
+      )}
+
       {/* ===== SIDE PANEL — right edge, below top bar ===== */}
       <div style={{
         position: 'absolute', top: '62px', right: 0, bottom: 0,
-        width: '280px', zIndex: 25, pointerEvents: 'auto',
-        background: '#fff', borderLeft: '1px solid #e0e0e0',
+        width: panelOpen && hasData ? '280px' : '0px',
+        zIndex: 25, pointerEvents: 'auto',
+        background: '#fff', borderLeft: panelOpen && hasData ? '1px solid #e0e0e0' : 'none',
         display: 'flex', flexDirection: 'column',
-        boxShadow: '-2px 0 8px rgba(0,0,0,0.1)',
+        boxShadow: panelOpen && hasData ? '-2px 0 8px rgba(0,0,0,0.1)' : 'none',
+        overflow: 'hidden', transition: 'width 0.2s',
       }}>
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid #eee', flexShrink: 0 }}>

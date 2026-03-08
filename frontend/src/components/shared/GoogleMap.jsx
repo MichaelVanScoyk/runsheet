@@ -438,6 +438,11 @@ export default function GoogleMap({
           content = createMarkerContent(createNumberedMarkerSvg(label, m.color), 28);
         }
         
+        // Apply pulse animation for open incidents
+        if (m.pulse && content) {
+          content.style.animation = 'cadreport-pulse 1.5s ease-in-out infinite';
+        }
+        
         const marker = new AdvancedMarker({
           map,
           position,
@@ -454,6 +459,7 @@ export default function GoogleMap({
         markersRef.current.push(marker);
       } else {
         // Legacy: google.maps.Marker
+        // Note: Legacy markers don't support CSS animation; pulse ignored
         let markerIcon;
         if (m.icon) {
           markerIcon = { url: m.icon, scaledSize: new window.google.maps.Size(32, 32) };
@@ -1130,6 +1136,12 @@ export default function GoogleMap({
         </div>
       )}
       <div ref={mapRef} style={{ height: '100%', borderRadius: '6px', border: '1px solid #e0e0e0' }} />
+      <style>{`
+        @keyframes cadreport-pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.6); opacity: 0.7; }
+        }
+      `}</style>
     </div>
   );
 }

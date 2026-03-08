@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 const POLL_INTERVAL = 30000; // 30 seconds
 
-export default function OpenIncidentPanel({ onSelectIncident }) {
+export default function OpenIncidentPanel({ onSelectIncident, onIncidentsLoaded }) {
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [minimized, setMinimized] = useState(false);
@@ -22,6 +22,7 @@ export default function OpenIncidentPanel({ onSelectIncident }) {
       if (res.ok) {
         const data = await res.json();
         setIncidents(data.incidents || []);
+        if (onIncidentsLoaded) onIncidentsLoaded(data.incidents || []);
       }
     } catch (e) {
       console.error('Failed to fetch open incidents:', e);
