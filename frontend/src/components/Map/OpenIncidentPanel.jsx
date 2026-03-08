@@ -16,13 +16,21 @@ export default function OpenIncidentPanel({ onSelectIncident, onIncidentsLoaded 
   const [minimized, setMinimized] = useState(false);
   const timerRef = useRef(null);
 
+  const prevIncidentsRef = useRef('');
+
   const fetchOpenIncidents = useCallback(async () => {
     try {
       const res = await fetch('/api/map/open-incidents');
       if (res.ok) {
         const data = await res.json();
-        setIncidents(data.incidents || []);
-        if (onIncidentsLoaded) onIncidentsLoaded(data.incidents || []);
+        const newList = data.incidents || [];
+        // Only update state if data actually changed (prevents marker re-creation)
+        const key = newList.map(i => `${i.id}:${i.status}`).join(',');
+        if (key !== prevIncidentsRef.current) {
+          prevIncidentsRef.current = key;
+          setIncidents(newList);
+          if (onIncidentsLoaded) onIncidentsLoaded(newList);
+        }
       }
     } catch (e) {
       console.error('Failed to fetch open incidents:', e);
