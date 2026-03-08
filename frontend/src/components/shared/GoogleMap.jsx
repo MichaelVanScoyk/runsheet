@@ -438,9 +438,10 @@ export default function GoogleMap({
           content = createMarkerContent(createNumberedMarkerSvg(label, m.color), 28);
         }
         
-        // Apply pulse animation for open incidents
+        // Apply pulse animation and offset for open incidents
         if (m.pulse && content) {
           content.style.animation = 'cadreport-pulse 1.5s ease-in-out infinite';
+          content.style.transform = 'translateY(-10px)';
         }
         
         const marker = new AdvancedMarker({
