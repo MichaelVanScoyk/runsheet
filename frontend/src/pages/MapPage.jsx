@@ -71,10 +71,17 @@ export default function MapPage({ userSession }) {
   const [openIncidents, setOpenIncidents] = useState([]);
   const [mapCenterOverride, setMapCenterOverride] = useState(null);
   const [responseData, setResponseData] = useState(null);
-  const [gpsEnabled, setGpsEnabled] = useState(false);
+  const [gpsEnabled, setGpsEnabled] = useState(() => {
+    try { return localStorage.getItem('map_gps_enabled') === 'true'; } catch { return false; }
+  });
   const [gpsPosition, setGpsPosition] = useState(null);
   const [gpsError, setGpsError] = useState(null);
   const gpsWatchRef = useRef(null);
+
+  // Persist GPS preference
+  useEffect(() => {
+    try { localStorage.setItem('map_gps_enabled', gpsEnabled ? 'true' : 'false'); } catch {}
+  }, [gpsEnabled]);
 
   // GPS tracking
   const [gpsFollowMode, setGpsFollowMode] = useState(true); // auto-follow by default when GPS on
