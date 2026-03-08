@@ -102,6 +102,7 @@ export default function ResponseOverlay({
           color: '#fff', padding: '6px 16px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{
@@ -115,22 +116,25 @@ export default function ResponseOverlay({
           </div>
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
             <button onClick={onToggleGps} style={{
-              padding: '3px 8px', borderRadius: '4px',
+              padding: '8px 12px', borderRadius: '6px',
               border: '1px solid rgba(255,255,255,0.4)',
               background: gpsEnabled ? 'rgba(255,255,255,0.3)' : 'transparent',
-              color: '#fff', fontSize: '0.7rem', cursor: 'pointer',
+              color: '#fff', fontSize: '0.75rem', cursor: 'pointer',
+              minHeight: '36px', minWidth: '60px',
             }}>{gpsEnabled ? 'GPS ON' : 'GPS OFF'}</button>
             <button onClick={onExit} style={{
-              padding: '3px 10px', borderRadius: '4px',
+              padding: '8px 14px', borderRadius: '6px',
               background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)',
-              color: '#fff', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600',
+              color: '#fff', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600',
+              minHeight: '36px',
             }}>EXIT</button>
           </div>
         </div>
         <div style={{
           background: 'rgba(255,255,255,0.92)', padding: '4px 16px',
           fontSize: '0.8rem', color: '#333', fontWeight: '500',
-          backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(0,0,0,0.08)',
+          backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+          borderBottom: '1px solid rgba(0,0,0,0.08)',
         }}>
           {inc?.address}
           {inc?.location_name && <span style={{ color: '#888', marginLeft: '8px', fontWeight: '400' }}>({inc.location_name})</span>}
@@ -148,9 +152,10 @@ export default function ResponseOverlay({
         position: 'absolute', top: '68px', right: '12px', zIndex: 25,
         pointerEvents: 'auto',
         width: collapsed ? '32px' : '260px',
-        maxHeight: 'calc(100vh - 160px)',
+        maxHeight: 'calc(100dvh - 160px)',
         background: 'rgba(20, 20, 20, 0.85)',
         backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
         borderRadius: '10px',
         boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
         overflow: 'hidden',
@@ -171,7 +176,8 @@ export default function ResponseOverlay({
         {/* All content — visible, scrollable */}
         {!collapsed && (
           <div style={{
-            flex: 1, overflowY: 'auto', padding: '0 10px 10px',
+            flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+            padding: '0 10px 10px',
             color: '#ddd', fontSize: '0.76rem',
           }}>
             {loading && <div style={{ textAlign: 'center', padding: '12px', color: '#888' }}>Loading...</div>}
@@ -278,15 +284,19 @@ export default function ResponseOverlay({
                         </div>
                         {w.latitude && w.longitude && (
                           <button
-                            onClick={() => window.open(
-                              `https://www.google.com/maps/dir/?api=1&destination=${w.latitude},${w.longitude}&travelmode=driving`,
-                              '_blank'
-                            )}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(
+                                `https://www.google.com/maps/dir/?api=1&destination=${w.latitude},${w.longitude}&travelmode=driving`,
+                                '_blank'
+                              );
+                            }}
                             style={{
                               background: 'rgba(59,130,246,0.3)', border: '1px solid rgba(59,130,246,0.5)',
-                              color: '#60A5FA', borderRadius: '4px', padding: '2px 6px',
-                              fontSize: '0.62rem', cursor: 'pointer', fontWeight: '600',
+                              color: '#60A5FA', borderRadius: '6px', padding: '6px 10px',
+                              fontSize: '0.68rem', cursor: 'pointer', fontWeight: '600',
                               flexShrink: 0, marginLeft: '6px',
+                              minHeight: '32px', minWidth: '44px',
                             }}
                           >NAV</button>
                         )}

@@ -67,6 +67,7 @@ export default function OpenIncidentPanel({ onSelectIncident, onIncidentsLoaded 
       boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
       overflow: 'hidden',
       border: '2px solid #DC2626',
+      WebkitOverflowScrolling: 'touch',
     }}>
       {/* Header */}
       <div
@@ -112,8 +113,8 @@ export default function OpenIncidentPanel({ onSelectIncident, onIncidentsLoaded 
                 alignItems: 'flex-start',
                 transition: 'background 0.15s',
               }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
-              onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+              onMouseEnter={e => { if (window.matchMedia('(hover: hover)').matches) e.currentTarget.style.background = '#f9fafb'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#fff'; }}
             >
               {/* Category indicator */}
               <div style={{

@@ -1132,7 +1132,7 @@ export default function GoogleMap({
     <div style={{ position: 'relative', height, ...style }}>
       {loading && (
         <div style={{
-          position: 'absolute', inset: 0, background: '#f5f5f5',
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: '#f5f5f5',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           borderRadius: '6px', zIndex: 1, color: '#888', fontSize: '0.85rem',
         }}>

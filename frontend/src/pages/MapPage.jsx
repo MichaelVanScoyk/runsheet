@@ -394,7 +394,7 @@ export default function MapPage({ userSession }) {
   }
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 0px)', position: 'relative' }}>
+    <div style={{ display: 'flex', height: '100dvh', position: 'relative' }}>
       {/* Layer toggle sidebar */}
       <div style={{
         width: (sidebarOpen && !responseModeIncident) ? '260px' : '0px',
