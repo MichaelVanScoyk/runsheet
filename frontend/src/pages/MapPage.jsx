@@ -25,6 +25,23 @@ import HighwayRouteEditor from '../components/Map/HighwayRouteEditor';
 import OpenIncidentPanel from '../components/Map/OpenIncidentPanel';
 import ResponseOverlay from '../components/Map/ResponseOverlay';
 
+// Decode Google encoded polyline to [{lat, lng}]
+function decodePolyline(encoded) {
+  if (!encoded) return [];
+  const points = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < encoded.length) {
+    let shift = 0, result = 0, b;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+    points.push({ lat: lat / 1e5, lng: lng / 1e5 });
+  }
+  return points;
+}
+
 export default function MapPage({ userSession }) {
   const [config, setConfig] = useState(null);
   const [layers, setLayers] = useState([]);
@@ -496,8 +513,29 @@ export default function MapPage({ userSession }) {
           showStation={true}
           stationCoords={stationCenter}
           viewportLayers={isRouteEditorOpen ? [] : viewportLayers}
-          markers={routeEditMarkers}
-          routeEditPath={isRouteEditorOpen ? routePoints : null}
+          markers={
+            responseModeIncident && responseData
+              ? [
+                  ...routeEditMarkers,
+                  // Incident pin
+                  {
+                    lat: parseFloat(responseModeIncident.latitude),
+                    lng: parseFloat(responseModeIncident.longitude),
+                    title: responseModeIncident.incident_number || 'Incident',
+                    color: responseModeIncident.call_category === 'FIRE' ? '#DC2626' : '#2563EB',
+                    label: '!',
+                    zIndex: 999,
+                  },
+                ]
+              : routeEditMarkers
+          }
+          routeEditPath={
+            isRouteEditorOpen
+              ? routePoints
+              : (responseModeIncident && responseData?.route?.polyline)
+                ? decodePolyline(responseData.route.polyline)
+                : null
+          }
           onFeatureClick={handleFeatureClick}
           onMapClick={responseModeIncident ? undefined : handleMapClick}
           isPlacing={isPlacing || isRouteEditorOpen}
