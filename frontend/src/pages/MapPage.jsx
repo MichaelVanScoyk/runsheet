@@ -514,7 +514,19 @@ export default function MapPage({ userSession }) {
           interactive={true}
           showStation={true}
           stationCoords={stationCenter}
-          viewportLayers={isRouteEditorOpen ? [] : viewportLayers}
+          viewportLayers={
+            isRouteEditorOpen
+              ? []
+              : responseModeIncident
+                ? viewportLayers.filter(vl => {
+                    // In response mode, only show water sources, hazards, closures, preplans
+                    const lt = layers.find(l => l.id === vl.layerId);
+                    if (!lt) return false;
+                    const keepTypes = ['hydrant', 'dry_hydrant', 'draft_point', 'hazard', 'closure', 'preplan'];
+                    return keepTypes.includes(lt.layer_type);
+                  })
+                : viewportLayers
+          }
           markers={[
             ...routeEditMarkers,
             // Pulsing markers for open incidents (normal mode)
@@ -527,14 +539,15 @@ export default function MapPage({ userSession }) {
               zIndex: 999,
               pulse: true,
             })) : []),
-            // Response mode: incident pin (no pulse, solid)
-            ...(responseModeIncident && responseData ? [{
+            // Response mode: incident pin (keep pulsing)
+            ...(responseModeIncident ? [{
               lat: parseFloat(responseModeIncident.latitude),
               lng: parseFloat(responseModeIncident.longitude),
               title: responseModeIncident.incident_number || 'Incident',
               color: responseModeIncident.call_category === 'FIRE' ? '#DC2626' : '#2563EB',
               label: '!',
               zIndex: 999,
+              pulse: true,
             }] : []),
           ]}
           routeEditPath={
