@@ -15,6 +15,7 @@ import HelpAdminTab from './HelpAdminTab';
 import MutualAidTab from './MutualAidTab';
 import ImportWizard from '../components/Map/ImportWizard';
 import NerisEntityTab from './NerisEntityTab';
+import NerisMappingTab from './NerisMappingTab';
 import { useHelp } from '../contexts/HelpContext';
 
 const API_BASE = '';
@@ -2833,6 +2834,12 @@ function AdminPage({ userSession }) {
           📋 NERIS Codes
         </button>
         <button 
+          className={activeTab === 'neris_mapping' ? 'active' : ''} 
+          onClick={() => setActiveTab('neris_mapping')}
+        >
+          🔗 NERIS Mapping
+        </button>
+        <button 
           className={activeTab === 'personnel' ? 'active' : ''} 
           onClick={() => setActiveTab('personnel')}
         >
@@ -2935,6 +2942,7 @@ function AdminPage({ userSession }) {
         {activeTab === 'sequence' && <IncidentSequenceTab />}
         {activeTab === 'neris_setup' && <NerisEntityTab />}
         {activeTab === 'neris' && <NerisCodesTab />}
+        {activeTab === 'neris_mapping' && <NerisMappingTab />}
         {activeTab === 'personnel' && <PersonnelPage embedded />}
         {activeTab === 'ranks' && <RanksTab />}
         {activeTab === 'eventtypes' && <DetailTypesTab />}
