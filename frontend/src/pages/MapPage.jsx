@@ -235,20 +235,6 @@ export default function MapPage({ userSession }) {
     return extra;
   }, [responseModeIncident, openIncidents]);
 
-  // Combined markers for GoogleMap (memoized to prevent re-render flicker)
-  const combinedMarkers = useMemo(() => {
-    return [...routeEditMarkers, ...responseMarkers];
-  }, [routeEditMarkers, responseMarkers]);
-
-  // Memoized map center to prevent re-render jitter
-  const mapCenter = useMemo(() => {
-    if (mapCenterOverride) return mapCenterOverride;
-    if (responseModeIncident) {
-      return { lat: parseFloat(responseModeIncident.latitude), lng: parseFloat(responseModeIncident.longitude) };
-    }
-    return stationCenter;
-  }, [mapCenterOverride, responseModeIncident, stationCenter]);
-
   // Response mode layers — force water sources, hazards, closures, preplans ON regardless of toggles
   const responseModeViewportLayers = useMemo(() => {
     const keepTypes = ['hydrant', 'dry_hydrant', 'draft_point', 'hazard', 'closure', 'preplan'];
@@ -398,6 +384,15 @@ export default function MapPage({ userSession }) {
     ? { lat: config.station_lat, lng: config.station_lng }
     : null;
 
+  // Memoized map center to prevent re-render jitter
+  const mapCenter = useMemo(() => {
+    if (mapCenterOverride) return mapCenterOverride;
+    if (responseModeIncident) {
+      return { lat: parseFloat(responseModeIncident.latitude), lng: parseFloat(responseModeIncident.longitude) };
+    }
+    return stationCenter;
+  }, [mapCenterOverride, responseModeIncident, stationCenter]);
+
   // Build markers for route points while editing
   const routeEditMarkers = useMemo(() => {
     if (!isRouteEditorOpen) return [];
@@ -425,6 +420,11 @@ export default function MapPage({ userSession }) {
     }
     return markers;
   }, [isRouteEditorOpen, routePoints, traceStartMarker, mmPointIndex]);
+
+  // Combined markers for GoogleMap (memoized to prevent re-render killing CSS animation)
+  const combinedMarkers = useMemo(() => {
+    return [...routeEditMarkers, ...responseMarkers];
+  }, [routeEditMarkers, responseMarkers]);
 
   if (!config) {
     return <div style={{ padding: '2rem', color: '#888' }}>Loading map configuration...</div>;
