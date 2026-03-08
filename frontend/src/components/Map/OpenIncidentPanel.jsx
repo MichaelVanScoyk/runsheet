@@ -25,7 +25,7 @@ export default function OpenIncidentPanel({ onSelectIncident, onIncidentsLoaded 
         const data = await res.json();
         const newList = data.incidents || [];
         // Only update state if data actually changed (prevents marker re-creation)
-        const key = newList.map(i => `${i.id}:${i.status}`).join(',');
+        const key = newList.map(i => `${i.id}:${i.status}:${i.latitude}:${i.longitude}:${i.address}`).join(',');
         if (key !== prevIncidentsRef.current) {
           prevIncidentsRef.current = key;
           setIncidents(newList);
