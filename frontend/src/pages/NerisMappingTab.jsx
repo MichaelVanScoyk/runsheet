@@ -199,6 +199,12 @@ async function fetchSchema() {
   return res.json();
 }
 
+async function fetchSampleData() {
+  const res = await fetch(`${API_BASE}/api/nerisv1/mapping/sample-data`);
+  if (!res.ok) throw new Error('Failed to load sample data');
+  return res.json();
+}
+
 async function fetchMappings() {
   const res = await fetch(`${API_BASE}/api/nerisv1/mapping`);
   if (!res.ok) throw new Error('Failed to load mappings');
@@ -325,6 +331,7 @@ function CreateColumnModal({ nerisHint, onClose, onCreate, schema }) {
 function NerisMappingTab() {
   const [schema, setSchema] = useState(null);
   const [mappings, setMappings] = useState([]);
+  const [sampleData, setSampleData] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeSection, setActiveSection] = useState(0);
@@ -344,9 +351,10 @@ function NerisMappingTab() {
     setLoading(true);
     setError(null);
     try {
-      const [schemaData, mappingData] = await Promise.all([fetchSchema(), fetchMappings()]);
+      const [schemaData, mappingData, samples] = await Promise.all([fetchSchema(), fetchMappings(), fetchSampleData()]);
       setSchema(schemaData);
       setMappings(mappingData);
+      setSampleData(samples || {});
       // Start with all tables collapsed except incidents
       const c = {};
       schemaData.tables.forEach(t => { c[t.table] = t.table !== 'incidents'; });
@@ -515,12 +523,21 @@ function NerisMappingTab() {
                       title={`${col.type}${col.nullable ? ', nullable' : ''}`}
                       style={{
                         display: 'flex', alignItems: 'center', gap: '0.4rem',
-                        padding: '0.25rem 0.5rem 0.25rem 1rem', fontSize: '0.73rem', cursor: 'grab',
+                        padding: '0.3rem 0.5rem 0.3rem 1rem', fontSize: '0.73rem', cursor: 'grab',
                         background: isHl ? '#fefce8' : 'transparent', borderBottom: '1px solid #f5f5f5',
                       }}
                     >
-                      <span style={{ fontFamily: "'Cascadia Code', 'Fira Code', monospace", fontWeight: 500, color, fontSize: '0.71rem' }}>{col.name}</span>
-                      <span style={{ fontSize: '0.62rem', color: '#aaa', marginLeft: 'auto', fontFamily: 'monospace' }}>{col.type.replace('character varying', 'varchar').replace('timestamp with time zone', 'timestamptz').replace('timestamp without time zone', 'timestamp')}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <span style={{ fontFamily: "'Cascadia Code', 'Fira Code', monospace", fontWeight: 500, color, fontSize: '0.71rem' }}>{col.name}</span>
+                          <span style={{ fontSize: '0.62rem', color: '#aaa', marginLeft: 'auto', fontFamily: 'monospace' }}>{col.type.replace('character varying', 'varchar').replace('timestamp with time zone', 'timestamptz').replace('timestamp without time zone', 'timestamp')}</span>
+                        </div>
+                        {sampleData[table.table]?.[col.name] != null && (
+                          <div style={{ fontSize: '0.62rem', color: '#888', fontFamily: 'monospace', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+                            {sampleData[table.table][col.name]}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

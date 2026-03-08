@@ -149,6 +149,57 @@ def get_db_schema(db: Session = Depends(get_db)):
 
 
 # ============================================================================
+# Sample data — most recent values for each column
+# ============================================================================
+
+@router.get("/mapping/sample-data")
+def get_sample_data(db: Session = Depends(get_db)):
+    """
+    Get the most recent row from each allowed table.
+    Shows real values so the mapping UI can display them as context.
+    """
+    samples = {}
+
+    for table in ALLOWED_TABLES:
+        try:
+            # Get column names first
+            cols_result = db.execute(text("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = :table
+                ORDER BY ordinal_position
+            """), {"table": table})
+            col_names = [r[0] for r in cols_result.fetchall()]
+
+            if not col_names:
+                continue
+
+            # Determine ordering — use id if exists, else first column
+            order_col = 'id' if 'id' in col_names else col_names[0]
+
+            # Get most recent row, cast everything to text for safe serialization
+            select_parts = ', '.join(f'"{c}"::text' for c in col_names)
+            row = db.execute(text(
+                f'SELECT {select_parts} FROM "{table}" ORDER BY "{order_col}" DESC LIMIT 1'
+            )).fetchone()
+
+            if row:
+                samples[table] = {}
+                for i, col in enumerate(col_names):
+                    val = row[i]
+                    if val is not None:
+                        # Truncate long values for display
+                        val = str(val)
+                        if len(val) > 80:
+                            val = val[:77] + '...'
+                    samples[table][col] = val
+        except Exception as e:
+            logger.warning(f"Failed to sample {table}: {e}")
+            samples[table] = {}
+
+    return samples
+
+
+# ============================================================================
 # Mapping CRUD
 # ============================================================================
 
