@@ -329,8 +329,8 @@ export default function MapPage({ userSession }) {
     <div style={{ display: 'flex', height: 'calc(100vh - 0px)', position: 'relative' }}>
       {/* Layer toggle sidebar */}
       <div style={{
-        width: sidebarOpen ? '260px' : '0px',
-        minWidth: sidebarOpen ? '260px' : '0px',
+        width: (sidebarOpen && !responseModeIncident) ? '260px' : '0px',
+        minWidth: (sidebarOpen && !responseModeIncident) ? '260px' : '0px',
         background: '#fff',
         borderRight: sidebarOpen ? '1px solid #e0e0e0' : 'none',
         overflow: 'hidden',
@@ -437,7 +437,7 @@ export default function MapPage({ userSession }) {
       </div>
 
       {/* Sidebar toggle */}
-      {!isRouteEditorOpen && (
+      {!isRouteEditorOpen && !responseModeIncident && (
         <button
           onClick={() => setSidebarOpen(prev => !prev)}
           style={{
@@ -497,18 +497,14 @@ export default function MapPage({ userSession }) {
           stationCoords={stationCenter}
           viewportLayers={isRouteEditorOpen ? [] : viewportLayers}
           markers={routeEditMarkers}
-          routeEditPath={
-            isRouteEditorOpen
-              ? routePoints
-              : (responseData?.route?.polyline ? '__response_route__' : null)
-          }
+          routeEditPath={isRouteEditorOpen ? routePoints : null}
           onFeatureClick={handleFeatureClick}
           onMapClick={responseModeIncident ? undefined : handleMapClick}
           isPlacing={isPlacing || isRouteEditorOpen}
         />
 
         {/* Feature detail popup — editable for OFFICER/ADMIN */}
-        {selectedFeature && !isRouteEditorOpen && (
+        {selectedFeature && !isRouteEditorOpen && !responseModeIncident && (
           <div style={{
             position: 'absolute', top: '10px', right: '10px', zIndex: 10,
             maxHeight: 'calc(100vh - 40px)', overflow: 'auto',
@@ -525,7 +521,7 @@ export default function MapPage({ userSession }) {
         )}
 
         {/* Officer/Admin: Feature editor toolbar OR placement form */}
-        {isOfficerOrAdmin && !selectedFeature && !isRouteEditorOpen && (
+        {isOfficerOrAdmin && !selectedFeature && !isRouteEditorOpen && !responseModeIncident && (
           <div style={{
             position: 'absolute',
             bottom: '10px',
@@ -546,7 +542,7 @@ export default function MapPage({ userSession }) {
         )}
 
         {/* Placement mode indicator (top center) */}
-        {isPlacing && !placementCoords && !isRouteEditorOpen && (
+        {isPlacing && !placementCoords && !isRouteEditorOpen && !responseModeIncident && (
           <div style={{
             position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)',
             background: '#fff', padding: '8px 16px', borderRadius: '20px',
