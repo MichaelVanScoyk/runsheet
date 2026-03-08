@@ -3,6 +3,7 @@ nerisv1: NERIS Field Mapping Configuration
 
 Endpoints:
   GET  /api/nerisv1/mapping/schema        — Introspect tenant DB (discover tables/columns)
+  GET  /api/nerisv1/mapping/sample-data   — Most recent data for each column
   GET  /api/nerisv1/mapping               — Get all active mappings
   GET  /api/nerisv1/mapping/section/{num}  — Get mappings for a section
   POST /api/nerisv1/mapping               — Create a mapping
@@ -94,6 +95,36 @@ ALLOWED_COLUMN_TYPES = [
 
 
 # ============================================================================
+# Helper: get column names for a table
+# ============================================================================
+
+def _get_col_names(db, table):
+    result = db.execute(text("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = :table
+        ORDER BY ordinal_position
+    """), {"table": table})
+    return [r[0] for r in result.fetchall()]
+
+
+def _build_select(col_names):
+    """Build SELECT clause casting all columns to text."""
+    parts = []
+    for c in col_names:
+        parts.append('"' + c + '"::text')
+    return ', '.join(parts)
+
+
+def _truncate(val, maxlen=80):
+    if val is None:
+        return None
+    val = str(val)
+    if len(val) > maxlen:
+        return val[:maxlen - 3] + '...'
+    return val
+
+
+# ============================================================================
 # DB Schema Introspection
 # ============================================================================
 
@@ -120,25 +151,24 @@ def get_db_schema(db: Session = Depends(get_db)):
 
     schema = {}
     for row in result.fetchall():
-        table = row[0]
-        if table not in schema:
-            schema[table] = {"table": table, "columns": []}
+        tbl = row[0]
+        if tbl not in schema:
+            schema[tbl] = {"table": tbl, "columns": []}
 
-        # Build a clean type string
         data_type = row[2]
         udt_name = row[6]
         max_len = row[5]
 
         if data_type == "ARRAY":
-            type_str = f"{udt_name.lstrip('_')}[]"
+            type_str = udt_name.lstrip('_') + "[]"
         elif data_type == "USER-DEFINED":
             type_str = udt_name
         elif max_len:
-            type_str = f"{data_type}({max_len})"
+            type_str = data_type + "(" + str(max_len) + ")"
         else:
             type_str = data_type
 
-        schema[table]["columns"].append({
+        schema[tbl]["columns"].append({
             "name": row[1],
             "type": type_str,
             "nullable": row[3] == "YES",
@@ -149,51 +179,53 @@ def get_db_schema(db: Session = Depends(get_db)):
 
 
 # ============================================================================
-# Sample data — most recent values for each column
+# Sample data — most recent CLOSED incident values for each column
 # ============================================================================
 
 @router.get("/mapping/sample-data")
 def get_sample_data(db: Session = Depends(get_db)):
     """
-    Get the most recent row from each allowed table.
+    Get sample data from the most recent CLOSED incident and its related rows.
     Shows real values so the mapping UI can display them as context.
     """
     samples = {}
 
+    # Find the latest closed incident for context
+    latest_row = db.execute(text(
+        "SELECT id FROM incidents WHERE status = 'CLOSED' ORDER BY id DESC LIMIT 1"
+    )).fetchone()
+    latest_id = latest_row[0] if latest_row else None
+
     for table in ALLOWED_TABLES:
         try:
-            # Get column names first
-            cols_result = db.execute(text("""
-                SELECT column_name FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = :table
-                ORDER BY ordinal_position
-            """), {"table": table})
-            col_names = [r[0] for r in cols_result.fetchall()]
-
+            col_names = _get_col_names(db, table)
             if not col_names:
                 continue
 
-            # Determine ordering — use id if exists, else first column
-            order_col = 'id' if 'id' in col_names else col_names[0]
+            select_parts = _build_select(col_names)
 
-            # Get most recent row, cast everything to text for safe serialization
-            select_parts = ', '.join(f'"{c}"::text' for c in col_names)
-            row = db.execute(text(
-                f'SELECT {select_parts} FROM "{table}" ORDER BY "{order_col}" DESC LIMIT 1'
-            )).fetchone()
+            # Build query per table
+            if table == 'incidents' and latest_id is not None:
+                query = "SELECT " + select_parts + ' FROM "incidents" WHERE id = ' + str(latest_id)
+            elif table == 'incident_units' and latest_id is not None and 'incident_id' in col_names:
+                query = "SELECT " + select_parts + ' FROM "incident_units" WHERE incident_id = ' + str(latest_id) + " ORDER BY id DESC LIMIT 1"
+            elif table == 'incident_personnel' and latest_id is not None and 'incident_id' in col_names:
+                query = "SELECT " + select_parts + ' FROM "incident_personnel" WHERE incident_id = ' + str(latest_id) + " ORDER BY id DESC LIMIT 1"
+            elif 'id' in col_names:
+                query = "SELECT " + select_parts + ' FROM "' + table + '" ORDER BY id DESC LIMIT 1'
+            elif 'created_at' in col_names:
+                query = "SELECT " + select_parts + ' FROM "' + table + '" ORDER BY created_at DESC LIMIT 1'
+            else:
+                query = "SELECT " + select_parts + ' FROM "' + table + '" LIMIT 1'
+
+            row = db.execute(text(query)).fetchone()
 
             if row:
                 samples[table] = {}
                 for i, col in enumerate(col_names):
-                    val = row[i]
-                    if val is not None:
-                        # Truncate long values for display
-                        val = str(val)
-                        if len(val) > 80:
-                            val = val[:77] + '...'
-                    samples[table][col] = val
+                    samples[table][col] = _truncate(row[i])
         except Exception as e:
-            logger.warning(f"Failed to sample {table}: {e}")
+            logger.warning("Failed to sample %s: %s", table, e)
             samples[table] = {}
 
     return samples
@@ -249,11 +281,9 @@ def create_mapping(
     db: Session = Depends(get_db),
 ):
     """Create a new field mapping."""
-    # Validate source table if provided
     if mapping.source_table and mapping.source_table not in ALLOWED_TABLES:
-        raise HTTPException(400, f"Table '{mapping.source_table}' not in allowed tables")
+        raise HTTPException(400, "Table '" + mapping.source_table + "' not in allowed tables")
 
-    # Validate section range
     if not 1 <= mapping.neris_section <= 23:
         raise HTTPException(400, "Section must be 1-23")
 
@@ -286,7 +316,7 @@ def create_mapping(
     except Exception as e:
         db.rollback()
         if "unique" in str(e).lower():
-            raise HTTPException(409, f"Mapping already exists for {mapping.neris_field_path} at priority {mapping.priority}")
+            raise HTTPException(409, "Mapping already exists for " + mapping.neris_field_path + " at priority " + str(mapping.priority))
         raise HTTPException(500, str(e))
 
 
@@ -297,13 +327,12 @@ def update_mapping(
     db: Session = Depends(get_db),
 ):
     """Update an existing field mapping."""
-    # Build dynamic SET clause from non-None fields
     set_parts = []
     params = {"id": mapping_id}
 
     if updates.source_table is not None:
         if updates.source_table not in ALLOWED_TABLES:
-            raise HTTPException(400, f"Table '{updates.source_table}' not in allowed tables")
+            raise HTTPException(400, "Table '" + updates.source_table + "' not in allowed tables")
         set_parts.append("source_table = :s_table")
         params["s_table"] = updates.source_table
 
@@ -337,16 +366,13 @@ def update_mapping(
     set_parts.append("updated_at = NOW()")
     set_clause = ", ".join(set_parts)
 
-    result = db.execute(text(f"""
-        UPDATE neris_field_mapping
-        SET {set_clause}
-        WHERE id = :id
-        RETURNING id
-    """), params)
+    result = db.execute(text(
+        "UPDATE neris_field_mapping SET " + set_clause + " WHERE id = :id RETURNING id"
+    ), params)
     db.commit()
 
     if result.fetchone() is None:
-        raise HTTPException(404, f"Mapping {mapping_id} not found")
+        raise HTTPException(404, "Mapping " + str(mapping_id) + " not found")
 
     return {"id": mapping_id, "status": "updated"}
 
@@ -363,7 +389,7 @@ def delete_mapping(
     db.commit()
 
     if result.fetchone() is None:
-        raise HTTPException(404, f"Mapping {mapping_id} not found")
+        raise HTTPException(404, "Mapping " + str(mapping_id) + " not found")
 
     return {"id": mapping_id, "status": "deleted"}
 
@@ -381,22 +407,18 @@ def create_column(
     Create a new column on a tenant table from the mapping UI.
     Restricted to allowed tables and types. Logged for audit.
     """
-    # Validate table
     if req.table_name not in ALTERABLE_TABLES:
-        raise HTTPException(400, f"Cannot add columns to '{req.table_name}'. Allowed: {ALTERABLE_TABLES}")
+        raise HTTPException(400, "Cannot add columns to '" + req.table_name + "'. Allowed: " + str(ALTERABLE_TABLES))
 
-    # Validate column type
     if req.column_type not in ALLOWED_COLUMN_TYPES:
-        raise HTTPException(400, f"Column type '{req.column_type}' not allowed. Allowed: {ALLOWED_COLUMN_TYPES}")
+        raise HTTPException(400, "Column type '" + req.column_type + "' not allowed. Allowed: " + str(ALLOWED_COLUMN_TYPES))
 
-    # Validate column name (alphanumeric + underscore only)
     if not req.column_name.replace("_", "").isalnum():
         raise HTTPException(400, "Column name must be alphanumeric with underscores only")
 
     if len(req.column_name) > 63:
         raise HTTPException(400, "Column name too long (max 63 chars)")
 
-    # Check if column already exists
     exists = db.execute(text("""
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'public'
@@ -405,15 +427,13 @@ def create_column(
     """), {"table": req.table_name, "col": req.column_name}).fetchone()
 
     if exists:
-        raise HTTPException(409, f"Column '{req.column_name}' already exists on '{req.table_name}'")
+        raise HTTPException(409, "Column '" + req.column_name + "' already exists on '" + req.table_name + "'")
 
     try:
-        # ALTER TABLE — safe because table/type are validated against allowlists
         db.execute(text(
-            f'ALTER TABLE "{req.table_name}" ADD COLUMN "{req.column_name}" {req.column_type}'
+            'ALTER TABLE "' + req.table_name + '" ADD COLUMN "' + req.column_name + '" ' + req.column_type
         ))
 
-        # Log the creation
         db.execute(text("""
             INSERT INTO neris_field_mapping_columns_log
                 (table_name, column_name, column_type, neris_field_hint)
@@ -427,7 +447,7 @@ def create_column(
         })
 
         db.commit()
-        logger.info(f"Created column {req.table_name}.{req.column_name} ({req.column_type}) via mapping UI")
+        logger.info("Created column %s.%s (%s) via mapping UI", req.table_name, req.column_name, req.column_type)
 
         return {
             "status": "created",
@@ -437,8 +457,8 @@ def create_column(
         }
     except Exception as e:
         db.rollback()
-        logger.error(f"Failed to create column: {e}")
-        raise HTTPException(500, f"Failed to create column: {str(e)}")
+        logger.error("Failed to create column: %s", e)
+        raise HTTPException(500, "Failed to create column: " + str(e))
 
 
 # ============================================================================
