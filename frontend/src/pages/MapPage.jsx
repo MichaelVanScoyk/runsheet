@@ -201,6 +201,23 @@ export default function MapPage({ userSession }) {
     return extra;
   }, [responseModeIncident, openIncidents]);
 
+  // Response mode layers — force water sources, hazards, closures, preplans ON regardless of toggles
+  const responseModeViewportLayers = useMemo(() => {
+    const keepTypes = ['hydrant', 'dry_hydrant', 'draft_point', 'hazard', 'closure', 'preplan'];
+    return layers
+      .filter(l => keepTypes.includes(l.layer_type) && l.is_active)
+      .map(l => ({
+        layerId: l.id,
+        color: l.color,
+        icon: l.icon,
+        geometryType: l.geometry_type,
+        opacity: l.opacity,
+        strokeColor: l.stroke_color,
+        strokeOpacity: l.stroke_opacity,
+        strokeWeight: l.stroke_weight,
+      }));
+  }, [layers]);
+
   // Build viewportLayers — tells GoogleMap which layers to fetch via viewport API
   const viewportLayers = useMemo(() => {
     const result = [];
@@ -554,13 +571,7 @@ export default function MapPage({ userSession }) {
             isRouteEditorOpen
               ? []
               : responseModeIncident
-                ? viewportLayers.filter(vl => {
-                    // In response mode, only show water sources, hazards, closures, preplans
-                    const lt = layers.find(l => l.id === vl.layerId);
-                    if (!lt) return false;
-                    const keepTypes = ['hydrant', 'dry_hydrant', 'draft_point', 'hazard', 'closure', 'preplan'];
-                    return keepTypes.includes(lt.layer_type);
-                  })
+                ? responseModeViewportLayers
                 : viewportLayers
           }
           markers={[...routeEditMarkers, ...responseMarkers]}

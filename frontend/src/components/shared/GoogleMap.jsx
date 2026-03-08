@@ -554,14 +554,17 @@ export default function GoogleMap({
       idleListenerRef.current = null;
     }
 
+    // Immediately clear all viewport markers when layers change.
+    // This prevents stale markers from layers that are no longer visible.
+    viewportMarkersRef.current.forEach(m => {
+      if (m.map !== undefined) m.map = null;
+      else if (m.setMap) m.setMap(null);
+    });
+    viewportMarkersRef.current = [];
+    dataLayersRef.current.forEach(dl => dl.setMap(null));
+    dataLayersRef.current = [];
+
     if (!viewportLayers || viewportLayers.length === 0) {
-      viewportMarkersRef.current.forEach(m => {
-        if (m.map !== undefined) m.map = null;
-        else if (m.setMap) m.setMap(null);
-      });
-      viewportMarkersRef.current = [];
-      dataLayersRef.current.forEach(dl => dl.setMap(null));
-      dataLayersRef.current = [];
       return;
     }
 
