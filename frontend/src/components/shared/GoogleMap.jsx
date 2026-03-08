@@ -119,6 +119,19 @@ function createNumberedMarkerSvg(label, color, size = 28) {
 }
 
 /**
+ * Create SVG for pulsing marker (uses native SVG <animate> for legacy markers)
+ */
+function createPulsingMarkerSvg(label, color, size = 28) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${color}" stroke="#fff" stroke-width="2">
+      <animate attributeName="r" values="${size/2 - 2};${size/2 - 5};${size/2 - 2}" dur="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;0.6;1" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="12" font-weight="600" font-family="Arial,sans-serif">${label}</text>
+  </svg>`;
+}
+
+/**
  * Create SVG for station marker
  */
 function createStationMarkerSvg(size = 16) {
@@ -462,7 +475,6 @@ export default function GoogleMap({
         markersRef.current.push(marker);
       } else {
         // Legacy: google.maps.Marker
-        // Note: Legacy markers don't support CSS animation; pulse ignored
         let markerIcon;
         if (m.icon) {
           markerIcon = { url: m.icon, scaledSize: new window.google.maps.Size(32, 32) };
@@ -483,6 +495,7 @@ export default function GoogleMap({
           title: m.title || '',
           icon: markerIcon,
           zIndex: m.zIndex || 10,
+          animation: m.pulse ? window.google.maps.Animation.BOUNCE : null,
         });
         
         if (m.title) {
