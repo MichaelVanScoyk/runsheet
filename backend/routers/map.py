@@ -355,12 +355,101 @@ async def get_incident_response_data(
             "feature_id": p.get("feature_id"),
         } for p in raw_preplans]
 
-    # --- Hazards and closures ---
-    hazards = snapshot.get("hazards", [])
-    closures = snapshot.get("closures", [])
+    # --- Hazards and closures (always query live, not from stale snapshot) ---
+    hazards = []
+    closures = []
+    if lat and lng:
+        from services.location.proximity import query_point_radius_features, query_nearby_closures
+        raw_features = query_point_radius_features(db, lat, lng)
+        for f in raw_features:
+            lt = f.get("layer_type", "")
+            alert = {
+                "alert_type": lt,
+                "icon": f.get("icon", "\u26a0\ufe0f"),
+                "title": f.get("title", ""),
+                "description": f.get("description"),
+                "distance_meters": f.get("distance_meters"),
+                "properties": f.get("properties", {}),
+                "feature_id": f.get("feature_id"),
+                "layer_type": lt,
+            }
+            if lt == "hazard":
+                hazards.append(alert)
+        raw_closures = query_nearby_closures(db, lat, lng)
+        for c in raw_closures:
+            closures.append({
+                "alert_type": "closure",
+                "icon": c.get("icon", "\ud83d\udeab"),
+                "title": c.get("title", ""),
+                "description": c.get("description"),
+                "distance_meters": c.get("distance_meters"),
+                "properties": c.get("properties", {}),
+                "feature_id": c.get("feature_id"),
+                "layer_type": "closure",
+            })
 
-    # --- Address notes ---
-    address_notes = snapshot.get("address_notes", [])
+    # --- Route corridor hazards/closures (within 200m of route polyline) ---
+    route_corridor_hazards = []
+    route_corridor_closures = []
+    if inc["route_polyline"]:
+        try:
+            # Decode polyline to WKT LINESTRING for PostGIS
+            from services.location.route import _decode_polyline_to_coords
+            route_coords = _decode_polyline_to_coords(inc["route_polyline"])
+            if len(route_coords) >= 2:
+                wkt_points = ", ".join(f"{lng} {lat}" for lat, lng in route_coords)
+                route_wkt = f"LINESTRING({wkt_points})"
+
+                seen_ids = {h.get("feature_id") for h in hazards} | {c.get("feature_id") for c in closures}
+                corridor_result = db.execute(text("""
+                    SELECT mf.id, mf.title, mf.description, mf.properties, mf.address,
+                           ml.icon, ml.layer_type,
+                           ST_Distance(
+                               mf.geometry::geography,
+                               ST_GeomFromText(:route_wkt, 4326)::geography
+                           ) as distance_meters
+                    FROM map_features mf
+                    JOIN map_layers ml ON mf.layer_id = ml.id
+                    WHERE ml.is_active = true
+                      AND ml.layer_type IN ('hazard', 'closure')
+                      AND ST_DWithin(
+                          mf.geometry::geography,
+                          ST_GeomFromText(:route_wkt, 4326)::geography,
+                          200
+                      )
+                    ORDER BY distance_meters
+                """), {"route_wkt": route_wkt})
+            for row in corridor_result:
+                fid = row[0]
+                if fid in seen_ids:
+                    continue
+                seen_ids.add(fid)
+                item = {
+                    "alert_type": row[6],
+                    "icon": row[5] or "\u26a0\ufe0f",
+                    "title": row[1] or "",
+                    "description": row[2],
+                    "distance_meters": round(row[7], 1) if row[7] else None,
+                    "properties": row[3] or {},
+                    "feature_id": fid,
+                    "layer_type": row[6],
+                    "on_route": True,
+                }
+                if row[6] == "hazard":
+                    route_corridor_hazards.append(item)
+                elif row[6] == "closure":
+                    route_corridor_closures.append(item)
+        except Exception as e:
+            logger.warning(f"Route corridor query failed: {e}")
+
+    hazards.extend(route_corridor_hazards)
+    closures.extend(route_corridor_closures)
+
+    # --- Address notes (always query live) ---
+    address_notes = []
+    if inc["address"]:
+        from services.location.proximity import query_address_notes
+        address_notes = query_address_notes(db, inc["address"])
 
     # --- Scene history ---
     scene_history = []

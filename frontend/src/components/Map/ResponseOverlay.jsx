@@ -201,6 +201,7 @@ export default function ResponseOverlay({
                     background: 'rgba(220,38,38,0.18)', borderLeft: '3px solid #DC2626',
                   }}>
                     {h.icon || '\u26A0\uFE0F'} {h.title}
+                    {h.on_route && <span style={{ background: '#DC2626', color: '#fff', fontSize: '0.55rem', padding: '1px 4px', borderRadius: '3px', marginLeft: '5px', fontWeight: '700' }}>ON ROUTE</span>}
                     {h.distance_meters && <span style={{ color: '#aaa', marginLeft: '6px', fontSize: '0.68rem' }}>{fmtDist(h.distance_meters)}</span>}
                   </div>
                 ))}
@@ -217,6 +218,7 @@ export default function ResponseOverlay({
                     background: 'rgba(220,38,38,0.12)', borderLeft: '3px solid #F87171',
                   }}>
                     {c.icon || '\uD83D\uDEAB'} {c.title}
+                    {c.on_route && <span style={{ background: '#DC2626', color: '#fff', fontSize: '0.55rem', padding: '1px 4px', borderRadius: '3px', marginLeft: '5px', fontWeight: '700' }}>ON ROUTE</span>}
                     {c.distance_meters && <span style={{ color: '#aaa', marginLeft: '6px', fontSize: '0.68rem' }}>{fmtDist(c.distance_meters)}</span>}
                   </div>
                 ))}

@@ -21,6 +21,42 @@ DIRECTIONS_BASE = "https://maps.googleapis.com/maps/api/directions/json"
 DIRECTIONS_TIMEOUT = 10
 
 
+def _decode_polyline_to_coords(encoded: str) -> list:
+    """
+    Decode a Google encoded polyline string into a list of (lat, lng) tuples.
+    Used for building WKT LINESTRING for PostGIS route corridor queries.
+    """
+    coords = []
+    index = 0
+    lat = 0
+    lng = 0
+    while index < len(encoded):
+        # Decode latitude
+        shift = 0
+        result = 0
+        while True:
+            b = ord(encoded[index]) - 63
+            index += 1
+            result |= (b & 0x1f) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        lat += ~(result >> 1) if result & 1 else result >> 1
+        # Decode longitude
+        shift = 0
+        result = 0
+        while True:
+            b = ord(encoded[index]) - 63
+            index += 1
+            result |= (b & 0x1f) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        lng += ~(result >> 1) if result & 1 else result >> 1
+        coords.append((lat / 1e5, lng / 1e5))
+    return coords
+
+
 def fetch_route(
     origin_lat: float,
     origin_lng: float,
