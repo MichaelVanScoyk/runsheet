@@ -172,25 +172,25 @@ Source: `IncidentPayload` schema from `api-test.neris.fsri.org/v1/openapi.json` 
 | # | Module | Schema Reference | Required | Conditional Trigger | Status |
 |---|--------|-----------------|----------|-------------------|--------|
 | 1 | `base` | `IncidentBasePayload` | **YES** | — | complete|
-| 2 | `incident_types` | `IncidentTypePayload[]` or `IncidentTypeCadPayload[]` | **YES** | — | ❌ NOT STARTED |
-| 3 | `dispatch` | `DispatchPayload` | **YES** | — | ❌ NOT STARTED |
-| 4 | `special_modifiers` | `TypeSpecialModifierValue[]` | no | — | ❌ NOT STARTED |
-| 5 | `aids` | `AidPayload[]` | no | — | ❌ NOT STARTED |
-| 6 | `nonfd_aids` | `TypeAidNonfdValue[]` | no | — | ❌ NOT STARTED |
-| 7 | `actions_tactics` | `ActionTacticPayload` | no | — | ❌ NOT STARTED |
-| 8 | `tactic_timestamps` | `IncidentTacticTimestampsPayload` | no | — | ❌ NOT STARTED |
-| 9 | `unit_responses` | `IncidentUnitResponsePayload[]` | no | — | ❌ NOT STARTED |
-| 10 | `exposures` | `ExposurePayload[]` | no | — | ❌ NOT STARTED |
-| 11 | `casualty_rescues` | `CasualtyRescuePayload[]` | no | — | ❌ NOT STARTED |
-| 12 | `fire_detail` | `FirePayload` | no | Incident type starts with `FIRE\|\|` | ❌ NOT STARTED |
-| 13 | `hazsit_detail` | `HazsitPayload` | no | Incident type starts with `HAZSIT\|\|` | ❌ NOT STARTED |
-| 14 | `medical_details` | `MedicalPayload[]` | no | Incident type starts with `MEDICAL\|\|` | ❌ NOT STARTED |
-| 15 | `smoke_alarm` | `SmokeAlarmPayload` | no | Required for `FIRE\|\|STRUCTURE_FIRE` (unless SUPPORT_AID GIVEN) | ❌ NOT STARTED |
-| 16 | `fire_alarm` | `FireAlarmPayload` | no | Required for `FIRE\|\|STRUCTURE_FIRE` (unless SUPPORT_AID GIVEN) | ❌ NOT STARTED |
-| 17 | `other_alarm` | `OtherAlarmPayload` | no | Required for `FIRE\|\|STRUCTURE_FIRE` (unless SUPPORT_AID GIVEN) | ❌ NOT STARTED |
-| 18 | `fire_suppression` | `FireSuppressionPayload` | no | Required for `FIRE\|\|STRUCTURE_FIRE` (unless SUPPORT_AID GIVEN) | ❌ NOT STARTED |
-| 19 | `cooking_fire_suppression` | `CookingFireSuppressionPayload` | no | Required for `FIRE\|\|STRUCTURE_FIRE\|\|CONFINED_COOKING_APPLIANCE_FIRE` (unless SUPPORT_AID GIVEN) | ❌ NOT STARTED |
-| 20 | `electric_hazards` | `ElectricHazardPayload[]` | no | — | ❌ NOT STARTED |
+| 2 | `incident_types` | `IncidentTypePayload[]` or `IncidentTypeCadPayload[]` | **YES** | — | complete |
+| 3 | `dispatch` | `DispatchPayload` | **YES** | — | complete |
+| 4 | `special_modifiers` | `TypeSpecialModifierValue[]` | no | — | complete |
+| 5 | `aids` | `AidPayload[]` | no | — | complete |
+| 6 | `nonfd_aids` | `TypeAidNonfdValue[]` | no | — | complete|
+| 7 | `actions_tactics` | `ActionTacticPayload` | no | — | complete |
+| 8 | `tactic_timestamps` | `IncidentTacticTimestampsPayload` | no | — | complete |
+| 9 | `unit_responses` | `IncidentUnitResponsePayload[]` | no | — | complete |
+| 10 | `exposures` | `ExposurePayload[]` | no | — | complete |
+| 11 | `casualty_rescues` | `CasualtyRescuePayload[]` | no | — | complete |
+| 12 | `fire_detail` | `FirePayload` | no | Incident type starts with `FIRE\|\|` | complete |
+| 13 | `hazsit_detail` | `HazsitPayload` | no | Incident type starts with `HAZSIT\|\|` | complete |
+| 14 | `medical_details` | `MedicalPayload[]` | no | Incident type starts with `MEDICAL\|\|` | complete |
+| 15 | `smoke_alarm` | `SmokeAlarmPayload` | no | Required for `FIRE\|\|STRUCTURE_FIRE` (unless SUPPORT_AID GIVEN) | Complete |
+| 16 | `fire_alarm` | `FireAlarmPayload` | no | Required for `FIRE\|\|STRUCTURE_FIRE` (unless SUPPORT_AID GIVEN) | completed |
+| 17 | `other_alarm` | `OtherAlarmPayload` | no | Required for `FIRE\|\|STRUCTURE_FIRE` (unless SUPPORT_AID GIVEN) | complete |
+| 18 | `fire_suppression` | `FireSuppressionPayload` | no | Required for `FIRE\|\|STRUCTURE_FIRE` (unless SUPPORT_AID GIVEN) | complete |
+| 19 | `cooking_fire_suppression` | `CookingFireSuppressionPayload` | no | Required for `FIRE\|\|STRUCTURE_FIRE\|\|CONFINED_COOKING_APPLIANCE_FIRE` (unless SUPPORT_AID GIVEN) | complete |
+| 20 | `electric_hazards` | `ElectricHazardPayload[]` | no | — | complete |
 | 21 | `powergen_hazards` | `PvPowergenHazardPayload[]` | no | — | ❌ NOT STARTED |
 | 22 | `csst_hazard` | `CsstHazardPayload` | no | — | ❌ NOT STARTED |
 | 23 | `medical_oxygen_hazard` | `MedicalOxygenHazardPayload` | no | — | ❌ NOT STARTED |
