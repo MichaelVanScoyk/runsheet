@@ -346,8 +346,10 @@ export default function GoogleMap({
         };
         
         // Add mapId if we have it (required for AdvancedMarkerElement)
-        // Disable fractional zoom - vector maps enable it by default, but we need integer zoom
-        // for server-side clustering to work correctly
+        // CRITICAL: Disable fractional zoom. Vector maps enable it by default, but server-side
+        // clustering requires integer zoom values. Without this, map.getZoom() returns floats
+        // like 15.7, which truncate to 15 on the server causing cluster/marker mismatch.
+        // See: https://developers.google.com/maps/documentation/javascript/vector-map
         if (resolvedMapId) {
           mapOptions.mapId = resolvedMapId;
           mapOptions.isFractionalZoomEnabled = false;
@@ -380,21 +382,24 @@ export default function GoogleMap({
     initMap();
 
     return () => {
-      markersRef.current.forEach(m => {
-        if (m.map !== undefined) m.map = null;
-        else if (m.setMap) m.setMap(null);
-      });
+      // Helper to remove any marker type correctly
+      // Legacy google.maps.Marker: must use setMap(null)
+      // AdvancedMarkerElement: set map property to null
+      const removeMarker = (m) => {
+        if (!m) return;
+        if (typeof m.setMap === 'function') {
+          m.setMap(null); // Legacy Marker
+        } else if ('map' in m) {
+          m.map = null;   // AdvancedMarkerElement
+        }
+      };
+      
+      markersRef.current.forEach(removeMarker);
       circlesRef.current.forEach(c => c.setMap(null));
       polygonsRef.current.forEach(p => p.setMap(null));
       dataLayersRef.current.forEach(dl => dl.setMap(null));
-      viewportMarkersRef.current.forEach(m => {
-        if (m.map !== undefined) m.map = null;
-        else if (m.setMap) m.setMap(null);
-      });
-      if (stationMarkerRef.current) {
-        if (stationMarkerRef.current.map !== undefined) stationMarkerRef.current.map = null;
-        else if (stationMarkerRef.current.setMap) stationMarkerRef.current.setMap(null);
-      }
+      viewportMarkersRef.current.forEach(removeMarker);
+      removeMarker(stationMarkerRef.current);
       if (idleListenerRef.current) window.google?.maps?.event?.removeListener(idleListenerRef.current);
       mapInstanceRef.current = null;
     };
@@ -423,15 +428,22 @@ export default function GoogleMap({
   // ==========================================================================
   // RENDER SIMPLE MARKERS
   // ==========================================================================
+  // Helper function to remove a marker from map (works for both legacy and advanced markers)
+  const removeMarker = (m) => {
+    if (!m) return;
+    if (typeof m.setMap === 'function') {
+      m.setMap(null); // Legacy google.maps.Marker
+    } else if ('map' in m) {
+      m.map = null;   // AdvancedMarkerElement
+    }
+  };
+
   useEffect(() => {
     if (!mapReady) return;
     if (!mapInstanceRef.current) return;
     
-    // Clear old markers
-    markersRef.current.forEach(m => {
-      if (m.map !== undefined) m.map = null;
-      else if (m.setMap) m.setMap(null);
-    });
+    // Clear old markers using correct method for each marker type
+    markersRef.current.forEach(removeMarker);
     markersRef.current = [];
 
     const map = mapInstanceRef.current;
@@ -572,10 +584,8 @@ export default function GoogleMap({
 
     // Immediately clear all viewport markers when layers change.
     // This prevents stale markers from layers that are no longer visible.
-    viewportMarkersRef.current.forEach(m => {
-      if (m.map !== undefined) m.map = null;
-      else if (m.setMap) m.setMap(null);
-    });
+    // Use correct removal method based on marker type.
+    viewportMarkersRef.current.forEach(removeMarker);
     viewportMarkersRef.current = [];
     dataLayersRef.current.forEach(dl => dl.setMap(null));
     dataLayersRef.current = [];
@@ -639,11 +649,8 @@ export default function GoogleMap({
 
       const results = layerIds.map(lid => batchData.layers?.[String(lid)] || null);
 
-      // Clear old markers
-      viewportMarkersRef.current.forEach(m => {
-        if (m.map !== undefined) m.map = null;
-        else if (m.setMap) m.setMap(null);
-      });
+      // Clear old markers using correct removal method
+      viewportMarkersRef.current.forEach(removeMarker);
       viewportMarkersRef.current = [];
 
       dataLayersRef.current.forEach(dl => dl.setMap(null));
@@ -960,12 +967,16 @@ export default function GoogleMap({
         window.google.maps.event.removeListener(idleListenerRef.current);
         idleListenerRef.current = null;
       }
+      // Abort any in-flight fetch to prevent race conditions
+      // Per React docs: cleanup runs before the next effect, so abort here
+      // ensures stale fetches don't add markers after the new effect starts
+      if (fetchControllerRef.current) {
+        fetchControllerRef.current.abort();
+        fetchControllerRef.current = null;
+      }
       // Clear all viewport markers and data layers on cleanup
-      // so toggling layers off or changing zoom doesn't leave stale markers
-      viewportMarkersRef.current.forEach(m => {
-        if (m.map !== undefined) m.map = null;
-        else if (m.setMap) m.setMap(null);
-      });
+      // Use correct removal method for each marker type
+      viewportMarkersRef.current.forEach(removeMarker);
       viewportMarkersRef.current = [];
       dataLayersRef.current.forEach(dl => dl.setMap(null));
       dataLayersRef.current = [];
@@ -1079,11 +1090,9 @@ export default function GoogleMap({
   useEffect(() => {
     if (!mapReady || !showStation || !stationCoords) return;
     
-    // Clear old marker
-    if (stationMarkerRef.current) {
-      if (stationMarkerRef.current.map !== undefined) stationMarkerRef.current.map = null;
-      else if (stationMarkerRef.current.setMap) stationMarkerRef.current.setMap(null);
-    }
+    // Clear old marker using correct removal method
+    removeMarker(stationMarkerRef.current);
+    stationMarkerRef.current = null;
 
     const position = { lat: parseFloat(stationCoords.lat), lng: parseFloat(stationCoords.lng) };
     const AdvancedMarker = advancedMarkerRef.current;
@@ -1122,12 +1131,9 @@ export default function GoogleMap({
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current) return;
 
-    // Clear old GPS marker
-    if (gpsMarkerRef.current) {
-      if (gpsMarkerRef.current.map !== undefined) gpsMarkerRef.current.map = null;
-      else if (gpsMarkerRef.current.setMap) gpsMarkerRef.current.setMap(null);
-      gpsMarkerRef.current = null;
-    }
+    // Clear old GPS marker using correct removal method
+    removeMarker(gpsMarkerRef.current);
+    gpsMarkerRef.current = null;
     if (gpsAccuracyCircleRef.current) {
       gpsAccuracyCircleRef.current.setMap(null);
       gpsAccuracyCircleRef.current = null;
@@ -1225,8 +1231,9 @@ export default function GoogleMap({
       <div ref={mapRef} style={{ height: '100%', borderRadius: '6px', border: '1px solid #e0e0e0' }} />
       <style>{`
         @keyframes cadreport-pulse {
-          0%, 100% { transform: scale(1) translateY(-10px); opacity: 1; }
-          50% { transform: scale(1.6) translateY(-10px); opacity: 0.7; }
+          /* Scale from center only - no translateY to avoid anchor offset issues */
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.3); opacity: 0.75; }
         }
         @keyframes cadreport-gps-pulse {
           0%, 100% { transform: scale(1); opacity: 1; }

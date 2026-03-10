@@ -1363,16 +1363,14 @@ def _query_incident_layer(
         _DEFAULT_BASE_OFFSET = (-0.000009, 0.0)      # 1m south for any future 3rd layer
         base_dlat, base_dlng = _BASE_OFFSETS.get(layer_key, _DEFAULT_BASE_OFFSET)
 
-        # Apply base offset to every item in this layer
-        for item in items:
-            item["lat"] += base_dlat
-            item["lng"] += base_dlng
-
-        # Cascade: same-category co-located incidents step 1m NE per additional incident
+        # Cascade co-located incidents BEFORE applying base offset.
+        # This ensures incidents at the same raw coordinates are spread out,
+        # then the entire group is shifted by the layer's base offset.
         # 1 meter NE ≈ 0.000009 lat, 0.000011 lng at ~40°N
         CASCADE_LAT = 0.000009  # ~1m north per step
         CASCADE_LNG = 0.000011  # ~1m east per step
 
+        # Group by raw coordinates (before any offset)
         coord_groups = {}
         for item in items:
             key = (item["lat"], item["lng"])
@@ -1380,13 +1378,21 @@ def _query_incident_layer(
                 coord_groups[key] = []
             coord_groups[key].append(item)
 
+        # Cascade co-located items (newest stays at original position)
         for key, group in coord_groups.items():
             if len(group) > 1:
                 # Already sorted by incident_date DESC, so index 0 is newest
                 for i, item in enumerate(group):
                     if i > 0:
+                        # Offset from the original key position (not from group[0])
                         item["lat"] = key[0] + (CASCADE_LAT * i)
                         item["lng"] = key[1] + (CASCADE_LNG * i)
+
+        # NOW apply base offset to every item in this layer
+        # This shifts the entire layer (including cascaded items) by the layer's offset
+        for item in items:
+            item["lat"] += base_dlat
+            item["lng"] += base_dlng
 
         return {
             "layer_id": layer_key,
