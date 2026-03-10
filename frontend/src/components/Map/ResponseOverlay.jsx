@@ -67,7 +67,7 @@ export default function ResponseOverlay({
     }
     lastGpsRouteRef.current = { lat: gpsPosition.lat, lng: gpsPosition.lng };
     fetchResponseData(gpsPosition.lat, gpsPosition.lng);
-  }, [gpsEnabled, gpsPosition?.lat, gpsPosition?.lng]); // eslint-disable-line
+  }, [gpsEnabled, gpsPosition?.lat, gpsPosition?.lng, responseData, fetchResponseData]);
 
   const inc = responseData?.incident || incident;
   const route = responseData?.route;

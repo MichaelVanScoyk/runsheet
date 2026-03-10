@@ -119,19 +119,6 @@ function createNumberedMarkerSvg(label, color, size = 28) {
 }
 
 /**
- * Create SVG for pulsing marker (uses native SVG <animate> for legacy markers)
- */
-function createPulsingMarkerSvg(label, color, size = 28) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-    <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${color}" stroke="#fff" stroke-width="2">
-      <animate attributeName="r" values="${size/2 - 2};${size/2 - 5};${size/2 - 2}" dur="1.5s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="1;0.6;1" dur="1.5s" repeatCount="indefinite"/>
-    </circle>
-    <text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="12" font-weight="600" font-family="Arial,sans-serif">${label}</text>
-  </svg>`;
-}
-
-/**
  * Create SVG for station marker
  */
 function createStationMarkerSvg(size = 16) {
@@ -400,6 +387,11 @@ export default function GoogleMap({
       dataLayersRef.current.forEach(dl => dl.setMap(null));
       viewportMarkersRef.current.forEach(removeMarker);
       removeMarker(stationMarkerRef.current);
+      removeMarker(gpsMarkerRef.current);
+      if (gpsAccuracyCircleRef.current) {
+        gpsAccuracyCircleRef.current.setMap(null);
+        gpsAccuracyCircleRef.current = null;
+      }
       if (idleListenerRef.current) window.google?.maps?.event?.removeListener(idleListenerRef.current);
       mapInstanceRef.current = null;
     };
@@ -1232,12 +1224,18 @@ export default function GoogleMap({
       <style>{`
         @keyframes cadreport-pulse {
           /* Scale from center only - no translateY to avoid anchor offset issues */
+          /* will-change promotes to own compositing layer for Safari backdrop-filter compatibility */
           0%, 100% { transform: scale(1); opacity: 1; }
           50% { transform: scale(1.3); opacity: 0.75; }
         }
         @keyframes cadreport-gps-pulse {
           0%, 100% { transform: scale(1); opacity: 1; }
           50% { transform: scale(1.15); opacity: 0.85; }
+        }
+        /* Promote animated marker containers to own compositing layer */
+        /* This isolates transform animations from backdrop-filter elements (Safari fix) */
+        [style*="cadreport-pulse"], [style*="cadreport-gps-pulse"] {
+          will-change: transform, opacity;
         }
       `}</style>
     </div>

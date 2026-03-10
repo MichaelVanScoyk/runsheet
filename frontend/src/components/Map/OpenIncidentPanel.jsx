@@ -37,7 +37,7 @@ export default function OpenIncidentPanel({ onSelectIncident, onIncidentsLoaded 
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onIncidentsLoaded]);
 
   useEffect(() => {
     fetchOpenIncidents();
