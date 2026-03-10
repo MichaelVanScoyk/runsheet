@@ -83,10 +83,11 @@ def geocode_address(
     if google_api_key:
         result = _geocode_google(address, station_lat, station_lng, state, google_api_key)
         if result:
-            # ROOFTOP = Google has the real address, trust it
-            if result.get('location_type') == 'ROOFTOP':
+            # ROOFTOP or GEOMETRIC_CENTER = Google has good location data, trust it
+            # GEOMETRIC_CENTER is center of property/premises (common for parks, farms, large lots)
+            if result.get('location_type') in ('ROOFTOP', 'GEOMETRIC_CENTER'):
                 return result
-            # RANGE_INTERPOLATED = Google guessed, check Census for actual 911 address
+            # RANGE_INTERPOLATED or APPROXIMATE = Google guessed, check Census for actual 911 address
             census_result = _geocode_census(address, station_lat, station_lng, state)
             if census_result and census_result.get('distance_km', 9999) < result.get('distance_km', 9999):
                 return census_result
