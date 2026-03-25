@@ -1,0 +1,23 @@
+[Unit]
+Description=RunSheet CAD Forwarder - glenmoorefc to cadreport-east
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dashboard
+WorkingDirectory=/opt/runsheet/cad
+ExecStart=/opt/runsheet/runsheet_env/bin/python cad_forwarder.py \
+    --watch-dir /opt/runsheet/data/glenmoorefc/cad_backup \
+    --forward-to 178.156.253.98:19100
+Restart=always
+RestartSec=5
+
+Environment=PYTHONUNBUFFERED=1
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cad_forwarder
+
+[Install]
+WantedBy=multi-user.target
