@@ -216,7 +216,6 @@ async def duplicate_incident(
         municipality_code=source.municipality_code,
         cross_streets=source.cross_streets,
         esz_box=source.esz_box,
-        neris_location=source.neris_location,
         latitude=source.latitude,
         longitude=source.longitude,
         
@@ -240,53 +239,6 @@ async def duplicate_incident(
         time_fire_knocked_down=source.time_fire_knocked_down,
         time_suppression_complete=source.time_suppression_complete,
         time_extrication_complete=source.time_extrication_complete,
-        time_secondary_search_begin=source.time_secondary_search_begin,
-        time_secondary_search_complete=source.time_secondary_search_complete,
-        time_ventilation_start=source.time_ventilation_start,
-        time_ventilation_complete=source.time_ventilation_complete,
-        time_overhaul_start=source.time_overhaul_start,
-        time_overhaul_complete=source.time_overhaul_complete,
-        time_rit_activated=source.time_rit_activated,
-        time_mayday_declared=source.time_mayday_declared,
-        time_mayday_cleared=source.time_mayday_cleared,
-        time_extrication_start=source.time_extrication_start,
-        
-        # EMS timestamps
-        time_patient_contact=source.time_patient_contact,
-        time_patient_assessment_complete=source.time_patient_assessment_complete,
-        time_cpr_started=source.time_cpr_started,
-        time_aed_applied=source.time_aed_applied,
-        time_aed_shock_delivered=source.time_aed_shock_delivered,
-        time_rosc_achieved=source.time_rosc_achieved,
-        time_airway_secured=source.time_airway_secured,
-        time_iv_access=source.time_iv_access,
-        
-        # Operational timestamps
-        time_par_started=source.time_par_started,
-        time_par_complete=source.time_par_complete,
-        time_evac_ordered=source.time_evac_ordered,
-        time_water_supply_established=source.time_water_supply_established,
-        time_all_clear=source.time_all_clear,
-        time_loss_stop=source.time_loss_stop,
-        time_utilities_secured=source.time_utilities_secured,
-        time_rehab_established=source.time_rehab_established,
-        time_investigation_requested=source.time_investigation_requested,
-        
-        # Hazmat timestamps
-        time_hazmat_identified=source.time_hazmat_identified,
-        time_hazmat_contained=source.time_hazmat_contained,
-        time_decon_started=source.time_decon_started,
-        time_decon_complete=source.time_decon_complete,
-        
-        # Technical rescue timestamps
-        time_victim_located=source.time_victim_located,
-        time_victim_accessed=source.time_victim_accessed,
-        time_victim_freed=source.time_victim_freed,
-        
-        # Wildland timestamps
-        time_wildland_contained=source.time_wildland_contained,
-        time_wildland_controlled=source.time_wildland_controlled,
-        time_wildland_mopup_complete=source.time_wildland_mopup_complete,
         
         # Caller
         caller_name=source.caller_name,
@@ -315,63 +267,9 @@ async def duplicate_incident(
         
         # NERIS classification (will need new NERIS ID)
         neris_id=None,  # Will be generated separately
-        neris_incident_type_codes=source.neris_incident_type_codes,
-        neris_incident_type_primary=source.neris_incident_type_primary,
-        neris_location_use=source.neris_location_use,
-        neris_action_codes=source.neris_action_codes,
-        neris_noaction_code=source.neris_noaction_code,
         neris_aid_direction=source.neris_aid_direction,
         neris_aid_type=source.neris_aid_type,
         neris_aid_departments=source.neris_aid_departments,
-        neris_additional_data=source.neris_additional_data,
-        neris_people_present=source.neris_people_present,
-        neris_displaced_number=source.neris_displaced_number,
-        neris_risk_reduction=source.neris_risk_reduction,
-        neris_rescue_ff=source.neris_rescue_ff,
-        neris_rescue_nonff=source.neris_rescue_nonff,
-        neris_rescue_animal=source.neris_rescue_animal,
-        neris_narrative_impedance=source.neris_narrative_impedance,
-        neris_narrative_outcome=source.neris_narrative_outcome,
-        
-        # NERIS Fire module
-        neris_fire_investigation_need=source.neris_fire_investigation_need,
-        neris_fire_investigation_type=source.neris_fire_investigation_type,
-        neris_fire_arrival_conditions=source.neris_fire_arrival_conditions,
-        neris_fire_structure_damage=source.neris_fire_structure_damage,
-        neris_fire_structure_floor=source.neris_fire_structure_floor,
-        neris_fire_structure_room=source.neris_fire_structure_room,
-        neris_fire_structure_cause=source.neris_fire_structure_cause,
-        neris_fire_outside_cause=source.neris_fire_outside_cause,
-        
-        # NERIS Medical module
-        neris_medical_patient_care=source.neris_medical_patient_care,
-        
-        # NERIS Hazmat module
-        neris_hazmat_disposition=source.neris_hazmat_disposition,
-        neris_hazmat_evacuated=source.neris_hazmat_evacuated,
-        neris_hazmat_chemicals=source.neris_hazmat_chemicals,
-        
-        # NERIS Exposures and Emerging Hazards
-        neris_exposures=source.neris_exposures,
-        neris_emerging_hazard=source.neris_emerging_hazard,
-        
-        # NERIS Risk Reduction Details
-        neris_rr_smoke_alarm_type=source.neris_rr_smoke_alarm_type,
-        neris_rr_smoke_alarm_working=source.neris_rr_smoke_alarm_working,
-        neris_rr_smoke_alarm_operation=source.neris_rr_smoke_alarm_operation,
-        neris_rr_smoke_alarm_failure=source.neris_rr_smoke_alarm_failure,
-        neris_rr_smoke_alarm_action=source.neris_rr_smoke_alarm_action,
-        neris_rr_fire_alarm_type=source.neris_rr_fire_alarm_type,
-        neris_rr_fire_alarm_operation=source.neris_rr_fire_alarm_operation,
-        neris_rr_other_alarm=source.neris_rr_other_alarm,
-        neris_rr_other_alarm_type=source.neris_rr_other_alarm_type,
-        neris_rr_sprinkler_type=source.neris_rr_sprinkler_type,
-        neris_rr_sprinkler_coverage=source.neris_rr_sprinkler_coverage,
-        neris_rr_sprinkler_operation=source.neris_rr_sprinkler_operation,
-        neris_rr_sprinkler_heads_activated=source.neris_rr_sprinkler_heads_activated,
-        neris_rr_sprinkler_failure=source.neris_rr_sprinkler_failure,
-        neris_rr_cooking_suppression=source.neris_rr_cooking_suppression,
-        neris_rr_cooking_suppression_type=source.neris_rr_cooking_suppression_type,
         
         # Audit - don't copy submission status
         neris_submitted_at=None,
