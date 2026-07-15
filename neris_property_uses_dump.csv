@@ -1,0 +1,53 @@
+code,description,category,active,display_order
+419,1 or 2 family dwelling,Residential,t,10
+429,Multifamily dwelling,Residential,t,20
+439,"Boarding/rooming house, residential hotels",Residential,t,30
+449,"Hotel/motel, commercial",Residential,t,40
+459,Residential board and care,Residential,t,50
+460,"Dormitory-type residence, other",Residential,t,60
+500,"Mercantile, business, other",Commercial,t,100
+519,"Food and beverage sales, grocery store",Commercial,t,110
+539,"Household goods, sales, repairs",Commercial,t,120
+549,Specialty shop,Commercial,t,130
+559,Department or discount store,Commercial,t,140
+564,"Laundry, dry cleaning",Commercial,t,150
+569,"Professional supplies, services",Commercial,t,160
+571,Gas or service station,Commercial,t,170
+579,"Motor vehicle or boat sales, services, repair",Commercial,t,180
+580,"General retail, other",Commercial,t,190
+581,Department or discount store,Commercial,t,200
+592,Bank,Commercial,t,210
+593,Office: business and professional,Commercial,t,220
+596,Post office,Commercial,t,230
+599,Business office,Commercial,t,240
+615,Electric-generating plant,Industrial,t,300
+629,"Lumber yard, sawmill",Industrial,t,310
+635,Computer/data processing center,Industrial,t,320
+640,"Shops, maintenance",Industrial,t,330
+700,"Manufacturing, processing",Industrial,t,340
+800,"Storage, other",Storage,t,400
+807,Outside storage area,Storage,t,410
+808,"Barn, livestock",Storage,t,420
+819,"Livestock, poultry storage",Storage,t,430
+839,Refrigerated storage,Storage,t,440
+880,"Vehicle storage, other",Storage,t,450
+882,"Parking garage, general vehicle",Storage,t,460
+888,Fire station,Public Safety,t,470
+891,Warehouse,Storage,t,480
+900,"Outside or special property, other",Outside,t,500
+919,"Dump, sanitary landfill",Outside,t,510
+921,"Bridge, trestle",Outside,t,520
+926,"Outbuilding, protective shelter",Outside,t,530
+931,Open land or field,Outside,t,540
+935,Campsite with utilities,Outside,t,550
+936,Vacant lot,Outside,t,560
+938,Graded and cared-for plots of land,Outside,t,570
+940,"Water area, other",Outside,t,580
+946,"Lake, river, stream",Outside,t,590
+951,Railroad right of way,Outside,t,600
+960,"Street, road, highway",Outside,t,610
+962,"Residential street, road or residential driveway",Outside,t,620
+963,Vehicle parking area,Outside,t,630
+965,Vehicle parking area: street,Outside,t,640
+981,Construction site,Outside,t,650
+984,Industrial plant yard,Outside,t,660

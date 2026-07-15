@@ -1,0 +1,44 @@
+code,description,category,active,display_order
+111,Building fire,Fire,t,10
+112,Fires in structure other than in a building,Fire,t,20
+113,"Cooking fire, confined to container",Fire,t,30
+114,"Chimney or flue fire, confined to chimney or flue",Fire,t,40
+118,"Trash or rubbish fire, contained",Fire,t,50
+131,Passenger vehicle fire,Fire,t,60
+140,"Natural vegetation fire, other",Fire,t,70
+142,Brush or brush-and-grass mixture fire,Fire,t,80
+143,Grass fire,Fire,t,90
+321,"EMS call, excluding vehicle accident with injury",EMS,t,100
+322,Motor vehicle accident with injuries,EMS,t,110
+323,Motor vehicle/pedestrian accident,EMS,t,120
+324,Motor vehicle accident with no injuries,EMS,t,130
+381,Rescue or EMS standby,EMS,t,140
+411,Gasoline or other flammable liquid spill,Hazmat,t,200
+412,Gas leak (natural gas or LPG),Hazmat,t,210
+413,Oil or other combustible liquid spill,Hazmat,t,220
+424,Carbon monoxide incident,Hazmat,t,230
+440,"Electrical wiring/equipment problem, other",Hazmat,t,240
+444,Power line down,Hazmat,t,250
+511,Lock-out,Service,t,300
+520,"Water problem, other",Service,t,310
+522,Water or steam leak,Service,t,320
+531,Smoke or odor removal,Service,t,330
+542,Animal rescue,Service,t,340
+551,Assist police or other governmental agency,Service,t,350
+553,Public service,Service,t,360
+554,Assist invalid,Service,t,370
+561,Unauthorized burning,Service,t,380
+571,"Cover assignment, standby, moveup",Service,t,390
+600,"Good intent call, other",Good Intent,t,400
+611,Dispatched and cancelled en route,Good Intent,t,410
+622,No incident found on arrival at dispatch address,Good Intent,t,420
+631,Authorized controlled burning,Good Intent,t,430
+651,"Smoke scare, odor of smoke",Good Intent,t,440
+652,"Steam, vapor, fog or dust thought to be smoke",Good Intent,t,450
+700,"False alarm or false call, other",False Alarm,t,500
+733,Smoke detector activation due to malfunction,False Alarm,t,510
+735,Alarm system sounded due to malfunction,False Alarm,t,520
+736,CO detector activation due to malfunction,False Alarm,t,530
+743,"Smoke detector activation, no fire - unintentional",False Alarm,t,540
+745,"Alarm system activation, no fire - unintentional",False Alarm,t,550
+746,"Carbon monoxide detector activation, no CO",False Alarm,t,560

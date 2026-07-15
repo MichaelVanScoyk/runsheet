@@ -1,0 +1,21 @@
+id,pattern_regex,pattern_description,neris_field_name,operational_field_name,confidence,cad_source,active,match_count,created_at,updated_at
+1,Command Established for set Fire Incident Command Times,Chester County formal command established,time_command_established,,HIGH,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+2,\*\*\s*Fire Under Control at,Chester County formal FUC,time_fire_under_control,,HIGH,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+3,Fire Under Control,General FUC mention,time_fire_under_control,,MEDIUM,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+4,\bFUC\b,FUC abbreviation,time_fire_under_control,,MEDIUM,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+5,Evac Ordered for set Fire Incident Command Times,Chester County evacuation order,,time_evac_ordered,HIGH,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+6,Accountability/Start PAR.*timer started,Chester County PAR started,,time_par_started,HIGH,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+7,PAR\s*(Complete|All Accounted),PAR completed,,time_par_complete,MEDIUM,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+8,Water Supply Established,Water supply established,,time_water_supply_established,MEDIUM,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+9,WATER ON FIRE,Water on fire,time_water_on_fire,,MEDIUM,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+10,Primary.*All Clear|PAC\b,Primary all clear,time_primary_search_complete,,MEDIUM,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+11,Primary Search (Complete|Started),Primary search status,time_primary_search_complete,,MEDIUM,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+12,Secondary Search,Secondary search mention,time_secondary_search_begin,,LOW,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+13,Overhaul (Complete|Started),Overhaul status,time_overhaul_start,,LOW,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+14,Extensive Overhaul,Overhaul mention,time_overhaul_start,,LOW,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+15,\bMAYDAY\b,MAYDAY declared,time_mayday_declared,,HIGH,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+16,\bRIT\b.*Activated,RIT activation,time_rit_activated,,MEDIUM,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+17,All Clear,Scene all clear,,time_all_clear,LOW,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+18,Loss Stop,Loss stopped,,time_loss_stop,LOW,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+19,Utilities (Secured|Off|Cut),Utilities secured,,time_utilities_secured,MEDIUM,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00
+20,(Fire Marshal|Investigation|Investigator),Investigation requested,,time_investigation_requested,LOW,CHESTER_COUNTY,t,0,2025-12-31 14:17:52.701791+00,2025-12-31 14:17:52.701791+00

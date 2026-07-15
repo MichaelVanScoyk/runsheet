@@ -1,0 +1,19 @@
+id,rank_name,abbreviation,display_order,active,created_at
+1,Chief,Chief,1,t,2025-12-09 03:42:38.574925+00
+2,Deputy Chief,Deputy,2,t,2025-12-09 03:42:38.574925+00
+3,Assistant Chief,Asst CHF,3,t,2025-12-09 03:42:38.574925+00
+4,Battalion Chief,Batt CHF,4,t,2025-12-09 03:42:38.574925+00
+5,Captain,Captain,5,t,2025-12-09 03:42:38.574925+00
+6,Lieutenant,LT,6,t,2025-12-09 03:42:38.574925+00
+7,Sergeant,Sgt,7,t,2025-12-09 03:42:38.574925+00
+16,Chief Engineer,C Engineer,7,t,2026-01-15 02:37:06.038052+00
+18,Fire Fighter EMT,FFE,8,t,2026-01-23 20:03:02.438214+00
+8,Paramedic,Medic,8,t,2025-12-09 03:42:38.574925+00
+9,Firefighter,FF,9,t,2025-12-09 03:42:38.574925+00
+10,EMT,EMT,10,t,2025-12-09 03:42:38.574925+00
+11,Exterior FF,Ext FF,11,t,2025-12-09 03:42:38.574925+00
+12,Probationary,Prob,12,t,2025-12-09 03:42:38.574925+00
+13,Junior FF,Junior FF,13,t,2025-12-09 03:42:38.574925+00
+14,Cadet FF,Cadet FF,14,t,2025-12-09 03:42:38.574925+00
+17,Engineer,Engineer,100,t,2026-01-15 02:38:38.428601+00
+15,Fire Police,Fire Polic,100,t,2026-01-10 21:29:11.000644+00

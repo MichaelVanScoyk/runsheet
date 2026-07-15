@@ -1,0 +1,45 @@
+code,description,category,active,display_order
+10,Fire control or extinguishment,Fire Suppression,t,10
+11,Search and rescue,Fire Suppression,t,20
+12,"Rescue, remove from harm",Fire Suppression,t,30
+13,Establish safe area,Fire Suppression,t,40
+14,Incident stabilization,Fire Suppression,t,50
+15,Establish fire lines,Fire Suppression,t,60
+16,Foam or dry chemical application,Fire Suppression,t,70
+21,Ignition source disconnected,Hazmat,t,100
+22,Shut off gas,Hazmat,t,110
+32,Provide basic life support (BLS),EMS,t,200
+33,Provide advanced life support (ALS),EMS,t,210
+34,Transport person,EMS,t,220
+52,"Extrication, disentanglement, rescue",Rescue,t,300
+53,Extrication of victim(s) from vehicle,Rescue,t,310
+54,Water rescue,Rescue,t,320
+55,"Rescue, remove victim(s) from stalled elevator",Rescue,t,330
+56,High angle/rope rescue,Rescue,t,340
+57,Trench/below grade rescue,Rescue,t,350
+58,Confined space rescue,Rescue,t,360
+61,Restore municipal services,Mitigation,t,400
+62,Restore fire protection system,Mitigation,t,410
+63,Restore sprinkler or fire protection system,Mitigation,t,420
+64,"Hazmat detection, monitoring",Hazmat,t,430
+65,"Hazmat - Loss control (absorbent, etc.)",Hazmat,t,440
+66,Decontamination,Hazmat,t,450
+67,Contain hazardous condition,Hazmat,t,460
+71,"Assistance, other",Assistance,t,500
+72,Forcible entry,Assistance,t,510
+73,"Provide apparatus, equipment, or crew",Assistance,t,520
+74,Provide water supply,Assistance,t,530
+75,Standby,Assistance,t,540
+76,Ventilate,Fire Suppression,t,550
+77,Salvage and overhaul,Fire Suppression,t,560
+78,Salvage,Fire Suppression,t,570
+79,Overhaul,Fire Suppression,t,580
+81,Investigate,Investigation,t,600
+82,Investigate fire out on arrival,Investigation,t,610
+83,Notify other agencies,Notification,t,620
+84,Refer to proper authority,Notification,t,630
+85,Enforce codes,Investigation,t,640
+86,Investigate,Investigation,t,650
+91,Cancelled en route,Cancelled,t,900
+92,Cancelled on arrival,Cancelled,t,910
+93,"Cancelled, no action required",Cancelled,t,920

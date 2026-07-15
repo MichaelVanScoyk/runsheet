@@ -1,0 +1,24 @@
+[Unit]
+Description=RunSheet CAD Listener - glenmoorefc
+After=network.target runsheet.service
+
+[Service]
+Type=simple
+User=dashboard
+WorkingDirectory=/opt/runsheet/cad
+ExecStart=/opt/runsheet/runsheet_env/bin/python cad_listener.py \
+    --port 19117 \
+    --tenant glenmoorefc \
+    --api-url http://127.0.0.1:8001 \
+    --timezone America/New_York
+Restart=always
+RestartSec=5
+
+Environment=PYTHONUNBUFFERED=1
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cad-listener
+
+[Install]
+WantedBy=multi-user.target

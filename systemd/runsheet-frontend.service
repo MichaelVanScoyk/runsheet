@@ -1,0 +1,21 @@
+[Unit]
+Description=RunSheet Frontend (Vite)
+After=network.target runsheet.service
+
+[Service]
+Type=simple
+User=dashboard
+WorkingDirectory=/opt/runsheet/frontend
+ExecStart=/usr/bin/npx vite --host
+Restart=always
+RestartSec=5
+
+Environment=NODE_ENV=development
+Environment=PATH=/usr/bin:/usr/local/bin
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=runsheet-frontend
+
+[Install]
+WantedBy=multi-user.target
