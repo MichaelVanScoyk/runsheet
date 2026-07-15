@@ -28,3 +28,5 @@ data/
 
 # ADI historical data
 adi/
+settings_dump.csv
+station_settings_dump.csv
